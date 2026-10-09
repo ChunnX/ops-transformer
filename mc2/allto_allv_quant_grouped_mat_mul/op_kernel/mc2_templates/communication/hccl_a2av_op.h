@@ -34,13 +34,17 @@ using namespace AscendC;
 
 namespace MC2KernelTemplate {
 
-template<typename T>
-struct CommBufferType { using type = T; };
+template <typename T>
+struct CommBufferType {
+    using type = T;
+};
 
-template<>
-struct CommBufferType<fp4x2_e2m1_t> { using type = int8_t; };
+template <>
+struct CommBufferType<fp4x2_e2m1_t> {
+    using type = int8_t;
+};
 
-template<int commMode = TILINGKEY_TPL_CCU>
+template <int commMode = TILINGKEY_TPL_CCU>
 struct HcclTypeSelector {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
 };
@@ -56,13 +60,12 @@ public:
     using CommBufType = typename CommBufferType<hcclDataType>::type;
 
     __aicore__ inline HcclA2avOp() {}
-    __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
-                                const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
-                                GM_ADDR recvBuffer, uint32_t aivCoreNum = 1U);
-    __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
-                                const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
-                                GM_ADDR recvBuffer, GM_ADDR permuteBuffer,
-                                uint32_t aivCoreNum);
+    __aicore__ inline void Init(const void* hcclInitTiling, uint64_t hcclCcTilingOffset,
+                                const TaskTilingInfo* taskTilingInfo, GM_ADDR sendBuffer, GM_ADDR recvBuffer,
+                                uint32_t aivCoreNum = 1U);
+    __aicore__ inline void Init(const void* hcclInitTiling, uint64_t hcclCcTilingOffset,
+                                const TaskTilingInfo* taskTilingInfo, GM_ADDR sendBuffer, GM_ADDR recvBuffer,
+                                GM_ADDR permuteBuffer, uint32_t aivCoreNum);
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer);
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
@@ -76,7 +79,7 @@ public:
 
 private:
     typename HcclTypeSelector<commMode>::type hccl_;
-    const TaskTilingInfo *taskTilingInfo_;
+    const TaskTilingInfo* taskTilingInfo_;
 
     uint32_t rankDim_ = 0U;
     uint32_t e_ = 0U;
@@ -91,16 +94,16 @@ private:
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
 
-    A2avCommParams dataCommParams_;
-    A2avCommParams scaleCommParams_;
+    // scale与data串行发射且HCCL在AlltoAllV调用时同步消费counts(基线跨轮覆写已证明)，共用一个结构压缩kernel栈
+    A2avCommParams commParams_;
 
     uint64_t dataSendOffsetLastSum_ = 0UL;
     uint64_t dataRecvOffsetLastSum_ = 0UL;
     uint64_t scaleSendOffsetLastSum_ = 0UL;
     uint64_t scaleRecvOffsetLastSum_ = 0UL;
 
-    uint64_t recvCounts_[MAX_EXPERT_SIZE] = {0UL};
-    uint64_t sendCounts_[MAX_EXPERT_SIZE] = {0UL};
+    int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
+    int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
 
     HcclHandle alltoAllvHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclHandle alltoAllvScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
@@ -116,17 +119,16 @@ private:
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Init(
-    const void *hcclInitTiling, uint64_t hcclCcTilingOffset, const TaskTilingInfo *taskTilingInfo,
-    GM_ADDR sendBuffer, GM_ADDR recvBuffer, uint32_t aivCoreNum)
+    const void* hcclInitTiling, uint64_t hcclCcTilingOffset, const TaskTilingInfo* taskTilingInfo, GM_ADDR sendBuffer,
+    GM_ADDR recvBuffer, uint32_t aivCoreNum)
 {
     Init(hcclInitTiling, hcclCcTilingOffset, taskTilingInfo, sendBuffer, recvBuffer, nullptr, aivCoreNum);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Init(
-    const void *hcclInitTiling, uint64_t hcclCcTilingOffset, const TaskTilingInfo *taskTilingInfo,
-    GM_ADDR sendBuffer, GM_ADDR recvBuffer, GM_ADDR permuteBuffer,
-    uint32_t aivCoreNum)
+    const void* hcclInitTiling, uint64_t hcclCcTilingOffset, const TaskTilingInfo* taskTilingInfo, GM_ADDR sendBuffer,
+    GM_ADDR recvBuffer, GM_ADDR permuteBuffer, uint32_t aivCoreNum)
 {
     taskTilingInfo_ = taskTilingInfo;
     aivCoreNum_ = aivCoreNum;
@@ -138,9 +140,9 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     H1_ = taskTilingInfo_->H1;
     N1_ = taskTilingInfo_->N1;
     bufferLen_ = PERMUTE_BUF_SIZE;
-    sendGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)sendBuffer);
-    recvGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)recvBuffer);
-    permuteOutBuffer_.SetGlobalBuffer((__gm__ CommBufType *)permuteBuffer);
+    sendGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType*)sendBuffer);
+    recvGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType*)recvBuffer);
+    permuteOutBuffer_.SetGlobalBuffer((__gm__ CommBufType*)permuteBuffer);
     for (int i = 0; i < e_ * rankDim_; i++) {
         recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         sendCounts_[i] = taskTilingInfo_->sendCnt[i];
@@ -166,9 +168,9 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::InitScaleBuffer(
     GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer)
 {
-    sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
-    recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)commOutBuffer);
-    scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)permuteOutBuffer);
+    sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t*)sendBuffer);
+    recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t*)commOutBuffer);
+    scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t*)permuteOutBuffer);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -177,13 +179,12 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 {
     A2AV_AIV_ONLY();
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
-    CalcA2avCommBeforeParams(scaleCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
-                       axis, scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
+    CalcA2avCommBeforeParams(commParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum, axis,
+                             scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
     alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
-        (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.sendCnt,
-            scaleCommParams_.sendOffset, HCCL_DATA_TYPE_FP8E8M0,
-        (__gm__ uint8_t *)recvScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.recvCnt,
-            scaleCommParams_.recvOffset, HCCL_DATA_TYPE_FP8E8M0);
+        (__gm__ uint8_t*)sendScaleGlobalBuffer_.GetPhyAddr(), commParams_.sendCnt, commParams_.sendOffset,
+        HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t*)recvScaleGlobalBuffer_.GetPhyAddr(), commParams_.recvCnt,
+        commParams_.recvOffset, HCCL_DATA_TYPE_FP8E8M0);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -193,22 +194,20 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     A2AV_AIV_ONLY();
     if constexpr (commBeforeComputeFlag) {
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
-        CalcA2avCommBeforeParams(dataCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
-                        axis, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
+        CalcA2avCommBeforeParams(commParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum, axis,
+                                 dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     } else {
-        CalcA2avCommAfterParams(dataCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
-                        N1_, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
+        CalcA2avCommAfterParams(commParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum, N1_,
+                                dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     }
     alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
-        (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), dataCommParams_.sendCnt,
-            dataCommParams_.sendOffset, hcclDataType_,
-        (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), dataCommParams_.recvCnt,
-            dataCommParams_.recvOffset, hcclDataType_);
+        (__gm__ uint8_t*)sendGlobalBuffer_.GetPhyAddr(), commParams_.sendCnt, commParams_.sendOffset, hcclDataType_,
+        (__gm__ uint8_t*)recvGlobalBuffer_.GetPhyAddr(), commParams_.recvCnt, commParams_.recvOffset, hcclDataType_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Launch(
-    uint32_t startExpertIdx, uint32_t expertNum)
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Launch(uint32_t startExpertIdx,
+                                                                                         uint32_t expertNum)
 {
     LaunchCommData(startExpertIdx, expertNum);
 }
@@ -235,8 +234,8 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitAll(
-    uint32_t allNum, uint32_t step)
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitAll(uint32_t allNum,
+                                                                                          uint32_t step)
 {
     A2AV_AIV_ONLY();
     for (uint32_t i = 0U; i < allNum; i += step) {
@@ -245,31 +244,32 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteData(
-    uint32_t startExpertIdx, uint32_t expertNum, GM_ADDR dstBuffer)
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteData(uint32_t startExpertIdx,
+                                                                                              uint32_t expertNum,
+                                                                                              GM_ADDR dstBuffer)
 {
     A2AV_AIV_ALL();
     if (!permuteBufInitialized_) {
-        TPipe *pipe = GetTPipePtr();
+        TPipe* pipe = GetTPipePtr();
         pipe->InitBuffer(permuteTBuf_, PERMUTE_BUF_SIZE);
         pipe->InitBuffer(permuteTBuf2_, PERMUTE_BUF_SIZE);
         permuteBufInitialized_ = true;
     }
     GlobalTensor<CommBufType> dstGlobalBuffer;
-    dstGlobalBuffer.SetGlobalBuffer((__gm__ CommBufType *)dstBuffer);
+    dstGlobalBuffer.SetGlobalBuffer((__gm__ CommBufType*)dstBuffer);
     uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
-    PermuteImplParallel<CommBufType, false, true>(
-        recvGlobalBuffer_, dstGlobalBuffer,
-        recvCounts_, e_, rankDim_, startExpertIdx, expertNum,
-        axis, permuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
-        aivCoreNum_);
+    PermuteImplParallel<CommBufType, false, true>(recvGlobalBuffer_, dstGlobalBuffer, recvCounts_, e_, rankDim_,
+                                                  startExpertIdx, expertNum, axis, permuteBaseOffset_, permuteTBuf_,
+                                                  permuteTBuf2_, bufferLen_, eventID_, aivCoreNum_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::End()
 {
     SyncAll<false>();
-    if ASCEND_IS_AIC { return; }
+    if ASCEND_IS_AIC {
+        return;
+    }
     hccl_.Finalize();
 }
 

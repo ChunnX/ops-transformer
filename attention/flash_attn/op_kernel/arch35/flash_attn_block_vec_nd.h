@@ -18,8 +18,6 @@
 #include <limits>
 
 #include "../utils/attenmask_gs1.h"
-
-#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
@@ -29,26 +27,16 @@
 #include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/init_output.h"
-#else
-#include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
-#include "../../common/arch35/vf/vf_flashupdate_new.h"
-#include "../../common/arch35/vf/vf_div_cast_arch35.h"
-#include "../../common/arch35/vf/vf_flash_decode_arch35.h"
-#include "../../common/const_def.h"
-#include "../../common/vector_common.h"
-#include "../../common/init_output.h"
-#endif
-
 #include "memory_copy_arch35.h"
+#include "../utils/attn_sink_gs1.h"
+#include "../../../common/op_kernel/arch_info.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
 using namespace AscendC::Impl::Detail;
-using namespace AttentionCommon;
 
 namespace FlashAttnKernel {
+using ArchInfo::CV_RATIO;
 
 template <typename FA_T>
 class FANoQuantGqaBlockVecNd {
@@ -74,10 +62,10 @@ public:
 
     // 核间同步ID
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
-    static constexpr uint32_t CC_BMM1_0 = 0U;
-    static constexpr uint32_t CC_BMM1_1 = 1U;
-    static constexpr uint32_t CC_BMM2_0 = 2U;
-    static constexpr uint32_t CC_BMM2_1 = 3U;
+    static constexpr uint32_t CC_MM_0 = 0U;
+    static constexpr uint32_t CC_MM_1 = 1U;
+    static constexpr uint32_t CC_MM_2 = 2U;
+    static constexpr uint32_t CC_MM_3 = 3U;
     static constexpr uint32_t CC_L1P_0 = 5U;
     static constexpr uint32_t CC_L1P_1 = 6U;
     static constexpr uint32_t CC_L1P_2 = 7U;
@@ -99,37 +87,47 @@ public:
     LocalTensor<uint8_t> l1PBuffers_;
 
     // UB
-    static constexpr uint32_t UB_MM2_RES_BUFCNT = 2U;
-    static constexpr uint32_t UB_MM2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-    LocalTensor<uint8_t> ubMm2ResBuffers_;
-
-    static constexpr uint32_t UB_MM1_RES_BUFCNT = 2U;
-    static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
-    LocalTensor<uint8_t> ubMm1ResBuffers_;
+    static constexpr uint32_t UB_MM_RES_BUFCNT = (dBaseSize > 128) ? 2U : 4U;
+    static constexpr uint32_t UB_MM_RES_BUF_BYTES =
+        mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
+    // bmm1/bmm2(mmRes) 区域总字节数：FD block 以此作为 FD 业务区的 UB 起始偏移
+    static constexpr uint32_t UB_MM_RES_TOTAL_BYTES = UB_MM_RES_BUFCNT * UB_MM_RES_BUF_BYTES;
+    // FD 业务区在 UB 中的起始字节偏移，供 kernel 传给 FD block 的 InitBuffers
+    static __aicore__ inline constexpr uint32_t GetFdBaseOffset()
+    {
+        return UB_MM_RES_TOTAL_BYTES;
+    }
+    LocalTensor<uint8_t> ubMmResBuffers_;
+    uint32_t mmResBufId_ = 0;
 
     static constexpr uint32_t UB_MASK_BUFCNT = 2U;
     static constexpr uint32_t UB_MASK_BUF_BYTES = 8192U;
     LocalTensor<uint8_t> ubMaskBuffers_;
 
+    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
 
     static constexpr uint32_t UB_VEC1_RES_BUFCNT = 2U;
-    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = 33024U;
+    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (mBaseSize / CV_RATIO + 1U) * s2BaseSize * sizeof(INPUT_T);
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
 
     static constexpr uint32_t UB_SOFTMAX_MAX_BUFCNT = 3U;
-    static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES = 256U;
+    static constexpr uint32_t UB_SOFTMAX_MAX_BUF_BYTES =
+        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxSumBuf_;
     static constexpr uint32_t UB_SOFTMAX_SUM_BUFCNT = 3U;
-    static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES = 256U;
+    static constexpr uint32_t UB_SOFTMAX_SUM_BUF_BYTES =
+        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxMaxBuf_;
     static constexpr uint32_t UB_SOFTMAX_EXP_BUFCNT = 3U;
-    static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES = 256U;
+    static constexpr uint32_t UB_SOFTMAX_EXP_BUF_BYTES =
+        AttentionCommon::Align(mBaseSize / CV_RATIO * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<T> softmaxExpBuf_;
 
     static constexpr uint32_t UB_LSE_OUT_BUFCNT = 2U;
-    static constexpr uint32_t UB_LSE_OUT_BUF_BYTES = 2048U;
+    static constexpr uint32_t UB_LSE_OUT_BUF_BYTES =
+        AttentionCommon::Align(mBaseSize / CV_RATIO * 8 * static_cast<uint32_t>(sizeof(T)), 256U);
     LocalTensor<uint8_t> ubLseOutBuffers_;
     uint32_t lseOutUbBufId_ = 0;
 
@@ -152,6 +150,7 @@ public:
     GlobalTensor<float> accumOutGm_;
     GlobalTensor<float> softmaxFDSumGm_;
     GlobalTensor<float> softmaxFDMaxGm_;
+    GlobalTensor<float> sinkGm_;
 
     static constexpr MaskFormat MASK_LAYOUT =
         (LAYOUT_T == FA_LAYOUT::BSH || LAYOUT_T == FA_LAYOUT::TND) ? MaskFormat::SG : MaskFormat::GS;
@@ -191,6 +190,9 @@ public:
             softmaxFDMaxGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize +
                                             constInfo_.logSumExpSize);
         }
+        if (constInfo_.learnableSinkFlag) {
+            sinkGm_.SetGlobalBuffer((__gm__ float *)learnableSink);
+        }
     }
 
     __aicore__ inline void InitBuffers()
@@ -202,11 +204,10 @@ public:
 
         /*--------------------------------------------UB--------------------------------------------*/
         struct UbLayout {
-            uint8_t mm2ResBuffers[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES];    // 2 * 32K = 64K, CV通信BUF
-            uint8_t mm1ResBuffers[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES];    // 2 * 32K = 64K, CV通信BUF
+            uint8_t mmResBuffers[UB_MM_RES_BUFCNT][UB_MM_RES_BUF_BYTES];       // 2 * max(mm1,mm2), CV通信BUF
             uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];            // 2 * 8K = 16K, 输入BUF: MASK拷入
-            uint8_t vec2Res[32768U];                                           // 32K, 输出BUF: attn_out拷出
-            uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT][UB_VEC1_RES_BUF_BYTES]; // 2 * 32.25K, softmax结果拷至L1
+            uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                            // 输出BUF: attn_out拷出
+            uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT][UB_VEC1_RES_BUF_BYTES]; // softmax结果拷至L1
             uint8_t softmaxSumBuf_[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // 3 * 0.25K = 0.75K, sum常驻BUF
             uint8_t softmaxMaxBuf_[UB_SOFTMAX_MAX_BUFCNT][UB_SOFTMAX_MAX_BUF_BYTES]; // 3 * 0.25K = 0.75K, max常驻BUF
             uint8_t softmaxExpBuf_[UB_SOFTMAX_EXP_BUFCNT][UB_SOFTMAX_EXP_BUF_BYTES]; // 3 * 0.25K = 0.75K, exp常驻BUF
@@ -215,11 +216,9 @@ public:
                                                          // FD中间结果SUM和MAX拷出至GM，或者LSE结果拷出
             uint8_t softmaxTmpBuf[512U];                 // 0.5K, 常驻BUF, 用于softmax计算的中间结果缓存
         };
-        static_assert(sizeof(UbLayout) <= 248 * 1024, "UB buffer too large");
-        ubMm2ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, mm2ResBuffers),
-                                                SIZE_OF_MEMBER(UbLayout, mm2ResBuffers));
-        ubMm1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, mm1ResBuffers),
-                                                SIZE_OF_MEMBER(UbLayout, mm1ResBuffers));
+        static_assert(sizeof(UbLayout) <= (CV_RATIO == 1 ? 376 * 1024 : 248 * 1024), "UB buffer too large");
+        ubMmResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, mmResBuffers),
+                                               SIZE_OF_MEMBER(UbLayout, mmResBuffers));
         ubMaskBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, maskBuffers),
                                               SIZE_OF_MEMBER(UbLayout, maskBuffers));
         ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, OFFSET_OF_MEMBER(UbLayout, vec2Res),
@@ -243,21 +242,58 @@ public:
                                               SIZE_OF_MEMBER(UbLayout, softmaxTmpBuf));
     }
 
-    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx)
+    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const RunInfo &runInfo)
     {
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
         LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
         LocalTensor<T> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
-        Duplicate<T>(sumUb, static_cast<T>(0), softmaxBufElementCount);
-        Duplicate<T>(maxUb, static_cast<T>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
+        if (constInfo_.learnableSinkFlag && runInfo.isFirstFdBlock) {
+            Duplicate<T>(sumUb, static_cast<T>(1), softmaxBufElementCount);
+
+            uint32_t gs1Start = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+
+            Mutex::Lock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+            {
+                LocalTensor<float> sinkTmpUb =
+                    ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<float>();
+                if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
+                    AttentionCommon::SinkCopyInS1G(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
+                                                   runInfo.n2Idx, constInfo_.gSize);
+                } else if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
+                    AttentionCommon::SinkCopyInGS1(sinkTmpUb, sinkGm_, gs1Start, runInfo.actVecMSize, runInfo.actS1Size,
+                                                   runInfo.n2Idx, constInfo_.gSize);
+                }
+            }
+            Mutex::Unlock<PIPE_MTE2>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+
+            Mutex::Lock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+            {
+                LocalTensor<float> sinkTmpUb =
+                    ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<float>();
+
+                if constexpr (LAYOUT_T == FA_LAYOUT::BNSD) {
+                    AttentionCommon::SinkExpandMaxVf<T, float, true>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                                                                     runInfo.actS1Size, constInfo_.gSize);
+                } else {
+                    AttentionCommon::SinkExpandMaxVf<T, float, false>(maxUb, sinkTmpUb, gs1Start, runInfo.actVecMSize,
+                                                                      runInfo.actS1Size, constInfo_.gSize);
+                }
+            }
+            Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
+        } else {
+            Duplicate<T>(sumUb, static_cast<T>(0), softmaxBufElementCount);
+            Duplicate<T>(maxUb, static_cast<T>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
+        }
     }
 
     __aicore__ inline void InitCrossCoreSync()
     {
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM2_1);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
+        if constexpr (dBaseSize <= 128) {
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_2);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_3);
+        }
     }
 
     __aicore__ inline void UnInitCrossCoreSync() {}
@@ -268,22 +304,22 @@ public:
 
     __aicore__ inline void ProcessVec1(RunInfo runInfo)
     {
-        uint32_t mm1ResUbBufId = runInfo.loop % UB_MM1_RES_BUFCNT;
+        uint32_t mmResUbBufId = mmResBufId_;
+        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
-        uint32_t c1v1CrossCoreSyncIdx = CC_BMM1_0 + mm1ResUbBufId;
+        uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
         LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        auto mm1ResUbTensor = ubMm1ResBuffers_[mm1ResUbBufId * UB_MM1_RES_BUF_BYTES].template ReinterpretCast<T>();
+        auto mm1ResUbTensor = ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
 
         if (unlikely(runInfo.isFirstS2Loop)) {
-            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT);
+            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT, runInfo);
             AscendC::PipeBarrier<PIPE_V>();
         }
 
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
         ProcessVec1Nd(pL1Tensor, mm1ResUbTensor, runInfo);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(
-            c1v1CrossCoreSyncIdx); // C1与V1的反向同步, C1收到后可以启动FIXPIPE向UB的写
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // 通知BMM2: Vec1已读完mmRes, 可覆写
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(v1c2CrossCoreSyncIdx);
         Vec1PostProcess(runInfo);
     }
@@ -291,7 +327,7 @@ public:
     __aicore__ inline void ClearOutput()
     {
         if (constInfo_.needInitOutput) {
-            uint32_t vecCoreNum = 2 * constInfo_.coreNum;
+            uint32_t vecCoreNum = CV_RATIO * constInfo_.coreNum;
             uint64_t tSize = constInfo_.bSize * constInfo_.s1Size;
             if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
                 tSize = qSeqLensTool_.cuSeqLensParser.GetTSize();
@@ -457,7 +493,7 @@ public:
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         LocalTensor<INPUT_T> mm2AL1Tensor = pL1Tensor;
         if (likely(runInfo.actVecMSize != 0)) {
-            static constexpr uint32_t VEC1_SRC_STRIDE = (mBaseSize >> 1) + 1;
+            static constexpr uint32_t VEC1_SRC_STRIDE = (mBaseSize / CV_RATIO) + 1;
             DataCopy(mm2AL1Tensor[constInfo_.subBlockIdx * (blockBytes / sizeof(INPUT_T)) *
                                   (runInfo.actMSize - runInfo.actVecMSize)],
                      stage1CastTensor,
@@ -547,12 +583,12 @@ public:
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
         FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
-        GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.n2Idx,
-                        .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo_.dSizeV};
+        GmCoordGs1Merge gmCoord{.bIdx = info.bIdx,
+                                .n2Idx = info.n2Idx,
+                                .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                                .dIdx = 0,
+                                .gS1DealSize = dealRowCount,
+                                .dDealSize = (uint32_t)constInfo_.dSizeV};
         copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
     }
 
@@ -610,19 +646,20 @@ public:
 
     __aicore__ inline void ProcessVec2(RunInfo runInfo)
     {
-        uint32_t mm2ResUbBufId = runInfo.loop % UB_MM2_RES_BUFCNT;
-        uint32_t c2v2CrossCoreSyncIdx = CC_BMM2_0 + mm2ResUbBufId;
+        uint32_t mmResUbBufId = mmResBufId_;
+        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
+        uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         if (unlikely(runInfo.actVecMSize == 0)) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
             return;
         }
 
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
         {
             Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             LocalTensor<T> mm2ResUbTensor =
-                ubMm2ResBuffers_[mm2ResUbBufId * UB_MM2_RES_BUF_BYTES].template ReinterpretCast<T>();
+                ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
             if (unlikely(runInfo.isFirstS2Loop)) {
                 uint32_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
                 DataCopy(ubVec2Res_, mm2ResUbTensor, vec2CalcSize);
@@ -646,8 +683,7 @@ public:
             }
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
         }
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(
-            c2v2CrossCoreSyncIdx); // mmRes在之后不能使用, 否则与C2的FIXPIPE读写数据冲突
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx); // 通知下个BMM1: Vec2已读完mmRes, slot空闲
 
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {

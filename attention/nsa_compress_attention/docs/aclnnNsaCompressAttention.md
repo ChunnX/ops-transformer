@@ -3,27 +3,27 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR&950DT系列产品</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
 
-- **算子功能**：NSA中compress attention以及select topk索引计算。论文：<https://arxiv.org/pdf/2502.11089>
+- **算子功能**：NSA中compress attention以及select topk索引计算。论文：[Native Sparse Attention](https://arxiv.org/pdf/2502.11089)。
 
 - **计算公式**：压缩block大小：$l$，select block大小：$l'$，压缩stride大小：$d$
 
@@ -461,11 +461,11 @@ aclnnStatus aclnnNsaCompressAttention(
 - 输入query、key、value的inputLayout必须一致。
 - 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0
 - 设G = N1 / N2，G需要满足以下约束：G < 128 && 128 % G == 0
-- attenMask和topkMask的使用需符合论文描述
+- attenMask和topkMask的使用需符合论文描述。
 
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
+调用示例代码如下（以<term>Atlas A2系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>

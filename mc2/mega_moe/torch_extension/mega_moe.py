@@ -7,6 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import torch
@@ -25,6 +26,34 @@ _ALLOWED_ACTIVATION_KEYS = {
     "swigluoai": frozenset({"alpha", "beta"}),
     "situglu": frozenset({"beta", "linear_beta"}),
 }
+
+
+_FLOAT8_E5M2_DTYPE_VALUE = 23
+_FLOAT8_E4M3FN_DTYPE_VALUE = 24
+_FLOAT4_E2M1_DTYPE_VALUE = 296
+
+
+def _is_packed_fp4_x(
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+) -> bool:
+    return (
+        dispatch_quant_mode == 0
+        and _dtype_to_int(dispatch_quant_out_dtype) == _FLOAT4_E2M1_DTYPE_VALUE
+    )
+
+
+def _logical_hidden_size(
+    x: torch.Tensor,
+    dispatch_quant_mode: int,
+    dispatch_quant_out_dtype: Optional[torch.dtype],
+):
+    torch._check(x.dim() == 2, lambda: "x must be 2D.")
+    return (
+        x.size(1) * 2
+        if _is_packed_fp4_x(dispatch_quant_mode, dispatch_quant_out_dtype)
+        else x.size(1)
+    )
 
 
 def _normalize_activation_params(
@@ -79,16 +108,18 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, "
             "Tensor[]? bias1=None, Tensor[]? bias2=None, "
             "Tensor? x_active_mask=None, "
+            "Tensor? scales=None, "
             "Tensor[]? shared_weight1=None, Tensor[]? shared_weight2=None, "
             "Tensor[]? shared_weight_scales1=None, Tensor[]? shared_weight_scales2=None, "
             "Tensor[]? shared_bias1=None, Tensor[]? shared_bias2=None, "
             "Tensor? mask_buffer=None, "
             "int max_recv_token_num=0, "
             "int dispatch_quant_mode=0, int combine_quant_mode=0, "
-            'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
+            'str comm_alg="", int combine_comm_mode=0, int num_max_tokens_per_rank=0, str activation="swiglu", '
             "float? activation_clamp=None, Dict(str, float)? activation_params=None, "
-            "int? dispatch_quant_out_dtype=None,  "
-            "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
+            "int? dispatch_quant_out_dtype=None, int? shared_expert_quant_out_dtype=None, "
+            "int? weight1_type=None, int? weight2_type=None, "
+            "int? shared_weight1_type=None, int? shared_weight2_type=None, int? topo_type=None, "
             "int? rank_num_per_server=None, int topk_weights_type=0) -> (Tensor, Tensor)"
         )
 
@@ -109,6 +140,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             bias1=None,
             bias2=None,
             x_active_mask=None,
+            scales=None,
             shared_weight1=None,
             shared_weight2=None,
             shared_weight_scales1=None,
@@ -120,13 +152,17 @@ class _MegaMoeOpBuilder(OpBuilder):
             dispatch_quant_mode=0,
             combine_quant_mode=0,
             comm_alg="",
+            combine_comm_mode=0,
             num_max_tokens_per_rank=0,
             activation="swiglu",
             activation_clamp=None,
             activation_params=None,
             dispatch_quant_out_dtype=None,
+            shared_expert_quant_out_dtype=None,
             weight1_type=None,
             weight2_type=None,
+            shared_weight1_type=None,
+            shared_weight2_type=None,
             topo_type=None,
             rank_num_per_server=None,
             topk_weights_type=0,
@@ -135,10 +171,10 @@ class _MegaMoeOpBuilder(OpBuilder):
                 ep_world_size != 0,
                 lambda: (f"ep_world_size should not be 0, {ops_error(ErrCode.VALUE)}."),
             )
+            h = _logical_hidden_size(x, dispatch_quant_mode, dispatch_quant_out_dtype)
             bs = x.size(0)
-            h = x.size(1)
             local_moe_expert_num = moe_expert_num // ep_world_size
-            y = x.new_empty(tuple([bs, h]), dtype=x.dtype)
+            y = x.new_empty((bs, h), dtype=torch.bfloat16)
             expert_token_nums = x.new_empty((local_moe_expert_num), dtype=torch.int32)
             return (y, expert_token_nums)
 
@@ -163,6 +199,7 @@ def _npu_mega_moe(
     bias1=None,
     bias2=None,
     x_active_mask=None,
+    scales=None,
     shared_weight1=None,
     shared_weight2=None,
     shared_weight_scales1=None,
@@ -174,13 +211,17 @@ def _npu_mega_moe(
     dispatch_quant_mode=0,
     combine_quant_mode=0,
     comm_alg="",
+    combine_comm_mode=0,
     num_max_tokens_per_rank=0,
     activation="swiglu",
     activation_clamp=None,
     activation_params=None,
     dispatch_quant_out_dtype=None,
+    shared_expert_quant_out_dtype=None,
     weight1_type=None,
     weight2_type=None,
+    shared_weight1_type=None,
+    shared_weight2_type=None,
     topo_type=None,
     rank_num_per_server=None,
     topk_weights_type=0,
@@ -204,6 +245,7 @@ def _npu_mega_moe(
         bias1,
         bias2,
         x_active_mask,
+        scales,
         shared_weight1,
         shared_weight2,
         shared_weight_scales1,
@@ -219,12 +261,60 @@ def _npu_mega_moe(
         activation,
         activation_params_list,
         dispatch_quant_out_dtype,
+        shared_expert_quant_out_dtype,
         weight1_type,
         weight2_type,
+        shared_weight1_type,
+        shared_weight2_type,
         topo_type,
         rank_num_per_server,
         topk_weights_type,
+        combine_comm_mode,
     )
+
+
+@dataclass(frozen=True)
+class _MegaMoeCclBufferSizeParams:
+    ep_world_size: int
+    moe_expert_num: int
+    num_max_tokens_per_rank: int
+    num_topk: int
+    hidden: int
+    max_recv_token_num: int
+    dispatch_quant_mode: int
+    dispatch_quant_out_dtype: Optional[torch.dtype]
+    combine_quant_mode: int
+    comm_alg: str
+    combine_comm_mode: int
+    topk_weights_type: int
+
+    def __call__(self, server_num: int = 0) -> int:
+        # Context passes a positive server count only after cross-super topology is confirmed.
+        # comm_alg 已在 SymmBuffer 构造时 resolve（非空直通幂等），此处必须关键字传参：
+        # 位置传参曾把 topk_weights_type 错落到新插入的 combine_comm_mode 位（EZ0024 少算 64B/token）。
+        return _get_mega_moe_ccl_buffer_size(
+            ep_world_size=self.ep_world_size,
+            moe_expert_num=self.moe_expert_num,
+            num_max_tokens_per_rank=self.num_max_tokens_per_rank,
+            num_topk=self.num_topk,
+            hidden=self.hidden,
+            max_recv_token_num=self.max_recv_token_num,
+            dispatch_quant_mode=self.dispatch_quant_mode,
+            dispatch_quant_out_dtype=self.dispatch_quant_out_dtype,
+            combine_quant_mode=self.combine_quant_mode,
+            comm_alg=self.comm_alg,
+            combine_comm_mode=self.combine_comm_mode,
+            topk_weights_type=self.topk_weights_type,
+            server_num=server_num,
+        )
+
+
+def _check_int_type(value, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(
+            f"{name} must be of type int, "
+            f"got {type(value).__name__} (value: {value!r})."
+        )
 
 
 class SymmBuffer:
@@ -240,41 +330,16 @@ class SymmBuffer:
         dispatch_quant_mode: int = 0,
         dispatch_quant_out_dtype: Optional[torch.dtype] = None,
         combine_quant_mode: int = 0,
+        # comm_alg: 通信算法选择（历史平台语义）。Ascend950 的通信去重不读取本参数。
         comm_alg: str = "",
+        # combine_comm_mode: combine 通信去重开关，完全由调用方决定。0=强制关闭；1=强制开启（kernel
+        # 必走 combine 去重路径，不经内部收益裁决）。适用场景见算子资料：topK 大、同卡重复路由多、
+        # 通信主导的形状收益显著；容量不满足（如 hidden > 10240）时 tiling 显式报错而非静默回退。
+        combine_comm_mode: int = 0,
         topk_weights_type: int = 0,
     ):
         # Metadata
         self.group = group
-        self.rank_id = torch.distributed.get_rank(group)
-        self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
-            self.rank_id, init_comm=False
-        )
-        self.ep_world_size = torch.distributed.get_world_size(group)
-        required_ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
-            self.ep_world_size,
-            num_experts,
-            num_max_tokens_per_rank,
-            num_topk,
-            hidden,
-            max_recv_token_num,
-            dispatch_quant_mode,
-            dispatch_quant_out_dtype,
-            combine_quant_mode,
-            comm_alg,
-            topk_weights_type,
-        )
-        self._ctx_manager = CommContextManager(
-            self.group_name,
-            self.ep_world_size,
-            backend={
-                "Ascend910B": "kfc",
-                "Ascend910_93": "kfc",
-                "Ascend950": "channel",
-            },
-            customCclBufferSize=required_ccl_buffer_size,
-        )
-        self.context = self._ctx_manager.create_context()
-        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         self.num_experts = num_experts
         self.max_recv_token_num = max_recv_token_num
         self.num_max_tokens_per_rank = num_max_tokens_per_rank
@@ -285,10 +350,81 @@ class SymmBuffer:
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
+        self.combine_comm_mode = combine_comm_mode
         self.topk_weights_type = topk_weights_type
+        self._check_params()
+
+        self.rank_id = torch.distributed.get_rank(group)
+        self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
+            self.rank_id, init_comm=False
+        )
+        self.ep_world_size = torch.distributed.get_world_size(group)
+        ccl_buffer_size_params = _MegaMoeCclBufferSizeParams(
+            ep_world_size=self.ep_world_size,
+            moe_expert_num=num_experts,
+            num_max_tokens_per_rank=num_max_tokens_per_rank,
+            num_topk=num_topk,
+            hidden=hidden,
+            max_recv_token_num=max_recv_token_num,
+            dispatch_quant_mode=dispatch_quant_mode,
+            dispatch_quant_out_dtype=dispatch_quant_out_dtype,
+            combine_quant_mode=combine_quant_mode,
+            comm_alg=self.comm_alg,
+            combine_comm_mode=self.combine_comm_mode,
+            topk_weights_type=topk_weights_type,
+        )
+        # Use the exact MTE size initially; cross-super context replaces it with the URMA size before malloc.
+        required_ccl_buffer_size = ccl_buffer_size_params()
+        self._ctx_manager = CommContextManager(
+            self.group_name,
+            self.ep_world_size,
+            backend={
+                "Ascend910B": "kfc",
+                "Ascend910_93": "kfc",
+                "Ascend950": "channel",
+            },
+            customCclBufferSize=required_ccl_buffer_size,
+            customCclBufferSizeResolver=ccl_buffer_size_params,
+        )
+        self.context = self._ctx_manager.create_context()
+        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
         self.mask_buffer = None
+
+    def _check_params(self) -> None:
+        if "Ascend950" in torch.npu.get_device_name():
+            _check_int_type(self.dispatch_quant_mode, "dispatch_quant_mode")
+            if self.dispatch_quant_mode not in (0, 4):
+                raise ValueError(
+                    "dispatch_quant_mode only supports 0 (pre-quantized passthrough) "
+                    "or 4 (MXFP) on Ascend950, "
+                    f"got {self.dispatch_quant_mode!r} (type: {type(self.dispatch_quant_mode).__name__})."
+                )
+            if _dtype_to_int(self.dispatch_quant_out_dtype) not in (23, 24, 296):
+                raise ValueError(
+                    "dispatch_quant_out_dtype only supports float8_e5m2 (23), "
+                    "float8_e4m3fn (24) and float4_e2m1 (296) on Ascend950, "
+                    f"got {self.dispatch_quant_out_dtype!r} (type: {type(self.dispatch_quant_out_dtype).__name__})."
+                )
+            _check_int_type(self.combine_quant_mode, "combine_quant_mode")
+            if self.combine_quant_mode not in (0, 3, 4):
+                raise ValueError(
+                    "combine_quant_mode only supports 0, 3 or 4 on Ascend950, "
+                    f"got {self.combine_quant_mode!r} (type: {type(self.combine_quant_mode).__name__})."
+                )
+            _check_int_type(self.topk_weights_type, "topk_weights_type")
+            if self.topk_weights_type not in (0, 1):
+                raise ValueError(
+                    "topk_weights_type only supports 0 or 1 on Ascend950, "
+                    f"got {self.topk_weights_type!r} (type: {type(self.topk_weights_type).__name__})."
+                )
+            _check_int_type(self.combine_comm_mode, "combine_comm_mode")
+            if self.combine_comm_mode not in (0, 1):
+                raise ValueError(
+                    "combine_comm_mode only supports 0 (off) or 1 (force-enable combine dedup) on Ascend950, "
+                    f"got {self.combine_comm_mode!r} (type: {type(self.combine_comm_mode).__name__})."
+                )
 
     def _create_mask_buffer(self, ep_world_size: int) -> torch.Tensor:
         return torch.zeros(ep_world_size, dtype=torch.int32, device=self.context.device)
@@ -376,73 +512,50 @@ class SymmBuffer:
         return tensor[: size.numel()].view(size)
 
     def update_group(self, group) -> None:
-        """Destroy the old links after a replacement context has been created."""
+        """Update the communication group without changing the context address."""
         self._check_mask_buffer_supported()
         rank_id = torch.distributed.get_rank(group)
         group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
             rank_id, init_comm=True
         )
         ep_world_size = torch.distributed.get_world_size(group)
-        required_ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
-            ep_world_size,
-            self.num_experts,
-            self.num_max_tokens_per_rank,
-            self.num_topk,
-            self.hidden,
-            self.max_recv_token_num,
-            self.dispatch_quant_mode,
-            self.dispatch_quant_out_dtype,
-            self.combine_quant_mode,
-            self.comm_alg,
-            self.topk_weights_type,
-        )
-        new_manager = CommContextManager(
-            group_name,
-            ep_world_size,
-            backend={
-                "Ascend910B": "kfc",
-                "Ascend910_93": "kfc",
-                "Ascend950": "channel",
-            },
-            customCclBufferSize=required_ccl_buffer_size,
-        )
-        try:
-            new_context = new_manager.create_context()
-        except Exception:
-            new_manager.destroy()
-            raise
+        if ep_world_size != self.ep_world_size:
+            raise ValueError(
+                "The new group world size must match the original ep_world_size "
+                f"{self.ep_world_size}, got {ep_world_size}."
+            )
 
-        old_manager = self._ctx_manager
+        self._ctx_manager.update_group(group_name, self.context)
+
         self.group = group
         self.rank_id = rank_id
         self.group_name = group_name
-        self.ep_world_size = ep_world_size
-        self._ctx_manager = new_manager
-        self.context = new_context
-        self.ccl_buffer_size = new_manager.ccl_buffer_size
-        self.topo_type = new_manager.topo_type
-        self.rank_num_per_server = new_manager.rank_num_per_server
-        old_manager.destroy()
+        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
+        self.topo_type = self._ctx_manager.topo_type
+        self.rank_num_per_server = self._ctx_manager.rank_num_per_server
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
-    torch.float8_e5m2: 23,
-    torch.float8_e4m3fn: 24,
+    torch.float8_e5m2: _FLOAT8_E5M2_DTYPE_VALUE,
+    torch.float8_e4m3fn: _FLOAT8_E4M3FN_DTYPE_VALUE,
     torch.int8: 1,
 }
 
 
-def _dtype_to_int(dtype):
+def _dtype_to_int(dtype, arg_name="dispatch_quant_out_dtype"):
     if dtype is None:
         return None
     if isinstance(dtype, int):
         return dtype
     if isinstance(dtype, torch.dtype):
         if dtype not in _TORCH_DTYPE_TO_INT:
-            raise TypeError(f"Unsupported dispatch_quant_out_dtype: {dtype}.")
+            raise TypeError(
+                f"Unsupported {arg_name}: {dtype!r} (type: {type(dtype).__name__})."
+            )
         return _TORCH_DTYPE_TO_INT[dtype]
     raise TypeError(
-        f"dispatch_quant_out_dtype must be torch.dtype or int, got {type(dtype)}."
+        f"{arg_name} must be torch.dtype or int, "
+        f"got {dtype!r} (type: {type(dtype).__name__})."
     )
 
 
@@ -457,22 +570,26 @@ def _get_mega_moe_ccl_buffer_size(
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = "",
+    combine_comm_mode: int = 0,
     topk_weights_type: int = 0,
+    server_num: int = 0,
 ) -> int:
     _op_module = _mega_moe_op_builder.load()
     quant_dtype_int = _dtype_to_int(dispatch_quant_out_dtype)  # 将torch.dtype转换为int
     return _op_module.get_mega_moe_ccl_buffer_size(
-        ep_world_size,
-        moe_expert_num,
-        num_max_tokens_per_rank,
-        num_topk,
-        hidden,
-        max_recv_token_num,
-        dispatch_quant_mode,
-        quant_dtype_int,
-        combine_quant_mode,
-        comm_alg,
-        topk_weights_type,
+        ep_world_size=ep_world_size,
+        moe_expert_num=moe_expert_num,
+        num_max_tokens_per_rank=num_max_tokens_per_rank,
+        num_topk=num_topk,
+        hidden=hidden,
+        max_recv_token_num=max_recv_token_num,
+        dispatch_quant_mode=dispatch_quant_mode,
+        dispatch_quant_out_dtype=quant_dtype_int,
+        combine_quant_mode=combine_quant_mode,
+        comm_alg=comm_alg,
+        combine_comm_mode=combine_comm_mode,
+        topk_weights_type=topk_weights_type,
+        server_num=server_num,
     )
 
 
@@ -489,6 +606,7 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = "",
+    combine_comm_mode: int = 0,
     topk_weights_type: int = 0,
 ) -> SymmBuffer:
     return SymmBuffer(
@@ -503,6 +621,7 @@ def get_symm_buffer_for_mega_moe(
         dispatch_quant_out_dtype,
         combine_quant_mode,
         comm_alg,
+        combine_comm_mode,
         topk_weights_type,
     )
 
@@ -520,11 +639,15 @@ def mega_moe(
     l1_bias: Optional[List[torch.Tensor]] = None,
     l2_bias: Optional[List[torch.Tensor]] = None,
     x_active_mask: Optional[torch.Tensor] = None,
+    scales: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
     activation_params: Optional[Dict[str, float]] = None,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
+    shared_expert_quant_out_dtype: Optional[torch.dtype] = None,
+    shared_weight1_type: Optional[int] = None,
+    shared_weight2_type: Optional[int] = None,
     shared_l1_weights: Optional[List[torch.Tensor]] = None,
     shared_l2_weights: Optional[List[torch.Tensor]] = None,
     shared_l1_weights_sf: Optional[List[torch.Tensor]] = None,
@@ -532,6 +655,9 @@ def mega_moe(
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
 ):
+    shared_quant_dtype_int = _dtype_to_int(
+        shared_expert_quant_out_dtype, "shared_expert_quant_out_dtype"
+    )
     return torch.ops.cann_ops_transformer.npu_mega_moe(
         sym_buffer.context,
         x,
@@ -547,6 +673,7 @@ def mega_moe(
         bias1=l1_bias,
         bias2=l2_bias,
         x_active_mask=x_active_mask,
+        scales=scales,
         shared_weight1=shared_l1_weights,
         shared_weight2=shared_l2_weights,
         shared_weight_scales1=shared_l1_weights_sf,
@@ -558,13 +685,17 @@ def mega_moe(
         dispatch_quant_mode=sym_buffer.dispatch_quant_mode,
         combine_quant_mode=sym_buffer.combine_quant_mode,
         comm_alg=sym_buffer.comm_alg,
+        combine_comm_mode=sym_buffer.combine_comm_mode,
         num_max_tokens_per_rank=sym_buffer.num_max_tokens_per_rank,
         activation=activation,
         activation_clamp=activation_clamp,
         activation_params=activation_params,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
+        shared_expert_quant_out_dtype=shared_quant_dtype_int,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
+        shared_weight1_type=shared_weight1_type,
+        shared_weight2_type=shared_weight2_type,
         topo_type=sym_buffer.topo_type,
         rank_num_per_server=sym_buffer.rank_num_per_server,
         topk_weights_type=sym_buffer.topk_weights_type,

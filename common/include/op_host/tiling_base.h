@@ -18,10 +18,9 @@
 #include <sstream>
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
-#include "platform/soc_spec.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "log/log.h"
-#include "platform/soc_spec.h"
+#include "op_host/util/op_const_def.h"
 
 #ifdef ASCENDC_OP_TEST
 #define ASCENDC_EXTERN_C extern "C"
@@ -87,9 +86,9 @@ struct FACompileInfoCommon {
 
 class TilingBaseClass {
 public:
-    explicit TilingBaseClass(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit TilingBaseClass(gert::TilingContext *context)
+        : context_(context)
+    {}
 
     virtual ~TilingBaseClass() = default;
 

@@ -67,6 +67,10 @@ ge::graphStatus ValidateStrideLocal(const char *opName, const char *tensorName, 
                 OP_LOGE(opName, "The stride rank of %s is %zu, which is smaller than its input rank %zu.", tensorName,
                         static_cast<size_t>(strides->GetDimNum()), static_cast<size_t>(inputShape.GetDimNum())),
                 return ge::GRAPH_FAILED);
+    // Empty tensors may carry zero strides on non-singleton dimensions.
+    if (inputShape.GetShapeSize() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
     for (uint32_t dim = 0; dim < inputShape.GetDimNum(); ++dim) {
         OP_CHECK_IF(
             inputShape.GetDim(dim) > 1 && strides->GetStride(dim) <= 0,
@@ -319,6 +323,11 @@ ge::graphStatus FiaInfoParser::GetStrides()
     const bool keyScaleIsView = hasSingleKvTensor && hasKeyScale && context_->InputIsView(KEY_ANTIQUANT_SCALE_INDEX);
     const bool valueScaleIsView =
         hasSingleKvTensor && hasValueScale && context_->InputIsView(VALUE_ANTIQUANT_SCALE_INDEX);
+    const bool hasKeyOffset = opParamInfo_.keyAntiquantOffset.tensor != nullptr;
+    const bool hasValueOffset = opParamInfo_.valueAntiquantOffset.tensor != nullptr;
+    const bool keyOffsetIsView = hasSingleKvTensor && hasKeyOffset && context_->InputIsView(KEY_ANTIQUANT_OFFSET_INDEX);
+    const bool valueOffsetIsView =
+        hasSingleKvTensor && hasValueOffset && context_->InputIsView(VALUE_ANTIQUANT_OFFSET_INDEX);
 
     if (hasKeyRope) {
         kRopeStrides_ = context_->GetOptionalInputStride(KEY_ROPE_INDEX);
@@ -352,6 +361,18 @@ ge::graphStatus FiaInfoParser::GetStrides()
     if (!HasUsableStride(vScaleStrides_)) {
         vScaleStrides_ = nullptr;
     }
+    if (hasKeyOffset) {
+        kOffsetStrides_ = context_->GetOptionalInputStride(KEY_ANTIQUANT_OFFSET_INDEX);
+    }
+    if (hasValueOffset) {
+        vOffsetStrides_ = context_->GetOptionalInputStride(VALUE_ANTIQUANT_OFFSET_INDEX);
+    }
+    if (!HasUsableStride(kOffsetStrides_)) {
+        kOffsetStrides_ = nullptr;
+    }
+    if (!HasUsableStride(vOffsetStrides_)) {
+        vOffsetStrides_ = nullptr;
+    }
 
     OP_CHECK_IF(keyIsView && !HasStrideMetadata(kStrideCache_),
                 OP_LOGE(opName_, "Failed to get stride metadata for view input key."), return ge::GRAPH_FAILED);
@@ -364,6 +385,12 @@ ge::graphStatus FiaInfoParser::GetStrides()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(valueScaleIsView && vScaleStrides_ == nullptr,
                 OP_LOGE(opName_, "Failed to get stride metadata for view input valueAntiquantScale."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keyOffsetIsView && kOffsetStrides_ == nullptr,
+                OP_LOGE(opName_, "Failed to get stride metadata for view input keyAntiquantOffset."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueOffsetIsView && vOffsetStrides_ == nullptr,
+                OP_LOGE(opName_, "Failed to get stride metadata for view input valueAntiquantOffset."),
                 return ge::GRAPH_FAILED);
 
     if (HasUsableStride(kStrideCache_[0])) {
@@ -417,6 +444,30 @@ ge::graphStatus FiaInfoParser::GetStrides()
         if (ValidateStrideLocal(opName_, "valueAntiquantScale",
                                 opParamInfo_.valueAntiquantScale.tensor->GetStorageShape(),
                                 vScaleStrides_) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (hasKeyOffset) {
+        if (kOffsetStrides_ == nullptr) {
+            BuildContiguousStride(opParamInfo_.keyAntiquantOffset.tensor->GetStorageShape(),
+                                  keyOffsetContiguousStrides_);
+            kOffsetStrides_ = &keyOffsetContiguousStrides_;
+        }
+        if (ValidateStrideLocal(opName_, "keyAntiquantOffset",
+                                opParamInfo_.keyAntiquantOffset.tensor->GetStorageShape(),
+                                kOffsetStrides_) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (hasValueOffset) {
+        if (vOffsetStrides_ == nullptr) {
+            BuildContiguousStride(opParamInfo_.valueAntiquantOffset.tensor->GetStorageShape(),
+                                  valueOffsetContiguousStrides_);
+            vOffsetStrides_ = &valueOffsetContiguousStrides_;
+        }
+        if (ValidateStrideLocal(opName_, "valueAntiquantOffset",
+                                opParamInfo_.valueAntiquantOffset.tensor->GetStorageShape(),
+                                vOffsetStrides_) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -498,6 +549,42 @@ ge::graphStatus FiaInfoParser::GetKvStrideValues()
             kRopeN2Stride_ = kRopeStrides_->GetStride(1);
         }
     }
+    // 仅 mode4/mode5 scale 及 offset 支持非连续 stride 传入:
+    // mode4 shape [blockNum, bs], mode5 shape [blockNum, N2, bs]
+    if (opParamInfo_.keyAntiquantMode != nullptr) {
+        const auto mode = *opParamInfo_.keyAntiquantMode;
+        if (mode == optiling::arch35FIA::PER_TOKEN_PA_MODE) {
+            if (kScaleStrides_ != nullptr) {
+                kScaleBnStride_ = kScaleStrides_->GetStride(0);
+            }
+            if (vScaleStrides_ != nullptr) {
+                vScaleBnStride_ = vScaleStrides_->GetStride(0);
+            }
+            if (kOffsetStrides_ != nullptr) {
+                kOffsetBnStride_ = kOffsetStrides_->GetStride(0);
+            }
+            if (vOffsetStrides_ != nullptr) {
+                vOffsetBnStride_ = vOffsetStrides_->GetStride(0);
+            }
+        } else if (mode == optiling::arch35FIA::PER_TOKEN_HEAD_PA_MODE) {
+            if (kScaleStrides_ != nullptr) {
+                kScaleBnStride_ = kScaleStrides_->GetStride(0);
+                kScaleN2Stride_ = kScaleStrides_->GetStride(1);
+            }
+            if (vScaleStrides_ != nullptr) {
+                vScaleBnStride_ = vScaleStrides_->GetStride(0);
+                vScaleN2Stride_ = vScaleStrides_->GetStride(1);
+            }
+            if (kOffsetStrides_ != nullptr) {
+                kOffsetBnStride_ = kOffsetStrides_->GetStride(0);
+                kOffsetN2Stride_ = kOffsetStrides_->GetStride(1);
+            }
+            if (vOffsetStrides_ != nullptr) {
+                vOffsetBnStride_ = vOffsetStrides_->GetStride(0);
+                vOffsetN2Stride_ = vOffsetStrides_->GetStride(1);
+            }
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -516,7 +603,8 @@ ge::graphStatus FiaInfoParser::GetNpuInfo()
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if ((socVersion_ != platform_ascendc::SocVersion::ASCEND310P) &&
-        (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) && (npuArch_ != NpuArch::DAV_3510)) {
+        (socVersion_ != platform_ascendc::SocVersion::ASCEND910B) && (npuArch_ != NpuArch::DAV_3510) &&
+        (npuArch_ != NpuArch::DAV_9201) && (npuArch_ != NpuArch::DAV_9202)) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d]/NpuArch[%d] is not support.",
                                     static_cast<int32_t>(socVersion_), static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
@@ -879,6 +967,10 @@ ge::graphStatus FiaInfoParser::GetS1Size()
                 s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(1);
             }
         }
+        uint32_t b = 0;
+        if (GetActualSeqLenQSize(b) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
         const int64_t *actualSeqQ = opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>();
         if (actualSeqQ == nullptr) {
             if (queryShape_->CheckHasShapeT(__func__) != ge::GRAPH_SUCCESS) {
@@ -887,11 +979,6 @@ ge::graphStatus FiaInfoParser::GetS1Size()
             s1Size_ = static_cast<uint32_t>(queryShape_->GetShapeT());
             qSize_.push_back(s1Size_);
             return ge::GRAPH_SUCCESS;
-        }
-
-        uint32_t b = 0;
-        if (GetActualSeqLenQSize(b) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
         }
         int64_t qActualSeqMax = 0;
         for (uint32_t i = 0; i < b; i++) {
@@ -1398,11 +1485,16 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
 {
     // only bss & b1ss & bs need to calc attenMaskSize_ , attenMaskSize_ is uesed to calc batch offset
     if (attenMaskFlag_) {
-        if (*opParamInfo_.sparseMode == 9U && npuArch_ == NpuArch::DAV_3510) {
+        if (opParamInfo_.sparseMode == nullptr) {
+            OP_LOGE(opName_, "sparse_mode attr is nullptr");
+            return ge::GRAPH_FAILED;
+        }
+        int32_t sparseMode = *opParamInfo_.sparseMode;
+        if (sparseMode == 9U && npuArch_ == NpuArch::DAV_3510) {
             OP_LOGE(opName_, "NpuArch[%d] currently does not support sparse9.", static_cast<int32_t>(npuArch_));
             return ge::GRAPH_FAILED;
         }
-        if (*opParamInfo_.sparseMode == 9U) {
+        if (sparseMode == 9U) {
             return GetAttenMaskSparse9Info();
         }
         auto *maskTensor = opParamInfo_.attenMask.tensor;
@@ -1425,7 +1517,7 @@ ge::graphStatus FiaInfoParser::GetAttenMaskInfo()
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, "atten_mask", std::to_string(maskDimNum).c_str(),
                                                      reason.c_str());
         }
-        if (*opParamInfo_.sparseMode == 0U || *opParamInfo_.sparseMode == 1U) {
+        if (sparseMode == 0U || sparseMode == 1U) {
             attenMaskStride_ = maskTensor->GetStorageShape().GetDim(maskTensor->GetStorageShape().GetDimNum() - 1);
         } else {
             attenMaskStride_ = 2048U; // compress mask
@@ -1637,21 +1729,25 @@ ge::graphStatus FiaInfoParser::GetPostQuantInfo()
 ge::graphStatus FiaInfoParser::GetFullQuantMode()
 {
     if (quantMode_ == FiaQuantMode::FULL_QUANT) {
-        if (*opParamInfo_.queryQuantMode == 7 && *opParamInfo_.keyAntiquantMode == 7 &&
-            *opParamInfo_.valueAntiquantMode == 7) {
+        if (*opParamInfo_.queryQuantMode == arch35FIA::PER_BLOCK_MODE &&
+            *opParamInfo_.keyAntiquantMode == arch35FIA::PER_BLOCK_MODE &&
+            *opParamInfo_.valueAntiquantMode == arch35FIA::PER_BLOCK_MODE) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                 opName_, "QuantMode", std::to_string(*opParamInfo_.queryQuantMode).c_str(),
-                "In the fullquant scenario, per-block(QuantMode == 7) is not supported");
+                "In the fullquant scenario, per-block(PER_BLOCK_MODE) is not supported");
             return ge::GRAPH_FAILED;
-        } else if (*opParamInfo_.queryQuantMode == 6 && *opParamInfo_.keyAntiquantMode == 6 &&
-                   *opParamInfo_.valueAntiquantMode == 8) {
+        } else if (*opParamInfo_.queryQuantMode == arch35FIA::PER_TOKEN_GROUP_MODE &&
+                   *opParamInfo_.keyAntiquantMode == arch35FIA::PER_TOKEN_GROUP_MODE &&
+                   *opParamInfo_.valueAntiquantMode == arch35FIA::PER_CHANNEL_GROUP_MODE) {
             fullQuantMode_ = FiaFullQuantMode::QKV_MXFP8_FULL_QUANT;
-        } else if (*opParamInfo_.queryQuantMode == 3 && *opParamInfo_.keyAntiquantMode == 3 &&
-                   *opParamInfo_.valueAntiquantMode == 2) {
+        } else if (*opParamInfo_.queryQuantMode == arch35FIA::PER_TOKEN_HEAD_MODE &&
+                   *opParamInfo_.keyAntiquantMode == arch35FIA::PER_TOKEN_HEAD_MODE &&
+                   *opParamInfo_.valueAntiquantMode == arch35FIA::PER_TENSOR_HEAD_MODE) {
             fullQuantMode_ = FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD;
         } else if (ropeMode_ == RopeMode::ROPE_SPLIT &&
-                   (*opParamInfo_.queryQuantMode == 3 && *opParamInfo_.keyAntiquantMode == 0 &&
-                    *opParamInfo_.valueAntiquantMode == 0)) {
+                   (*opParamInfo_.queryQuantMode == arch35FIA::PER_TOKEN_HEAD_MODE &&
+                    *opParamInfo_.keyAntiquantMode == arch35FIA::PER_CHANNEL_MODE &&
+                    *opParamInfo_.valueAntiquantMode == arch35FIA::PER_CHANNEL_MODE)) {
             fullQuantMode_ = FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT;
         } else {
             fullQuantMode_ = FiaFullQuantMode::QKV_PER_TENSOR_FULL_QUANT;
@@ -1781,6 +1877,8 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.kRopeStrides = kRopeStrides_;
     fiaInfo.kScaleStrides = kScaleStrides_;
     fiaInfo.vScaleStrides = vScaleStrides_;
+    fiaInfo.kOffsetStrides = kOffsetStrides_;
+    fiaInfo.vOffsetStrides = vOffsetStrides_;
     fiaInfo.hasViewStride = hasViewStride_;
     fiaInfo.keyBnStride = keyBnStride_;
     fiaInfo.keyN2Stride = keyN2Stride_;
@@ -1788,6 +1886,14 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.valueN2Stride = valueN2Stride_;
     fiaInfo.kRopeBnStride = kRopeBnStride_;
     fiaInfo.kRopeN2Stride = kRopeN2Stride_;
+    fiaInfo.kScaleBnStride = kScaleBnStride_;
+    fiaInfo.kScaleN2Stride = kScaleN2Stride_;
+    fiaInfo.vScaleBnStride = vScaleBnStride_;
+    fiaInfo.vScaleN2Stride = vScaleN2Stride_;
+    fiaInfo.kOffsetBnStride = kOffsetBnStride_;
+    fiaInfo.kOffsetN2Stride = kOffsetN2Stride_;
+    fiaInfo.vOffsetBnStride = vOffsetBnStride_;
+    fiaInfo.vOffsetN2Stride = vOffsetN2Stride_;
 
     fiaInfo.totalOutputSize = opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize();
 

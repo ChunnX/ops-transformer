@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
 
 #include "../utils/apace_common_utils.h"
@@ -30,7 +31,8 @@ public:
     QuantMatmulTilingBase() = default;
     virtual ~QuantMatmulTilingBase() = default;
 
-    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, bool transA, bool transB, QuantMatmulTilingData &tilingData)
+    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, bool transA, bool transB, QuantMatmulTilingData &tilingData,
+                       uint64_t batch = 1)
     {
         // Clear the cached state so one tiling object can safely be reused for
         // multiple shapes without leaking the previous decision.
@@ -42,16 +44,16 @@ public:
         // is delegated to one virtual operation so the derived class owns the
         // complete strategy-specific decision flow.
         InitCompileInfo();
-        InitShapeArgs(m, n, k, transA, transB);
+        InitShapeArgs(m, n, k, batch, transA, transB);
         DoOpTiling(tilingData);
         PrintTilingData(tilingData);
     }
 
-    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, QuantMatmulTilingData &tilingData)
+    void GetTilingData(uint64_t m, uint64_t n, uint64_t k, QuantMatmulTilingData &tilingData, uint64_t batch = 1)
     {
         // Keep compatibility with the common sample default:
         // A is not transposed and B is transposed.
-        GetTilingData(m, n, k, false, true, tilingData);
+        GetTilingData(m, n, k, false, true, tilingData, batch);
     }
 
     void SetOptimizeEnable(bool enable)
@@ -67,22 +69,43 @@ public:
         platformInfoPtr_ = ptr;
     }
 
+    // 允许调用方限制计算tiling的核
+    void SetCoreLimit(uint32_t aicNum, uint32_t aivNum)
+    {
+        coreLimitAicNum_ = aicNum;
+        coreLimitAivNum_ = aivNum;
+        hasCoreLimit_ = true;
+    }
+    void SetAdjustBasicBlockEnable(bool enable)
+    {
+        enableAdjustBasicBlock_ = enable;
+    }
+
 protected:
     QuantMatmulArgs args_{};
     QuantMatmulPlatformInfo platformInfo_{};
     QuantMatmulRunInfo runInfo_{};
 
     bool isOpenOptimize_{true};
+    bool hasCoreLimit_{false};
+    uint32_t coreLimitAicNum_{0};
+    uint32_t coreLimitAivNum_{0};
     bool enableMTailAlign_{false};
     fe::PlatFormInfos *platformInfoPtr_{nullptr};
+    bool enableAdjustBasicBlock_{true};
 
     virtual const char *TilingName() const = 0;
 
     virtual void DoOpTiling(QuantMatmulTilingData &tilingData) = 0;
 
 private:
+    // 仅当全局日志级别为 DEBUG(ASCEND_GLOBAL_LOG_LEVEL=0) 时打印 tiling 调试信息，默认级别下不打印。
     void PrintTilingData(const QuantMatmulTilingData &tilingData) const
     {
+        const char *level = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
+        if (level == nullptr || level[0] != '0') {
+            return;
+        }
         printf("[QuantMatmul Strategy]\n");
         printf("  strategy           : %s\n", TilingName());
         printf("[QuantMatmul Tiling Data]\n");
@@ -121,6 +144,9 @@ private:
         }
         platformInfo_.aicNum = ascendcPlatform->GetCoreNumAic();
         platformInfo_.aivNum = ascendcPlatform->GetCoreNumAiv();
+        if (hasCoreLimit_) {
+            platformInfo_.aicNum = std::min(coreLimitAicNum_, coreLimitAivNum_);
+        }
         platformInfo_.socVersion = ascendcPlatform->GetSocVersion();
         ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, platformInfo_.ubSize);
         ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::L1, platformInfo_.l1Size);
@@ -131,11 +157,12 @@ private:
         ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::BT, platformInfo_.btSize);
     }
 
-    void InitShapeArgs(uint64_t m, uint64_t n, uint64_t k, bool transA, bool transB)
+    void InitShapeArgs(uint64_t m, uint64_t n, uint64_t k, uint64_t batch, bool transA, bool transB)
     {
         args_.m = m;
         args_.n = n;
         args_.k = k;
+        args_.batch = batch;
         args_.transA = transA;
         args_.transB = transB;
     }

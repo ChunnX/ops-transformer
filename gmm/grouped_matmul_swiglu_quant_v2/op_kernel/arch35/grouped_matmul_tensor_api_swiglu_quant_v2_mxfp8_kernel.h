@@ -10,8 +10,9 @@
 
 /*!
  * \file grouped_matmul_tensor_api_swiglu_quant_v2_mxfp8_kernel.h
- * \brief TensorApi entry point for GroupedMatmulSwigluQuantV2 MXFP8 ND scenario.
- *        Assembles Blaze BlockMmad + Blaze Epilogue + Blaze Scheduler + MIX Kernel.
+ * \brief Shared TensorApi entry point for GroupedMatmulSwigluQuantV2 MXFP8 ND/NZ scenarios.
+ *        Assembles Blaze
+ * BlockMmad + Blaze Epilogue + Blaze Scheduler + MIX Kernel.
  */
 
 #ifndef GROUPED_MATMUL_SWIGLU_QUANT_V2_MXQUANT_TENSOR_API_H
@@ -32,20 +33,20 @@
 #include "../grouped_matmul_swiglu_quant_v2_utils_kernel.h"
 #include "grouped_matmul_swiglu_quant_v2_tensor_api_tiling_data.h"
 
-template <typename layoutA, typename layoutB>
-__aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
-    GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale, GM_ADDR groupList,
-    GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
+template <typename layoutA, typename layoutB, bool EnableSwigluAttrs = false>
+__aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale,
+                                                          GM_ADDR xScale, GM_ADDR weightAssistanceMatrix,
+                                                          GM_ADDR smoothScale, GM_ADDR groupList, GM_ADDR y,
+                                                          GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
 {
     (void)weightAssistanceMatrix;
     (void)smoothScale;
     (void)workspace;
 
-    GET_TILING_DATA_WITH_STRUCT(
-        GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData, tilingData, tiling);
-    const auto &gmmQuantParams_ = tilingData.gmmQuantParams;
-    const auto &mmTilingData_ = tilingData.mmTilingData;
+    GET_TILING_DATA_WITH_STRUCT(GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData, tilingData,
+                                tiling);
+    const auto& gmmQuantParams_ = tilingData.gmmQuantParams;
+    const auto& mmTilingData_ = tilingData.mmTilingData;
 
     using AType = DTYPE_X;
     using BType = DTYPE_WEIGHT;
@@ -54,25 +55,23 @@ __aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(
     using BiasType = float;
     using LayoutA = layoutA;
     using LayoutB = layoutB;
-    using LayoutC = AscendC::Te::NDExtLayoutPtn;
-    using LayoutC1 = AscendC::Te::NDExtLayoutPtn;
-    using LayoutBias = AscendC::Te::NDExtLayoutPtn;
+    using LayoutC = asc::te::nd_ext_layout_ptn;
+    using LayoutC1 = asc::te::nd_ext_layout_ptn;
+    using LayoutBias = asc::te::nd_ext_layout_ptn;
     using weightscaleType = AscendC::fp8_e8m0_t;
 
-    using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using ProblemShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
 
-    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<
-        0, false, Blaze::Gemm::KernelGmmSwiGluMixMx>;
-    using SwigluBlockMmad = Blaze::Gemm::Block::BlockMmad<
-        BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC1, BiasType, LayoutBias>;
+    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0, false, Blaze::Gemm::KernelGmmSwiGluMixMx>;
+    using SwigluBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type,
+                                                          LayoutC1, BiasType, LayoutBias>;
 
-    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueSwigluMxQuant<
-        CType, C1Type, weightscaleType>;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueSwigluMxQuant<CType, C1Type, weightscaleType>;
 
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
 
-    using SwigluKernel = Blaze::Gemm::Kernel::GemmUniversal<
-        ProblemShape, SwigluBlockMmad, BlockEpilogue, BlockScheduler>;
+    using SwigluKernel =
+        Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, SwigluBlockMmad, BlockEpilogue, BlockScheduler>;
 
     using Params = typename SwigluKernel::Params;
     using GMMTiling = typename SwigluKernel::GMMTiling;
@@ -100,21 +99,31 @@ __aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(
     GM_ADDR yDataAddr = y;
     GM_ADDR yScaleDataAddr = yScale;
 
-    GM_ADDR bDataAddr = singleW == 1 ?
-        reinterpret_cast<GM_ADDR>(GroupedMatmulDequantSwigluQuant::GetTensorAddr<BType>(0, weight)) :
-        weight;
-    GM_ADDR scaleBDataAddr = singleW == 1 ?
-        reinterpret_cast<GM_ADDR>(
-            GroupedMatmulDequantSwigluQuant::GetTensorAddr<AscendC::fp8_e8m0_t>(0, weightScale)) :
-        weightScale;
+    GM_ADDR bDataAddr =
+        singleW == 1 ? reinterpret_cast<GM_ADDR>(GroupedMatmulDequantSwigluQuant::GetTensorAddr<BType>(0, weight)) :
+                       weight;
+    GM_ADDR scaleBDataAddr =
+        singleW == 1 ? reinterpret_cast<GM_ADDR>(
+                           GroupedMatmulDequantSwigluQuant::GetTensorAddr<AscendC::fp8_e8m0_t>(0, weightScale)) :
+                       weightScale;
 
     GM_ADDR groupListDataAddr = groupList;
 
-    BlockMmadAddressParams blockMmadAddressParams{
-        aDataAddr, bDataAddr, nullptr, nullptr, scaleADataAddr, scaleBDataAddr};
+    BlockMmadAddressParams blockMmadAddressParams{aDataAddr, bDataAddr,      nullptr,
+                                                  nullptr,   scaleADataAddr, scaleBDataAddr};
+    typename BlockEpilogue::Params epilogueParams{yDataAddr, yScaleDataAddr, gmmParams.baseM, gmmParams.baseN};
+    if constexpr (EnableSwigluAttrs) {
+        const auto& swigluParams_ = tilingData.swigluParams;
+        epilogueParams.swigluMode = swigluParams_.swigluMode;
+        epilogueParams.clampLimit = swigluParams_.clampLimit;
+        epilogueParams.gluAlpha = swigluParams_.gluAlpha;
+        epilogueParams.gluBias = swigluParams_.gluBias;
+        epilogueParams.scaleAlg = swigluParams_.scaleAlg;
+        epilogueParams.dstTypeMax = swigluParams_.dstTypeMax;
+    }
     Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
                      blockMmadAddressParams,
-                     {yDataAddr, yScaleDataAddr, gmmParams.baseM, gmmParams.baseN},
+                     epilogueParams,
                      groupListDataAddr,
                      gmmParams};
 

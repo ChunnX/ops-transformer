@@ -336,6 +336,7 @@ aclnn_gelu_quant.h
 aclnn_gelu_v2.h
 aclnn_gemma_rms_norm.h
 aclnn_gemm.h
+aclnn_generic_block_sparse_attention.h
 aclnn_ger.h
 aclnn_ge_scalar.h
 aclnn_ge_tensor.h
@@ -420,6 +421,7 @@ aclnn_kl_div_backward.h
 aclnn_kl_div.h
 aclnn_kl_div_target_backward.h
 aclnn_kthvalue.h
+aclnn_kda_input_proj.h
 aclnn_kv_rms_norm_rope_cache.h
 aclnn_l1_loss_backward.h
 aclnn_l1_loss.h

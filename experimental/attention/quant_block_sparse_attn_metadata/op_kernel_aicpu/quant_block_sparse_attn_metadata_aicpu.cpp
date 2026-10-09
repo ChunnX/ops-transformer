@@ -71,6 +71,26 @@ bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
 bool QuantBlockSparseAttnMetadataCpuKernel::ParamsCheck()
 {
+    if (!optiling::detail::IsSupportedQueryLayout(layoutQ_.c_str(), quantMode_) || layoutKv_ != "PA_BNBD" ||
+        layoutSparseIndices_ != "B_N_Qb_Kb") {
+        KERNEL_LOG_ERROR("unsupported metadata layout/quant_mode combination");
+        return false;
+    }
+    if (optiling::detail::IsPaddedQueryLayout(layoutQ_.c_str())) {
+        // ACLNN can encode an absent input as a Tensor with null data and a
+        // scalar shape (NumElements() == 1). GE may use zero-element tensors.
+        // Check the data address before treating either input as supplied.
+        if ((IsTensorExists(cuSeqlensQ_) && cuSeqlensQ_->NumElements() != 0) ||
+            (IsTensorExists(sequsedQ_) && sequsedQ_->NumElements() != 0)) {
+            KERNEL_LOG_ERROR("BSND/BNSD metadata does not accept Q sequence lengths");
+            return false;
+        }
+        if (sparseSeqLen_ == nullptr || sparseSeqLen_->GetTensorShape() == nullptr ||
+            sparseSeqLen_->GetTensorShape()->GetDims() != 3) {
+            KERNEL_LOG_ERROR("BSND/BNSD metadata requires sparseSeqLen [B,Nq,Qb]");
+            return false;
+        }
+    }
     return CheckTensorData();
 }
 
@@ -90,9 +110,30 @@ bool QuantBlockSparseAttnMetadataCpuKernel::CheckTensorData()
         KERNEL_LOG_ERROR("sparseSeqLen data is nullptr");
         return false;
     }
+    if (sparseSeqLen_->GetDataType() != DT_INT32) {
+        KERNEL_LOG_ERROR("sparseSeqLen dtype must be INT32");
+        return false;
+    }
     // OUTPUT tensor check
     if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
+        return false;
+    }
+    // GE can invoke AICPU without the ACLNN host checks. Validate its output
+    // before Clear()/SetQbsaMetadata() writes the fixed-format scheduling table.
+    if (batchSize_ <= 0 || numHeadsQ_ <= 0 || aicCoreNum_ <= 0 ||
+        aicCoreNum_ > static_cast<int32_t>(optiling::AIC_CORE_NUM) || metadata_->GetDataType() != DT_INT32 ||
+        metadata_->GetTensorShape() == nullptr || metadata_->GetTensorShape()->GetDims() != 1) {
+        KERNEL_LOG_ERROR("invalid metadata output capacity, dtype or core count");
+        return false;
+    }
+    constexpr int64_t fixedSize =
+        optiling::QBSA_HEAD_METADATA_SIZE + optiling::AIV_CORE_NUM * optiling::FD_METADATA_SIZE;
+    constexpr int64_t sectionSize = optiling::AIC_CORE_NUM * optiling::QBSA_METADATA_SIZE;
+    const int64_t bn1Size = static_cast<int64_t>(batchSize_) * numHeadsQ_;
+    if (bn1Size > std::numeric_limits<uint32_t>::max() || metadata_->NumElements() < fixedSize ||
+        (metadata_->NumElements() - fixedSize) / sectionSize < bn1Size) {
+        KERNEL_LOG_ERROR("metadata output is too small for batch_size * num_heads_q sections");
         return false;
     }
     return true;
@@ -228,8 +269,8 @@ uint64_t QuantBlockSparseAttnMetadataCpuKernel::CalcBN1Cost(uint32_t bIdx, uint3
     }
 
     const uint32_t headDim = static_cast<uint32_t>(std::max(headDim_, 0));
-    const uint64_t s1Cost = static_cast<uint64_t>(validS1Rows) * static_cast<uint32_t>(sparseBlockSizeQ_) *
-        headDim * BYTES_PER_ELEM_Q * COST_FACTOR;
+    const uint64_t s1Cost = static_cast<uint64_t>(validS1Rows) * static_cast<uint32_t>(sparseBlockSizeQ_) * headDim *
+                            BYTES_PER_ELEM_Q * COST_FACTOR;
     const uint64_t s2Size = static_cast<uint64_t>(maxS2BlockNum) * static_cast<uint32_t>(sparseBlockSizeK_);
     const uint64_t s2Cost = s2Size * headDim * BYTES_PER_ELEM_KV * COST_FACTOR;
     return s1Cost + s2Cost;

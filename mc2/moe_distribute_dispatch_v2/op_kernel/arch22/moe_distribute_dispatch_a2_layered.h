@@ -31,7 +31,7 @@
 #include "moe_distribute_a2_constant.h"
 
 namespace MoeDistributeDispatchA2Impl {
-#define TemplateMC2TypeA2layeredClass                                                                                  \
+#define TemplateMC2TypeA2layeredClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
 #define TemplateMC2TypeA2layeredFunc XType, ExpandXOutType, StaticQuant, DynamicQuant, IsSmoothScaleExist
 
@@ -78,6 +78,13 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline void InitCommTiling(TPipe *pipe, GM_ADDR tilingGM, GM_ADDR contextGM0);
+    __aicore__ inline void InitTokenStruct();
+    __aicore__ inline void InitGlobalTensor(GM_ADDR x, GM_ADDR expertIds, GM_ADDR expertScales, GM_ADDR expandXOut,
+                                            GM_ADDR dynamicScalesOut, GM_ADDR expertTokenNumsOut,
+                                            GM_ADDR epRecvCountsOut, GM_ADDR expandScales, GM_ADDR workspaceGM);
+    __aicore__ inline void InitUBBuffer(GM_ADDR performanceInfo);
+    __aicore__ inline void InitADump();
     __aicore__ inline void ReorderTokens();
     __aicore__ inline void SendDataToServer(uint32_t destServerId);
     __aicore__ inline void CreateInnerReduceInfo(uint32_t serverIdx);
@@ -197,10 +204,9 @@ private:
 };
 
 template <TemplateMC2TypeA2layeredClass>
-__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::Init(
-    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR expertScales, GM_ADDR performanceInfo, GM_ADDR expandXOut,
-    GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epRecvCountsOut,
-    GM_ADDR expandScales, GM_ADDR workspaceGM, TPipe *pipe, GM_ADDR tilingGM, GM_ADDR contextGM0)
+__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::InitCommTiling(TPipe *pipe,
+                                                                                                    GM_ADDR tilingGM,
+                                                                                                    GM_ADDR contextGM0)
 {
     tpipe_ = pipe;
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchA2TilingData, tilingData, tilingGM);
@@ -228,7 +234,11 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     expertTokenNumsType_ = tilingData.moeDistributeDispatchInfo.expertTokenNumsType;
     aivId_ = GetBlockIdx();
     expertIdsCnt_ = axisBS_ * axisK_;
+}
 
+template <TemplateMC2TypeA2layeredClass>
+__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::InitTokenStruct()
+{
     // TokenStruct info init
     tokenLenInStruct_ = axisH_ * sizeof(ExpandXOutType);
     expLenInStruct_ = alignK_ * sizeof(uint32_t); // 为了对齐，使用 alignK_ 计算tokenStruct中的内存
@@ -254,7 +264,13 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
     tokenGapInStruct_ = (tokenStructLen_ - tokenLenInStruct_) / UB_32B_ALIGN;
     infoGapInStruct_ = (tokenStructLen_ - expLenInStruct_) / UB_32B_ALIGN;
+}
 
+template <TemplateMC2TypeA2layeredClass>
+__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::InitGlobalTensor(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR expertScales, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
+    GM_ADDR expertTokenNumsOut, GM_ADDR epRecvCountsOut, GM_ADDR expandScales, GM_ADDR workspaceGM)
+{
     // Input/Output global tensor init
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
     expandXOutGMTensor_.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOut),
@@ -282,7 +298,12 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     combineOuterCntOffset = combineInnerCntIndexOffset + globalBs_ * axisK_ * serverNum * sizeof(int32_t);
     combineOuterCntIndexOffset = combineOuterCntOffset + axisBS_ * sizeof(int32_t);
     moeExpertNumInServer_ = SERVER_RANK_SIZE * localMoeExpertNum_;
+}
 
+template <TemplateMC2TypeA2layeredClass>
+__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::InitUBBuffer(
+    GM_ADDR performanceInfo)
+{
     // UB init
     tpipe_->InitBuffer(
         statusBuf_, FLAG_SIZE * 3U); // GetArrivedTokenInfo 会搬入3个Flag：ArrivedFlag, CurrentTokenFlag, NextTokenFlag
@@ -315,7 +336,11 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     uint32_t expertIdsSize = RoundUp(expertIdsCnt_ * static_cast<uint32_t>(sizeof(int16_t)), UB_32B_ALIGN);
     tokenUbSize_ = TBUF_SIZE - TBUF_TEMP_OFFSET - expertIdsSize;
     expertIdsI16Tensor_ = tBuf.GetWithOffset<int16_t>(axisBS_ * alignK_, tokenUbSize_ + TBUF_TEMP_OFFSET);
+}
 
+template <TemplateMC2TypeA2layeredClass>
+__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::InitADump()
+{
     // RDMA发送完成标志初始化
     if (aivId_ == 0) {
         sendStatusTensor_.SetValue(0, END_OF_WRITE_FLAG_VALUE);
@@ -330,6 +355,20 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     aDump_.Init(aDumpAddr, aivId_, rankId_, worldSize_, rankId_, moeExpertNum_, worldSize_, globalBs_,
                 (magicVal_ - 1UL) & 0x1, Mc2A2Kernel::IS_HIERARCHY, aivNum_, aDumpTensor, axisH_, axisBS_);
     AscendC::PipeBarrier<PIPE_ALL>();
+}
+
+template <TemplateMC2TypeA2layeredClass>
+__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::Init(
+    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR expertScales, GM_ADDR performanceInfo, GM_ADDR expandXOut,
+    GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epRecvCountsOut,
+    GM_ADDR expandScales, GM_ADDR workspaceGM, TPipe *pipe, GM_ADDR tilingGM, GM_ADDR contextGM0)
+{
+    InitCommTiling(pipe, tilingGM, contextGM0);
+    InitTokenStruct();
+    InitGlobalTensor(x, expertIds, expertScales, expandXOut, dynamicScalesOut, expertTokenNumsOut, epRecvCountsOut,
+                     expandScales, workspaceGM);
+    InitUBBuffer(performanceInfo);
+    InitADump();
 }
 
 template <TemplateMC2TypeA2layeredClass>
@@ -446,8 +485,8 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 }
 
 template <TemplateMC2TypeA2layeredClass>
-__aicore__ inline void
-MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::CreateInnerReduceInfo(uint32_t serverIdx)
+__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::CreateInnerReduceInfo(
+    uint32_t serverIdx)
 {
     // 最后serverNum个Core加入本函数
     uint32_t curServerId = serverIdx;
@@ -705,7 +744,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     }
 }
 
-
 template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::ReorderTokens()
 {
@@ -743,7 +781,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     }
     uint32_t maxTokenNumInUB = tokenUbSize_ / singleTokenUBSize;
     uint32_t batchNum = (sendTokenNum + maxTokenNumInUB - 1) / maxTokenNumInUB;
-
 
     LocalTensor<uint8_t> tokenTensorU8_ =
         tBuf.GetWithOffset<uint8_t>(maxTokenNumInUB * tokenStructLen_, TBUF_TEMP_OFFSET);
@@ -882,8 +919,8 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 }
 
 template <TemplateMC2TypeA2layeredClass>
-__aicore__ inline void
-MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::SendDataToServer(uint32_t destServerId)
+__aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::SendDataToServer(
+    uint32_t destServerId)
 {
     uint32_t dstRankId = rankId_ % SERVER_RANK_SIZE + destServerId * SERVER_RANK_SIZE;
     uint64_t destServerMask = (1UL << destServerId);
@@ -1082,7 +1119,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         tokenStructLen_ / sizeof(uint8_t), RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
     LocalTensor<int32_t> localUB_32 = tBuf.GetWithOffset<int32_t>(
         tokenStructLen_ / sizeof(int32_t), RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
-
 
     Duplicate<int32_t>(tokenNumPerExp, 0, SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT);
     int64_t startTime = GetCurrentTimestampUs();

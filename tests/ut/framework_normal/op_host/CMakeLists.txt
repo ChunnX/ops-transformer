@@ -14,11 +14,28 @@ if(UT_TEST_ALL OR OP_HOST_UT)
   ## set variables
   set(OP_HOST_UT_EXE ${PKG_NAME}_op_host_ut)
 
+  if(NOT TARGET softmax_tiling_ut_stub)
+    set(_SOFTMAX_STUB_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../common)
+    add_library(softmax_tiling_ut_stub STATIC
+        ${_SOFTMAX_STUB_COMMON_DIR}/softmax_tiling_mocker.cpp
+    )
+    target_include_directories(softmax_tiling_ut_stub PRIVATE
+        ${_SOFTMAX_STUB_COMMON_DIR}
+        ${OP_TILING_INCLUDE}
+    )
+    target_link_libraries(softmax_tiling_ut_stub PRIVATE
+        $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+    )
+  endif()
+
   ## add optiling ut cases static lib: libtransformer_op_tiling_ut_cases.a
   add_optiling_ut_modules(${OP_TILING_MODULE_NAME})
 
   ## add opinfershape ut cases static lib: libtransformer_op_infershape_ut_cases.a
   add_infershape_ut_modules(${OP_INFERSHAPE_MODULE_NAME})
+
+  ## add ONNX plugin ut cases static lib: libtransformer_op_onnx_ut_cases.a
+  add_onnx_ut_modules(${OP_ONNX_MODULE_NAME})
 
   ## add ophost source so: libophost_transformer_ut.so
   add_library(${OPHOST_NAME}_ut SHARED
@@ -80,6 +97,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       -Wl,--whole-archive
           ${OP_TILING_MODULE_NAME}_cases
           ${OP_INFERSHAPE_MODULE_NAME}_cases
+          ${OP_ONNX_MODULE_NAME}_cases
       -Wl,--no-whole-archive
       tiling_api
       -Wl,--no-as-needed
@@ -88,6 +106,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       register
       opp_registry
       graph
+      graph_base
       platform
       gtest
       unified_dlog

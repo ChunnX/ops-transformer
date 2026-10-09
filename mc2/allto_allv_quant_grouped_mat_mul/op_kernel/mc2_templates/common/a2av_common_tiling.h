@@ -19,7 +19,12 @@
 #include "../../../../3rd/grouped_matmul/op_kernel/grouped_matmul_tiling_data_apt.h"
 
 namespace MC2KernelTemplate {
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+// DAV_3510支持epWorldSize=256(HcclMsgExt原生256 rank)，通信数组容量覆盖256
+static constexpr uint32_t MAX_EP_RANK_SIZE = 256U;
+#else
 static constexpr uint32_t MAX_EP_RANK_SIZE = 128U;
+#endif
 static constexpr uint32_t MAX_EXPERT_PER_EP = 1U;
 static constexpr uint32_t MAX_EXPERT_SIZE = 256U;
 static constexpr uint32_t MAX_EXPERT_PER_RANK = 32U;
@@ -68,16 +73,16 @@ struct TaskTilingInfo {
     uint64_t e;           // 单卡上的专家数量
 
     // 平台信息
-    uint64_t ubSize;        // UB大小
-    uint64_t aivCoreNum;    // AIV 核数量
-    uint64_t aicCoreNum;    // AIC 核数量
+    uint64_t ubSize;     // UB大小
+    uint64_t aivCoreNum; // AIV 核数量
+    uint64_t aicCoreNum; // AIC 核数量
 
     // 循环调度参数
-    uint32_t expertNum = 1U;     // 每次GMM计算合并的专家数量（计算批大小）
-    uint32_t mainLoopExpertNum;  // 主循环每次处理的expert数量（=expertNum）
-    uint32_t tailLoopExpertNum;  // 尾循环处理的expert数量（=e%expertNum的余数）
-    uint32_t totalLoopCount;     // 总循环次数（=CeilDiv(e,expertNum))
-    
+    uint32_t expertNum = 1U;    // 每次GMM计算合并的专家数量（计算批大小）
+    uint32_t mainLoopExpertNum; // 主循环每次处理的expert数量（=expertNum）
+    uint32_t tailLoopExpertNum; // 尾循环处理的expert数量（=e%expertNum的余数）
+    uint32_t totalLoopCount;    // 总循环次数（=CeilDiv(e,expertNum))
+
     // 通信参数（对应sendCounts和recvCounts）
     int32_t sendCnt[MAX_EXPERT_SIZE]; // 每个expert的发送计数
     int32_t recvCnt[MAX_EXPERT_SIZE]; // 每个expert的接收计数

@@ -98,7 +98,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
 ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
 {
     OP_LOGD(context_->GetNodeName(), "start GetWorkspaceSize.");
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
                     return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
@@ -106,8 +106,10 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     uint64_t aGroupOffsetTableSize = sizeof(uint64_t) * e_ * epWorldSize_;
     uint64_t xScaleOffsetTableSize = sizeof(uint64_t) * e_ * epWorldSize_;
     uint64_t ttScaleRepeatSize = sizeof(float) * e_ * 2;
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize_ + permuteScaleOutSize_ +
-        groupListSize + aGroupOffsetTableSize + xScaleOffsetTableSize + tensorListSize + ttScaleRepeatSize;
+    // kernel侧a2av建表scratch(GM，4数组×ep)，512对齐
+    const uint64_t rankArraySize = ((4 * epWorldSize_ * sizeof(uint64_t)) + 511) / 512 * 512;
+    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize_ + permuteScaleOutSize_ + groupListSize +
+                    aGroupOffsetTableSize + xScaleOffsetTableSize + tensorListSize + ttScaleRepeatSize + rankArraySize;
     OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -165,10 +167,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     uint32_t expertNum = CalcExpertNum(e_, epWorldSize_, bsk_, n1_, packFactor);
     tilingData->taskTilingInfo.expertNum = expertNum;
     tilingData->taskTilingInfo.mainLoopExpertNum = expertNum;
-    tilingData->taskTilingInfo.tailLoopExpertNum =
-        (e_ % expertNum == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum);
-    tilingData->taskTilingInfo.totalLoopCount =
-        static_cast<uint32_t>((e_ + expertNum - 1) / expertNum);
+    tilingData->taskTilingInfo.tailLoopExpertNum = (e_ % expertNum == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum);
+    tilingData->taskTilingInfo.totalLoopCount = static_cast<uint32_t>((e_ + expertNum - 1) / expertNum);
     tilingData->isNeedMM = hasSharedExpertFlag_;
     for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
@@ -180,11 +180,11 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
 }
 
 void AlltoAllvQuantGmmTilingCommon::PrintGMMQuantTilingData(
-    const Mc2GroupedMatmulTilingData::GMMQuantTilingData &data) const
+    const Mc2GroupedMatmulTilingData::GMMQuantTilingData& data) const
 {
-    const auto &mm = data.mmTilingData;
-    const auto &quantParams = data.gmmQuantParams;
-    const auto &gmmArray = data.gmmArray;
+    const auto& mm = data.mmTilingData;
+    const auto& quantParams = data.gmmQuantParams;
+    const auto& gmmArray = data.gmmArray;
 
     std::stringstream finalSs;
     // MM Tiling 信息
@@ -209,7 +209,7 @@ void AlltoAllvQuantGmmTilingCommon::PrintGMMQuantTilingData(
     OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon MmTilingParams:\n%s", finalSs.str().c_str());
 }
 
-void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const
+void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo& taskTilingInfo) const
 {
     std::stringstream ss;
     ss << "TaskTilingInfo: ";
@@ -240,13 +240,13 @@ void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate:
     OP_LOGI(context_->GetNodeName(), "%s", ss.str().c_str());
 }
 
-ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext *context,
-                                                                          uint8_t &commMode) const
+ge::graphStatus AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(gert::TilingContext* context,
+                                                                          uint8_t& commMode) const
 {
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
-    const char *commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
+    const char* commModeStr = attrs->GetAttrPointer<char>(ATTR_COMM_MODE);
     OP_TILING_CHECK(commModeStr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "comm_mode"),
                     return ge::GRAPH_FAILED);
     const size_t maxLength = 7UL;

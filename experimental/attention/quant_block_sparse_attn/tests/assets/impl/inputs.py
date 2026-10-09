@@ -337,9 +337,12 @@ def _mxfp8_assemble_case(
     normalized_blocknum = None if blocknum is None else int(blocknum)
     return {
         "B": batch,
-        "N1": int(query.shape[1]),
+        "N1": int(query.shape[2] if layout_q == "BSND" else query.shape[1]),
         "N2": int(key.shape[1]),
         "D": int(query.shape[-1]),
+        "S1_max": int(query.shape[1 if layout_q == "BSND" else 2])
+        if layout_q in ("BSND", "BNSD")
+        else None,
         "cu_seqlens_q": cu_q,
         "cu_seqlens_kv": cu_kv,
         "seqused_q": seq_q,
@@ -413,6 +416,7 @@ def _mxfp8_customize_inputs(
     **kwargs,
 ):
     module = _mxfp8_load_golden_module()
+    s2_base_size = 256 if int(query.shape[-1]) == 256 else 512
     case = _mxfp8_assemble_case(
         query,
         key,
@@ -441,6 +445,9 @@ def _mxfp8_customize_inputs(
         data_range_k=data_range_k,
         data_range_v=data_range_v,
     )
+    # 根据 target p_scale tensor 的 dtype 注入 p_scale_type，使 golden 生成正确 dtype 的数据
+    if p_scale is not None and _numel(p_scale) > 0 and p_scale.dtype == torch.float32:
+        case["p_scale_type"] = "float32"
     # Golden owns MXFP8 validation and all input construction, including the
     # random block table. TTK only supplies CSV attributes and allocated shapes.
     data = module.generate_mxfp8_inputs(
@@ -460,7 +467,12 @@ def _mxfp8_customize_inputs(
     k_scale_pa = data["k_descale"]
     v_scale_pa = data["v_descale"]
 
-    _inplace_copy(query, data["query"])
+    sq = int(query.shape[1 if layout_q == "BSND" else 2]) if layout_q != "TND" else None
+    query_input = module.pack_padded_query(
+        data["query"], data["q_lengths"], layout_q, sq
+    )
+    q_scale = module.pack_padded_query(q_scale, data["q_lengths"], layout_q, sq)
+    _inplace_copy(query, query_input)
     _inplace_copy(key, key_pa)
     _inplace_copy(value, value_pa)
     _inplace_copy(q_descale, q_scale)
@@ -473,10 +485,13 @@ def _mxfp8_customize_inputs(
         p_scale_source = data["p_scale"]
         if p_scale_source is None:
             p_scale_source = torch.ones((1,), dtype=torch.float32)
-        _inplace_copy(
-            p_scale,
-            module.fp32_to_e8m0fnu_safe(p_scale_source, "P scale"),
-        )
+        if p_scale.dtype == torch.float32:
+            _inplace_copy(p_scale, p_scale_source)
+        else:
+            _inplace_copy(
+                p_scale,
+                module.fp32_to_e8m0fnu_safe(p_scale_source, "P scale"),
+            )
     _inplace_copy(sparse_indices, data["sparse_indices"])
     _inplace_copy(sparse_seq_len, data["sparse_seq_len"])
     # mask_mode=0 does not consume atten_mask.  TTK may intentionally allocate

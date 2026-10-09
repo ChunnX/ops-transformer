@@ -53,12 +53,39 @@ constexpr uint32_t L0C_SHARED_SIZE_64K = 64 * 1024;
 constexpr uint32_t L0C_SHARED_SIZE_128K = 128 * 1024;
 constexpr uint32_t CV_RATIO = 1;
 constexpr uint64_t SYNC_MODE = 4;
-constexpr uint64_t MM2_RES_INTRA_EVENT[2] = {7, 8};  // mm2ResIntraEvent
-constexpr uint64_t MM1_RES_INTRA_EVENT[2] = {9, 10}; // mm1ResIntraEvent
+// 核内事件号一律走AllocEventID/FetchEventID从硬件事件池申请，不要再写死常量，
+// 写死值会与动态分配的事件号撞号
 constexpr uint64_t KB_TO_BYTES = 1024;
 constexpr uint64_t L0C_SIZE = 256;
 constexpr uint64_t BASE_SIZE_128 = 128;
 constexpr uint64_t FLOAT_BYTES = 4;
+
+// C/V跨队列同步事件号，由KernelBase持有并在Init阶段从硬件事件池统一申请
+struct CVSyncEventIds {
+    TEventID syncC1V1FixV[2];     // Bmm1(FIX)写完S -> Vec1(V)可读
+    TEventID syncC1V1VFix[2];     // Vec1(V)读完S -> Bmm1(FIX)可复用
+    TEventID syncV1C2Mte3Mte1[3]; // Vec1(MTE3)写完P到L1 -> Bmm2(MTE1)可读
+    TEventID syncC2V2FixV[2];     // Bmm2(FIX)写完输出 -> Vec2(V)可读
+    TEventID syncC2V2VFix[2];     // Vec2(V)读完输出 -> Bmm2(FIX)可复用
+
+    __aicore__ inline void Init()
+    {
+        syncC1V1FixV[0] = GetTPipePtr()->AllocEventID<HardEvent::FIX_V>();
+        syncC1V1FixV[1] = GetTPipePtr()->AllocEventID<HardEvent::FIX_V>();
+        syncC2V2FixV[0] = GetTPipePtr()->AllocEventID<HardEvent::FIX_V>();
+        syncC2V2FixV[1] = GetTPipePtr()->AllocEventID<HardEvent::FIX_V>();
+
+        syncC1V1VFix[0] = GetTPipePtr()->AllocEventID<HardEvent::V_FIX>();
+        syncC1V1VFix[1] = GetTPipePtr()->AllocEventID<HardEvent::V_FIX>();
+        syncC2V2VFix[0] = GetTPipePtr()->AllocEventID<HardEvent::V_FIX>();
+        syncC2V2VFix[1] = GetTPipePtr()->AllocEventID<HardEvent::V_FIX>();
+
+        syncV1C2Mte3Mte1[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE1>();
+        syncV1C2Mte3Mte1[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE1>();
+        syncV1C2Mte3Mte1[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE1>();
+    }
+};
+
 enum class SparseModeEnum {
     ALL = 0,
     NONE = 1,
@@ -117,7 +144,7 @@ __aicore__ constexpr bool ContainOptionalInput(regbaseutil::PseTypeEnum pseMode,
 __aicore__ constexpr bool IsDn(bool isFp32, bool isValidFp8, regbaseutil::PseTypeEnum pseMode, bool hasAtten,
                                bool hasDrop, bool isS1Base128, regbaseutil::DTemplateType dTemplateType, bool hasRope)
 {
-    if (!hasAtten && isS1Base128 && (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned256) {
+    if (!hasAtten && isS1Base128 && (uint16_t)dTemplateType == (uint16_t)regbaseutil::DTemplateType::Aligned128) {
         return true;
     }
     return false;

@@ -30,6 +30,9 @@ namespace optiling {
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
     tilingData_ = GMMFinalizeRoutingTilingData();
+    scaleType_ = 0;
+    rowIndexType_ = 0;
+    logitType_ = 0;
     OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
                          context_->GetRawTilingData()->GetCapacity()) != EOK,
                 OP_LOGE(inputParams_.opName, "Fail to clear tiling data"), return);
@@ -124,12 +127,6 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
         outDesc == nullptr,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "y", "nullptr", "input outDesc cannot be nullptr"),
         return false);
-    inputParams_.cDtype = outDesc->GetDataType();
-    OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, "y",
-                                          ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype), "DT_FLOAT"),
-                return false);
-
     auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
     inputParams_.hasBias = !(biasStorageShape == nullptr || biasStorageShape->GetStorageShape().GetShapeSize() == 0);
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
@@ -138,9 +135,23 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeDtype()
                                                       "bias from tensor is nonnull, but bias from desc is nullptr"),
                 return false);
     inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : ge::DT_BF16;
+    inputParams_.cDtype = outDesc->GetDataType();
+    bool isSupportedOut =
+        inputParams_.cDtype == ge::DT_FLOAT || (IsMicroScaling() && inputParams_.cDtype == ge::DT_BF16);
+    OP_CHECK_IF(!isSupportedOut,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opType, "y",
+                                                      ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype),
+                                                      "y must be DT_FLOAT, or DT_BF16 in mx quant mode"),
+                return false);
 
     OP_CHECK_IF(!CheckDtype(), OP_LOGE(context_->GetNodeName(), "Required input check failed."), return false);
-    return CheckOptionalInputsForRouting();
+    OP_CHECK_IF(!CheckOptionalInputsForRouting(), OP_LOGE(context_->GetNodeName(), "Optional input check failed."),
+                return false);
+    OP_CHECK_IF(IsBf16MxTensorApiTarget() && inputParams_.hasBias,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "bias", "not empty",
+                                                      "bias is not supported in BF16 MX TensorAPI path"),
+                return false);
+    return true;
 }
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::LoadInputDescsForRouting()
@@ -181,9 +192,30 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
                 OP_LOGE(context_->GetNodeName(), "GroupList check failed."), return false);
     OP_CHECK_IF(!CheckOptional(SHARE_INPUT_INDEX, "SharedInput", ge::DT_BF16),
                 OP_LOGE(context_->GetNodeName(), "SharedInput check failed."), return false);
-    OP_CHECK_IF(!CheckOptional(LOGIT_INDEX, "LogitIndex", ge::DT_FLOAT),
-                OP_LOGE(context_->GetNodeName(), "LogitIndex check failed."), return false);
-    if (inputParams_.aDtype != ge::DT_INT8) {
+    auto logitDesc = context_->GetOptionalInputDesc(LOGIT_INDEX);
+    if (logitDesc != nullptr) {
+        auto logitDtype = logitDesc->GetDataType();
+        logitType_ = static_cast<int8_t>(logitDtype == ge::DT_BF16);
+        bool supportLogitDtype = logitDtype == ge::DT_FLOAT ||
+                                 (IsMicroScaling() && inputParams_.cDtype == ge::DT_BF16 && logitDtype == ge::DT_BF16);
+        OP_CHECK_IF(!supportLogitDtype,
+                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                        inputParams_.opType, "LogitIndex", ge::TypeUtils::DataTypeToSerialString(logitDtype),
+                        "DT_FLOAT, or DT_FLOAT/DT_BF16 when output is DT_BF16 in mx quant mode"),
+                    return false);
+    }
+    if (IsMicroScaling() && inputParams_.cDtype == ge::DT_BF16) {
+        auto rowIndexDesc = context_->GetOptionalInputDesc(ROW_INDEX_INDEX);
+        if (rowIndexDesc != nullptr) {
+            auto rowIndexDtype = rowIndexDesc->GetDataType();
+            OP_CHECK_IF(rowIndexDtype != ge::DT_INT32,
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            inputParams_.opType, "row_index", ge::TypeUtils::DataTypeToSerialString(rowIndexDtype),
+                            "when output is DT_BF16 in mx quant mode, row_index must be DT_INT32"),
+                        return false);
+            rowIndexType_ = 1;
+        }
+    } else if (inputParams_.aDtype != ge::DT_INT8) {
         OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
                     OP_LOGE(context_->GetNodeName(), "RowIndex check failed."), return false);
     } else if (context_->GetOptionalInputDesc(ROW_INDEX_INDEX) != nullptr) {
@@ -208,12 +240,18 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptional(uint32_t index, cons
         return true;
     }
     auto realDtype = optionalDesc->GetDataType();
-    OP_CHECK_IF(realDtype != targetDtype,
-                OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, paramName,
-                                          ge::TypeUtils::DataTypeToSerialString(realDtype),
-                                          ge::TypeUtils::DataTypeToSerialString(targetDtype)),
-                return false);
+    OP_CHECK_IF(
+        realDtype != targetDtype,
+        OP_LOGE_FOR_INVALID_DTYPE(inputParams_.opType, paramName, ge::TypeUtils::DataTypeToSerialString(realDtype),
+                                  ge::TypeUtils::DataTypeToSerialString(targetDtype)),
+        return false);
     return true;
+}
+
+bool GroupedMatmulFinalizeRoutingQuantTiling::IsBf16MxTensorApiTarget() const
+{
+    return inputParams_.cDtype == ge::DT_BF16 && IsMicroScaling() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
+           rowIndexType_ == 1;
 }
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::IsFp4Dtype(ge::DataType dtype) const
@@ -225,7 +263,6 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::IsFp8Dtype(ge::DataType dtype) con
 {
     return (dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2);
 }
-
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype() const
 {
@@ -244,6 +281,14 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype() const
                                      ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
                         "in mx quant mode, the dtypes of x and weight must be within the range "
                         "DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E2M1"),
+                    return false);
+        OP_CHECK_IF(inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && a8w8 &&
+                        (inputParams_.aDtype != ge::DT_FLOAT8_E4M3FN || inputParams_.bDtype != ge::DT_FLOAT8_E4M3FN),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "x, weight",
+                        ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
+                        "in MX A8W8 weight NZ mode, x and weight must both be DT_FLOAT8_E4M3FN"),
                     return false);
     } else {
         OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_INT8 ||
@@ -315,11 +360,11 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
                     return false);
         const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
         auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
-        OP_CHECK_IF(pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "perTokenScale",
-                                                 std::to_string(pertokenScaleDimNum),
-                                                 std::to_string(DIM_NUM_MX_PERTOKENSCALE)),
-                    return false);
+        OP_CHECK_IF(
+            pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE,
+            OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "perTokenScale", std::to_string(pertokenScaleDimNum),
+                                         std::to_string(DIM_NUM_MX_PERTOKENSCALE)),
+            return false);
     } else {
         OP_CHECK_IF(scaleDimNum != DIM_NUM_SCALE,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale", std::to_string(scaleDimNum),
@@ -328,11 +373,11 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
         if (pertokenScaleStorageShape != nullptr) {
             const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
             auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
-            OP_CHECK_IF(pertokenScaleDimNum != DIM_NUM_PERTOKENSCALE,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "perTokenScale",
-                                                     std::to_string(pertokenScaleDimNum),
-                                                     std::to_string(DIM_NUM_PERTOKENSCALE)),
-                        return false);
+            OP_CHECK_IF(
+                pertokenScaleDimNum != DIM_NUM_PERTOKENSCALE,
+                OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "perTokenScale", std::to_string(pertokenScaleDimNum),
+                                             std::to_string(DIM_NUM_PERTOKENSCALE)),
+                return false);
         }
     }
     return true;
@@ -461,7 +506,22 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
                 return false);
     const gert::Shape &yShape = yStorageShape->GetOriginShape();
 
-    if (!IsMicroScaling()) {
+    if (IsMicroScaling()) {
+        bool isFullMx = (IsFp8Dtype(inputParams_.aDtype) && IsFp8Dtype(inputParams_.bDtype)) ||
+                        (IsFp4Dtype(inputParams_.aDtype) && IsFp4Dtype(inputParams_.bDtype));
+        bool isBf16Output = inputParams_.cDtype == ge::DT_BF16;
+        bool isWeightNz = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+        OP_CHECK_IF(isFullMx && isBf16Output && !isWeightNz,
+                    OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+                        inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
+                        "when output is DT_BF16 in mx quant mode, the format of weight must be FRACTAL_NZ"),
+                    return false);
+        OP_CHECK_IF(isFullMx && !isBf16Output && inputParams_.bFormat != ge::FORMAT_ND && !isWeightNz,
+                    OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
+                        inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
+                        "when output is DT_FLOAT in mx quant mode, the format of weight must be ND or FRACTAL_NZ"),
+                    return false);
+    } else {
         OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
                     OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(
                         inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
@@ -484,17 +544,15 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckCoreNum() const
 {
     auto compileInfo = context_->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
     OP_CHECK_IF(compileInfo == nullptr,
-                OP_LOGE(inputParams_.opName, "GroupedMatmulFinalizeRouting compileInfo is nullptr."),
-                return false);
+                OP_LOGE(inputParams_.opName, "GroupedMatmulFinalizeRouting compileInfo is nullptr."), return false);
     auto aicNum = compileInfo->aicNum;
     auto aivNum = compileInfo->aivNum;
-    OP_CHECK_IF(aicNum == 0,
-               OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
-               return false);
-    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-                OP_LOGE(inputParams_.opName,
-                        "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+    OP_CHECK_IF(aicNum == 0, OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
                 return false);
+    OP_CHECK_IF(
+        aivNum != GmmConstant::CORE_RATIO * aicNum,
+        OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
+        return false);
     return true;
 }
 
@@ -554,7 +612,8 @@ int64_t GroupedMatmulFinalizeRoutingQuantTiling::LogQuantParams() const
 uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transA), static_cast<uint64_t>(inputParams_.transB),
-                              static_cast<uint64_t>(scaleType_), static_cast<uint64_t>(rowIndexType_));
+                              static_cast<uint64_t>(scaleType_), static_cast<uint64_t>(rowIndexType_),
+                              static_cast<uint64_t>(logitType_));
 }
 
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
@@ -678,8 +737,8 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
         size_t *workspaces = context_->GetWorkspaceSizes(1);
         OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
         workspaces[0] = SYS_WORKSPACE_SIZE + deterWorkspaceSize_;
-        OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: deterministic workspace %u, total=%zu", deterWorkspaceSize_,
-                workspaces[0]);
+        OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: deterministic workspace %u bytes, total=%zu bytes",
+                deterWorkspaceSize_, workspaces[0]);
     }
     return ge::GRAPH_SUCCESS;
 }

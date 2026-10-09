@@ -25,36 +25,36 @@ using namespace AscendC;
 #endif
 #include "adv_api/hccl/hccl.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "matmul_allto_all_moe_distribute_base.h"
+#include "../../../common/op_kernel/moe_distribute_base_a2.h"
 #include "matmul_allto_all_util_arch22.h"
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "matmul_allto_all_block_epilogue_dequant.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_catlass.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/tla_arch_arch.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/tla_layout_layout.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_mmad.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/tla_gemm_block_swizzle.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_dispatch_policy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tla_gemm_gemm_type.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_gemm_coord.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_copy_gm_to_ub.hpp"
+#include "../../../common/op_kernel/mc2_block_epilogue_per_token_dequant.h"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tla_epilogue_dispatch_policy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_mul.hpp"
 #include "matmul_allto_all_tile_broadcast_add.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_copy.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_broadcast_one_blk.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_swizzle.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tla_epilogue_tile_copy.hpp"
 
 #include "matmul_allto_all_quant_matmul.hpp"
 #include "matmul.hpp"
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/status.hpp"
+#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/tla_status.hpp"
 using namespace Catlass;
 
 namespace Mc2Kernel {
 
 // MMA2A : MatmulAlltoAll
-#define TemplateMMA2AClass                                                                                             \
+#define TemplateMMA2AClass \
     typename AType, typename BType, typename BiasType, typename pertokenScaleType, typename scaleType, typename cType, \
         bool hasBias, bool TB
 #define TemplateMMA2AFunc AType, BType, BiasType, pertokenScaleType, scaleType, cType, hasBias, TB
@@ -71,6 +71,12 @@ public:
 private:
     __aicore__ inline void CatlassMatmul();
     __aicore__ inline void QuantCatlassMatmul();
+
+    // 按 m0 选择 L1/L0 TileShape 的实现体，供 CatlassMatmul/QuantCatlassMatmul 分发
+    template <typename L1TileShape, typename L0TileShape>
+    __aicore__ inline void CatlassMatmulImpl();
+    template <typename L1TileShape, typename L0TileShape, typename EpilogueTileShape>
+    __aicore__ inline void QuantCatlassMatmulImpl();
 
 private:
     GM_ADDR aGM_;
@@ -101,7 +107,6 @@ private:
     static constexpr bool has_bias = hasBias;
 };
 
-
 template <TemplateMMA2AClass>
 __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
                                                                GM_ADDR pertokenScaleGM, GM_ADDR scaleGM, GM_ADDR cGM,
@@ -125,113 +130,99 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Init(GM_ADDR aGM, GM_A
 }
 
 template <TemplateMMA2AClass>
+template <typename L1TileShape, typename L0TileShape>
+__aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::CatlassMatmulImpl()
+{
+    using ArchTag = Arch::AtlasA2;
+
+    constexpr bool ENABLE_UNIT_FLAG = false;
+    constexpr bool ENABLE_SHUFFLE_K = false;
+    using ElementA = cType;
+    using ElementB = cType;
+    using ElementC = cType;
+    using ElementBias = BiasType;
+    using LayoutA = layout::RowMajor;
+    // 支持B转置场景
+    using LayoutB = typename std::conditional<TB, layout::ColumnMajor, layout::RowMajor>::type;
+    using LayoutBias = layout::VectorLayout;
+
+    using LayoutC = layout::RowMajor;
+    LayoutA layoutA{static_cast<uint32_t>(commUtil.m), static_cast<uint32_t>(commUtil.k)};
+    LayoutB layoutB{static_cast<uint32_t>(commUtil.k), static_cast<uint32_t>(commUtil.n)};
+    LayoutC layoutC{static_cast<uint32_t>(commUtil.m * rank_size), static_cast<uint32_t>(commUtil.n / rank_size)};
+    LayoutBias layoutBias{static_cast<uint32_t>(commUtil.n)};
+
+    using LayoutPaddingA = std::conditional_t<std::is_same_v<LayoutA, layout::RowMajor>, layout::PaddingRowMajor,
+                                              layout::PaddingColumnMajor>;
+
+    using DispatchPolicy = std::conditional_t<has_bias, Gemm::MmadAtlasA2PingpongBias<ENABLE_UNIT_FLAG>,
+                                              Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
+
+    using AType_ = Gemm::GemmType<ElementA, LayoutA>;
+    using BType_ = Gemm::GemmType<ElementB, LayoutB>;
+    using CType_ = Gemm::GemmType<ElementC, LayoutC>;
+    using BiasType_ = std::conditional_t<std::is_same_v<BiasType, void>, void, Gemm::GemmType<ElementBias, LayoutBias>>;
+
+    struct TileCopyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_> {
+        using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_>;
+        using ElementA = typename Base::ElementA;
+        using ElementB = typename Base::ElementB;
+        using ElementAccumulator = typename Base::ElementAccumulator;
+
+        using CopyGmToL1A = typename Base::CopyGmToL1A;
+        using CopyGmToL1B = typename Base::CopyGmToL1B;
+
+        using CopyL1ToL0A = typename Base::CopyL1ToL0A;
+        using CopyL1ToL0B = typename Base::CopyL1ToL0B;
+
+        using CopyL0CToGm = typename Base::CopyL0CToGm;
+        using BiasTypeSelector = typename Base::BiasTypeSelector;
+        using CopyGmToL1Bias = typename Base::CopyGmToL1Bias;
+        using CopyL1ToBT = typename Base::CopyL1ToBT;
+    };
+
+    using TileCopy = TileCopyOpt;
+
+    using BlockEpilogue = void;
+    using BlockScheduler30 = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 0>;
+    GemmCoord processSize{static_cast<uint32_t>(commUtil.m), static_cast<uint32_t>(commUtil.n),
+                          static_cast<uint32_t>(commUtil.k)};
+
+    using BlockMmadOpt =
+        Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_, BiasType_, TileCopy>;
+    using MatmulKernel =
+        Gemm::Kernel::MatmulAlltoAllKernel<void, void, BlockMmadOpt, BlockEpilogue, BlockScheduler30, has_bias>;
+    MatmulKernel matmul_op;
+    typename MatmulKernel::Params params{processSize,
+                                         reinterpret_cast<GM_ADDR>(aGM_),
+                                         layoutA,
+                                         reinterpret_cast<GM_ADDR>(bGM_),
+                                         layoutB,
+                                         reinterpret_cast<GM_ADDR>(biasGM_),
+                                         reinterpret_cast<GM_ADDR>(gm_peer_mem),
+                                         layoutC,
+                                         commUtil.p_value,
+                                         static_cast<int32_t>(rank_size),
+                                         MAX_BLOCK_COUNT,
+                                         TB};
+    matmul_op(params);
+}
+
+template <TemplateMMA2AClass>
 __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::CatlassMatmul()
 {
     if ASCEND_IS_AIC {
-        using ArchTag = Arch::AtlasA2;
-
-        constexpr bool ENABLE_UNIT_FLAG = false;
-        constexpr bool ENABLE_SHUFFLE_K = false;
-        using ElementA = cType;
-        using ElementB = cType;
-        using ElementC = cType;
-        using ElementBias = BiasType;
-        using LayoutA = layout::RowMajor;
-        // 支持B转置场景
-        using LayoutB = typename std::conditional<TB, layout::ColumnMajor, layout::RowMajor>::type;
-        using LayoutBias = layout::VectorLayout;
-
-        using LayoutC = layout::RowMajor;
-        LayoutA layoutA{static_cast<uint32_t>(commUtil.m), static_cast<uint32_t>(commUtil.k)};
-        LayoutB layoutB{static_cast<uint32_t>(commUtil.k), static_cast<uint32_t>(commUtil.n)};
-        LayoutC layoutC{static_cast<uint32_t>(commUtil.m * rank_size), static_cast<uint32_t>(commUtil.n / rank_size)};
-        LayoutBias layoutBias{static_cast<uint32_t>(commUtil.n)};
-
-        using LayoutPaddingA = std::conditional_t<std::is_same_v<LayoutA, layout::RowMajor>, layout::PaddingRowMajor,
-                                                  layout::PaddingColumnMajor>;
-
-        using DispatchPolicy = std::conditional_t<has_bias, Gemm::MmadAtlasA2PingpongBias<ENABLE_UNIT_FLAG>,
-                                                  Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
-
-        using AType_ = Gemm::GemmType<ElementA, LayoutA>;
-        using BType_ = Gemm::GemmType<ElementB, LayoutB>;
-        using CType_ = Gemm::GemmType<ElementC, LayoutC>;
-        using BiasType_ =
-            std::conditional_t<std::is_same_v<BiasType, void>, void, Gemm::GemmType<ElementBias, LayoutBias>>;
-
-        struct TileCopyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_> {
-            using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, AType_, BType_, CType_, BiasType_>;
-            using ElementA = typename Base::ElementA;
-            using ElementB = typename Base::ElementB;
-            using ElementAccumulator = typename Base::ElementAccumulator;
-
-            using CopyGmToL1A = typename Base::CopyGmToL1A;
-            using CopyGmToL1B = typename Base::CopyGmToL1B;
-
-            using CopyL1ToL0A = typename Base::CopyL1ToL0A;
-            using CopyL1ToL0B = typename Base::CopyL1ToL0B;
-
-            using CopyL0CToGm = typename Base::CopyL0CToGm;
-            using BiasTypeSelector = typename Base::BiasTypeSelector;
-            using CopyGmToL1Bias = typename Base::CopyGmToL1Bias;
-            using CopyL1ToBT = typename Base::CopyL1ToBT;
-        };
-
-        using TileCopy = TileCopyOpt;
-
-        using BlockEpilogue = void;
-        using BlockScheduler30 = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 0>;
-        GemmCoord processSize{static_cast<uint32_t>(commUtil.m), static_cast<uint32_t>(commUtil.n),
-                              static_cast<uint32_t>(commUtil.k)};
-
         if (commUtil.m0 == 128) {
-            using L1TileShape = GemmShape<128, 256, 256>;
-            using L0TileShape = GemmShape<128, 256, 64>;
-            using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
-                                                        CType_, BiasType_, TileCopy>;
-            using MatmulKernel =
-                Gemm::Kernel::MatmulAlltoAllKernel<void, void, BlockMmadOpt, BlockEpilogue, BlockScheduler30, has_bias>;
-            MatmulKernel matmul_op;
-            typename MatmulKernel::Params params{processSize,
-                                                 reinterpret_cast<GM_ADDR>(aGM_),
-                                                 layoutA,
-                                                 reinterpret_cast<GM_ADDR>(bGM_),
-                                                 layoutB,
-                                                 reinterpret_cast<GM_ADDR>(biasGM_),
-                                                 reinterpret_cast<GM_ADDR>(gm_peer_mem),
-                                                 layoutC,
-                                                 commUtil.p_value,
-                                                 static_cast<int32_t>(rank_size),
-                                                 MAX_BLOCK_COUNT,
-                                                 TB};
-            matmul_op(params);
+            CatlassMatmulImpl<GemmShape<128, 256, 256>, GemmShape<128, 256, 64>>();
         } else {
-            using L1TileShape = GemmShape<256, 128, 256>;
-            using L0TileShape = GemmShape<256, 128, 64>;
-            using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_,
-                                                        CType_, BiasType_, TileCopy>;
-            using MatmulKernel =
-                Gemm::Kernel::MatmulAlltoAllKernel<void, void, BlockMmadOpt, BlockEpilogue, BlockScheduler30, has_bias>;
-            MatmulKernel matmul_op;
-            typename MatmulKernel::Params params{processSize,
-                                                 reinterpret_cast<GM_ADDR>(aGM_),
-                                                 layoutA,
-                                                 reinterpret_cast<GM_ADDR>(bGM_),
-                                                 layoutB,
-                                                 reinterpret_cast<GM_ADDR>(biasGM_),
-                                                 reinterpret_cast<GM_ADDR>(gm_peer_mem),
-                                                 layoutC,
-                                                 commUtil.p_value,
-                                                 static_cast<int32_t>(rank_size),
-                                                 MAX_BLOCK_COUNT,
-                                                 TB};
-            matmul_op(params);
+            CatlassMatmulImpl<GemmShape<256, 128, 256>, GemmShape<256, 128, 64>>();
         }
     }
 }
 
 template <TemplateMMA2AClass>
-__aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::QuantCatlassMatmul()
+template <typename L1TileShape, typename L0TileShape, typename EpilogueTileShape>
+__aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::QuantCatlassMatmulImpl()
 {
     using ArchTag = Arch::AtlasA2;
 
@@ -299,96 +290,54 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::QuantCatlassMatmul()
     GemmCoord problemShape{static_cast<uint32_t>(commUtil.m), static_cast<uint32_t>(commUtil.n),
                            static_cast<uint32_t>(commUtil.k)};
 
+    using TileRowBroadcastMul = Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
+
+    using TileRowBroadcastAdd = Epilogue::Tile::TileRowBroadcastAdd<ArchTag, RowBroadcastAddType, EpilogueTileShape>;
+
+    using TileBroadcastOneBlk =
+        Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType, EpilogueTileShape::ROW>;
+    using TileOneBlkColumnBroadcastMul =
+        Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
+
+    using QuantBlockEpilogue =
+        Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, CType_, ScaleType, PerTokenScaleType, BiasType_, DType,
+                                       TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
+                                       TileOneBlkColumnBroadcastMul, TileCopyDequant, EpilogueTileScheduler>;
+
+    // kernel level
+    using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_>;
+    using QuantMatmulKernel =
+        Gemm::Kernel::QuantMatmulAllToAllKernel<BlockMmadOpt, QuantBlockEpilogue, BlockScheduler, workspaceStages>;
+
+    QuantMatmulKernel quant_matmul_op;
+    typename QuantMatmulKernel::Params params{problemShape,
+                                              reinterpret_cast<GM_ADDR>(aGM_),
+                                              layoutA,
+                                              reinterpret_cast<GM_ADDR>(bGM_),
+                                              layoutB,
+                                              reinterpret_cast<GM_ADDR>(scaleGM_),
+                                              layoutScale,
+                                              reinterpret_cast<GM_ADDR>(pertokenScaleGM_),
+                                              layoutPerTokenScale,
+                                              reinterpret_cast<GM_ADDR>(biasGM_),
+                                              layoutBias,
+                                              reinterpret_cast<GM_ADDR>(gm_peer_mem),
+                                              layoutD,
+                                              reinterpret_cast<GM_ADDR>(workspaceGM_),
+                                              reinterpret_cast<GM_ADDR>(cGM_),
+                                              commUtil,
+                                              MAX_BLOCK_COUNT,
+                                              TB};
+    quant_matmul_op(params);
+}
+
+template <TemplateMMA2AClass>
+__aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::QuantCatlassMatmul()
+{
     if (commUtil.m0 == 128) {
-        using L1TileShape = GemmShape<128, 256, 512>;
-        using L0TileShape = GemmShape<128, 256, 128>;
-        using EpilogueTileShape = MatrixShape<32, 256>;
-        using TileRowBroadcastMul =
-            Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
-
-        using TileRowBroadcastAdd =
-            Epilogue::Tile::TileRowBroadcastAdd<ArchTag, RowBroadcastAddType, EpilogueTileShape>;
-
-        using TileBroadcastOneBlk =
-            Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType, EpilogueTileShape::ROW>;
-        using TileOneBlkColumnBroadcastMul =
-            Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
-
-        using QuantBlockEpilogue =
-            Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, CType_, ScaleType, PerTokenScaleType, BiasType_,
-                                           DType, TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
-                                           TileOneBlkColumnBroadcastMul, TileCopyDequant, EpilogueTileScheduler>;
-
-        // kernel level
-        using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_>;
-        using QuantMatmulKernel =
-            Gemm::Kernel::QuantMatmulAllToAllKernel<BlockMmadOpt, QuantBlockEpilogue, BlockScheduler, workspaceStages>;
-
-        QuantMatmulKernel quant_matmul_op;
-        typename QuantMatmulKernel::Params params{problemShape,
-                                                  reinterpret_cast<GM_ADDR>(aGM_),
-                                                  layoutA,
-                                                  reinterpret_cast<GM_ADDR>(bGM_),
-                                                  layoutB,
-                                                  reinterpret_cast<GM_ADDR>(scaleGM_),
-                                                  layoutScale,
-                                                  reinterpret_cast<GM_ADDR>(pertokenScaleGM_),
-                                                  layoutPerTokenScale,
-                                                  reinterpret_cast<GM_ADDR>(biasGM_),
-                                                  layoutBias,
-                                                  reinterpret_cast<GM_ADDR>(gm_peer_mem),
-                                                  layoutD,
-                                                  reinterpret_cast<GM_ADDR>(workspaceGM_),
-                                                  reinterpret_cast<GM_ADDR>(cGM_),
-                                                  commUtil,
-                                                  MAX_BLOCK_COUNT,
-                                                  TB};
-        quant_matmul_op(params);
+        QuantCatlassMatmulImpl<GemmShape<128, 256, 512>, GemmShape<128, 256, 128>, MatrixShape<32, 256>>();
     } else {
-        using L1TileShape = GemmShape<256, 128, 512>;
-        using L0TileShape = GemmShape<256, 128, 128>;
-        using EpilogueTileShape = MatrixShape<64, 128>;
-        using TileRowBroadcastMul =
-            Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
-
-        using TileRowBroadcastAdd =
-            Epilogue::Tile::TileRowBroadcastAdd<ArchTag, RowBroadcastAddType, EpilogueTileShape>;
-
-        using TileBroadcastOneBlk =
-            Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType, EpilogueTileShape::ROW>;
-        using TileOneBlkColumnBroadcastMul =
-            Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
-
-        using QuantBlockEpilogue =
-            Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, CType_, ScaleType, PerTokenScaleType, BiasType_,
-                                           DType, TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
-                                           TileOneBlkColumnBroadcastMul, TileCopyDequant, EpilogueTileScheduler>;
-
-        // kernel level
-        using BlockMmadOpt = Gemm::Block::BlockMmad<DispatchPolicy, L1TileShape, L0TileShape, AType_, BType_, CType_>;
-        using QuantMatmulKernel =
-            Gemm::Kernel::QuantMatmulAllToAllKernel<BlockMmadOpt, QuantBlockEpilogue, BlockScheduler, workspaceStages>;
-
-        QuantMatmulKernel quant_matmul_op;
-        typename QuantMatmulKernel::Params params{problemShape,
-                                                  reinterpret_cast<GM_ADDR>(aGM_),
-                                                  layoutA,
-                                                  reinterpret_cast<GM_ADDR>(bGM_),
-                                                  layoutB,
-                                                  reinterpret_cast<GM_ADDR>(scaleGM_),
-                                                  layoutScale,
-                                                  reinterpret_cast<GM_ADDR>(pertokenScaleGM_),
-                                                  layoutPerTokenScale,
-                                                  reinterpret_cast<GM_ADDR>(biasGM_),
-                                                  layoutBias,
-                                                  reinterpret_cast<GM_ADDR>(gm_peer_mem),
-                                                  layoutD,
-                                                  reinterpret_cast<GM_ADDR>(workspaceGM_),
-                                                  reinterpret_cast<GM_ADDR>(cGM_),
-                                                  commUtil,
-                                                  MAX_BLOCK_COUNT,
-                                                  TB};
-        quant_matmul_op(params);
+        QuantCatlassMatmulImpl<GemmShape<256, 128, 512>, GemmShape<256, 128, 128>, MatrixShape<64, 128>>();
     }
 }
 
@@ -409,9 +358,8 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Process()
 
                 int64_t token_total = static_cast<int64_t>(commUtil.p_value) * commUtil.m0 * commUtil.n;
                 if (commIdx == commCount - 1) {
-                    token_total = (commUtil.m -
-                                   static_cast<int64_t>(commIdx) * commUtil.m0 * commUtil.p_value) *
-                                  commUtil.n;
+                    token_total =
+                        (commUtil.m - static_cast<int64_t>(commIdx) * commUtil.m0 * commUtil.p_value) * commUtil.n;
                 }
                 int64_t token_per_rank = token_total / rank_size;
 
@@ -426,9 +374,9 @@ __aicore__ inline void MatmulAlltoAll<TemplateMMA2AFunc>::Process()
                 if (commUtil.aiv_idx == 0 && commUtil.core_idx < rank_size) {
                     int64_t src_offset = static_cast<int64_t>(flag_idx) * commUtil.gm_a_pingpong_size +
                                          commUtil.gm_a_pingpong_size / rank_size * rank;
-                    int64_t dst_offset = commUtil.core_idx * rank_offset +
-                                         static_cast<int64_t>(commIdx) * commUtil.m0 * commUtil.p_value *
-                                         (commUtil.n / rank_size);
+                    int64_t dst_offset = commUtil.core_idx * rank_offset + static_cast<int64_t>(commIdx) * commUtil.m0 *
+                                                                               commUtil.p_value *
+                                                                               (commUtil.n / rank_size);
                     commUtil.CopyGMToGM((__gm__ cType *)commUtil.buff[commUtil.core_idx] + src_offset,
                                         reinterpret_cast<__gm__ cType *>(cGM_) + dst_offset, token_per_rank);
                 }

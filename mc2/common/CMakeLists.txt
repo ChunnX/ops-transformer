@@ -16,12 +16,15 @@ if (BUILD_OPEN_PROJECT)
         op_host/op_tiling/hccl_performance_arch35.cpp
         op_host/op_tiling/matmul_formulaic_tiling.cpp
         op_host/op_tiling/matmul_performance.cpp
+        op_host/op_tiling/mc2_matmul_aiv_mode_common.cpp
         op_host/op_tiling/mc2_fit_based_balance_tiling.cpp
         utils/mc2_hcom_topo_info.cpp
+        utils/mc2_comm_algo_selector.cpp
         utils/mc2_log.cpp
         op_host/op_tiling/mc2_matmul_tiling_cfg.cpp
         utils/mc2_moe_utils.cpp
         op_host/op_tiling/mc2_tiling_utils.cpp
+        op_host/op_tiling/moe_ep_window_layout.cpp
         op_host/op_tiling/moe_tiling_base.cpp
         op_host/op_tiling/one_calc_two_comm_tiling.cpp
     )

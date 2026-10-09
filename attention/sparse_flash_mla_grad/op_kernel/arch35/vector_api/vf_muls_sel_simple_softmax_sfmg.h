@@ -17,7 +17,7 @@
 
 namespace AscendC {
 #ifndef __CCE_KT_TEST__
-using namespace MicroAPI;
+using namespace Reg;
 /* **************************************************************************************************
 
 MulsSelSimpleSoftMax *
@@ -33,13 +33,14 @@ param [in] src input LocalTensor
 param [in] tiling softmaxtiling
 */
 template <typename T1, typename T, uint32_t srcN, bool hasAtten, bool hasPse, bool isDeter, bool IsSparseIndicesExist>
-__simd_vf__ inline void
-MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLocalInt, uint64_t softmaxL1LocalInt, uint64_t sumLocalInt,
-                  uint64_t maxLocalInt, uint64_t maskLocalInt, uint64_t srcLocalIntTail, uint64_t dstLocalIntTail,
-                  uint64_t softmaxL1LocalIntTail, uint64_t dstLocalIntTailZero, uint64_t maskLocalIntTail,
-                  uint64_t pseLocalInt, uint64_t pseLocalIntTail, uint32_t tailSize, uint32_t pseStride,
-                  uint16_t repeatTimes, const T scale, const T minValue, uint32_t pseTailStride, uint32_t srcM,
-                  int64_t lseLocalInt, float pScalar)
+__simd_vf__ inline void MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLocalInt, uint64_t softmaxL1LocalInt,
+                                          uint64_t sumLocalInt, uint64_t maxLocalInt, uint64_t maskLocalInt,
+                                          uint64_t srcLocalIntTail, uint64_t dstLocalIntTail,
+                                          uint64_t softmaxL1LocalIntTail, uint64_t dstLocalIntTailZero,
+                                          uint64_t maskLocalIntTail, uint64_t pseLocalInt, uint64_t pseLocalIntTail,
+                                          uint32_t tailSize, uint32_t pseStride, uint16_t repeatTimes, const T scale,
+                                          const T minValue, uint32_t pseTailStride, uint32_t srcM, int64_t lseLocalInt,
+                                          float pScalar)
 {
     RegTensor<float> vregSrc;
     RegTensor<float> vregMax;
@@ -87,34 +88,33 @@ MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLocalInt, uint64_t softmaxL1
 
     // 64 * 128 max/sum: 64 * 8
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-        LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_BRC_B32>(
+        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_BRC_B32>(
             vregLse, ((__ubuf__ float *&)lseLocalInt), 1);
         // 1 -> 64 【64，128】 【64，2，64】 64
         for (uint16_t n = 0; n < repeatTimes; n++) {
-            LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ float *&)srcLocalInt), srcN);
+            LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ float *&)srcLocalInt), srcN);
             Muls(vregMuls, vregSrc, scale, pregFullExe);
             Sub(vregSub, vregMuls, vregLse, pregFullExe);
             Exp(vregExp, vregSub, pregFullExe);
             if constexpr (IsSparseIndicesExist) {
                 Add(vregReduceSumMuls, vregReduceSumMuls, vregExp, pregFullExe);
             }
-            StoreAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_NORM_B32>(
+            StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_NORM_B32>(
                 ((__ubuf__ float *&)dstLocalInt), vregExp, srcN, pregFullExe);
         }
         // tailLoop
-        LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail),
-                                                                  128);
+        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail), 128);
         Muls(vregMulsTail, vregSrcTail, scale, pregTailExe);
         Sub(vregSubTail, vregMulsTail, vregLse, pregTailExe);
         Exp(vregExpTail, vregSubTail, pregTailExe);
         if constexpr (IsSparseIndicesExist) {
             Add(vregReduceSumMulsTail, vregReduceSumMulsTail, vregExpTail, pregTailExe);
         }
-        StoreAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_NORM_B32>(
+        StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_NORM_B32>(
             ((__ubuf__ float *&)dstLocalIntTail), vregExpTail, 128, pregFullExe);
         if constexpr (isDeter == 1 && srcN == 64) { // 确定性计算需要将64~128的数据补零， 否则会有脏数据inf
             Duplicate(vregExp, 0);
-            StoreAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_NORM_B32>(
+            StoreAlign<float, Reg::PostLiteral::POST_MODE_UPDATE, Reg::StoreDist::DIST_NORM_B32>(
                 (__ubuf__ float *&)dstLocalIntTailZero, vregExp, 128, pregFullExe);
         }
     }
@@ -172,8 +172,7 @@ __aicore__ inline void MulsSelSimpleSoftMax(const LocalTensor<float> &dstTensor,
                                             uint32_t srcM, uint32_t realN = srcN, float pScalar = 1.0,
                                             uint32_t pseType = 1, uint32_t pse_layout_type = 1, float posShift = -1.0,
                                             float slopes = -1.0)
-{
-}
+{}
 #endif
 } // namespace AscendC
 

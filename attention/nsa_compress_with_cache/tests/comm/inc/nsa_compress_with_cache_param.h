@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <vector>
 #include "graph/types.h"
-#include "tests/utils/log.h"
+#include "tests/utils/tests_utils_log.h"
 #include "tests/utils/tensor.h"
 
 namespace ops::adv::tests::NsaCompressWithCache {
@@ -78,7 +78,8 @@ public:
 
     virtual bool Init();
 
-    template <class T> static bool InitTensor(Tensor &tensor, std::vector<T> &hostData)
+    template <class T>
+    static bool InitTensor(Tensor &tensor, std::vector<T> &hostData)
     {
         if (hostData.empty()) {
             return true;

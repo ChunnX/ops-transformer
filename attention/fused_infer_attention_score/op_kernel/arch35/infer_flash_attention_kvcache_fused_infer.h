@@ -478,15 +478,19 @@ __aicore__ inline void ComputeSouterParam(RunParamStr<isInfer> &runParam, const 
     }
 
     cubeSOuterOffset += (runParam.nextTokensPerBatch < 0) ? -runParam.nextTokensPerBatch : 0;
-    if constexpr (useDn) {
-        runParam.s1RealSizeAlign32 = ((runParam.s1RealSize + 31) >> 5 << 5); // 5 and 31 for 32align factor
-        runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 / 2;
+    if constexpr (ArchInfo::CV_RATIO == 1) {
+        runParam.halfS1RealSize = runParam.s1RealSize;
     } else {
-        runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
-        if (constInfo.s1Size > 1 && constInfo.isGqa &&
-            (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND)) {
-            runParam.halfS1RealSize =
-                (runParam.halfS1RealSize + constInfo.gSize - 1) / constInfo.gSize * constInfo.gSize;
+        if constexpr (useDn) {
+            runParam.s1RealSizeAlign32 = ((runParam.s1RealSize + 31) >> 5 << 5); // 5 and 31 for 32align factor
+            runParam.halfS1RealSize = runParam.s1RealSize <= 16 ? runParam.s1RealSize : runParam.s1RealSizeAlign32 / 2;
+        } else {
+            runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
+            if (constInfo.s1Size > 1 && constInfo.isGqa &&
+                (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND)) {
+                runParam.halfS1RealSize =
+                    (runParam.halfS1RealSize + constInfo.gSize - 1) / constInfo.gSize * constInfo.gSize;
+            }
         }
     }
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
@@ -584,6 +588,7 @@ __aicore__ inline void CalcAIVMlaAttentionOutOffset(RunParamStr<isInfer> &runPar
             curGIdx = (curS1Idx % 2 == 0) ? curGIdx : (uint32_t)s1TemplateType;
             curS1Idx /= 2;
         } else if (constInfo.gSize <= 32) {
+            curGIdx = runParam.cubeSOuterOffset % constInfo.gSize;
             curS1Idx = runParam.cubeSOuterOffset / constInfo.gSize;
         }
         if (constInfo.subBlockIdx == 1) {
@@ -660,6 +665,10 @@ __aicore__ inline void CalcAIVSoftmaxLseOffset(RunParamStr<isInfer> &runParam,
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2G +
                                             runParam.sOuterOffset / constInfo.gSize * constInfo.n2G +
                                             runParam.n2oIdx * constInfo.gSize;
+            } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
+                // BNSD merges rows in [G, S] order and copies LSE rows contiguously.
+                runParam.softmaxLseOffset =
+                    softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
             } else {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +
                                             runParam.sOuterOffset / constInfo.gSize;

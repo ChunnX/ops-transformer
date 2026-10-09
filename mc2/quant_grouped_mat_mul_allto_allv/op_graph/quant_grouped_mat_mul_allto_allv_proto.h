@@ -12,13 +12,12 @@
  * \file grouped_mat_mul_allto_allv_proto.h
  * \brief
  */
-#ifndef GROUPED_MAT_MUL_ALLTO_ALLV_PROTO_H_
-#define GROUPED_MAT_MUL_ALLTO_ALLV_PROTO_H_
+#ifndef QUANT_GROUPED_MAT_MUL_ALLTO_ALLV_PROTO_H_
+#define QUANT_GROUPED_MAT_MUL_ALLTO_ALLV_PROTO_H_
 
 #include "graph/operator_reg.h"
 
 namespace ge {
-
 
 /**
 * @brief Fusion of grouped matmul and alltoallv.
@@ -109,8 +108,6 @@ REG_OP(QuantGroupedMatMulAlltoAllv)
     .ATTR(comm_mode, String, "ai_cpu")
     .OP_END_FACTORY_REG(QuantGroupedMatMulAlltoAllv)
 
-
 } // namespace ge
 
-
-#endif // GROUPED_MAT_MUL_ALLTO_ALLV_PROTO_H_
+#endif // QUANT_GROUPED_MAT_MUL_ALLTO_ALLV_PROTO_H_

@@ -38,12 +38,15 @@ public:
     __aicore__ inline void ProcessUnDeter();
 
 private:
-    __aicore__ inline void ProcessGather(FagRunInfo &runInfo);
+    __aicore__ inline void ProcessGather(FagRunInfo &runInfo, bool fusion = false);
     __aicore__ inline void ProcessMm12(FagRunInfo &runInfo);
     __aicore__ inline void ProcessSoftmax(FagRunInfo &runInfo);
     __aicore__ inline void ProcessMm345(FagRunInfo &runInfo);
     __aicore__ inline void ProcessScatter(FagRunInfo &runInfo);
-    __aicore__ inline void DrainUnDeter(FagRunInfo runInfos[3], int64_t taskId);
+    __aicore__ inline void DrainUnDeter(FagRunInfo runInfos[3], int64_t taskId, int64_t pipeStart);
+    __aicore__ inline void FlushPendingDeter(FagRunInfo &runInfo);
+    __aicore__ inline void InitFirstDeterEpoch();
+    __aicore__ inline void LaunchDeterScatter(FagRunInfo &scatterRunInfo);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -56,16 +59,29 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 {}
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo &runInfo,
+                                                                                                 bool fusion)
 {
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
+        bool gather_scatter_fusion = false;
+        if (this->constInfo.isHeadNLe64 && fusion) {
+            gather_scatter_fusion = true;
+        }
+        if (gather_scatter_fusion == false) {
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
     }
     this->vecBlock.GatherKV(this->selectedKWorkSpaceGm, this->constInfo, runInfo);
     if ASCEND_IS_AIV {
         CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
     }
     this->vecBlock.CopyMaxSum(this->constInfo, runInfo, runInfo.commonRunInfo.taskId);
+    if ASCEND_IS_AIV {
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -172,16 +188,24 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             }
             return;
         }
-        // Use the opposite mm1/mm2 ping-pong slot so scatter does not clobber
-        // the current task's mm12 result that softmax still needs.
-        uint8_t scatterBufIdx = (runInfo.commonRunInfo.taskIdMod2 + 1) & 1;
-        LocalTensor<CALC_TYPE> dkInTensor = this->mm1ResBuf[scatterBufIdx].template Get<CALC_TYPE>();
-        LocalTensor<CALC_TYPE> dvInTensor = this->mm2ResBuf[scatterBufIdx].template Get<CALC_TYPE>();
+        // NLe64: ScatterAddHead64 uses dSOutQue/pOutQue, not mm1/mm2.
+        // N>64 2-stage: Scatter(t-1) overlaps Mm12(t) -> this task's own mm1/mm2 slot
+        // (softmax just finished with it; opposite slot is the live mm12).
         if ASCEND_IS_AIV {
             CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_C5_TO_V5_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
-        this->vecBlock.ScatterAdd(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                                  this->dvWorkSpaceGm, dkInTensor, dvInTensor, this->constInfo, runInfo);
+        if (!IS_DETER && this->constInfo.isHeadNLe64) {
+            SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+            this->vecBlock.ScatterAddHead64(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
+                                            this->dvWorkSpaceGm, this->constInfo, runInfo);
+        } else {
+            uint8_t scatterBufIdx = runInfo.commonRunInfo.taskIdMod2;
+            LocalTensor<CALC_TYPE> dkInTensor = this->mm1ResBuf[scatterBufIdx].template Get<CALC_TYPE>();
+            LocalTensor<CALC_TYPE> dvInTensor = this->mm2ResBuf[scatterBufIdx].template Get<CALC_TYPE>();
+            this->vecBlock.ScatterAdd(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
+                                      this->dvWorkSpaceGm, dkInTensor, dvInTensor, this->constInfo, runInfo);
+        }
         if ASCEND_IS_AIV {
             CrossCoreSetFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
@@ -200,88 +224,117 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::FlushPendingDeter(
+    FagRunInfo &runInfo)
+{
+    // 幂等：ProcessSoftmax / ProcessMm345 内部已按 TASK_C1C2 短路。
+    ProcessSoftmax(runInfo);
+    ProcessMm345(runInfo);
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::InitFirstDeterEpoch()
+{
+    // 第一笔 deter epoch：只建立 flag13 launch 许可，不消费 flag14，不打 flag11。
+    if ASCEND_IS_AIC {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+    } else {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+    }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::LaunchDeterScatter(
+    FagRunInfo &scatterRunInfo)
+{
+    // 正常/flush/补偿共用：先收上一 epoch 的 flag14，再开 flag11/13。
+    // Wait 在 launch scatter 前，不在 compute 入口，compute(N+1) 仍可与 scatter(N) overlap。
+    if ASCEND_IS_AIC {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SCATTER_TO_FIX_SYNC_FLAG);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_TO_FIX_SYNC_FLAG);
+        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
+    } else {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+        this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
+                                       this->dvWorkSpaceGm, this->constInfo, scatterRunInfo);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(SCATTER_TO_FIX_SYNC_FLAG);
+    }
+}
+
+template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessDeter()
 {
     this->AllocEventID();
     int64_t taskId = 0;
     int64_t sTaskId = 0;
-    FagRunInfo runInfos[2]; // for cv ping pong
+    int64_t deterTaskId = 0;
+    FagRunInfo runInfos[2];
     FagRunInfo deterRunInfos[2];
-    for (int32_t i = 0; i < this->processBS1ByCore; i++) {
+    const int64_t maxEpochs = this->GetMaxDeterEpochs();
+
+    // 所有核走同一条 deter epoch 序列。没有 token / sel=0 / TND padding 只跳过 compute，不删除 epoch。
+    for (int32_t i = 0; i < maxEpochs; i++) {
+        const int64_t taskIdBeforeEpoch = taskId;
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
-        this->GetTndSeqLen(this->t1Index, this->bIndex);
-        this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
-        for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
-            this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
-            for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount;
-                 this->blkCntOffset += this->constInfo.selectedCountOffset) {
-                if (taskId >= 0) {
-                    this->SetRunInfo(runInfos[taskId & 1], taskId, sTaskId);
+        const bool hasCompute = (this->cBlockIdx < this->usedCoreNum) && (this->t1Index < this->GetValidTndT1Size());
+        if (hasCompute) {
+            this->GetTndSeqLen(this->t1Index, this->bIndex);
+            for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
+                this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
+                for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount;
+                     this->blkCntOffset += this->constInfo.selectedCountOffset) {
+                    this->SetRunInfo(runInfos[taskId & 1], taskId, sTaskId, deterTaskId);
                     ProcessGather(runInfos[taskId & 1]);
                     ProcessMm12(runInfos[taskId & 1]);
+                    if (taskId > 0) {
+                        FlushPendingDeter(runInfos[(taskId + 1) & 1]);
+                    }
+                    taskId++;
                 }
-
-                if (taskId > 0) {
-                    ProcessSoftmax(runInfos[(taskId + 1) & 1]);
-                    ProcessMm345(runInfos[(taskId + 1) & 1]);
-                    ProcessScatter(runInfos[(taskId + 1) & 1]);
-                }
-                taskId++;
             }
         }
 
-        if (sTaskId == 0) {
-            if ASCEND_IS_AIC {
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-            } else {
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-            }
+        // 本 epoch 没有产生新 task 时，pipeline 不会靠下一次 Gather/Mm12 自然推进。
+        // 下面的 scatter 消费的是上一 epoch 的 mm4/mm5，必须先把 pending C3/C4/C5 补齐。
+        if (taskId == taskIdBeforeEpoch) {
+            FlushPendingDeter(runInfos[(taskId + 1) & 1]);
         }
 
-        if (sTaskId > 0) {
-            if ASCEND_IS_AIC {
-                CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-                CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-            } else {
-                CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                                               this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
-            }
+        this->SetDeterRunInfo(deterRunInfos[deterTaskId & 1], sTaskId, deterTaskId);
+        if (deterTaskId == 0) {
+            InitFirstDeterEpoch();
+        } else {
+            LaunchDeterScatter(deterRunInfos[(deterTaskId + 1) & 1]);
         }
+        deterTaskId++;
         sTaskId++;
     }
 
     if (runInfos[(taskId + 1) & 1].taskStep == TASK_C1C2) {
-        ProcessSoftmax(runInfos[(taskId + 1) & 1]);
-        ProcessMm345(runInfos[(taskId + 1) & 1]);
-        ProcessScatter(runInfos[(taskId + 1) & 1]);
-        if ASCEND_IS_AIC {
-            CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-            CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-        } else {
-            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-            this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                                           this->dvWorkSpaceGm, this->constInfo, deterRunInfos[(sTaskId + 1) & 1]);
-        }
+        FlushPendingDeter(runInfos[(taskId + 1) & 1]);
+    }
+    if (maxEpochs > 0) {
+        LaunchDeterScatter(deterRunInfos[(deterTaskId + 1) & 1]);
+        deterTaskId++;
     }
 
-    // 分核不均匀时部分核会少一个C核的全核同步
-    if (this->processBS1ByCore < this->tilingData->baseParams.formerCoreProcessNNum) {
-        if ASCEND_IS_AIC {
-            CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-            CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SCATTER_SYNC_FLAG);
-            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(16 + SCATTER_SYNC_FLAG);
-        } else {
-            CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-            this->SetDeterRunInfo(deterRunInfos[sTaskId & 1], sTaskId);
-            this->vecBlock.ScatterAddDeter(this->mm4ResWorkSpaceGm, this->mm5ResWorkSpaceGm, this->dkWorkSpaceGm,
-                                           this->dvWorkSpaceGm, this->constInfo, deterRunInfos[sTaskId & 1]);
+    if ASCEND_IS_AIV {
+        this->vecBlock.FinalizeDSinkAcc(this->constInfo);
+    }
+
+    // 不能依赖 CrossCore flag(11-14)：David 上非全核 barrier / set-wait 计数错配，
+    // 单 writer 会提前读到未写完的 slot（d_sinks 跨核 reduce 存在竞态）。
+    // SyncAll<false> 已在 entry 复用且验证可靠，此处复用同一硬 barrier
+    if constexpr (IS_SINKS) {
+        this->SyncALLCores();
+        if ASCEND_IS_AIV {
+            LocalTensor<CALC_TYPE> dSinkScratch = this->mm1ResBuf[0].template Get<CALC_TYPE>();
+            LocalTensor<CALC_TYPE> dSinkReduceOut = this->mm1ResBuf[1].template Get<CALC_TYPE>();
+            this->vecBlock.ReduceDSink(dSinkScratch, dSinkReduceOut, this->constInfo);
         }
     }
     this->FreeEventID();
@@ -289,23 +342,44 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::DrainUnDeter(FagRunInfo runInfos[3],
-                                                                                                int64_t taskId)
+                                                                                                int64_t taskId,
+                                                                                                int64_t pipeStart)
 {
-    if (taskId <= 0) {
+    int64_t n = taskId - pipeStart;
+    if (n <= 0) {
         return;
     }
-    if (taskId == 1) {
-        ProcessSoftmax(runInfos[0]);
-        ProcessMm345(runInfos[0]);
-        ProcessScatter(runInfos[0]);
+    // Match the original ProcessUnDeter pre-drain wait: in-loop ScatterAddHead64
+    // SetFlag MTE3_MTE2 without waiting; softmax of the last task needs MTE2.
+    if (n > 2) {
+        if ASCEND_IS_AIV {
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
+    }
+    if (n == 1) {
+        ProcessSoftmax(runInfos[pipeStart % 3]);
+        ProcessMm345(runInfos[pipeStart % 3]);
+        ProcessScatter(runInfos[pipeStart % 3]);
+        if ASCEND_IS_AIV {
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
         return;
     }
-    // taskId >= 2: remaining mm345/softmax/scatter of the last two tasks
-    ProcessMm345(runInfos[(taskId - 2) % 3]);
+    // n >= 2: remaining mm345/softmax/scatter of the last two tasks in this pipeline
     ProcessSoftmax(runInfos[(taskId - 1) % 3]);
-    ProcessScatter(runInfos[(taskId - 2) % 3]);
     ProcessMm345(runInfos[(taskId - 1) % 3]);
+    ProcessScatter(runInfos[(taskId - 2) % 3]);
+    if ASCEND_IS_AIV {
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    }
     ProcessScatter(runInfos[(taskId - 1) % 3]);
+    if ASCEND_IS_AIV {
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -313,37 +387,72 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 {
     this->AllocEventID();
     int64_t taskId = 0;
-    FagRunInfo runInfos[3];
+    int64_t pipeStart = 0;
+    FagRunInfo runInfos[4];
     for (int32_t i = 0; i < this->processBS1ByCore; i++) {
         this->t1Index = this->cBlockIdx + this->usedCoreNum * i;
+        if (!this->IsValidTndT1Index(this->t1Index)) {
+            break;
+        }
         this->GetTndSeqLen(this->t1Index, this->bIndex);
         for (this->n2Index = 0; this->n2Index < this->tilingData->baseParams.n2; this->n2Index++) {
             this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
             for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount;
                  this->blkCntOffset += this->constInfo.selectedCountOffset) {
                 FagRunInfo &cur = runInfos[taskId % 3];
-                this->SetRunInfo(cur, taskId, i);
-                if (unlikely(taskId == 0)) {
-                    ProcessGather(cur);
-                    ProcessMm12(cur);
-                } else if (unlikely(taskId == 1)) {
-                    ProcessGather(cur);
-                    ProcessMm12(cur);
-                    ProcessSoftmax(runInfos[0]);
+                this->SetRunInfo(cur, taskId, i, 0);
+                if (this->constInfo.isHeadNLe64) {
+                    // NLe64: keep 3-stage within the same S1. When S1 changes, drain
+                    // so Scatter(t-2) never overlaps a new S1's Gather/Mm12.
+                    if (!cur.isS1IdxNoChange && taskId > pipeStart) {
+                        DrainUnDeter(runInfos, taskId, pipeStart);
+                        pipeStart = taskId;
+                    }
+                    int64_t relId = taskId - pipeStart;
+                    if (unlikely(relId == 0)) {
+                        ProcessGather(cur);
+                        ProcessMm12(cur);
+                    } else if (unlikely(relId == 1)) {
+                        ProcessGather(cur);
+                        ProcessMm12(cur);
+                        ProcessSoftmax(runInfos[(taskId - 1) % 3]);
+                        ProcessMm345(runInfos[(taskId - 1) % 3]);
+                    } else {
+                        ProcessGather(cur, relId > 2);
+                        ProcessMm12(cur);
+                        ProcessSoftmax(runInfos[(taskId - 1) % 3]);
+                        ProcessMm345(runInfos[(taskId - 1) % 3]);
+                        ProcessScatter(runInfos[(taskId - 2) % 3]);
+                    }
                 } else {
-                    ProcessMm345(runInfos[(taskId - 2) % 3]);
+                    // N>64: 2-stage only. mm3 still reads selectedK GM so C3_TO_V0 is
+                    // posted after mm3, and that flag id is shared with V5_TO_C4 {7,9}.
+                    // 3-stage Gather(t)/Scatter(t-2) would Wait+Set the same id in one
+                    // AIV beat while cube Set+Wait it in Mm345, which deadlocks.
                     ProcessGather(cur);
                     ProcessMm12(cur);
-                    ProcessSoftmax(runInfos[(taskId - 1) % 3]);
-                    ProcessScatter(runInfos[(taskId - 2) % 3]);
+                    if (taskId > 0) {
+                        ProcessSoftmax(runInfos[(taskId - 1) % 3]);
+                        ProcessMm345(runInfos[(taskId - 1) % 3]);
+                        ProcessScatter(runInfos[(taskId - 1) % 3]);
+                    }
                 }
                 taskId++;
             }
         }
     }
-    DrainUnDeter(runInfos, taskId);
+
+    if (this->constInfo.isHeadNLe64) {
+        DrainUnDeter(runInfos, taskId, pipeStart);
+    } else if (taskId > 0) {
+        ProcessSoftmax(runInfos[(taskId - 1) % 3]);
+        ProcessMm345(runInfos[(taskId - 1) % 3]);
+        ProcessScatter(runInfos[(taskId - 1) % 3]);
+    }
+    if ASCEND_IS_AIV {
+        this->vecBlock.FinalizeDSinkAcc(this->constInfo);
+    }
     this->FreeEventID();
 }
 } // namespace SfagBaseApi
-
 #endif

@@ -18,7 +18,7 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../common/op_kernel/mc2_tiling_struct.h"
-#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
+#include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmv3_arch35_tiling_data.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 
 namespace Mc2Tiling {
@@ -26,9 +26,12 @@ namespace Mc2Tiling {
 constexpr uint32_t MAX_EXPERT_SIZE = 256U; // 最大通信域专家的数量
 constexpr uint32_t MAX_EP_RANK_SIZE = 64U; // 最大通信域内卡的数量
 
+// DFX 约定: dumpInfo 位于 mc2InitTiling/mc2CcTiling 之后，
+// 异常 dump 回调按调用方传入的 offsetof(..., dumpInfo) 偏移解析 DfxDumpInfo
 struct MatmulReduceScatterV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;
@@ -39,6 +42,7 @@ struct MatmulReduceScatterV2TilingData {
 struct QuantBatchMatmulV3ReduceScatterTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
+    Utils::DfxDumpInfo dumpInfo; // DFX dump 元数据(workspace/peermem 布局)
     RCSTiling param;
     uint32_t dataType;
     uint32_t debugMode;

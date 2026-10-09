@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -187,7 +187,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
           <li>layoutQ为TND时：(qT, qN, qD)</li>
         </ul>
       </td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>oriKvOptional（aclTensor*）</td>
@@ -233,7 +233,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>
         当前shape固定为[1]，对应per-tensor量化。
       </td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>oriKvDescaleOptional（aclTensor*）</td>
@@ -245,7 +245,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>
         当前shape固定为[1]，对应per-tensor量化。
       </td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cmpKvDescaleOptional（aclTensor*）</td>
@@ -257,7 +257,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>
         当前shape固定为[1]，对应per-tensor量化。
       </td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>oriSparseIndicesOptional（aclTensor*）</td>
@@ -273,7 +273,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
         </ul>
         其中oriKvK为对oriKvOptional的TopK稀疏选择数，范围支持大于0。
       </td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cmpSparseIndicesOptional（aclTensor*）</td>
@@ -289,7 +289,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
         </ul>
         其中cmpKvK为对cmpKvOptional的TopK稀疏选择数，范围支持大于0。
       </td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>oriBlockTableOptional（aclTensor*）</td>
@@ -299,7 +299,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>INT32</td>
       <td>ND</td>
       <td>(b, Ceil(oriKvSMax/oriKvBlockSize))</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cmpBlockTableOptional（aclTensor*）</td>
@@ -309,7 +309,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>INT32</td>
       <td>ND</td>
       <td>(b, Ceil(cmpKvSMax/cmpKvBlockSize))</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cuSeqlensQOptional（aclTensor*）</td>
@@ -319,7 +319,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>INT32</td>
       <td>ND</td>
       <td>(b+1,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cuSeqlensOriKvOptional（aclTensor*）</td>
@@ -329,7 +329,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>INT32</td>
       <td>ND</td>
       <td>(b+1,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
@@ -339,17 +339,17 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>INT32</td>
       <td>ND</td>
       <td>(b+1,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中q实际参与运算的token数。</td>
-      <td>当前暂不支持指定该参数。</td>
+      <td>可选传入，用于指定每个batch的q有效长度。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>sequsedOriKvOptional（aclTensor*）</td>
@@ -359,7 +359,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>sequsedCmpKvOptional（aclTensor*）</td>
@@ -369,17 +369,17 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>压缩KV余数，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；当cmpRatio!=1且cmpMaskMode为3场景必传。</td>
+      <td>可选输入。传入时shape必须为(B,)，第b个batch按cmp_len * cmpRatio + cmpResidualKvOptional[b]恢复压缩前KV长度；当cmpMaskMode为3且cmpRatio!=1场景必传，cmpMaskMode为0或cmpRatio等于1时不允许传入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(b,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>oriTopkLengthOptional（aclTensor*）</td>
@@ -394,7 +394,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
           <li>layoutQ为TND时：(qT, kvN)</li>
         </ul>
       </td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>cmpTopkLengthOptional（aclTensor*）</td>
@@ -409,7 +409,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
           <li>layoutQ为TND时：(qT, kvN)</li>
         </ul>
       </td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>sinksOptional（aclTensor*）</td>
@@ -419,7 +419,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(qN,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>metadataOptional（aclTensor*）</td>
@@ -429,7 +429,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>INT32</td>
       <td>ND</td>
       <td>(1024,)</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>quantMode（int64_t）</td>
@@ -524,8 +524,9 @@ aclnnStatus aclnnQuantSparseFlashMla(
     <tr>
       <td>topkValueMode（int64_t）</td>
       <td>输入</td>
-      <td>topk索引取值模式。</td>
-      <td>当前支持1。</td>
+      <td>topk索引取值模式。取值1时稀疏索引表示逻辑token索引；取值2时，PA_BBND布局的稀疏索引表示物理token offset，即physical_block_id * block_size + offset_in_block,
+        ，其中physical_block_id表示实际物理块号，offset_in_block表示实际物理块内的偏移。</td>
+      <td>支持1和2。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -702,11 +703,11 @@ aclnnStatus aclnnQuantSparseFlashMla(
   - aclnnQuantSparseFlashMlaMetadata和aclnnQuantSparseFlashMla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。其值不能大于sparseIndicesOptional的最后一维大小，且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。
   - 当oriMaskMode/cmpMaskMode为0时，oriKvK/cmpKvK需要大于等于oriTopkLengthOptional/cmpTopkLengthOptional的最大值。
-  - cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。
+  - cmpResidualKvOptional配合cmpRatio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmpRatio。仅当cmpMaskMode为3且cmpRatio!=1时允许传入；cmpMaskMode为0或cmpRatio等于1时不允许传入。
   - attnOutOut：tensor类型，公式中的输出，数据类型支持BFLOAT16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致。
   - returnSoftmaxLse=False时返回shape为[1]的值为0的tensor；returnSoftmaxLse=True时返回FLOAT32的log-sum-exp结果。
   - cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
-  - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续。
+  - 当layoutKv为PA_BBND时，oriKvOptional和cmpKvOptional支持0轴非连续，非连续Tensor的每一维的stride均不能为0。不支持其他非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
 
 ### 特性参数组
@@ -979,7 +980,6 @@ metadataOptional校验
             </td>
             <td>
                 <ul>
-                     <li>oriKvOptional稀疏场景下，cmpMaskMode为0和oriMaskMode必须为0</li>
                      <li>oriMaskMode支持0、3、4</li>
                  </ul>
              </td>
@@ -1000,7 +1000,6 @@ metadataOptional校验
              </td>
              <td>
                 <ul>
-                    <li>当oriKvOptional/cmpKvOptional/cmpSparseIndicesOptional/oriSparseIndicesOptional传入时，cmpMaskMode为0和oriMaskMode必须为0</li>
                     <li>cmpKv未传入时，cmpMaskMode必须为0 </li>
                 </ul>
             </td>
@@ -1315,7 +1314,7 @@ metadataOptional校验
             <td>
                 <ul>
                     <li>dtype支持INT32</li>
-                    <li>topK索引取值模式，默认值为1</li>
+                    <li>支持1和2</li>
                 </ul>
             </td>
             <td>可选属性，默认值为1</td>

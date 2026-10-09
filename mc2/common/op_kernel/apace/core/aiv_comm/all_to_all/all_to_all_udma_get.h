@@ -33,7 +33,7 @@ private:
     {}
 
     template <uint8_t BarrierMode>
-    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize)
+    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize, uint64_t bufferOffset)
     {
         if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
@@ -45,13 +45,14 @@ private:
             return;
         }
 
+        // 对端卡win区首地址 + slot offset + 当前slot指定卡的offset
         GM_ADDR srcAddr = reinterpret_cast<GM_ADDR>(this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_) +
-                          this->slotByteOffset_ + this->udmaCtx_->rankId * this->tileMaxByteSize_;
+                          bufferOffset + this->udmaCtx_->rankId * this->tileMaxByteSize_;
 
         GM_ADDR dstAddr = this->localAddr_ + targetRankId * this->chunkBytes_ + this->tileByteOffset_;
 
-        int32_t ret = this->comm_.ReadNbi(
-            static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr, tileByteSize);
+        int32_t ret = this->comm_.ReadNbi(static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]),
+                                          dstAddr, srcAddr, tileByteSize);
         ascendc_assert(ret == 0, "Urma readNbi failed, ret=%d, targetRankId=%u", ret, targetRankId);
     }
 

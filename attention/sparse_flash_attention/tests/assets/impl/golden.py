@@ -21,6 +21,24 @@ from pathlib import Path
 
 import torch
 
+try:
+    from ttk.utilities.container_utils import get_global_storage
+except Exception:
+    get_global_storage = None
+
+
+def _get_compare_method():
+    if get_global_storage is not None:
+        try:
+            return getattr(get_global_storage(), "compare_method", None)
+        except Exception:
+            return None
+    return None
+
+
+def compare_method_is_cross_check():
+    return _get_compare_method() == "cross_check"
+
 
 class CaseDataStore:
     """Keep the pytest-generated result paired with its TTK testcase."""
@@ -43,6 +61,16 @@ class CaseDataStore:
                 "before golden generation"
             )
         return data
+
+
+def peek_bench(testcase_name):
+    """取当前用例的三方标杆输出(cross_check 用)；未生成或未开启三方时返回 None。"""
+    if testcase_name is None:
+        return None
+    entry = CASE_DATA.cases.get(str(testcase_name))
+    if not entry:
+        return None
+    return entry.get("bench")
 
 
 CASE_DATA = CaseDataStore()
@@ -233,8 +261,9 @@ def normalize_pytest_outputs(outputs, query, return_softmax_lse):
         attn_fp32,
     ).to(dtype=query.dtype)
     if not bool(return_softmax_lse):
-        empty = torch.zeros(0, dtype=torch.float32)
-        return attn_out, empty, empty
+        # None 占位落盘为 golden_i_none marker，TTK 原生按抑制比较处理，
+        # 使 e2e prepare 的 bin 目录可被 aclnn replay 直接复用。
+        return attn_out, None, None
     return tuple(output.detach().cpu() for output in outputs)
 
 
@@ -255,6 +284,9 @@ def cpu_sparse_flash_attention_aclnn(*args, testcase_name=None, **kwargs):
 __golden__ = {
     "e2e": {
         "torch_npu.npu_sparse_flash_attention": "cpu_sparse_flash_attention",
+        "torch.ops.cann_ops_transformer.sparse_flash_attention": (
+            "cpu_sparse_flash_attention"
+        ),
     },
     "aclnn": {
         "aclnnSparseFlashAttention": "cpu_sparse_flash_attention_aclnn",

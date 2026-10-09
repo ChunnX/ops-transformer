@@ -127,8 +127,6 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
 {
     int64_t coreNum = aicoreParams_.aicNum;
     int64_t launchBlockDims = aicoreParams_.numBlocks;
-    int64_t inputDtypeSize = B16;
-    int64_t selectedS2 = tmpData.singleN;
 
     // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
     auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.numBlocks);
@@ -138,7 +136,8 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
                 return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
 
-    // 使用SyncAll，需要设置为batch mode模式，所有核同时启动，否则在多流方式下执行可能会卡死
+    // kernel 使用 CrossCoreSetFlag/CrossCoreWaitFlag 做全核 rendezvous（deterministic scatter 的
+    // flag11/flag12），必须 batch mode 让所有核同时启动，否则多流下会卡死
     context_->SetScheduleMode(1);
 
     // 系统预留
@@ -150,8 +149,15 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
     // selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
-    int64_t mm4WorkspaceLen = tmpData.selected_block_count * tmpData.d * B32;
-    int64_t mm5WorkspaceLen = tmpData.selected_block_count * tmpData.d1 * B32;
+    int64_t scatterWsRows =
+        tmpData.deterministic ?
+            std::min<int64_t>(tmpData.selected_block_count, CeilCommon(tmpData.s2, tmpData.selected_block_size)) *
+                tmpData.selected_block_size :
+            static_cast<int64_t>(tmpData.singleN);
+    baseParams_->set_scatterWsRows(scatterWsRows);
+
+    int64_t mm4WorkspaceLen = scatterWsRows * tmpData.d * B32;
+    int64_t mm5WorkspaceLen = scatterWsRows * tmpData.d1 * B32;
     mm4WorkspaceLen = AlignData(mm4WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
     mm5WorkspaceLen = AlignData(mm5WorkspaceLen, GM_ALIGN) * PING_PONG_BUFFER;
 
@@ -165,6 +171,15 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     workspaces[0] += (mm4WorkspaceLen + mm5WorkspaceLen) * coreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
+    // dSink 跨核 reduce 中间 workspace：仅确定性 + HAS_SINKS 时分配（每 AIC 1 slot=MAX_N1×FP32=512B，无 DB）
+    // 非 deter 走 AtomicAdd 直写 dSinksGm，无需中间 workspace（len=0）
+    int64_t usedCoreNum = baseParams_->get_usedCoreNum();
+    tmpData.dSinkWorkSpaceLen = 0;
+    if (tmpData.hasSinks && tmpData.deterministic) {
+        tmpData.dSinkWorkSpaceLen = AlignData(usedCoreNum * MAX_N1 * B32, GM_ALIGN);
+    }
+    workspaces[0] += tmpData.dSinkWorkSpaceLen;
+
     baseParams_->set_selectedKWorkSpaceOffset(0);
     int64_t workspaceOffsets = selectedKWorkspaceLen * coreNum;
     baseParams_->set_mm4ResWorkSpaceOffset(workspaceOffsets);
@@ -176,6 +191,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     postTilingData_->set_dkWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + dkWorkspaceLen;
     postTilingData_->set_dvWorkSpaceOffset(workspaceOffsets);
+    workspaceOffsets = workspaceOffsets + dvWorkspaceLen;
+    // dSinkWorkSpace 紧跟 dv 区之后（对齐 dq/dk/dv 偏移模式）
+    postTilingData_->set_dSinkWorkSpaceOffset(workspaceOffsets);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -188,14 +206,16 @@ uint64_t SparseFlashAttentionGradBs1Regbase::GetTilingKey() const
 
     OP_LOGI(context_,
             "SparseFlashAttentionGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], "
-            "S2TemplateNum[%ld], DTemplateNum[%ld], IsRope[%d], Deterministic[%d]",
+            "S2TemplateNum[%ld], DTemplateNum[%ld], IsRope[%d], Deterministic[%d], KvMerge[%d], HasSinks[%d]",
             inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d,
-            static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
+            static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic),
+            static_cast<uint8_t>(tmpData.kvMerge), static_cast<uint8_t>(tmpData.hasSinks));
     // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小
     tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd),
                                    static_cast<uint16_t>(tmpData.singleM), static_cast<uint16_t>(tmpData.singleN),
                                    static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.ropeEnable),
-                                   static_cast<uint8_t>(tmpData.deterministic));
+                                   static_cast<uint8_t>(tmpData.deterministic), static_cast<uint8_t>(tmpData.kvMerge),
+                                   static_cast<uint8_t>(tmpData.hasSinks));
 
     OP_LOGI(context_,
             "SparseFlashAttentionGrad DoTiling success, tilingkey is"
@@ -257,10 +277,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::DoCastTiling()
 
     uint32_t typeSize = B16;
     uint32_t usedCoreNum = aicoreParams_.numBlocks;
-    uint32_t coreNum = aicoreParams_.aicNum;
     constexpr uint32_t postNzCoexNode = 12;
-    constexpr uint32_t blockSize = 32;
-    constexpr uint32_t postNzReservedN = 1;
 
     uint32_t postUbBaseSize = 0;
     uint32_t qPostBaseNum = 0;
@@ -384,23 +401,34 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::CheckOutShapeInfo(const gert
 ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
 {
     OP_CHECK_IF(((context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY)) == nullptr) ||
-                 (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr) ||
-                 (context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE)) == nullptr)),
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query, key or value is nullptr."),
-                return ge::GRAPH_FAILED);
+                 (context_->GetInputShape(static_cast<size_t>(InputIndex::KEY)) == nullptr)),
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "InputShape of query or key is nullptr."), return ge::GRAPH_FAILED);
     // input
     // TND: query [t1, n1, d]   k [t2, n2, d]  v [t2, n2, d1]   dy/attentionIn [t1, n1, d1]
     // BSND: query [b, s1, n1, d]   k [b, s2, n2, d]  v [b, s2, n2, d1]   dy/attentionIn [b, s1, n1, d1]
     const gert::Shape &queryShape = context_->GetInputShape(static_cast<size_t>(InputIndex::QUERY))->GetStorageShape();
     const gert::Shape &keyShape = context_->GetInputShape(static_cast<size_t>(InputIndex::KEY))->GetStorageShape();
-    const gert::Shape &valueShape = context_->GetInputShape(static_cast<size_t>(InputIndex::VALUE))->GetStorageShape();
+    const gert::StorageShape *valueStorageShape =
+        context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::VALUE));
+    tmpData.kvMerge = (valueStorageShape == nullptr);
+    const gert::Shape &valueShape = tmpData.kvMerge ? keyShape : valueStorageShape->GetStorageShape();
     const gert::Shape &indicesShape =
         context_->GetInputShape(static_cast<size_t>(InputIndex::TOPK_INDICES))->GetStorageShape();
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));
+    // sinks 输入（OPTIONAL, FP32, [N1]）：判空只在这一处，编入 tiling key bit35 HasSinks
+    // 空 tensor（shape [0]）与 nullptr 等价，均视为无 sink（对应文档"为空时 sink 路径编译期消除"），
+    // 否则空 sinks 会因 shape [0] != [N1] 在校验处被拒。仅用于支持无 sink 性能/执行路径。
+    auto sinksTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SINKS));
+    bool sinksEmpty = false;
+    if (sinksTensor != nullptr) {
+        const gert::Shape &sinksShape = sinksTensor->GetStorageShape();
+        sinksEmpty = (sinksShape.GetDimNum() == 1 && sinksShape.GetDim(0) == 0);
+    }
+    tmpData.hasSinks = (sinksTensor != nullptr) && !sinksEmpty;
     const gert::Shape &dqShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &dkShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK))->GetStorageShape();
-    const gert::Shape &dvShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV))->GetStorageShape();
+    auto dvOutputShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV));
     tmpData.deterministic = (context_->GetDeterministic() == 1);
     uint32_t dimSize = queryShape.GetDimNum();
     int64_t dimDq = queryShape.GetDim(dimSize - 1);
@@ -410,18 +438,22 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     // attrs
     const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::INPUT_LAYOUT));
     auto selected_block_count = indicesShape.GetDim(dimSize - 1);
-    if (selected_block_count % 1024 != 0 || selected_block_count < 1024 || selected_block_count > 8192) {
+    if (selected_block_count != 1024 && selected_block_count != 2048 && selected_block_count != 2051 &&
+        selected_block_count != 3072 && selected_block_count != 4096 && selected_block_count != 5120 &&
+        selected_block_count != 6144 && selected_block_count != 7168 && selected_block_count != 8192) {
         OP_LOGE(context_,
-                "SparseFlashAttentionGrad only support selected_block_count [1024, 2048, 3072, 4096, 5120, 6144, 7168, "
-                "8192] now, but got selected_block_count=%ld.",
+                "SparseFlashAttentionGrad only support selected_block_count [1024, 2048, 2051, 3072, 4096, 5120, 6144, "
+                "7168, 8192] now, but got selected_block_count=%ld.",
                 selected_block_count);
         return ge::GRAPH_FAILED;
     }
-    auto selected_block_size =
-        *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
-    if (selected_block_size != 1) {
+    int64_t selected_block_size = static_cast<int64_t>(
+        *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE)));
+    std::set<int64_t> blockSizeSupportList = {1, 8, 16, 32, 64};
+    if (!blockSizeSupportList.count(selected_block_size)) {
         OP_LOGE(context_,
-                "SparseFlashAttentionGrad only support sparse_block_size [1] now, but got sparse_block_size=%ld.",
+                "SparseFlashAttentionGrad only support sparse_block_size [1, 8, 16, 32, 64] now, but got "
+                "sparse_block_size=%ld.",
                 selected_block_size);
         return ge::GRAPH_FAILED;
     }
@@ -435,7 +467,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
                 sparse_mode);
         return ge::GRAPH_FAILED;
     }
-    if (dimDq != D_SIZE && dimDq != D_SIZE) {
+    if (dimDq != D_SIZE || dimDk != D_SIZE || dimDq != dimDk) {
         OP_LOGE(context_,
                 "head_dim of Query[%ld] should be equal to head_dim of Key[%ld], and their value must be 512.", dimDq,
                 dimDk);
@@ -464,9 +496,26 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     if (status == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    status = CheckOutShapeInfo(valueShape, "value", dvShape, inputLayout);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
+    if (!tmpData.kvMerge) {
+        OP_CHECK_IF(dvOutputShape == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "OutputShape of dv is nullptr."),
+                    return ge::GRAPH_FAILED);
+        const gert::Shape &dvShape = dvOutputShape->GetStorageShape();
+        status = CheckOutShapeInfo(valueShape, "value", dvShape, inputLayout);
+        if (status == ge::GRAPH_FAILED) {
+            return ge::GRAPH_FAILED;
+        }
+    } else if (dvOutputShape != nullptr) {
+        const gert::Shape &dvShape = dvOutputShape->GetStorageShape();
+        int64_t dvSize = dvShape.GetDimNum() == 0 ? 0 : 1;
+        for (size_t i = 0; i < dvShape.GetDimNum(); ++i) {
+            dvSize *= dvShape.GetDim(i);
+        }
+        if (dvShape.GetDimNum() > 0 && dvSize > 0) {
+            OP_LOGE(
+                context_,
+                "When value is nullptr (kvMerge), dValueOut must also be nullptr/empty, but got a non-empty dv shape.");
+            return ge::GRAPH_FAILED;
+        }
     }
     if (qRopeTensor != nullptr && kRopeTensor != nullptr) {
         OP_LOGD(context_, "SparseFlashAttentionGrad qRope and kRope is not nullptr, rope is enabled.");
@@ -475,11 +524,14 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
             context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE))->GetStorageShape();
         const gert::Shape &kRopeShape =
             context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE))->GetStorageShape();
+        OP_CHECK_IF(context_->GetOutputShape(DIM_3) == nullptr || context_->GetOutputShape(DIM_4) == nullptr,
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "OutputShape of dq_rope or dk_rope is nullptr."),
+                    return ge::GRAPH_FAILED);
         const gert::Shape &dqRopeShape = context_->GetOutputShape(DIM_3)->GetStorageShape();
         const gert::Shape &dkRopeShape = context_->GetOutputShape(DIM_4)->GetStorageShape();
         auto qRopeDim = qRopeShape.GetDim(dimSize - 1);
         auto kRopeDim = kRopeShape.GetDim(dimSize - 1);
-        if (qRopeDim != DROPE_SIZE && kRopeDim != DROPE_SIZE) {
+        if (qRopeDim != DROPE_SIZE || kRopeDim != DROPE_SIZE) {
             OP_LOGE(context_,
                     "SparseFlashAttentionGrad headDim of qRope and kRope should be 64, but qRope[%ld], kRope[%ld].",
                     qRopeDim, kRopeDim);
@@ -494,7 +546,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
         if (status == ge::GRAPH_FAILED) {
             return ge::GRAPH_FAILED;
         }
-        status = CheckOutShapeInfo(qRopeShape, "key_rope", dqRopeShape, inputLayout);
+        status = CheckOutShapeInfo(kRopeShape, "key_rope", dkRopeShape, inputLayout);
         if (status == ge::GRAPH_FAILED) {
             return ge::GRAPH_FAILED;
         }
@@ -504,9 +556,18 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     }
 
     if (strcmp(inputLayout, TND_STR) == 0) {
-        const gert::Shape &actSeqQLenShape =
-            context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN))->GetStorageShape();
+        auto actSeqQLen = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_Q_LEN));
+        auto actSeqKVLen = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ACTUAL_SEQ_KV_LEN));
+        OP_CHECK_IF(
+            actSeqQLen == nullptr || actSeqKVLen == nullptr,
+            OPS_REPORT_VECTOR_INNER_ERR(opName, "When layout is TND, actSeqQLen / actSeqKVLen can not be nullptr"),
+            return ge::GRAPH_FAILED);
+        const gert::Shape &actSeqQLenShape = actSeqQLen->GetStorageShape();
+        const gert::Shape &actSeqKVLenShape = actSeqKVLen->GetStorageShape();
         tmpData.b = actSeqQLenShape.GetDim(DIM_0);
+        OP_CHECK_IF(tmpData.b == 0 || actSeqKVLenShape.GetDim(DIM_0) != tmpData.b,
+                    OPS_REPORT_VECTOR_INNER_ERR(opName, "actSeqQLen / actSeqKVLen shape is invalid for TND"),
+                    return ge::GRAPH_FAILED);
         tmpData.t1 = queryShape.GetDim(DIM_0);
         tmpData.t2 = keyShape.GetDim(DIM_0);
         tmpData.s1 = tmpData.t1;
@@ -540,6 +601,22 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
         return ge::GRAPH_FAILED;
     }
 
+    // sinks 校验：shape 必须为 [N1]（n1 = n2*g）、dtype 必须为 FP32
+    if (tmpData.hasSinks) {
+        const gert::Shape &sinksShape = sinksTensor->GetStorageShape();
+        if (sinksShape.GetDimNum() != 1 || sinksShape.GetDim(0) != n1) {
+            OP_LOGE(context_, "SparseFlashAttentionGrad sinks shape should be [N1]=[%ld], but got dimNum=%u dim0=%ld.",
+                    n1, static_cast<uint32_t>(sinksShape.GetDimNum()), sinksShape.GetDim(0));
+            return ge::GRAPH_FAILED;
+        }
+        auto sinksDtype = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SINKS))->GetDataType();
+        if (sinksDtype != ge::DT_FLOAT) {
+            OP_LOGE(context_, "SparseFlashAttentionGrad sinks dtype should be FP32, but got %d.",
+                    static_cast<int>(sinksDtype));
+            return ge::GRAPH_FAILED;
+        }
+    }
+
     baseParams_->set_b(tmpData.b);
     baseParams_->set_g(tmpData.g);
     OP_CHECK_IF(baseParams_->get_g() == 0, OP_LOGE(context_, "g is 0"), return ge::GRAPH_FAILED);
@@ -551,6 +628,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     baseParams_->set_d(dimDq + tmpData.ropeDim);
     baseParams_->set_d1(dimDq);
     baseParams_->set_selectedBlockCount(selected_block_count);
+    baseParams_->set_selectedBlockSize(selected_block_size);
     baseParams_->set_layout(tmpData.layout);
     baseParams_->set_sparseMode(sparse_mode);
     baseParams_->set_scaleValue(
@@ -561,8 +639,8 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     tmpData.dataTypeSize = B32;
     tmpData.queryType =
         static_cast<uint32_t>(context_->GetInputDesc(static_cast<size_t>(InputIndex::QUERY))->GetDataType());
-    tmpData.selected_block_count = selected_block_count;
-    tmpData.selected_block_size = selected_block_size;
+    tmpData.selected_block_count = static_cast<uint32_t>(selected_block_count);
+    tmpData.selected_block_size = static_cast<uint32_t>(selected_block_size);
 
     auto ret = CheckDtypeValid(context_);
     if (ret != ge::GRAPH_SUCCESS) {
@@ -575,7 +653,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     }
 
     if (ret != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context_, "SparseFlashAttentionGrad the input shpae of TND Layout is invalid.");
+        OP_LOGE(context_, "SparseFlashAttentionGrad the input shape of TND Layout is invalid.");
         return ge::GRAPH_FAILED;
     }
 

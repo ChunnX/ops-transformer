@@ -16,9 +16,10 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_SETUP_TILING_DATA_H
 #define MOE_DISTRIBUTE_COMBINE_SETUP_TILING_DATA_H
 
+#include <cstdint>
 #include <kernel_tiling/kernel_tiling.h>
 
-// 910C 950
+// A3 A5
 struct MoeDistributeCombineSetupInfo {
     uint32_t epWorldSize;
     uint32_t epRankId;
@@ -36,6 +37,10 @@ struct MoeDistributeCombineSetupInfo {
     uint32_t aivNum;
     uint64_t totalUbSize;
     uint64_t totalWinSize;
+    bool isMc2Context;
+    bool reserved1;
+    bool reserved2;
+    bool reserved3;
 };
 
 struct MoeDistributeCombineSetupTilingData {
@@ -44,7 +49,7 @@ struct MoeDistributeCombineSetupTilingData {
     MoeDistributeCombineSetupInfo moeDistributeCombineSetupInfo;
 };
 
-// 910C
+// A3
 struct BatchWriteItem {
     uint64_t type;
     uint32_t res1[5];

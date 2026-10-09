@@ -166,6 +166,8 @@ def call_npu(input_data):
     softmax_scale = tensor_input["softmax_scale"]
     ori_mask_mode = tensor_input["ori_mask_mode"]
     cmp_mask_mode = tensor_input["cmp_mask_mode"]
+    if input_data.get("template_run_mode") == "SWA":
+        cmp_mask_mode = 0
     ori_win_left = tensor_input["ori_win_left"]
     ori_win_right = tensor_input["ori_win_right"]
     layout_q = (
@@ -183,6 +185,9 @@ def call_npu(input_data):
     ori_topk_length = metadata_input.get("ori_topk_length")
     cmp_topk_length = metadata_input.get("cmp_topk_length")
     return_softmax_lse = params.get("return_softmax_lse")
+    topk_value_mode = tensor_input.get(
+        "topk_value_mode", params.get("topk_value_mode", 1)
+    )
 
     # 将需要上NPU的tensor搬到NPU
     if ori_sparse_indices is not None:
@@ -257,7 +262,7 @@ def call_npu(input_data):
         **({"ori_win_right": ori_win_right} if ori_win_right is not None else {}),
         layout_q=layout_q,
         layout_kv=layout_kv,
-        topk_value_mode=1,
+        topk_value_mode=topk_value_mode,
         return_softmax_lse=return_softmax_lse
         if return_softmax_lse is not None
         else False,
@@ -351,6 +356,8 @@ def call_npu_graph(input_data, device_id=0):
     softmax_scale = tensor_input["softmax_scale"]
     ori_mask_mode = tensor_input["ori_mask_mode"]
     cmp_mask_mode = tensor_input["cmp_mask_mode"]
+    if input_data.get("template_run_mode") == "SWA":
+        cmp_mask_mode = 0
     ori_win_left = tensor_input["ori_win_left"]
     ori_win_right = tensor_input["ori_win_right"]
     layout_q = (
@@ -445,7 +452,9 @@ def call_npu_graph(input_data, device_id=0):
         ori_win_right=ori_win_right,
         layout_q=layout_q,
         layout_kv=layout_kv,
-        topk_value_mode=1,
+        topk_value_mode=tensor_input.get(
+            "topk_value_mode", params.get("topk_value_mode", 1)
+        ),
         return_softmax_lse=return_softmax_lse
         if return_softmax_lse is not None
         else False,

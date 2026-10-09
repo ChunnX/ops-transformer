@@ -28,18 +28,17 @@ using AscendC::BLOCK_CUBE;
 using AscendC::GlobalTensor;
 using AscendC::IsSameType;
 using AscendC::ListTensorDesc;
-using AscendC::SyncAll;
 using GMMSQArch35Tiling::GMMSQWeightQuantTilingData;
 using namespace WeightQuantBatchMatmulV2::Arch35;
 
 namespace GMMSQWeightQuant {
-#define GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                                                     \
-    template <typename xType, typename wType, typename weightScaleType, typename xScaleType, typename yType,           \
-              typename yScaleType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig,                  \
+#define GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM \
+    template <typename xType, typename wType, typename weightScaleType, typename xScaleType, typename yType, \
+              typename yScaleType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig, \
               bool isSingleMultiSingle>
 
-#define GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS                                                                              \
-    GMMSQWeightQuantResplitController<xType, wType, weightScaleType, xScaleType, yType, yScaleType, wqmmConfig,        \
+#define GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS \
+    GMMSQWeightQuantResplitController<xType, wType, weightScaleType, xScaleType, yType, yScaleType, wqmmConfig, \
                                       vecConfig, isSingleMultiSingle>
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
@@ -109,13 +108,13 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADD
     yGm_ = reinterpret_cast<__gm__ yType *>(y);
     yScaleGm_ = reinterpret_cast<__gm__ yScaleType *>(yScale);
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
-    basicBlock_.Init(tiling_->groupSize, yGm_, yScaleGm_);
+    basicBlock_.Init();
 }
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
 {
-    uint32_t cubeBlockIdx = GetBlockIdx();
+    uint32_t cubeBlockIdx = AscendC::GetBlockIdx();
     if ASCEND_IS_AIV {
         cubeBlockIdx = cubeBlockIdx >> 1;
     }
@@ -138,7 +137,7 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
         if (ctrlParam.mSize > 0 && offsetParam[ctrlParam.processId].nSize > 0) {
             uint64_t mBlkNum = CeilDivide(ctrlParam.mSize, M_L1);
             ctrlParam.mL1Size = CeilDivide(ctrlParam.mSize, mBlkNum);
-            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, weightScaleGm_, xScaleGm_, yGm_, yScaleGm_,
+            basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, weightScaleGm_, xScaleGm_,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
             ctrlParam.curBasicBlockId =
                 cubeBlockIdx >= startBasicBlockId ? cubeBlockIdx : cubeBlockIdx + tiling_->coreNum;
@@ -158,8 +157,8 @@ __aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::Process()
 }
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
-__aicore__ inline void
-GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::InitOffsetParam(BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM])
+__aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::InitOffsetParam(
+    BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM])
 {
     offsetParam[0].kbL1Size = KB_L1_SIZE;
     offsetParam[0].kaL1Size = offsetParam[0].kbL1Size;
@@ -177,10 +176,9 @@ GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::InitOffsetParam(BasicBlockOffsetParam offsetP
 }
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
-__aicore__ inline void
-GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM],
-                                                     BasicBlockControlParam &ctrlParam, uint64_t basicBlockCount,
-                                                     uint64_t basicBlockSize)
+__aicore__ inline void GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::SplitNByMultiCore(
+    BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM], BasicBlockControlParam &ctrlParam,
+    uint64_t basicBlockCount, uint64_t basicBlockSize)
 {
     for (; ctrlParam.curBasicBlockId < ctrlParam.basicBlockLimit + basicBlockCount;
          ctrlParam.curBasicBlockId += tiling_->coreNum) {
@@ -262,8 +260,8 @@ __aicore__ inline uint64_t GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::GetSplitValueFromG
 }
 
 GMMSQ_WQ_RESPLIT_CONTROLLER_TEMPLATE_PARAM
-__aicore__ inline uint64_t
-GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::GetSwitchedProcessId(const BasicBlockControlParam &ctrlParam)
+__aicore__ inline uint64_t GMMSQ_WQ_RESPLIT_CONTROLLER_CLASS::GetSwitchedProcessId(
+    const BasicBlockControlParam &ctrlParam)
 {
     return 1 - ctrlParam.processId;
 }

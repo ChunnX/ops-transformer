@@ -67,11 +67,19 @@ protected:
         deterMode = 0;
         opName = nullptr;
         inputLayout = nullptr;
+        layoutQuery = nullptr;
+        layoutKey = nullptr;
         maxSeqlenK = 0;
     }
 
-    [[nodiscard]] gert::TilingContext *GetContext() { return context_; }
-    bool IsCapable() { return true; }
+    [[nodiscard]] gert::TilingContext *GetContext()
+    {
+        return context_;
+    }
+    bool IsCapable()
+    {
+        return true;
+    }
     // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
     ge::graphStatus GetPlatformInfo() override;
     // 2、获取INPUT/OUTPUT/ATTR信息
@@ -95,6 +103,8 @@ protected:
     bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &weightsShape,
                           const gert::Shape &topKShape, size_t layoutLen);
     bool AnalyzeDtype();
+    bool AnalyzeOptionalDtype();
+    bool CheckOptionalShape();
     bool AnalyzeLayout();
     int64_t GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size, int32_t s1Idx);
     bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray);

@@ -200,13 +200,26 @@ public:
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus GetPlatformInfo() override;
-    bool IsCapable() override { return false; }
-    ge::graphStatus DoOpTiling() override { return ge::GRAPH_SUCCESS; }
-    ge::graphStatus DoLibApiTiling() override { return ge::GRAPH_SUCCESS; }
-    ge::graphStatus GetWorkspaceSize() override { return ge::GRAPH_SUCCESS; }
+    bool IsCapable() override
+    {
+        return false;
+    }
+    ge::graphStatus DoOpTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+    ge::graphStatus DoLibApiTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+    ge::graphStatus GetWorkspaceSize() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
     uint64_t GetTilingKey() const override;
 
     ge::graphStatus CheckDtypeValid();
+    ge::graphStatus CheckFormatValid();
     ge::graphStatus CheckOutputShapeValid();
     ge::graphStatus CheckSupportRange();
     ge::graphStatus CheckUndGenQkvValid();

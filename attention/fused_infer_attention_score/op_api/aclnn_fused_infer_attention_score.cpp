@@ -25,25 +25,34 @@ extern "C" {
 
 namespace {
 aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
-    const aclTensor *query, const aclTensorList *key, const aclTensorList *value, const aclTensor *pseShift,
-    const aclTensor *attenMask, const aclIntArray *actualSeqLengths, const aclIntArray *actualSeqLengthsKv,
-    const aclTensor *deqScale1, const aclTensor *quantScale1, const aclTensor *deqScale2, const aclTensor *quantScale2,
-    const aclTensor *quantOffset2, const aclTensor *antiquantScale, const aclTensor *antiquantOffset,
-    const aclTensor *blockTable, const aclTensor *queryPaddingSize, const aclTensor *kvPaddingSize, int64_t numHeads,
-    double scaleValue, int64_t preTokens, int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads,
+    const aclTensor* query, const aclTensorList* key, const aclTensorList* value, const aclTensor* pseShift,
+    const aclTensor* attenMask, const aclIntArray* actualSeqLengths, const aclIntArray* actualSeqLengthsKv,
+    const aclTensor* deqScale1, const aclTensor* quantScale1, const aclTensor* deqScale2, const aclTensor* quantScale2,
+    const aclTensor* quantOffset2, const aclTensor* antiquantScale, const aclTensor* antiquantOffset,
+    const aclTensor* blockTable, const aclTensor* queryPaddingSize, const aclTensor* kvPaddingSize, int64_t numHeads,
+    double scaleValue, int64_t preTokens, int64_t nextTokens, char* inputLayout, int64_t numKeyValueHeads,
     int64_t sparseMode, int64_t innerPrecise, int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
-    const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor* attentionOut, const aclTensor* softmaxLse, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
-    L2_DFX_PHASE_1(aclnnFusedInferAttentionScore,
-                   DFX_IN(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv,
-                          deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2, antiquantScale,
-                          antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize, numHeads, scaleValue,
-                          preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise,
-                          blockSize, antiquantMode, softmaxLseFlag),
-                   DFX_OUT(attentionOut, softmaxLse));
+    const std::string executorCacheKey =
+        query != nullptr && attentionOut != nullptr && workspaceSize != nullptr && executor != nullptr ?
+            FiaPrepareExecutorCache(key, value,
+                                    {query, pseShift, attenMask, deqScale1, quantScale1, deqScale2, quantScale2,
+                                     quantOffset2, antiquantScale, antiquantOffset, blockTable, queryPaddingSize,
+                                     kvPaddingSize, attentionOut, softmaxLse}) :
+            std::string{};
+
+    L2_DFX_PHASE_1(
+        aclnnFusedInferAttentionScore,
+        DFX_IN(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv, deqScale1, quantScale1,
+               deqScale2, quantScale2, quantOffset2, antiquantScale, antiquantOffset, blockTable, queryPaddingSize,
+               kvPaddingSize, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
+               innerPrecise, blockSize, antiquantMode, softmaxLseFlag, executorCacheKey),
+        DFX_OUT(attentionOut, softmaxLse));
 
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
@@ -53,35 +62,40 @@ aclnnStatus aclnnFusedInferAttentionScoreGetWorkspaceSize(
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
-    const aclTensor *placeHolder = nullptr;
-    const aclTensor *tempTensor = nullptr;
-    FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
+    const aclTensor* placeHolder = nullptr;
+    const aclTensor* tempTensor = nullptr;
+    aclnnStatus ret = FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
+    if (ret != ACLNN_SUCCESS) {
+        return ret;
+    }
 
-    aclnnStatus ret = InnerFusedInferAttentionScoreGetWorkspaceSize(
+    ret = InnerFusedInferAttentionScoreGetWorkspaceSize(
         query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv, deqScale1, quantScale1, deqScale2,
         quantScale2, quantOffset2, antiquantScale, antiquantOffset, blockTable, queryPaddingSize, kvPaddingSize,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        numHeads, scaleValue, preTokens, nextTokens,
-        inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, 0, 0, 0, 0, 0,
-        attentionOut, placeHolder, workspaceSize, executor);
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode,
+        innerPrecise, blockSize, antiquantMode, softmaxLseFlag, 0, 0, 0, 0, 0, attentionOut, placeHolder, workspaceSize,
+        executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
     }
     return ret;
 }
 
-aclnnStatus aclnnFusedInferAttentionScore(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnFusedInferAttentionScore(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                           const aclrtStream stream)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "Interface aclnnFusedInferAttentionScore versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
     if (isFirstCall) {
-        OP_LOGW("aclnnFusedInferAttentionScore is scheduled to be deprecated in December 2026, "
-                "and will be replaced by the aclnnFusedInferAttentionScoreV5. "
-                "We apologize for any inconvenience caused and appreciate your timely migration to the new interface. ");
+        OP_LOGW(
+            "aclnnFusedInferAttentionScore is scheduled to be deprecated in December 2026, "
+            "and will be replaced by the aclnnFusedInferAttentionScoreV5. "
+            "We apologize for any inconvenience caused and appreciate your timely migration to the new interface. ");
         isFirstCall = false;
     }
     return InnerFusedInferAttentionScore(workspace, workspaceSize, executor, stream);

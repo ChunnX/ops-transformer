@@ -34,26 +34,30 @@ namespace QkvRmsNormRopeCacheWithKScale {
 
 using Params = QkvRmsNormRopeCacheWithKScaleCheck::QkvRmsNormRopeCacheWithKScaleParams;
 using QQuantMode = QkvRmsNormRopeCacheWithKScaleCheck::QQuantMode;
-using L0Outputs =
-    std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *>;
+using KQuantMode = QkvRmsNormRopeCacheWithKScaleCheck::KQuantMode;
+using L0Outputs = std::tuple<const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*, const aclTensor*>;
 
-static constexpr const char *DEFAULT_QKV_LAYOUT = "TND";
-static constexpr const char *DEFAULT_Q_OUT_LAYOUT = "NTD";
-static constexpr const char *Q_QUANT_MODE_PER_TOKEN_PER_HEAD = "PerTokenPerHead";
-static constexpr const char *Q_QUANT_MODE_NO_QUANT = "NoQuant";
-static constexpr const char *Q_QUANT_MODE_INVALID = "Invalid";
+static constexpr const char* DEFAULT_QKV_LAYOUT = "TND";
+static constexpr const char* DEFAULT_Q_OUT_LAYOUT = "NTD";
+static constexpr const char* Q_QUANT_MODE_PER_TOKEN_PER_HEAD = "PerTokenPerHead";
+static constexpr const char* Q_QUANT_MODE_NO_QUANT = "NoQuant";
+static constexpr const char* Q_QUANT_MODE_MX = "Mx";
+static constexpr const char* Q_QUANT_MODE_INVALID = "Invalid";
+static constexpr const char* K_QUANT_MODE_PER_TOKEN_PER_HEAD = "PerTokenPerHead";
+static constexpr const char* K_QUANT_MODE_MX = "Mx";
+static constexpr const char* K_QUANT_MODE_INVALID = "Invalid";
 
-static const char *GetLayoutQkvOrDefault(const char *layout)
+static const char* GetLayoutQkvOrDefault(const char* layout)
 {
     return layout == nullptr || layout[0] == '\0' ? DEFAULT_QKV_LAYOUT : layout;
 }
 
-static const char *GetLayoutQOutOrDefault(const char *layout)
+static const char* GetLayoutQOutOrDefault(const char* layout)
 {
     return layout == nullptr || layout[0] == '\0' ? DEFAULT_Q_OUT_LAYOUT : layout;
 }
 
-static QQuantMode ParseQQuantMode(const char *qQuantMode)
+static QQuantMode ParseQQuantMode(const char* qQuantMode)
 {
     if (qQuantMode == nullptr || qQuantMode[0] == '\0' ||
         std::strcmp(qQuantMode, Q_QUANT_MODE_PER_TOKEN_PER_HEAD) == 0) {
@@ -62,29 +66,63 @@ static QQuantMode ParseQQuantMode(const char *qQuantMode)
     if (std::strcmp(qQuantMode, Q_QUANT_MODE_NO_QUANT) == 0) {
         return QQuantMode::NO_QUANT;
     }
+    if (std::strcmp(qQuantMode, Q_QUANT_MODE_MX) == 0) {
+        return QQuantMode::MX_QUANT;
+    }
     return QQuantMode::INVALID;
 }
 
-static const char *QQuantModeToString(QQuantMode qQuantMode)
+static KQuantMode ParseKQuantMode(const char* kQuantMode)
+{
+    if (kQuantMode == nullptr || kQuantMode[0] == '\0' ||
+        std::strcmp(kQuantMode, K_QUANT_MODE_PER_TOKEN_PER_HEAD) == 0) {
+        return KQuantMode::PER_TOKEN_PER_HEAD;
+    }
+    if (std::strcmp(kQuantMode, K_QUANT_MODE_MX) == 0) {
+        return KQuantMode::MX_QUANT;
+    }
+    return KQuantMode::INVALID;
+}
+
+static const char* QQuantModeToString(QQuantMode qQuantMode)
 {
     switch (qQuantMode) {
         case QQuantMode::PER_TOKEN_PER_HEAD:
             return Q_QUANT_MODE_PER_TOKEN_PER_HEAD;
         case QQuantMode::NO_QUANT:
             return Q_QUANT_MODE_NO_QUANT;
+        case QQuantMode::MX_QUANT:
+            return Q_QUANT_MODE_MX;
         default:
             return Q_QUANT_MODE_INVALID;
     }
 }
 
-static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
-                         const aclTensor *cosSin, const aclTensor *slotMapping, aclTensor *kCache, aclTensor *vCache,
-                         aclTensor *kScaleCache, const aclTensor *queryStartLoc, const aclTensor *seqLens,
-                         const aclTensor *rotationOptional, const aclTensor *vScaleOptional,
-                         const aclTensor *mropePositionOptional, const aclIntArray *headNums, const char *layoutQkv,
-                         const char *layoutQOut, float epsilon, const aclIntArray *mropeSectionOptional,
-                         QQuantMode qQuantMode, aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize,
-                         aclOpExecutor **executor)
+static const char* KQuantModeToString(KQuantMode kQuantMode)
+{
+    switch (kQuantMode) {
+        case KQuantMode::PER_TOKEN_PER_HEAD:
+            return K_QUANT_MODE_PER_TOKEN_PER_HEAD;
+        case KQuantMode::MX_QUANT:
+            return K_QUANT_MODE_MX;
+        default:
+            return K_QUANT_MODE_INVALID;
+    }
+}
+
+static bool IsQScaleRequired(QQuantMode qQuantMode)
+{
+    return qQuantMode == QQuantMode::PER_TOKEN_PER_HEAD || qQuantMode == QQuantMode::MX_QUANT;
+}
+
+static Params MakeParams(const aclTensor* qkv, const aclTensor* qGamma, const aclTensor* kGamma,
+                         const aclTensor* cosSin, const aclTensor* slotMapping, aclTensor* kCache, aclTensor* vCache,
+                         aclTensor* kScaleCache, const aclTensor* queryStartLoc, const aclTensor* seqLens,
+                         const aclTensor* rotationOptional, const aclTensor* vScaleOptional,
+                         const aclTensor* mropePositionOptional, const aclIntArray* headNums, const char* layoutQkv,
+                         const char* layoutQOut, float epsilon, const aclIntArray* mropeSectionOptional,
+                         QQuantMode qQuantMode, KQuantMode kQuantMode, aclTensor* qOut, aclTensor* qScale,
+                         uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     Params params;
     params.qkv = qkv;
@@ -106,6 +144,7 @@ static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const ac
     params.epsilon = epsilon;
     params.mropeSectionOptional = mropeSectionOptional;
     params.qQuantMode = qQuantMode;
+    params.kQuantMode = kQuantMode;
     params.qOut = qOut;
     params.qScale = qScale;
     params.workspaceSize = workspaceSize;
@@ -113,14 +152,14 @@ static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const ac
     return params;
 }
 
-static aclnnStatus MakeInputContiguous(const aclTensor *&tensor, aclOpExecutor *executor)
+static aclnnStatus MakeInputContiguous(const aclTensor*& tensor, aclOpExecutor* executor)
 {
     tensor = l0op::Contiguous(tensor, executor);
     CHECK_RET(tensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus MakeOptionalInputContiguous(const aclTensor *&tensor, aclOpExecutor *executor)
+static aclnnStatus MakeOptionalInputContiguous(const aclTensor*& tensor, aclOpExecutor* executor)
 {
     if (tensor == nullptr) {
         return ACLNN_SUCCESS;
@@ -128,7 +167,7 @@ static aclnnStatus MakeOptionalInputContiguous(const aclTensor *&tensor, aclOpEx
     return MakeInputContiguous(tensor, executor);
 }
 
-static aclnnStatus ContiguousInputs(Params &params, aclOpExecutor *executor)
+static aclnnStatus ContiguousInputs(Params& params, aclOpExecutor* executor)
 {
     CHECK_RET(MakeInputContiguous(params.qkv, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeInputContiguous(params.qGamma, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
@@ -144,7 +183,7 @@ static aclnnStatus ContiguousInputs(Params &params, aclOpExecutor *executor)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckParams(const Params &params)
+static aclnnStatus CheckParams(const Params& params)
 {
     QkvRmsNormRopeCacheWithKScaleCheck::QkvRmsNormRopeCacheWithKScaleChecker checker;
     aclnnStatus checkRet = checker.CheckParams(params);
@@ -152,7 +191,7 @@ static aclnnStatus CheckParams(const Params &params)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckL0Outputs(const L0Outputs &outputs, bool qScaleRequired)
+static aclnnStatus CheckL0Outputs(const L0Outputs& outputs, bool qScaleRequired)
 {
     CHECK_RET(std::get<0>(outputs) != nullptr, ACLNN_ERR_INNER_NULLPTR);
     if (qScaleRequired) {
@@ -164,7 +203,7 @@ static aclnnStatus CheckL0Outputs(const L0Outputs &outputs, bool qScaleRequired)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CreateCacheViews(Params &params, aclOpExecutor *executor)
+static aclnnStatus CreateCacheViews(Params& params, aclOpExecutor* executor)
 {
     params.kCache = executor->CreateView(params.kCache, params.kCache->GetViewShape(), params.kCache->GetStorageShape(),
                                          params.kCache->GetViewStrides(), params.kCache->GetViewOffset());
@@ -181,23 +220,38 @@ static aclnnStatus CreateCacheViews(Params &params, aclOpExecutor *executor)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus AddQkvRmsNormRopeCacheWithKScaleTask(Params &params, aclOpExecutor *executor)
+static aclnnStatus AddQkvRmsNormRopeCacheWithKScaleTask(Params& params, aclOpExecutor* executor)
 {
     CHECK_RET(ContiguousInputs(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(CreateCacheViews(params, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
-    // Scene selection is defined by the paired M-RoPE inputs. Keep the public
-    // qScale argument unchanged; the L0 wrapper owns any internal placeholder
-    // needed to preserve the fixed launcher ABI.
-    const bool isMrope = params.mropePositionOptional != nullptr && params.mropeSectionOptional != nullptr;
     const int64_t qOutDtype = static_cast<int64_t>(params.qOut->GetDataType());
-    auto l0Outs = l0op::QkvRmsNormRopeCacheWithKScale(
+    auto [l0Status, qOut, qScale, kCache, vCache, kScaleCache] = l0op::QkvRmsNormRopeCacheWithKScale(
         params.qkv, params.qGamma, params.kGamma, params.cosSin, params.slotMapping, params.kCache, params.vCache,
         params.kScaleCache, params.queryStartLoc, params.seqLens, params.rotationOptional, params.vScaleOptional,
         params.mropePositionOptional, params.headNums, params.layoutQkv, params.layoutQOut, params.epsilon,
-        params.mropeSectionOptional, QQuantModeToString(params.qQuantMode), qOutDtype, params.qOut, params.qScale,
-        executor);
-    return CheckL0Outputs(l0Outs, !isMrope);
+        params.mropeSectionOptional, QQuantModeToString(params.qQuantMode), KQuantModeToString(params.kQuantMode),
+        qOutDtype, params.qOut, params.qScale, executor);
+    CHECK_RET(l0Status == ACLNN_SUCCESS, l0Status);
+    const L0Outputs l0Outs = {qOut, qScale, kCache, vCache, kScaleCache};
+    return CheckL0Outputs(l0Outs, IsQScaleRequired(params.qQuantMode));
+}
+
+static aclnnStatus GetWorkspaceSize(Params& params)
+{
+    aclnnStatus checkRet = CheckParams(params);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
+    aclOpExecutor* l0Executor = uniqueExecutor.get();
+    aclnnStatus addTaskRet = AddQkvRmsNormRopeCacheWithKScaleTask(params, l0Executor);
+    CHECK_RET(addTaskRet == ACLNN_SUCCESS, addTaskRet);
+
+    *params.workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(params.executor);
+    return ACLNN_SUCCESS;
 }
 
 } // namespace QkvRmsNormRopeCacheWithKScale
@@ -207,44 +261,34 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
-    const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma, const aclTensor *cosSin,
-    const aclTensor *slotMapping, aclTensor *kCacheRef, aclTensor *vCacheRef, aclTensor *kScaleCacheRef,
-    const aclTensor *queryStartLocOptional, const aclTensor *seqLensOptional, const aclTensor *rotationOptional,
-    const aclTensor *vScaleOptional, const aclTensor *mropePositionOptional, const aclIntArray *headNums,
-    const char *layoutQkv, const char *layoutQOut, float epsilon, const aclIntArray *mropeSectionOptional,
-    const char *qQuantMode, aclTensor *qOut, aclTensor *qScaleOptional, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor* qkv, const aclTensor* qGamma, const aclTensor* kGamma, const aclTensor* cosSin,
+    const aclTensor* slotMapping, aclTensor* kCacheRef, aclTensor* vCacheRef, aclTensor* kScaleCacheRef,
+    const aclTensor* queryStartLocOptional, const aclTensor* seqLensOptional, const aclTensor* rotationOptional,
+    const aclTensor* vScaleOptional, const aclTensor* mropePositionOptional, const aclIntArray* headNums,
+    const char* layoutQkv, const char* layoutQOut, float epsilon, const aclIntArray* mropeSectionOptional,
+    const char* qQuantMode, const char* kQuantMode, aclTensor* qOut, aclTensor* qScaleOptional, uint64_t* workspaceSize,
+    aclOpExecutor** executor)
 {
-    const char *layoutQkvAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQkvOrDefault(layoutQkv);
-    const char *layoutQOutAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQOutOrDefault(layoutQOut);
-    const auto parsedQQuantMode = QkvRmsNormRopeCacheWithKScale::ParseQQuantMode(qQuantMode);
     L2_DFX_PHASE_1(
         aclnnQkvRmsNormRopeCacheWithKScale,
         DFX_IN(qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
-               seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
-               layoutQOutAttr, epsilon, mropeSectionOptional, qQuantMode),
+               seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkv,
+               layoutQOut, epsilon, mropeSectionOptional, qQuantMode, kQuantMode),
         DFX_OUT(qOut, qScaleOptional, kCacheRef, vCacheRef, kScaleCacheRef));
 
+    const char* layoutQkvAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQkvOrDefault(layoutQkv);
+    const char* layoutQOutAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQOutOrDefault(layoutQOut);
+    const auto parsedQQuantMode = QkvRmsNormRopeCacheWithKScale::ParseQQuantMode(qQuantMode);
+    const auto parsedKQuantMode = QkvRmsNormRopeCacheWithKScale::ParseKQuantMode(kQuantMode);
     auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(
         qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
         seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
-        layoutQOutAttr, epsilon, mropeSectionOptional, parsedQQuantMode, qOut, qScaleOptional, workspaceSize, executor);
-    aclnnStatus checkRet = QkvRmsNormRopeCacheWithKScale::CheckParams(params);
-    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-
-    auto uniqueExecutor = CREATE_EXECUTOR();
-    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
-    aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(QkvRmsNormRopeCacheWithKScale::AddQkvRmsNormRopeCacheWithKScaleTask(params, l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-
-    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
-    uniqueExecutor.ReleaseTo(executor);
-    return ACLNN_SUCCESS;
+        layoutQOutAttr, epsilon, mropeSectionOptional, parsedQQuantMode, parsedKQuantMode, qOut, qScaleOptional,
+        workspaceSize, executor);
+    return QkvRmsNormRopeCacheWithKScale::GetWorkspaceSize(params);
 }
 
-aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                                aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnQkvRmsNormRopeCacheWithKScale);

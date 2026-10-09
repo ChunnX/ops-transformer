@@ -19,7 +19,7 @@
 
 #include "quant_matmul_tiling_base.h"
 
-template <mm::DataType aDataType, mm::DataType bDataType>
+template <mm::DataType aDataType, mm::DataType bDataType, mm::BiasDataType biasDtype>
 class QuantMatmulTilingSwat : public QuantMatmulTilingBase<aDataType, bDataType> {
 public:
     QuantMatmulTilingSwat()
@@ -27,10 +27,28 @@ public:
     {}
     ~QuantMatmulTilingSwat() override = default;
 
-    void SetMaxBaseM(uint64_t v) { maxBaseM_ = v; }
+    void EnableBaseMHalving(bool enable)
+    {
+        enableBaseMHalving_ = enable;
+    }
+
+    void SetMaxBaseM(uint64_t v)
+    {
+        maxBaseM_ = v;
+    }
+
+    // biasDtype is the class template parameter and must match the kernel-side
+    // BiasType instantiation (fp32/fp16/bf16).
+    void SetBiasInfo(bool hasBias)
+    {
+        hasBias_ = hasBias;
+    }
 
 protected:
-    const char *TilingName() const override { return "swat"; }
+    const char *TilingName() const override
+    {
+        return "swat";
+    }
 
     void DoOpTiling(QuantMatmulTilingData &tilingData) override
     {
@@ -54,8 +72,13 @@ private:
     using Base::runInfo_;
     using Base::isOpenOptimize_;
     using Base::enableMTailAlign_;
+    using Base::enableAdjustBasicBlock_;
 
+    static constexpr uint64_t ALIGN_SPLIT_MAX_INCREMENT = 2UL;
+
+    bool enableBaseMHalving_{false};
     uint64_t maxBaseM_{0};
+    bool hasBias_{false};
 
 private:
     uint32_t CalcScaleKL1() const
@@ -121,8 +144,9 @@ private:
 
                 if (preSplit < preSplitMax &&
                     CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum) {
-                    uint64_t nextTileCount =
-                        CalcAlignedSplit(preSplit, secSplit, preSplitMax, preIsM ? runInfo_.mTailSize : 0);
+                    uint64_t nextTileCount = CalcAlignedSplit(preSplit, secSplit, preSplitMax,
+                                                              preIsM ? runInfo_.mTailSize : runInfo_.nTailSize,
+                                                              preIsM ? runInfo_.baseM : 0UL);
                     if (nextTileCount > 0) {
                         newPreTile = nextTileCount;
                     }
@@ -130,8 +154,9 @@ private:
 
                 if (secSplit < secSplitMax &&
                     CalUsedCoreNum(runInfo_, newPreTile, secSplit + 1UL) <= platformInfo_.aicNum) {
-                    uint64_t nextTileCount =
-                        CalcAlignedSplit(secSplit, newPreTile, secSplitMax, !preIsM ? runInfo_.mTailSize : 0);
+                    uint64_t nextTileCount = CalcAlignedSplit(secSplit, newPreTile, secSplitMax,
+                                                              preIsM ? runInfo_.nTailSize : runInfo_.mTailSize,
+                                                              preIsM ? 0UL : runInfo_.baseM);
                     if (nextTileCount > 0) {
                         newSecTile = nextTileCount;
                     }
@@ -177,9 +202,13 @@ private:
             Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseM;
         uint64_t baseScaleBSize =
             Align(CeilDiv(runInfo_.baseK, MX_GROUP_SIZE), TILING_MXFP_MULTI_BASE_SIZE) * runInfo_.baseN;
+        // Bias occupies DB_SIZE ping-pong L1 buffers next to the scale windows.
+        runInfo_.biasL1Size =
+            hasBias_ ? DB_SIZE * Align(runInfo_.baseN, CUBE_BLOCK) * mm::GetBiasDataSize<biasDtype>() : 0UL;
+        uint64_t availL1Size = platformInfo_.l1Size - runInfo_.biasL1Size;
         uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
-        uint64_t depthInit = GetDepthA1B1(runInfo_, platformInfo_.l1Size, baseL1Size, 1UL);
-        uint64_t leftL1SizeByDepthInit = platformInfo_.l1Size - depthInit * baseL1Size;
+        uint64_t depthInit = GetDepthA1B1(runInfo_, availL1Size, baseL1Size, 1UL);
+        uint64_t leftL1SizeByDepthInit = availL1Size - depthInit * baseL1Size;
         uint64_t depthASec =
             GetDepthA1B1(runInfo_, leftL1SizeByDepthInit, (baseASize + baseScaleASize) * depthInit, depthInit);
         uint64_t depthBSec =
@@ -188,7 +217,7 @@ private:
         // budget cannot sustain the larger common depth on both sides.
         runInfo_.depthA1 = std::max(depthASec, depthBSec);
         runInfo_.depthB1 = runInfo_.depthA1;
-        if (runInfo_.depthA1 * baseL1Size > platformInfo_.l1Size) {
+        if (runInfo_.depthA1 * baseL1Size > availL1Size) {
             runInfo_.depthA1 = depthASec >= depthBSec ? depthASec : depthInit;
             runInfo_.depthB1 = depthASec < depthBSec ? depthBSec : depthInit;
         }
@@ -211,7 +240,7 @@ private:
         uint64_t nMaxtile = CeilDiv(args_.n, baseNAlignNum);
         uint64_t tempBaseM = runInfo_.baseM;
         uint64_t tempBaseN = runInfo_.baseN;
-        uint64_t coreNumMN = platformInfo_.aicNum;
+        uint64_t coreNumMN = platformInfo_.aicNum / args_.batch;
 
         if (mMaxtile * nMaxtile >= coreNumMN || (!args_.transA && args_.transB)) {
             uint64_t mCnt = CeilDiv(args_.m, runInfo_.baseM);
@@ -220,28 +249,28 @@ private:
             if (mMaxtile > nMaxtile) {
                 tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
                 nCnt = CeilDiv(args_.n, tempBaseN);
-                mCnt = platformInfo_.aicNum / nCnt;
+                mCnt = coreNumMN / nCnt;
                 tempBaseM = Align(CeilDiv(args_.m, mCnt), baseMAlignNum);
             } else {
                 tempBaseM = Align(CeilDiv(args_.m, mCnt), baseMAlignNum);
                 mCnt = CeilDiv(args_.m, tempBaseM);
-                nCnt = platformInfo_.aicNum / mCnt;
+                nCnt = coreNumMN / mCnt;
                 tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
             }
 
-            while (tempBaseN > tempBaseM * BASEM_BASEN_RATIO && nCnt < platformInfo_.aicNum / NUM_TWO &&
+            while (tempBaseN > tempBaseM * BASEM_BASEN_RATIO && nCnt < coreNumMN / NUM_TWO &&
                    tempBaseN != baseNAlignNum) {
                 nCnt = nCnt * NUM_TWO;
-                mCnt = platformInfo_.aicNum / nCnt;
+                mCnt = coreNumMN / nCnt;
                 tempBaseM = Align(CeilDiv(args_.m, mCnt), baseMAlignNum);
                 tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
                 mCnt = CeilDiv(args_.m, tempBaseM);
                 nCnt = CeilDiv(args_.n, tempBaseN);
             }
-            while (tempBaseM >= tempBaseN * BASEM_BASEN_RATIO && mCnt < platformInfo_.aicNum / NUM_TWO &&
+            while (tempBaseM >= tempBaseN * BASEM_BASEN_RATIO && mCnt < coreNumMN / NUM_TWO &&
                    tempBaseM != baseMAlignNum) {
                 mCnt = mCnt * NUM_TWO;
-                nCnt = platformInfo_.aicNum / mCnt;
+                nCnt = coreNumMN / mCnt;
                 tempBaseM = Align(CeilDiv(args_.m, mCnt), baseMAlignNum);
                 tempBaseN = Align(CeilDiv(args_.n, nCnt), baseNAlignNum);
                 mCnt = CeilDiv(args_.m, tempBaseM);
@@ -279,21 +308,39 @@ private:
             std::min(args_.k, aDataType == mm::DataType::DT_FLOAT4_E2M1 ? BASIC_BLOCK_SIZE_256 : BASIC_BLOCK_SIZE_128),
             TILING_MXFP_DIVISOR_SIZE);
 
-        uint64_t blockNum = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
-        if (blockNum < platformInfo_.aicNum) {
+        uint64_t blockNum = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN) * args_.batch;
+        if (enableAdjustBasicBlock_ && blockNum < platformInfo_.aicNum) {
             AdjustBasicBlock();
+        }
+        if (enableBaseMHalving_) {
+            HalveBaseMForPipeline();
         }
         CHECK_COND(runInfo_.baseM != 0UL && runInfo_.baseN != 0UL && runInfo_.baseK != 0UL,
                    "Failed to derive a valid tiling base shape: baseM, baseN, and baseK must all be non-zero.");
 
         runInfo_.mBlockCnt = CeilDiv(args_.m, runInfo_.baseM);
         runInfo_.nBlockCnt = CeilDiv(args_.n, runInfo_.baseN);
-        runInfo_.totalBlockCnt = runInfo_.mBlockCnt * runInfo_.nBlockCnt;
+        runInfo_.totalBlockCnt = runInfo_.mBlockCnt * runInfo_.nBlockCnt * args_.batch;
         runInfo_.tailBlockCnt = runInfo_.totalBlockCnt % platformInfo_.aicNum;
         runInfo_.mTailSize = args_.m - (runInfo_.mBlockCnt - 1UL) * runInfo_.baseM;
         runInfo_.nTailSize = args_.n - (runInfo_.nBlockCnt - 1UL) * runInfo_.baseN;
         runInfo_.dbL0c =
             runInfo_.baseM * runInfo_.baseN * DATA_SIZE_L0C * DB_SIZE <= platformInfo_.l0cSize ? DB_SIZE : 1U;
+    }
+
+    void HalveBaseMForPipeline()
+    {
+        // baseM/baseN may still be zero at this point (CHECK_COND runs later in
+        // CalcBasicBlock), so guard against divide-by-zero in the CeilDiv below.
+        if (runInfo_.baseM == 0UL || runInfo_.baseN == 0UL) {
+            return;
+        }
+        uint64_t baseMAlignNum = args_.transA ? GetShapeWithDataType<aDataType>(L1_ALIGN_SIZE) : CUBE_BLOCK;
+        uint64_t blockNumAfterAdjust = CeilDiv(args_.m, runInfo_.baseM) * CeilDiv(args_.n, runInfo_.baseN);
+        if (blockNumAfterAdjust < NUM_TWO * platformInfo_.aicNum && runInfo_.baseM % (NUM_TWO * baseMAlignNum) == 0UL &&
+            runInfo_.baseM < args_.m) {
+            runInfo_.baseM = runInfo_.baseM / NUM_TWO;
+        }
     }
 
     void OptimizeEdgeBasicBlock()
@@ -353,15 +400,15 @@ private:
         }
     }
 
-    uint64_t CalUsedCoreNum(const QuantMatmulRunInfo &runInfo, uint64_t mTile, uint64_t nTile)
+    uint64_t CalUsedCoreNum(const QuantMatmulRunInfo &runInfo, uint64_t mTile, uint64_t nTile) const
     {
         return mTile * nTile * runInfo.tailBlockCnt;
     }
 
     uint64_t CalcAlignedSplit(uint64_t growTileCount, uint64_t fixedTileCount, uint64_t tileCountMax,
-                              uint64_t alignTailSize)
+                              uint64_t alignTailSize, uint64_t alignBaseSize = 0UL)
     {
-        for (uint64_t increment = 1; increment <= 2; ++increment) {
+        for (uint64_t increment = 1; increment <= ALIGN_SPLIT_MAX_INCREMENT; ++increment) {
             uint64_t nextTileCount = growTileCount + increment;
             if (nextTileCount > tileCountMax) {
                 break;
@@ -371,14 +418,16 @@ private:
                 break;
             }
             if (alignTailSize == 0 || CeilDiv(alignTailSize, nextTileCount) % CUBE_BLOCK == 0) {
-                return nextTileCount;
+                if (alignBaseSize == 0 || CeilDiv(alignBaseSize, nextTileCount) % CUBE_BLOCK == 0) {
+                    return nextTileCount;
+                }
             }
         }
         return 0;
     }
 
     uint64_t GetDepthA1B1(const QuantMatmulRunInfo &runInfo, uint64_t leftSize, uint64_t perDepthSize,
-                          uint64_t depthInit)
+                          uint64_t depthInit) const
     {
         // The first pass grows by powers of two to find a feasible region; the
         // second pass snaps the result to a DMA-friendly K granularity.
@@ -408,7 +457,7 @@ private:
         return depthInit * depthScale;
     }
 
-    void CalStepKs(const QuantMatmulArgs &args, QuantMatmulRunInfo &runInfo)
+    void CalStepKs(const QuantMatmulArgs &args, QuantMatmulRunInfo &runInfo) const
     {
         // Convert L1 depth to step-K counts and keep A/B synchronized so both
         // sides advance through K with the same outer scheduling cadence.
@@ -423,10 +472,10 @@ private:
             runInfo.stepKb = CeilDiv(args.k, runInfo.baseK);
         }
 
-        if (runInfo.stepKa > runInfo.stepKb) {
+        if (runInfo.stepKb != 0UL && runInfo.stepKa > runInfo.stepKb) {
             runInfo.stepKa = runInfo.stepKa / runInfo.stepKb * runInfo.stepKb;
         }
-        if (runInfo.stepKb > runInfo.stepKa) {
+        if (runInfo.stepKa != 0UL && runInfo.stepKb > runInfo.stepKa) {
             runInfo.stepKb = runInfo.stepKb / runInfo.stepKa * runInfo.stepKa;
         }
 
@@ -439,7 +488,7 @@ private:
 
     void CalScaleFactors(const QuantMatmulArgs &args, const QuantMatmulPlatformInfo &platformInfo,
                          QuantMatmulRunInfo &runInfo, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleASize,
-                         uint64_t baseScaleBSize)
+                         uint64_t baseScaleBSize) const
     {
         // Scale reuse is solved after A/B depth is fixed. The search keeps the
         // two scale paths balanced while staying inside the leftover L1 budget.
@@ -455,7 +504,8 @@ private:
         // `scaleInit` is the balanced reuse factor both sides can afford
         // without favoring either A or B. Any leftover space is then assigned
         // to the side that can still benefit from deeper scale reuse.
-        uint64_t leftL1Size = platformInfo.l1Size - (runInfo.depthA1 * baseASize + runInfo.depthB1 * baseBSize);
+        uint64_t leftL1Size =
+            platformInfo.l1Size - runInfo.biasL1Size - (runInfo.depthA1 * baseASize + runInfo.depthB1 * baseBSize);
         uint64_t scaleInit = leftL1Size / (runInfo.depthA1 * baseScaleASize + runInfo.depthB1 * baseScaleBSize);
         if (runInfo.scaleFactorA <= scaleInit && runInfo.scaleFactorB > scaleInit) {
             leftL1Size -= runInfo.scaleFactorA * runInfo.depthA1 * baseScaleASize;

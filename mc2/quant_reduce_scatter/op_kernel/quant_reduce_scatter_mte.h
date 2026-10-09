@@ -42,7 +42,7 @@ template <TemplateTypeClass>
 class QuantReduceScatterMte {
 public:
     __aicore__ inline QuantReduceScatterMte(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *pipe,
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *pipe,
                                 const QuantReduceScatterTilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -63,11 +63,13 @@ private:
     GlobalTensor<ScalesType> remoteWinScaleTensor_;
     LocalTensor<float> sumTensor_;
 
-    TQue<QuePosition::VECIN, 1> xInQueue_, scaleInQue_; // 用于读数据和反量化求和的通算并行
-    TBuf<> sumBuf_;                                     // 用于Reduce_sum 求和
+    TQue<QuePosition::VECIN, 1> xInQueue_;   // 用于读数据和反量化求和的通算并行
+    TQue<QuePosition::VECIN, 1> scaleInQue_; // 用于读数据和反量化求和的通算并行
+    TBuf<> sumBuf_;                          // 用于Reduce_sum 求和
 
     uint64_t xSize_{0};
     uint64_t totalWinSize_{0};
+    uint32_t quantMode_{0};
     // reduceScater进行all2all过程，数据要按卡数进行均分，以下为计算切分相关的参数
     uint64_t scaleSize_{0};
     uint64_t xSliceSizeNums_{0}; // 按卡均分后每片x数据的个数
@@ -84,14 +86,15 @@ private:
     uint64_t xOffset_{0};           // 当前核的起始x偏移
     uint64_t scaleOffset_{0};       // 当前核的起始scale偏移
     uint32_t tailXNums_{0};         // 尾块的x数量
+    uint32_t tailScaleNums_{0};     // 尾块的scale数量
 };
 
 template <TemplateTypeClass>
-__aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output,
-                                                                 TPipe *tPipe,
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR scales,
+                                                                 GM_ADDR output, TPipe *tPipe,
                                                                  const QuantReduceScatterTilingData *tilingData)
 {
-    mteComm_.InitHcclContext();
+    mteComm_.InitHcclContext(context, tilingData->quantReduceScatterTilingInfo.hcclBufferSize);
     ParseTilingInfo(tilingData);
     tPipe->Reset();
     ComputeXPerBlock(tilingData, tPipe);
@@ -101,33 +104,39 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_A
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void
-QuantReduceScatterMte<TemplateType>::ParseTilingInfo(const QuantReduceScatterTilingData *tilingData)
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::ParseTilingInfo(
+    const QuantReduceScatterTilingData *tilingData)
 {
     auto &&info = tilingData->quantReduceScatterTilingInfo;
     totalWinSize_ = info.totalWinSize;
+    quantMode_ = info.quantMode;
     xSize_ = info.bs * info.hiddenSize * sizeof(XType);
-    scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType);
-    if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
-        scaleSize_ *= MX_SCALES_LAST_DIM;
+    if (quantMode_ == PT_QUANT_MOD) {
+        scaleSliceNums_ = 0;
+        scaleSize_ = sizeof(ScalesType);
+    } else if (quantMode_ == TG_QUANT_MOD) {
+        scaleSliceNums_ = info.bs * info.scaleHiddenSize / mteComm_.rankDimHccl_;
+        scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType);
+    } else if (quantMode_ == MX_QUANT_MOD) {
+        scaleSliceNums_ = info.bs * info.scaleHiddenSize * MX_SCALES_LAST_DIM / mteComm_.rankDimHccl_;
+        scaleSize_ = info.bs * info.scaleHiddenSize * sizeof(ScalesType) * MX_SCALES_LAST_DIM;
     }
-    uint64_t xSliceSize = xSize_ / (mteComm_.hcclContext_->rankDim);
+    uint64_t xSliceSize = xSize_ / mteComm_.rankDimHccl_;
     xSliceSizeNums_ = xSliceSize / sizeof(XType);
-    scaleSliceNums_ = scaleSize_ / (mteComm_.hcclContext_->rankDim * sizeof(ScalesType));
 }
 
 template <TemplateTypeClass>
-__aicore__ inline void
-QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(const QuantReduceScatterTilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(
+    const QuantReduceScatterTilingData *tilingData, TPipe *tPipe)
 {
     auto &&info = tilingData->quantReduceScatterTilingInfo;
 
     // 固定开销：不随 xPerBlock_ 变化的 buffer
-    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +                      // scaleQueue_
-                                 UB_ALIGN_BYTES +                                  // winFlagsBuf_
-                                 UB_ALIGN_BYTES +                                  // writeStateBuf_
-                                 mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES + // readStateBuf_
-                                 mteComm_.hcclContext_->rankDim * UB_ALIGN_BYTES;  // stateResetBuf_
+    uint64_t mteCommFixedSpace = BUFFER_NUM * X_BLOCK_BYTES +             // scaleQueue_
+                                 UB_ALIGN_BYTES +                         // winFlagsBuf_
+                                 UB_ALIGN_BYTES +                         // writeStateBuf_
+                                 mteComm_.rankDimHccl_ * UB_ALIGN_BYTES + // readStateBuf_
+                                 mteComm_.rankDimHccl_ * UB_ALIGN_BYTES;  // stateResetBuf_
 
     // 动态开销：每增加 1 个 x 需要的 UB 字节（整数部分，分数部分见下方比例校正）
     uint64_t baseDynamic = BUFFER_NUM * sizeof(OutputType) + // xOutQueue_
@@ -141,8 +150,9 @@ QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(const QuantReduceScatterTi
 
     uint64_t remainingSpace = TOTAL_UB_SIZE - mteCommFixedSpace;
     uint64_t maxXPerBlock;
-    // scale buffer 的开销以 FracDiv 精确计入 UB 预算（避免 < 1 B per X 被整数截断）
-    if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
+    if (quantMode_ == PT_QUANT_MOD) {
+        maxXPerBlock = remainingSpace / baseDynamic;
+    } else if (quantMode_ == MX_QUANT_MOD) {
         maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 4U, 1U); // + 1/4 B per X
     } else {
         maxXPerBlock = FracDiv(remainingSpace, baseDynamic, 32U, 3U); // + 3/32 B per X
@@ -165,9 +175,11 @@ QuantReduceScatterMte<TemplateType>::ComputeXPerBlock(const QuantReduceScatterTi
     }
 
     // 每块 scale 数量（real 值，GM 偏移用；UB 分配按 32B 对齐）
-    if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
+    if (quantMode_ == PT_QUANT_MOD) {
+        scaleNumsPerBlock_ = 1;
+    } else if (quantMode_ == MX_QUANT_MOD) {
         scaleNumsPerBlock_ = xPerBlock_ / MX_SIZE;
-    } else {
+    } else if (quantMode_ == TG_QUANT_MOD) {
         scaleNumsPerBlock_ = xPerBlock_ / PER_GROUP_SIZE;
     }
 
@@ -194,8 +206,16 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ComputeBlockDistribu
 
     uint64_t blockIdx = aivId * round_ + (aivId < tailBlockNums_ ? aivId : tailBlockNums_);
     xOffset_ = blockIdx * xPerBlock_;
-    scaleOffset_ = blockIdx * scaleNumsPerBlock_;
-    tailXNums_ = BlockAlignMod(xSliceSizeNums_, xPerBlock_);
+    // PT量化下每块都使用同一个scale，scaleOffset恒为0
+    scaleOffset_ = (quantMode_ == PT_QUANT_MOD) ? 0 : blockIdx * scaleNumsPerBlock_;
+    tailXNums_ = static_cast<uint32_t>(BlockAlignMod(xSliceSizeNums_, xPerBlock_));
+    if (quantMode_ == PT_QUANT_MOD) {
+        tailScaleNums_ = 1;
+    } else if (quantMode_ == MX_QUANT_MOD) {
+        tailScaleNums_ = CeilDivU32(tailXNums_, MX_SIZE);
+    } else if (quantMode_ == TG_QUANT_MOD) {
+        tailScaleNums_ = CeilDivU32(tailXNums_, PER_GROUP_SIZE);
+    }
 }
 
 // 初始化 vecComp、mteComm 子模块参数并分配其 UB buffer，绑定 GM Tensor
@@ -205,10 +225,12 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::InitSubModules(GM_AD
 {
     vecComp_.SetBlockSize(xPerBlock_);
     vecComp_.SetScaleNums(scaleNumsPerBlock_);
+    vecComp_.SetQuantMode(quantMode_);
     mteComm_.round_ = round_;
     mteComm_.tailBlockNums_ = tailBlockNums_;
     mteComm_.ComputeTailAivId(aivNum);
-    mteComm_.SetBlockSize(xPerBlock_, aivNum, tailXNums_, scaleNumsPerBlock_);
+    mteComm_.SetBlockSize(xPerBlock_, aivNum, tailXNums_, scaleNumsPerBlock_, tailScaleNums_);
+    mteComm_.SetQuantMode(quantMode_);
     mteComm_.InitParams();
     mteComm_.InitBuffer(tPipe);
     vecComp_.InitBuffer(tPipe);
@@ -220,13 +242,13 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
                                                                                    uint64_t curScaleOffset,
                                                                                    uint32_t xNum, uint32_t scaleNum)
 {
-    /* 读取 x 从 Win -> UB */
+    // 读取 x 从 Win -> UB
     LocalTensor<XType> xTmpTensor = xInQueue_.AllocTensor<XType>();
     DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], xNum);
     xInQueue_.EnQue(xTmpTensor);
     xTmpTensor = xInQueue_.DeQue<XType>();
 
-    /* 读取 scale 从 Win -> UB（DataCopyPad 处理 sub-32B 对齐） */
+    // 读取 scale 从 Win -> UB（DataCopyPad 处理 sub-32B 对齐）
     LocalTensor<ScalesType> scaleTmpTensor = scaleInQue_.AllocTensor<ScalesType>();
     DataCopyParams scaleCopyParams;
     scaleCopyParams.blockLen = scaleNum * sizeof(ScalesType);
@@ -236,12 +258,11 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
     scaleInQue_.EnQue(scaleTmpTensor);
     scaleTmpTensor = scaleInQue_.DeQue<ScalesType>();
 
-    /* 反量化计算与ReduceSum求和 */
+    // 反量化计算与ReduceSum求和
     vecComp_.DequantReduceSum(xTmpTensor, scaleTmpTensor, sumTensor_);
     xInQueue_.FreeTensor(xTmpTensor);
     scaleInQue_.FreeTensor(scaleTmpTensor);
 }
-
 
 template <TemplateTypeClass>
 __aicore__ inline void QuantReduceScatterMte<TemplateType>::ClearSumTensor()
@@ -259,7 +280,10 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
     // 遍历需要处理的数据块（基于动态xPerBlock_分块）
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = xOffset_ + curBlock * xPerBlock_;
-        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlock_;
+        uint64_t curScaleOffset = scaleOffset_;
+        if (quantMode_ != PT_QUANT_MOD) {
+            curScaleOffset += curBlock * scaleNumsPerBlock_;
+        }
 
         // 计算当前块的x数量（尾块处理）
         uint32_t curXNum = xPerBlock_;
@@ -267,9 +291,9 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
         if ((aivId == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
             curXNum = tailXNums_;
             // 尾块的scale数量：real 值（DataCopyPad 处理 sub-32B 拷贝，不再需要硬对齐）
-            if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
+            if (quantMode_ == MX_QUANT_MOD) {
                 curScaleNum = CeilDivU32(curXNum, MX_SIZE);
-            } else {
+            } else if (quantMode_ == TG_QUANT_MOD) {
                 curScaleNum = CeilDivU32(curXNum, PER_GROUP_SIZE);
             }
         }
@@ -278,9 +302,9 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
 
         // 遍历每张卡，读取其Win区的数据，采取错卡序读取，从自己卡上读起
         /* rank0: [0,1,2]; rank1: [1,2,0]; rank2: [2,0,1] */
-        uint32_t startRankId = mteComm_.hcclContext_->rankId;
-        for (uint32_t i = 0; i < mteComm_.hcclContext_->rankDim; ++i) {
-            uint32_t remoteRankId = (startRankId + i) % mteComm_.hcclContext_->rankDim;
+        uint32_t startRankId = mteComm_.rankIdHccl_;
+        for (uint32_t i = 0; i < mteComm_.rankDimHccl_; ++i) {
+            uint32_t remoteRankId = (startRankId + i) % mteComm_.rankDimHccl_;
 
             // 获取对端Win区中数据区相关的地址
             GM_ADDR remoteDataSpaceGm = mteComm_.GetWinDataAddrGm(remoteRankId, mteComm_.winBufferFlags_);
@@ -290,11 +314,11 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
 
             // 读取对端对应地址的 x 和 scale数据，进行反量化和求和
             // ReduceScatter过程，all2all仅需与rankId相关的数据，加上本卡偏移
-            uint64_t curRankXOffset = curXOffset + mteComm_.hcclContext_->rankId * xSliceSizeNums_;
-            uint64_t curRankScaleOffset = curScaleOffset + mteComm_.hcclContext_->rankId * scaleSliceNums_;
+            uint64_t curRankXOffset = curXOffset + mteComm_.rankIdHccl_ * xSliceSizeNums_;
+            uint64_t curRankScaleOffset = curScaleOffset + mteComm_.rankIdHccl_ * scaleSliceNums_;
             ReadDataBlockReduceSum(curRankXOffset, curRankScaleOffset, curXNum, curScaleNum);
         }
-
+        PipeBarrier<PIPE_V>();
         // 将计算好的数据拷贝到输出tensor
         mteComm_.CopyResultToOutput(curXOffset, sumTensor_, curXNum);
     }

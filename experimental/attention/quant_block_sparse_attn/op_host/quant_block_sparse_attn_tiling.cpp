@@ -67,7 +67,9 @@ QuantBlockSparseAttnMxStrideParams MakePaBnbdStride(uint32_t n2Size, uint32_t bl
 
 } // namespace
 
-QuantBlockSparseAttnTiling::QuantBlockSparseAttnTiling(gert::TilingContext *context) : context_(context) {}
+QuantBlockSparseAttnTiling::QuantBlockSparseAttnTiling(gert::TilingContext *context)
+    : context_(context)
+{}
 
 void QuantBlockSparseAttnTiling::FillPaParams()
 {
@@ -182,6 +184,7 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     auto &baseParams = mxTilingData_.baseParams;
     baseParams.bSize = info.bSize;
     baseParams.t1Size = info.qTokenNum;
+    baseParams.qSeqSize = info.qSeqSize;
     baseParams.n2Size = info.n2Size;
     baseParams.gSize = info.gSize;
     baseParams.dSize = dSize;
@@ -244,11 +247,18 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     scaleParams.valueScaleBlockSize = valueScaleBlockSize;
     scaleParams.valueScaleDSize = valueScaleDSize;
     uint32_t pScaleShapeSize = 0U;
+    uint8_t pScaleDtype = MX_PSCALE_DTYPE_E8M0;
     if (info.opParamInfo.pScale.shape != nullptr) {
         const int64_t shapeSize = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
         pScaleShapeSize = (shapeSize > 0) ? static_cast<uint32_t>(shapeSize) : 0U;
+        if (pScaleShapeSize > 0U && info.opParamInfo.pScale.desc != nullptr) {
+            if (info.opParamInfo.pScale.desc->GetDataType() == ge::DT_FLOAT) {
+                pScaleDtype = MX_PSCALE_DTYPE_FP32;
+            }
+        }
     }
     scaleParams.pScaleShapeSize = pScaleShapeSize;
+    scaleParams.pScaleDtype = pScaleDtype;
     scaleParams.queryQuantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
     scaleParams.keyAntiquantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
     scaleParams.valueAntiquantMode = QBSA_MXFP8_PER_CHANNEL_GROUP_MODE;
@@ -264,10 +274,14 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
 {
     const auto &info = *tilingInfo_;
     if (info.quantModeVal == QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
-        // MX 使用独立 tiling data 和 S2=512 config。
+        // D64 对齐 FIA 使用 S2=512/S2_SPLIT=256，保留 C1 UB/L0C 双缓冲。
+        const uint32_t config =
+            info.dSize == QBSA_MXFP8_D_SIZE_64 ?
+                Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 :
+                (info.dSize == QBSA_MXFP8_D_SIZE_256 ? Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 :
+                                                       Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128);
         tilingKey_ = GET_TPL_TILING_KEY(QBSA_DTYPE_FP8_E4M3FN, info.layoutQValue, QBSA_KV_LAYOUT_PA_BNSD,
-                                        info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
-                                        Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128, MXFullQuantMode);
+                                        info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U, config, MXFullQuantMode);
     } else {
         tilingKey_ = GET_TPL_TILING_KEY(QBSA_DTYPE_FP8_E4M3FN, info.layoutQValue, QBSA_KV_LAYOUT_PA_BNSD,
                                         info.maskModeVal, info.returnSoftmaxLseVal ? 1U : 0U,
@@ -275,7 +289,10 @@ void QuantBlockSparseAttnTiling::CalcTilingKey()
     }
 }
 
-void QuantBlockSparseAttnTiling::CalcWorkspaceSize() { workspaceSize_ = 0; }
+void QuantBlockSparseAttnTiling::CalcWorkspaceSize()
+{
+    workspaceSize_ = 0;
+}
 
 void QuantBlockSparseAttnTiling::PrintAllTilingData()
 {

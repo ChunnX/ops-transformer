@@ -20,16 +20,13 @@
 #include "fia_arch35_template_tiling_key_enum.h"
 #include "flash_attention_score_antiquant_kernel.h"
 
-#define REGBASE_COPY_TILING_DATA_ASCEND950_ANTIQUANT_BASEAPI(tiling) \
-    GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling); \
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn;
-
 #define INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(templateClass, ...) \
     do { \
         if (query == nullptr) { \
             return; \
         } \
-        REGBASE_COPY_TILING_DATA_ASCEND950_ANTIQUANT_BASEAPI(tiling); \
+        GET_TILING_DATA_WITH_STRUCT(FlashAttentionScoreSimplifiedTilingData, tilingDataIn, tiling); \
+        const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData = &tilingDataIn; \
         TPipe tPipe; \
         __gm__ uint8_t *user = GetUserWorkspace(workspace); \
         using CubeBlockType = \
@@ -68,7 +65,7 @@ inline __aicore__ void fia_antiquant_regbase(
     constexpr bool isPa = KvLayoutType != 0;
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -79,7 +76,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -90,7 +87,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -101,7 +98,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -112,7 +109,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -123,7 +120,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -134,7 +131,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT4 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -145,7 +142,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -156,7 +153,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -167,7 +164,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT4_E2M1 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -178,7 +175,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -189,7 +186,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_INT8)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -200,7 +197,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -211,7 +208,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_HIFLOAT8 && ORIG_DTYPE_ATTENTION_OUT == DT_HIFLOAT8)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -222,7 +219,7 @@ inline __aicore__ void fia_antiquant_regbase(
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(
@@ -234,7 +231,7 @@ inline __aicore__ void fia_antiquant_regbase(
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && \
      ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT8_E4M3FN)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    KERNEL_TASK_TYPE_DEFAULT(FIA_ARCH35_TASK_TYPE);
     PARSE_PARAMS_AntiQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor,
                            enableKVPrefix);
     INVOKE_FA_OP_IMPL_ASCEND950_ANTIQUANT_BASEAPI(

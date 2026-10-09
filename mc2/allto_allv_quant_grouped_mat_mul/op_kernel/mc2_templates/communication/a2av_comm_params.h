@@ -18,6 +18,7 @@ namespace MC2KernelTemplate {
 static constexpr uint8_t SEND_OFFSET_BY_RAW_ARRAY = 0;
 static constexpr uint8_t SEND_OFFSET_ACCUMULATIVE = 1;
 
+// HCCL AlltoAllV的counts/offsets必须为泛型(栈)指针(AlltoAllVParamExt为uint64_t*)，不可用__gm__；
 struct A2avCommParams {
     uint64_t sendCnt[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t sendOffset[MAX_EP_RANK_SIZE] = {0UL};
@@ -25,12 +26,10 @@ struct A2avCommParams {
     uint64_t recvOffset[MAX_EP_RANK_SIZE] = {0UL};
 };
 
-__aicore__ inline void CalcA2avCommBeforeParams(
-    A2avCommParams &params,
-    const uint64_t *rawSendCounts, const uint64_t *rawRecvCounts,
-    uint32_t rankDim, uint32_t e, uint32_t startExpertIdx, uint32_t expertNum,
-    uint64_t axis,
-    uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
+__aicore__ inline void CalcA2avCommBeforeParams(A2avCommParams& params, const int32_t* rawSendCounts,
+                                                const int32_t* rawRecvCounts, uint32_t rankDim, uint32_t e,
+                                                uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis,
+                                                uint64_t& sendOffsetLastSum, uint64_t& recvOffsetLastSum)
 {
     for (uint64_t i = 0UL; i < rankDim; i++) {
         params.sendCnt[i] = 0UL;
@@ -41,20 +40,19 @@ __aicore__ inline void CalcA2avCommBeforeParams(
         }
     }
 
-    params.sendOffset[0] = 0UL;
-    for (uint32_t j = 0U; j < startExpertIdx; j++) {
-        params.sendOffset[0] += static_cast<uint64_t>(rawSendCounts[j]) * axis;
-    }
-    for (uint32_t i = 1U; i < rankDim; i++) {
-        params.sendOffset[i] = 0UL;
-        for (uint32_t k = 0U; k < i; k++) {
-            for (uint32_t j = 0U; j < e; j++) {
-                params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[j + k * e]) * axis;
-            }
-        }
+    // prefix sum: sendRowPrefixSum = scaled sum of all experts on ranks [0, i)
+    uint64_t sendRowPrefixSum = 0UL;
+    for (uint32_t i = 0U; i < rankDim; i++) {
+        uint64_t rowSum = 0UL; // scaled sum of experts [0, startExpertIdx) on rank i
         for (uint32_t j = 0U; j < startExpertIdx; j++) {
-            params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[j + i * e]) * axis;
+            rowSum += static_cast<uint64_t>(rawSendCounts[j + i * e]) * axis;
         }
+        params.sendOffset[i] = sendRowPrefixSum + rowSum;
+        for (uint32_t j = startExpertIdx; j < e; j++) {
+            rowSum += static_cast<uint64_t>(rawSendCounts[j + i * e]) * axis;
+        }
+        // rowSum is now the scaled sum of all experts on rank i
+        sendRowPrefixSum += rowSum;
     }
 
     for (uint32_t i = 0U; i < rankDim; i++) {
@@ -68,11 +66,10 @@ __aicore__ inline void CalcA2avCommBeforeParams(
     }
 }
 
-__aicore__ inline void CalcA2avCommAfterParams(
-    A2avCommParams &params,
-    const uint64_t *rawSendCounts, const uint64_t *rawRecvCounts,
-    uint32_t rankDim, uint32_t e, uint32_t startExpertIdx, uint32_t expertNum,
-    uint64_t axis, uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
+__aicore__ inline void CalcA2avCommAfterParams(A2avCommParams& params, const int32_t* rawSendCounts,
+                                               const int32_t* rawRecvCounts, uint32_t rankDim, uint32_t e,
+                                               uint32_t startExpertIdx, uint32_t expertNum, uint64_t axis,
+                                               uint64_t& sendOffsetLastSum, uint64_t& recvOffsetLastSum)
 {
     for (uint64_t i = 0UL; i < rankDim; i++) {
         params.sendCnt[i] = 0UL;

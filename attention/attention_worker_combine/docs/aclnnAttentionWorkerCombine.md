@@ -1,26 +1,26 @@
 # aclnnAttentionWorkerCombine
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/attention_worker_combine)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/attention/attention_worker_combine)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -31,18 +31,18 @@
 
     1. 接收FFN侧回传的数据。该数据以ScheduleContext结构体内存排布方式存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea、ControlArea、AttentionArea、FfnArea域。本接口从AttentionArea的token_data_buf中读取token数据。
 
-    2. 结合expert_scales对token数据进行加权融合，输出最终注意力结果y。
+    2. 结合expertScales对token数据进行加权融合，输出最终注意力结果y。
 
-    3. 根据输入layer_id计算并输出next_layer_id，指示下一个要处理的层ID。
+    3. 根据输入layerId计算并输出nextLayerId，指示下一个要处理的层ID。
 
 - 计算公式：
 
   $$
-  y[i] = \sum_{k=0}^{K-1} \text{expert\_scales}[i][k] \times \text{token\_data}[i][k]
+  y[i] = \sum_{k=0}^{K-1} \text{expertScales}[i][k] \times \text{token\_data}[i][k]
   $$
 
   $$
-  \text{next\_layer\_id} = \text{layer\_id} + 1
+  \text{nextLayerId} = \text{layerId} + 1
   $$
 
 ## 函数原型
@@ -100,7 +100,7 @@ aclnnStatus aclnnAttentionWorkerCombine(
     <tr>
       <td>scheduleContext</td>
       <td>输入</td>
-      <td>Attention侧接收的调度上下文，内含CommonArea、ControlArea、AttentionArea、FfnArea。算子从AttentionArea的token_data_buf中读取token数据。详细结构参见调用示例。</td>
+      <td>Attention侧接收的调度上下文，内含CommonArea、ControlArea、AttentionArea、FfnArea。算子从AttentionArea的token_data_buf中读取token数据。</td>
       <td>不支持空tensor。</td>
       <td>INT8</td>
       <td>ND</td>
@@ -110,11 +110,11 @@ aclnnStatus aclnnAttentionWorkerCombine(
     <tr>
       <td>expertScales</td>
       <td>输入</td>
-      <td>专家权重，表示每个token对应的各专家权重。</td>
-      <td>-</td>
-      <td>FLOAT</td>
+      <td>非量化场景表示每个token对应的专家权重；MXFP反量化场景表示token数据的E8M0缩放因子，每32个hiddenSize方向的元素共享一个缩放因子。</td>
+      <td>tokenDtype为0或1时为FLOAT，为2、3或4时为FLOAT8_E8M0。</td>
+      <td>FLOAT、FLOAT8_E8M0</td>
       <td>ND</td>
-      <td>2维，(BS, K)</td>
+      <td>非量化场景为2维，shape为(BS, K)；MXFP反量化场景为3维，shape为(BS, K+1, S)，其中S为Ceil(hiddenSize/32)向上取整到偶数。</td>
       <td>×</td>
     </tr>
     <tr>
@@ -140,8 +140,8 @@ aclnnStatus aclnnAttentionWorkerCombine(
     <tr>
       <td>tokenDtype</td>
       <td>输入</td>
-      <td>指定schedule_context中token数据的原始精度类型。0表示FLOAT16；1表示BFLOAT16。</td>
-      <td>取值为0或1。</td>
+      <td>指定scheduleContext中token数据的原始精度类型。0表示FLOAT16；1表示BFLOAT16；2表示MXFP8_E5M2；3表示MXFP8_E4M3FN；4表示MXFP4_E2M1。</td>
+      <td>非量化取值为0或1；MXFP反量化场景取值为2、3或4。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -275,10 +275,14 @@ aclnnStatus aclnnAttentionWorkerCombine(
 
 ## 约束说明
 
-- schedule_context为1D的Tensor，shape固定为(1024)。
-- expert_scales为2D的Tensor，shape为(BS, K)，其中K ≤ 64。
-- y为2D的Tensor，shape为(BS, hiddenSize)，即第二维由参数hiddenSize确定。
-- layer_id和next_layer_id为1D的Tensor，shape为(1)。
+<!-- npu="A3,910b" id7 -->
+- <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：tokenDtype仅支持0、1，expertScales类型为FLOAT。
+<!-- end id7 -->
+<!-- npu="950" id8 -->
+- <term>Ascend 950PR&950DT系列产品</term>：tokenDtype支持0～4；为0或1时，expertScales类型为FLOAT；为2、3或4时，支持MXFP反量化，expertScales类型为FLOAT8_E8M0。
+<!-- end id8 -->
+
+- K ≤ 64。非量化场景下，expertScales为FLOAT类型，shape为(BS, K)；MXFP反量化场景下，expertScales为FLOAT8_E8M0类型，shape为(BS, K+1, S)，S为Ceil(hiddenSize/32)向上取整到偶数。
 - 确定性计算：
   - aclnnAttentionWorkerCombine默认确定性实现。
 

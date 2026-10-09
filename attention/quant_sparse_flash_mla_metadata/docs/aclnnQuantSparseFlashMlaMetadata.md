@@ -1,26 +1,26 @@
 # aclnnQuantSparseFlashMlaMetadata
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/quant_sparse_flash_mla_metadata)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/attention/quant_sparse_flash_mla_metadata)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -878,7 +878,7 @@ int main()
         printf("    End BN2     : %u\n", result.faMetadata[i][FA_BN2_END_INDEX]);
         printf("    End M       : %u\n", result.faMetadata[i][FA_M_END_INDEX]);
         printf("    End S2      : %u\n", result.faMetadata[i][FA_S2_END_INDEX]);
-        printf("    First Worksapce Index : %u\n", result.faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]);
+        printf("    First Workspace Index : %u\n", result.faMetadata[i][FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX]);
         printf("    Max S2 Block Num : %u\n", result.faMetadata[i][FA_S2_MAX_NUM]);
     }
     for (uint32_t i = 0; i < AIV_CORE_MAX_NUM; ++i) {

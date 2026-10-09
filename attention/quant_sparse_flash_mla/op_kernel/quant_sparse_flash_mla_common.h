@@ -28,7 +28,16 @@
 
 using namespace AscendC;
 
-enum class QSMLA_LAYOUT { BSND = 0, TND = 1, PA_BBND = 2 };
+enum class QSMLA_LAYOUT {
+    BSND = 0,
+    TND = 1,
+    PA_BBND = 2
+};
+
+enum class TopkValueMode {
+    TOPK_INDEX_MODE = 1,
+    TOPK_OFFSET_MODE = 2
+};
 
 enum class QSMLATemplateMode {
     SWA_TEMPLATE_MODE = 0,

@@ -104,20 +104,20 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T *maskUb, uint16_t headGLoop, uint16_
     }
 
     for (uint16_t x = headGLoop; x > 0; x = 0) { // if (headGLoop > 0) {}
-        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vreg_g_head, maskUb, 1,
-                                                                                             repeatStride, preg_all);
+        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_head, maskUb, 1,
+                                                                                        repeatStride, preg_all);
         for (uint16_t i = 1; i < headGLoop; ++i) {
-            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                maskUb, vreg_g_head, 1, repeatStride, preg_all);
+            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_head, 1,
+                                                                                             repeatStride, preg_all);
         }
     }
 
     for (uint16_t x = midGLoop; x > 0; x = 0) { // if (midGLoop > 0) {}
         for (uint16_t i = 0; i < midS1Count; ++i) {
-            LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                vreg_g_mid, maskUb, 1, repeatStride, preg_all);
+            LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_mid, maskUb, 1,
+                                                                                            repeatStride, preg_all);
             for (uint16_t j = 1; j < midGLoop; ++j) {
-                StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
                     maskUb, vreg_g_mid, 1, repeatStride, preg_all);
             }
             LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -125,11 +125,11 @@ __simd_vf__ void MaskUbCopyS1GVF(__ubuf__ T *maskUb, uint16_t headGLoop, uint16_
     }
 
     for (uint16_t x = tailGLoop; x > 1; x = 0) { // if (tailGLoop > 1) {}
-        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vreg_g_tail, maskUb, 1,
-                                                                                             repeatStride, preg_all);
+        LoadAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(vreg_g_tail, maskUb, 1,
+                                                                                        repeatStride, preg_all);
         for (uint16_t i = 1; i < tailGLoop; ++i) {
-            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
-                maskUb, vreg_g_tail, 1, repeatStride, preg_all);
+            StoreAlign<T, DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(maskUb, vreg_g_tail, 1,
+                                                                                             repeatStride, preg_all);
         }
     }
 }
@@ -461,21 +461,22 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressDn(MaskInfo &info)
 }
 
 template <typename T, MaskFormat maskFormat, bool isReconstructTemp, uint32_t s2BaseSize>
-__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info)
+__aicore__ inline void AttentionmaskCopyInDn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
+                                             uint32_t gs1CopyRows)
 {
     uint64_t maskOffset = ComputeAttenMaskOffsetCompressDn(info);
     if (info.s2Size % 32U == 0) { // 32： datablock size is 32B
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = info.s2dealNum;
-        dataCopyParams.blockLen = (info.gs1dealNum >> 1) >> 5;
-        dataCopyParams.srcStride = (info.attenMaskS1Stride - (info.gs1dealNum >> 1)) >> 5;
+        dataCopyParams.blockLen = gs1CopyRows >> 5;
+        dataCopyParams.srcStride = (info.attenMaskS1Stride - gs1CopyRows) >> 5;
         dataCopyParams.dstStride = info.attenMaskDstStride;
         DataCopy(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams);
     } else {
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = info.s2dealNum;
-        dataCopyParams.blockLen = info.gs1dealNum >> 1;
-        dataCopyParams.srcStride = info.attenMaskS1Stride - (info.gs1dealNum >> 1);
+        dataCopyParams.blockLen = gs1CopyRows;
+        dataCopyParams.srcStride = info.attenMaskS1Stride - gs1CopyRows;
         dataCopyParams.dstStride = info.attenMaskDstStride;
         DataCopyPadExtParams<T> padParams;
         DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);

@@ -29,22 +29,23 @@ class SparseFlashMlaGrad {
     using T1 = typename SMLAGT::t1;
     static constexpr bool IS_BSND = SMLAGT::is_bsnd;
     static constexpr uint32_t MODE = SMLAGT::mode;
+    static constexpr bool HAS_SEQUSED = SMLAGT::has_seqused;
+    static constexpr bool IS_DETER = SMLAGT::is_deter;
 
 public:
     __aicore__ inline SparseFlashMlaGrad(){};
     __aicore__ inline void Process(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out,
-                                   GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, 
-                                   GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv,
-                                   GM_ADDR cmp_residual_kv,
-                                   GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks, 
-                                   GM_ADDR cmp_softmax_l1_norm,
-                                   GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
+                                   GM_ADDR attention_out_grad, GM_ADDR lse, GM_ADDR topk_indices, GM_ADDR cu_seqlens_q,
+                                   GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR seqused_q,
+                                   GM_ADDR seqused_ori_kv, GM_ADDR seqused_cmp_kv, GM_ADDR cmp_residual_kv,
+                                   GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks,
+                                   GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace,
+                                   const TILING_CLASS *__restrict tilingData);
 
 private:
-    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData, 
-                                const GM_ADDR cu_seqlens_q, 
-                                const GM_ADDR cu_seqlens_ori_kv, 
-                                const GM_ADDR cu_seqlens_cmp_kv,
+    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData, const GM_ADDR cu_seqlens_q,
+                                const GM_ADDR cu_seqlens_ori_kv, const GM_ADDR cu_seqlens_cmp_kv,
+                                const GM_ADDR seqused_q, const GM_ADDR seqused_ori_kv, const GM_ADDR seqused_cmp_kv,
                                 const GM_ADDR cmp_residual_kv);
     __aicore__ inline void CubeCompute(CubeOp<SMLAGT> &cubeOp);
     __aicore__ inline void VecCompute(VecOp<SMLAGT> &vecOp);
@@ -53,12 +54,19 @@ private:
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx, int32_t &s1Loop);
     __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &curS2Loop);
     __aicore__ inline void ChangeBatchUpdate();
+    __aicore__ inline void DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp);
+    __aicore__ inline int64_t EstimateCoreTaskNum(int64_t coreIdx);
+    __aicore__ inline void UpdateUsedSeqLen(int64_t batchIdx);
 
     uint32_t cubeBlockIdx;
     uint32_t subBlockIdx;
     uint32_t formerCoreNum;
     uint32_t processBS1ByCore;
     uint32_t usedCoreNum;
+    uint32_t formerProcessNNum{0};
+    uint32_t remainProcessNNum{0};
+    int32_t deterAccSeq{0};
+    int32_t maxDeterAccWaves{0};
 
     // shape info
     int64_t dimB;
@@ -73,6 +81,10 @@ private:
     int64_t curS1;
     int64_t curS2;
     int64_t curS3;
+    // EOD: 每个 batch 槽位内实际参与运算的长度；无 seqused 时等于 curS1/curS2/curS3
+    int64_t usedS1{0};
+    int64_t usedS2{0};
+    int64_t usedS3{0};
     int64_t residual;
     int64_t curMaxS3;
     int64_t dimS1;
@@ -135,22 +147,31 @@ private:
     constexpr static uint32_t VEC_WAIT_CUBE_PING = 2;
     constexpr static uint32_t VEC_WAIT_CUBE_PONG = 3;
     constexpr static uint32_t POST_WAIT_CUBE = 4;
+    constexpr static uint32_t DETER_KV_SYNC_FLAG = 5;
 
     // GM_ADDR
     const GM_ADDR cu_seqlens_q;
     const GM_ADDR cu_seqlens_ori_kv;
     const GM_ADDR cu_seqlens_cmp_kv;
     const GM_ADDR cmp_residual_kv;
+    const GM_ADDR seqused_q;
+    const GM_ADDR seqused_ori_kv;
+    const GM_ADDR seqused_cmp_kv;
+    bool hasUsedSeqQ{false};
+    bool hasUsedSeqOriKV{false};
+    bool hasUsedSeqCmpKV{false};
 
     RunInfo runInfo[2];
+    RunInfo deterAccRunInfo;
+    bool needDeterAcc{false};
 };
 
 template <typename SMLAGT>
 __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__restrict tilingData,
-                                                           const GM_ADDR cu_seqlens_q, 
-                                                           const GM_ADDR cu_seqlens_ori_kv, 
-                                                           const GM_ADDR cu_seqlens_cmp_kv,
-                                                           const GM_ADDR cmp_residual_kv)
+                                                        const GM_ADDR cu_seqlens_q, const GM_ADDR cu_seqlens_ori_kv,
+                                                        const GM_ADDR cu_seqlens_cmp_kv, const GM_ADDR seqused_q,
+                                                        const GM_ADDR seqused_ori_kv, const GM_ADDR seqused_cmp_kv,
+                                                        const GM_ADDR cmp_residual_kv)
 {
     dimB = tilingData->opInfo.B;
     dimS1 = tilingData->opInfo.S1;
@@ -181,10 +202,12 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
 
     formerCoreNum = tilingData->opInfo.formerCoreNum;
     usedCoreNum = tilingData->opInfo.usedCoreNum;
+    formerProcessNNum = tilingData->opInfo.formerCoreProcessNNum;
+    remainProcessNNum = tilingData->opInfo.remainCoreProcessNNum;
     if (cubeBlockIdx < formerCoreNum) {
-        processBS1ByCore = tilingData->opInfo.formerCoreProcessNNum;
+        processBS1ByCore = formerProcessNNum;
     } else {
-        processBS1ByCore = tilingData->opInfo.remainCoreProcessNNum;
+        processBS1ByCore = remainProcessNNum;
     }
 
     selectedCountOffset = tilingData->splitCoreParams.singleN;
@@ -196,6 +219,14 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
         this->cu_seqlens_ori_kv = cu_seqlens_ori_kv;
         this->cu_seqlens_cmp_kv = cu_seqlens_cmp_kv;
     }
+    if constexpr (HAS_SEQUSED) {
+        this->seqused_q = seqused_q;
+        this->seqused_ori_kv = seqused_ori_kv;
+        this->seqused_cmp_kv = seqused_cmp_kv;
+        hasUsedSeqQ = tilingData->opInfo.hasUsedSeqQ;
+        hasUsedSeqOriKV = tilingData->opInfo.hasUsedSeqOriKV;
+        hasUsedSeqCmpKV = tilingData->opInfo.hasUsedSeqCmpKV;
+    }
 
     if constexpr (MODE == SMLAG_CFA_MODE) {
         this->cmp_residual_kv = cmp_residual_kv;
@@ -203,16 +234,31 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
             residual = ((__gm__ int32_t *)this->cmp_residual_kv)[0];
         }
     }
+
+    if constexpr (IS_DETER) {
+        // 全核 SyncAll 次数对齐：取各 usedCore 的 task 数上界。
+        // Acc-previous：有 pending 才 Acc，不再额外加「首轮空 barrier」（原 maxT+1）。
+        maxDeterAccWaves = 0;
+        for (int64_t coreIdx = 0; coreIdx < static_cast<int64_t>(usedCoreNum); coreIdx++) {
+            int64_t n = EstimateCoreTaskNum(coreIdx);
+            if (n > maxDeterAccWaves) {
+                maxDeterAccWaves = n;
+            }
+        }
+        deterAccSeq = 0;
+    }
 }
 
 template <typename SMLAGT>
 __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
     GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR lse,
-    GM_ADDR topk_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, 
-    GM_ADDR cmp_residual_kv, GM_ADDR sinks, GM_ADDR dq, GM_ADDR d_ori_kv, 
-    GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
+    GM_ADDR topk_indices, GM_ADDR cu_seqlens_q, GM_ADDR cu_seqlens_ori_kv, GM_ADDR cu_seqlens_cmp_kv, GM_ADDR seqused_q,
+    GM_ADDR seqused_ori_kv, GM_ADDR seqused_cmp_kv, GM_ADDR cmp_residual_kv, GM_ADDR sinks, GM_ADDR dq,
+    GM_ADDR d_ori_kv, GM_ADDR d_cmp_kv, GM_ADDR dsinks, GM_ADDR cmp_softmax_l1_norm, GM_ADDR workspace,
+    const TILING_CLASS *__restrict tilingData)
 {
-    Init(tilingData, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv);
+    Init(tilingData, cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q, seqused_ori_kv, seqused_cmp_kv,
+         cmp_residual_kv);
 
     // AIC Process
     if ASCEND_IS_AIC {
@@ -227,16 +273,23 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
             int32_t s1BasicAccum = 0;
             for (int32_t j = 0; j < s1Loop; j++) {
                 bool changeB = s1Index + (curS1Basic - s1BasicAccum) > curS1;
-                curLoopS1Basic = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
-                for (n2Index = 0; n2Index < dimN2; n2Index++) {
-                    GetActualSelCount(t1Index, n2Index, s2Loop);
-                    for (int32_t loop = 0; loop < s2Loop; loop++) {
-                        UpdateGmOffset(task, loop);
-                        CubeCompute(cubeOp);
-                        task++;
+                int64_t curLoopS1Physical = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
+                curLoopS1Basic = curLoopS1Physical;
+                if constexpr (HAS_SEQUSED) {
+                    // EOD: 槽位内 [usedS1, curS1) 为 padding 行，仅计算有效区；物理轴推进保持不变
+                    curLoopS1Basic = Min(curLoopS1Physical, usedS1 - s1Index);
+                }
+                if (curLoopS1Basic > 0) {
+                    for (n2Index = 0; n2Index < dimN2; n2Index++) {
+                        GetActualSelCount(t1Index, n2Index, s2Loop);
+                        for (int32_t loop = 0; loop < s2Loop; loop++) {
+                            UpdateGmOffset(task, loop);
+                            CubeCompute(cubeOp);
+                            task++;
+                        }
                     }
                 }
-                s1BasicAccum += curLoopS1Basic;
+                s1BasicAccum += curLoopS1Physical;
                 if (changeB) {
                     ChangeBatchUpdate();
                 }
@@ -247,6 +300,9 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
             int64_t taskMod = runInfo[1 - mmPingPongIdx].task & 1;
             CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
             cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+            if constexpr (IS_DETER) {
+                CrossCoreSetFlag<2, PIPE_FIX>(DETER_KV_SYNC_FLAG);
+            }
             CrossCoreSetFlag<2, PIPE_FIX>(POST_WAIT_CUBE);
         }
         FreeEventID();
@@ -256,8 +312,9 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
     if ASCEND_IS_AIV {
         TPipe pipeVec;
         VecOp<SMLAGT> vecOp;
-        vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks,
-                    cu_seqlens_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_softmax_l1_norm, workspace, tilingData, &pipeVec);
+        vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks, cu_seqlens_q,
+                   cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, cmp_softmax_l1_norm, workspace, tilingData,
+                   &pipeVec);
         SyncAll();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
@@ -266,16 +323,23 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
             int32_t s1BasicAccum = 0;
             for (int32_t j = 0; j < s1Loop; j++) {
                 bool changeB = s1Index + (curS1Basic - s1BasicAccum) > curS1;
-                curLoopS1Basic = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
-                for (n2Index = 0; n2Index < dimN2; n2Index++) {
-                    GetActualSelCount(t1Index, n2Index, s2Loop);
-                    for (int32_t loop = 0; loop < s2Loop; loop++) {
-                        UpdateGmOffset(task, loop);
-                        VecCompute(vecOp);
-                        task++;
+                int64_t curLoopS1Physical = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
+                curLoopS1Basic = curLoopS1Physical;
+                if constexpr (HAS_SEQUSED) {
+                    // EOD: 槽位内 [usedS1, curS1) 为 padding 行，仅计算有效区；物理轴推进保持不变
+                    curLoopS1Basic = Min(curLoopS1Physical, usedS1 - s1Index);
+                }
+                if (curLoopS1Basic > 0) {
+                    for (n2Index = 0; n2Index < dimN2; n2Index++) {
+                        GetActualSelCount(t1Index, n2Index, s2Loop);
+                        for (int32_t loop = 0; loop < s2Loop; loop++) {
+                            UpdateGmOffset(task, loop);
+                            VecCompute(vecOp);
+                            task++;
+                        }
                     }
                 }
-                s1BasicAccum += curLoopS1Basic;
+                s1BasicAccum += curLoopS1Physical;
                 if (changeB) {
                     ChangeBatchUpdate();
                 }
@@ -284,13 +348,25 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         if (cubeBlockIdx < usedCoreNum && task > 0) {
             CrossCoreWaitFlag<2, PIPE_MTE2>(POST_WAIT_CUBE);
         }
+        if constexpr (IS_DETER) {
+            // 冲刷最后一笔 pending（若有）；无 task 核仅靠下方 pad 对齐到 maxDeterAccWaves
+            if (needDeterAcc) {
+                CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+                DeterAccumulateAfterLocalSync(vecOp);
+            }
+            // former/remain/空核对齐 SyncAll 轮次
+            while (deterAccSeq < maxDeterAccWaves) {
+                needDeterAcc = false;
+                DeterAccumulateAfterLocalSync(vecOp);
+            }
+        }
         vecOp.CopyOutDsinks();
         SyncAll();
         pipeVec.Destroy();
 
         TPipe pipeCast;
         SparseFlashMlaGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0, MODE> opCast;
-        opCast.Init(dq, d_ori_kv, d_cmp_kv, workspace, tilingData, &pipeCast);
+        opCast.Init(dq, d_ori_kv, d_cmp_kv, dsinks, workspace, tilingData, &pipeCast);
         opCast.Process();
     }
 }
@@ -309,6 +385,9 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::CubeCompute(CubeOp<SMLAGT> &c
     CrossCoreSetFlag<2, PIPE_FIX>(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
     CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod == 0 ? CUBE_WAIT_VEC_PONG : CUBE_WAIT_VEC_PING);
     cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+    if constexpr (IS_DETER) {
+        CrossCoreSetFlag<2, PIPE_FIX>(DETER_KV_SYNC_FLAG);
+    }
     SaveLastInfo();
 }
 
@@ -319,6 +398,17 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::VecCompute(VecOp<SMLAGT> &vec
     CrossCoreWaitFlag(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
     vecOp.Process(runInfo[mmPingPongIdx]);
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
+
+    if constexpr (IS_DETER) {
+        if (needDeterAcc) {
+            CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+            DeterAccumulateAfterLocalSync(vecOp);
+        }
+        // 调度对本轮 task 的保序累加：cube345 在下一轮 CubeCompute 完成后再执行
+        deterAccRunInfo = runInfo[mmPingPongIdx];
+        deterAccRunInfo.scatterTaskId = deterAccRunInfo.task;
+        needDeterAcc = true;
+    }
     mmPingPongIdx = 1 - mmPingPongIdx;
 }
 
@@ -353,10 +443,10 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
     }
     if constexpr (MODE == SMLAG_CFA_MODE) {
         cmpKeyGmOffset = t3Offset * (dimN2 * dimDqk) + n2Index * dimDqk;
-        runInfo[mmPingPongIdx].curS3 = curS3;
+        runInfo[mmPingPongIdx].curS3 = usedS3;
     }
     runInfo[mmPingPongIdx].isOri = loop < oriS2Loop;
-    selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk : 
+    selectedKGmOffset = runInfo[mmPingPongIdx].isOri ? oriKeyGmOffset + (oriWinStart + blkCntOffset) * dimN2 * dimDqk :
                                                        cmpKeyGmOffset + blkCntOffset * dimN2 * dimDqk;
     runInfo[mmPingPongIdx].task = task;
     runInfo[mmPingPongIdx].lseGmOffset = lseGmOffset;
@@ -366,18 +456,22 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
     runInfo[mmPingPongIdx].mm12GmOffset = mm12GmOffset;
     runInfo[mmPingPongIdx].mm345GmOffset = mm345GmOffset;
     runInfo[mmPingPongIdx].dqOutGmOffset = queryGmOffset;
-    runInfo[mmPingPongIdx].actualSelCntOffset = runInfo[mmPingPongIdx].isOri ? 
-                                                (blkCntOffset + selectedCountOffset <= oriSelectedCount ? selectedCountOffset : oriSelectedCount - blkCntOffset) :
-                                                (blkCntOffset + selectedCountOffset <= cmpSelectedCount ? selectedCountOffset : cmpSelectedCount - blkCntOffset);
+    runInfo[mmPingPongIdx].actualSelCntOffset =
+        runInfo[mmPingPongIdx].isOri ?
+            (blkCntOffset + selectedCountOffset <= oriSelectedCount ? selectedCountOffset :
+                                                                      oriSelectedCount - blkCntOffset) :
+            (blkCntOffset + selectedCountOffset <= cmpSelectedCount ? selectedCountOffset :
+                                                                      cmpSelectedCount - blkCntOffset);
     runInfo[mmPingPongIdx].lastBlockSize = 1;
     runInfo[mmPingPongIdx].isLastBasicBlock = false;
     runInfo[mmPingPongIdx].s1Index = s1Index;
-    runInfo[mmPingPongIdx].curS1 = curS1;
-    runInfo[mmPingPongIdx].curS2 = curS2;
+    runInfo[mmPingPongIdx].curS1 = usedS1;
+    runInfo[mmPingPongIdx].curS2 = usedS2;
     runInfo[mmPingPongIdx].oriWinStart = oriWinStart;
     runInfo[mmPingPongIdx].oriWinEnd = oriWinEnd;
     runInfo[mmPingPongIdx].selectedKGmOffset = selectedKGmOffset;
     runInfo[mmPingPongIdx].selectedVGmOffset = selectedKGmOffset;
+    runInfo[mmPingPongIdx].scatterTaskId = task;
     runInfo[mmPingPongIdx].curS1g = curLoopS1Basic * dimG; // 尾块S1处理
     runInfo[mmPingPongIdx].curS1Basic = curLoopS1Basic;
     runInfo[mmPingPongIdx].oriWinDiagOffset = oriWinDiagOffset;
@@ -390,6 +484,25 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::SaveLastInfo()
     lastblkCntOffset = blkCntOffset;
     mmPingPongIdx = 1 - mmPingPongIdx;
     loopCnt++;
+}
+
+template <typename SMLAGT>
+__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateUsedSeqLen(int64_t batchIdx)
+{
+    usedS1 = curS1;
+    usedS2 = curS2;
+    usedS3 = curS3;
+    if constexpr (HAS_SEQUSED) {
+        if (hasUsedSeqQ) {
+            usedS1 = ((__gm__ int32_t *)seqused_q)[batchIdx];
+        }
+        if (hasUsedSeqOriKV) {
+            usedS2 = ((__gm__ int32_t *)seqused_ori_kv)[batchIdx];
+        }
+        if (hasUsedSeqCmpKV) {
+            usedS3 = ((__gm__ int32_t *)seqused_cmp_kv)[batchIdx];
+        }
+    }
 }
 
 template <typename SMLAGT>
@@ -407,12 +520,14 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::ChangeBatchUpdate()
             curS3 = (((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIndex] - ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIndex - 1]);
             residual = ((__gm__ int32_t *)cmp_residual_kv)[bIndex - 1];
         }
+        UpdateUsedSeqLen(bIndex - 1);
     } else {
         t1Offset = bIndex * curS1;
         t2Offset = bIndex * curS2;
         if constexpr (MODE == SMLAG_CFA_MODE) {
             t3Offset = bIndex * curS3;
         }
+        UpdateUsedSeqLen(bIndex);
     }
 }
 
@@ -425,7 +540,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
         while (t1Idx >= curT1) {
             curT1 = ((__gm__ int32_t *)cu_seqlens_q)[++bIdx];
         }
-        
+
         t1Offset = ((__gm__ int32_t *)cu_seqlens_q)[bIdx - 1];
         t2Offset = ((__gm__ int32_t *)cu_seqlens_ori_kv)[bIdx - 1];
         curS1 = ((__gm__ int32_t *)cu_seqlens_q)[bIdx] - ((__gm__ int32_t *)cu_seqlens_q)[bIdx - 1];
@@ -436,6 +551,8 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
             curS3 = (((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIdx] - ((__gm__ int32_t *)cu_seqlens_cmp_kv)[bIdx - 1]);
             residual = ((__gm__ int32_t *)cmp_residual_kv)[bIdx - 1];
         }
+
+        UpdateUsedSeqLen(bIdx - 1);
 
         s1Index = t1Idx - t1Offset;
         curS1Basic = t1Idx + s1BasicSize <= dimS1 ? s1BasicSize : dimS1 - t1Idx;
@@ -454,6 +571,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
         if constexpr (MODE == SMLAG_CFA_MODE) {
             t3Offset = bIdx * curS3;
         }
+        UpdateUsedSeqLen(bIdx);
         curS1Basic = t1Idx + s1BasicSize <= dimB * dimS1 ? s1BasicSize : dimB * dimS1 - t1Idx;
 
         int64_t bIndexTmp = bIdx;
@@ -466,16 +584,107 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
 }
 
 template <typename SMLAGT>
-__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &curS2Loop)
+__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp)
 {
-    oriWinDiagOffset = curS2 - curS1;
-    oriWinEnd = Min(s1Index + (curLoopS1Basic - 1) + oriWinRight + 1 + oriWinDiagOffset, curS2);
+    vecOp.PublishDeterAccMeta(needDeterAcc, deterAccRunInfo);
+    CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    vecOp.AccumulateKvDeter();
+    CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    needDeterAcc = false;
+    deterAccSeq++;
+}
+
+template <typename SMLAGT>
+__aicore__ inline int64_t SparseFlashMlaGrad<SMLAGT>::EstimateCoreTaskNum(int64_t coreIdx)
+{
+    int64_t processN = (coreIdx < static_cast<int64_t>(formerCoreNum)) ? formerProcessNNum : remainProcessNNum;
+    if (coreIdx >= static_cast<int64_t>(usedCoreNum) || processN <= 0) {
+        return 0;
+    }
+
+    int64_t tasks = 0;
+    // GetTndSeqLen / GetActualSelCount / ChangeBatchUpdate 会改写下列成员，必须全部 restore
+    int64_t saveB = bIndex;
+    int64_t saveS1 = s1Index;
+    int64_t saveT1 = t1Offset;
+    int64_t saveT2 = t2Offset;
+    int64_t saveT3 = t3Offset;
+    int64_t saveCurS1 = curS1;
+    int64_t saveCurS2 = curS2;
+    int64_t saveCurS3 = curS3;
+    int64_t saveResidual = residual;
+    int64_t saveCurS1Basic = curS1Basic;
+    int64_t saveCurLoopS1Basic = curLoopS1Basic;
+    int64_t saveOriWinStart = oriWinStart;
+    int64_t saveOriWinEnd = oriWinEnd;
+    int64_t saveOriWinDiagOffset = oriWinDiagOffset;
+    int64_t saveCmpDiagOffset = cmpDiagOffset;
+    int64_t saveCurMaxS3 = curMaxS3;
+    int32_t saveOriSelectedCount = oriSelectedCount;
+    int32_t saveCmpSelectedCount = cmpSelectedCount;
+    int32_t saveOriS2Loop = oriS2Loop;
+    int32_t saveCmpS2Loop = cmpS2Loop;
+
+    for (int32_t i = 0; i < processN; i++) {
+        int64_t t1Index = (coreIdx + static_cast<int64_t>(usedCoreNum) * i) * s1BasicSize;
+        int64_t bIdxLocal = 0;
+        int32_t s1LoopLocal = 0;
+        GetTndSeqLen(t1Index, bIdxLocal, s1LoopLocal);
+        bIndex = bIdxLocal;
+        int32_t s1BasicAccum = 0;
+        for (int32_t j = 0; j < s1LoopLocal; j++) {
+            bool changeB = s1Index + (curS1Basic - s1BasicAccum) > curS1;
+            curLoopS1Basic = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
+            for (int64_t n2 = 0; n2 < dimN2; n2++) {
+                int32_t s2LoopLocal = 0;
+                GetActualSelCount(t1Index, n2, s2LoopLocal);
+                tasks += s2LoopLocal;
+            }
+            s1BasicAccum += curLoopS1Basic;
+            if (changeB) {
+                ChangeBatchUpdate();
+            }
+        }
+    }
+
+    bIndex = saveB;
+    s1Index = saveS1;
+    t1Offset = saveT1;
+    t2Offset = saveT2;
+    t3Offset = saveT3;
+    curS1 = saveCurS1;
+    curS2 = saveCurS2;
+    curS3 = saveCurS3;
+    residual = saveResidual;
+    curS1Basic = saveCurS1Basic;
+    curLoopS1Basic = saveCurLoopS1Basic;
+    oriWinStart = saveOriWinStart;
+    oriWinEnd = saveOriWinEnd;
+    oriWinDiagOffset = saveOriWinDiagOffset;
+    cmpDiagOffset = saveCmpDiagOffset;
+    curMaxS3 = saveCurMaxS3;
+    oriSelectedCount = saveOriSelectedCount;
+    cmpSelectedCount = saveCmpSelectedCount;
+    oriS2Loop = saveOriS2Loop;
+    cmpS2Loop = saveCmpS2Loop;
+    return tasks;
+}
+
+template <typename SMLAGT>
+__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx,
+                                                                     int32_t &curS2Loop)
+{
+    // EOD 下 usedS* 为槽位内有效长度（非 EOD 时等于 curS*），因果对齐与窗口上界都必须按有效长度计算
+    oriWinDiagOffset = usedS2 - usedS1;
+    oriWinEnd = Min(s1Index + (curLoopS1Basic - 1) + oriWinRight + 1 + oriWinDiagOffset, usedS2);
     oriWinEnd = Max(oriWinEnd, 0);
     oriWinStart = Max(s1Index - oriWinLeft + oriWinDiagOffset, 0);
     oriSelectedCount = oriWinEnd - oriWinStart;
 
     if constexpr (MODE == SMLAG_CFA_MODE) {
-        cmpDiagOffset = curS3 * cmpRatio + residual - curS1;
+        cmpDiagOffset = usedS3 * cmpRatio + residual - usedS1;
         curMaxS3 = Max((cmpDiagOffset + s1Index + (curLoopS1Basic - 1) + 1) / cmpRatio, 0);
         cmpSelectedCount = curMaxS3;
     }

@@ -39,7 +39,7 @@ enum class SMLA_LAYOUT {
 
 template <typename Q_T, typename KV_T, typename OUT_T, const bool FLASH_DECODE = false,
           SMLA_LAYOUT LAYOUT_T = SMLA_LAYOUT::BSND, SMLA_LAYOUT KV_LAYOUT_T = SMLA_LAYOUT::PA_BBND,
-          int TEMPLATE_MODE = 0, const bool HEAD_RATIO_ONE = false, typename... Args>
+          int TEMPLATE_MODE = 0, const bool HEAD_RATIO_ONE = false, const bool IS_DSPARK = false, typename... Args>
 struct SMLAType {
     using queryType = Q_T;
     using kvType = KV_T;
@@ -50,6 +50,7 @@ struct SMLAType {
     static constexpr bool pageAttention = (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND);
     static constexpr int templateMode = TEMPLATE_MODE;
     static constexpr bool headRatioOne = HEAD_RATIO_ONE;
+    static constexpr bool isDspark = IS_DSPARK;
 };
 
 // ================================Util functions==================================
@@ -177,13 +178,9 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
 }
 
 template <typename T>
-__aicore__ inline void DataCopyPABySlots(LocalTensor<T> &dstTensor,
-                                         GlobalTensor<T> &srcTensor,
-                                         GlobalTensor<int32_t> &blockTableGm,
-                                         GlobalTensor<int32_t> &sparseIndicesGm,
-                                         const PAShape &shape,
-                                         const Position &startPos,
-                                         uint64_t sparseIndexBaseOffset,
+__aicore__ inline void DataCopyPABySlots(LocalTensor<T> &dstTensor, GlobalTensor<T> &srcTensor,
+                                         GlobalTensor<int32_t> &blockTableGm, GlobalTensor<int32_t> &sparseIndicesGm,
+                                         const PAShape &shape, const Position &startPos, uint64_t sparseIndexBaseOffset,
                                          uint32_t sparseIndexStart)
 {
     uint32_t blockElementCnt = 32 / sizeof(T);
@@ -197,13 +194,12 @@ __aicore__ inline void DataCopyPABySlots(LocalTensor<T> &dstTensor,
         uint64_t inBlockIdx = static_cast<uint64_t>(logicalIdx) % shape.blockSize;
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockTableIdx);
         uint64_t offset = idInBlockTable * shape.kvStride;
-        offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) +
-                  inBlockIdx * shape.headDim + startPos.dIdx;
+        offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + inBlockIdx * shape.headDim +
+                  startPos.dIdx;
 
         LocalTensor<T> tmpDstTensor = dstTensor[row * blockElementCnt];
         GlobalTensor<T> tmpSrcTensor = srcTensor[offset];
-        DataCopyGmNDToL1<T>(tmpDstTensor, tmpSrcTensor, 1, shape.copyRowNumAlign,
-                            shape.actHeadDim, shape.headDim);
+        DataCopyGmNDToL1<T>(tmpDstTensor, tmpSrcTensor, 1, shape.copyRowNumAlign, shape.actHeadDim, shape.headDim);
     }
 }
 

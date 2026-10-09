@@ -4,12 +4,12 @@
 
 | 产品 | 是否支持 |
 | ---- | :----:|
-|<term>Ascend 950PR/Ascend 950DT</term>|√|
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|×|
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|×|
-|<term>Atlas 200I/500 A2 推理产品</term>|×|
-|<term>Atlas 推理系列产品</term>|×|
-|<term>Atlas 训练系列产品</term>|×|
+|<term>Ascend 950PR&950DT系列产品</term>|√|
+|<term>Atlas A3系列产品</term>|×|
+|<term>Atlas A2系列产品</term>|×|
+|<term>Atlas 200I/500 A2推理产品</term>|×|
+|<term>Atlas推理系列产品</term>|×|
+|<term>Atlas训练系列产品</term>|×|
 
 ## 功能说明
 
@@ -187,8 +187,13 @@ $$
 <tbody>
   <tr>
     <td>aclnn调用</td>
+    <td><a href="examples/arch35/test_aclnn_block_attn_res_update.cpp">test_aclnn_block_attn_res_update.cpp</a></td>
+    <td>通过aclnnBlockAttnResUpdate接口调用，详细说明参见<a href="docs/aclnnBlockAttnResUpdate.md">接口文档</a>。</td>
+  </tr>
+  <tr>
+    <td>PyTorch API</td>
     <td>-</td>
-    <td>接口预留，当前版本尚未提供aclnnBlockAttnResUpdate接口及调用样例。</td>
+    <td>通过<a href="../../attention/block_attn_res_update/docs/torchapi_block_attn_res_update.md">cann_ops_transformer.block_attn_res_update</a>接口调用。</td>
   </tr>
 </tbody>
 </table>

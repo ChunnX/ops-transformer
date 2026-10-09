@@ -81,6 +81,22 @@ def has_cpu_output(case_name, cache_dir=None):
     return os.path.exists(_path(case_name, "cpu_output", cache_dir))
 
 
+def save_cpu_output_fp32(case_name, cpu_out, cpu_lse, cache_dir=None):
+    """FP64 golden 模式下，FP32 golden 作为 benchmark 单独缓存"""
+    path = _path(case_name, "cpu_output_fp32", cache_dir)
+    torch.save({"cpu_out": cpu_out, "cpu_lse": cpu_lse}, path)
+    logger.info("[CACHE] save CPU output (fp32 benchmark) → %s", path)
+
+
+def load_cpu_output_fp32(case_name, cache_dir=None):
+    path = _path(case_name, "cpu_output_fp32", cache_dir)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"No cached CPU output (fp32): {path}")
+    data = torch.load(path, weights_only=False)
+    logger.info("[CACHE] load CPU output (fp32 benchmark) ← %s", path)
+    return data["cpu_out"], data["cpu_lse"]
+
+
 def save_npu_output(case_name, atten_out, lse_out, cache_dir=None):
     path = _path(case_name, "npu_output", cache_dir)
     torch.save({"atten_out": atten_out, "lse_out": lse_out}, path)
@@ -111,8 +127,9 @@ def build_input_dict(
     qr_bf16,
     kr_bf16,
     block_table_torch,
+    vtail_bundle=None,
 ):
-    return {
+    input_dict = {
         "q_fp8": q_fp8,
         "k_fp8": k_fp8,
         "v_fp8": v_fp8,
@@ -124,3 +141,15 @@ def build_input_dict(
         "kr_bf16": kr_bf16,
         "block_table_torch": block_table_torch,
     }
+    if vtail_bundle is not None:
+        input_dict["vtail_bundle"] = vtail_bundle
+    return input_dict
+
+
+def load_vtail_bundle(case_name, cache_dir=None):
+    """从缓存input中恢复尾块bundle(无则返回None), 供golden模块级状态回填"""
+    path = _path(case_name, "input", cache_dir)
+    if not os.path.exists(path):
+        return None
+    data = torch.load(path, weights_only=False)
+    return data.get("vtail_bundle")

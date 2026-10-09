@@ -19,7 +19,6 @@
 #include <cmath>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_sparse_lightning_indexer_grad_kl_loss.h"
-#include "aclnnop/aclnn_sparse_lightning_indexer_grad_kl_loss_v2.h"
 
 #define CHECK_RET(cond, return_expr) \
     do { \
@@ -107,8 +106,6 @@ int main()
     // 2. 构造输入与输出，需要根据API的接口自定义构造
     int64_t s1 = 1;
     int64_t s2 = 1;
-    int64_t t1 = 512;
-    int64_t t2 = 512;
     int64_t n1 = 128;
     int64_t n2 = 1;
     int64_t nQueryIndex = 64;
@@ -116,6 +113,8 @@ int main()
     int64_t dRope = 64;
     int64_t dQueryIndex = 128;
     int64_t topK = 2048;
+    int64_t t1 = s1;
+    int64_t t2 = s2;
     int64_t G = n1 / n2;
 
     std::vector<int64_t> qShape = {t1, n1, dQuery};
@@ -231,7 +230,7 @@ int main()
 
     char layOut[5] = {'T', 'N', 'D', 0};
 
-    // 3. 调用CANN算子库API，需要修改为具体的Api名称
+    // 3. 调用CANN算子库API
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
 
@@ -266,48 +265,6 @@ int main()
     PrintOutResult(dWeightShape, &dWeightDeviceAddr);
     PrintOutResult(lossShape, &lossDeviceAddr);
 
-    // ---- V2 用例：aclnnSparseLightningIndexerGradKLLossV2（带 sinks 参数） ----
-    // sinks 为 1 维 float 张量，本期仅透传，不参与计算
-    std::vector<int64_t> sinksShape = {G};
-    std::vector<float> sinksHostData(G, 0.0f);
-    void *sinksDeviceAddr = nullptr;
-    aclTensor *sinks = nullptr;
-    ret = CreateAclTensor(sinksHostData, sinksShape, &sinksDeviceAddr, aclDataType::ACL_FLOAT, &sinks);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("CreateAclTensor(sinks) failed. ERROR: %d\n", ret); return ret);
-
-    // 复用 V1 的输入输出，额外传入 sinks
-    uint64_t workspaceSizeV2 = 0;
-    aclOpExecutor *executorV2 = nullptr;
-    ret = aclnnSparseLightningIndexerGradKLLossV2GetWorkspaceSize(
-        q, k, qIndex, kIndex, weight, sparseIndices, softmaxMax, softmaxSum, qRope, kRope, acSeqQLen, acSeqKvLen, sinks,
-        scaleValue, layOut, sparseMode, preTokens, nextTokens, deterministic, dQIndex, dKIndex, dWeight, loss,
-        &workspaceSizeV2, &executorV2);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("aclnnSparseLightningIndexerGradKLLossV2GetWorkspaceSize failed. ERROR: %d\n", ret);
-              return ret);
-
-    if (workspaceSizeV2 > workspaceSize) {
-        // V2 需要的 workspace 更大，释放后重新分配
-        if (workspaceSize > 0) {
-            aclrtFree(workspaceAddr);
-            workspaceAddr = nullptr;
-        }
-        ret = aclrtMalloc(&workspaceAddr, workspaceSizeV2, ACL_MEM_MALLOC_HUGE_FIRST);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate V2 workspace failed. ERROR: %d\n", ret); return ret);
-    }
-
-    ret = aclnnSparseLightningIndexerGradKLLossV2(workspaceAddr, workspaceSizeV2, executorV2, stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseLightningIndexerGradKLLossV2 failed. ERROR: %d\n", ret);
-              return ret);
-
-    ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-
-    PrintOutResult(dQIndexShape, &dQIndexDeviceAddr);
-    PrintOutResult(dKIndexShape, &dKIndexDeviceAddr);
-    PrintOutResult(dWeightShape, &dWeightDeviceAddr);
-    PrintOutResult(lossShape, &lossDeviceAddr);
-
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(q);
     aclDestroyTensor(k);
@@ -324,7 +281,6 @@ int main()
     aclDestroyTensor(dKIndex);
     aclDestroyTensor(dWeight);
     aclDestroyTensor(loss);
-    aclDestroyTensor(sinks);
 
     // 7. 释放device资源
     aclrtFree(qDeviceAddr);
@@ -342,7 +298,6 @@ int main()
     aclrtFree(dKIndexDeviceAddr);
     aclrtFree(dWeightDeviceAddr);
     aclrtFree(lossDeviceAddr);
-    aclrtFree(sinksDeviceAddr);
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }

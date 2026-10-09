@@ -56,7 +56,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, Float16_Basic)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -86,7 +86,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, BF16_Basic)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -116,7 +116,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, TransB_Float16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -146,7 +146,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, RankSize4)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -176,7 +176,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, InvalidRankSize)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     // rankNum=3 is not in VALID_RANK.at(0) = {2, 4, 8}, should fail
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 3}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
@@ -206,7 +206,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, EmptyTensor)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -236,7 +236,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, SmallK_BF16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -266,7 +266,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, RankSize2_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -296,7 +296,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, InvalidRankSize16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     // rankNum=16 is not in VALID_RANK.at(0) = {2, 4, 8}, should fail
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 16}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
@@ -330,7 +330,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, IsDeterministic_True_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}, {"topoType", 1}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 3);
 
@@ -369,7 +369,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, IsDeterministic_False_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}, {"topoType", 1}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, 3);
 
@@ -404,7 +404,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, LargeM_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -434,7 +434,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, TransB_LargeD_BF16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -464,7 +464,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, MataInterleave_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -494,7 +494,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, SmallN_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -524,7 +524,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, SmallK_TransB_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -554,7 +554,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, CheckUbOverflowSmallD_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -584,7 +584,7 @@ TEST_F(MatmulReduceScatterArch35TilingTest, CheckUbOverflowLargeD_FP16)
             {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend910_95", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);

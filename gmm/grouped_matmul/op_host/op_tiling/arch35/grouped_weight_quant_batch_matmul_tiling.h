@@ -54,6 +54,8 @@ constexpr uint32_t BASIC_BLOCK_BASE_M_WITH_BIAS = 240;
 constexpr uint32_t BASIC_BLOCK_BASE_N = 256;
 constexpr uint32_t BASIC_BLOCK_BASE_K = 64;
 constexpr uint32_t BASIC_BLOCK_BASE_N_MIN = 128;
+constexpr uint32_t BASIC_BLOCK_BASE_M_MIN = 128;
+constexpr uint32_t MX_A8W4_GROUP_DISTRIBUTED_N_MIN = 4096;
 constexpr uint32_t STEP_K_4 = 4;
 constexpr uint32_t STEP_K_3 = 3;
 constexpr uint32_t DEPTH_8 = 8;
@@ -270,10 +272,16 @@ private:
     bool CheckPerTokenScaleShape() const;
     bool CheckAntiquantInputsEmpty() const;
     bool CheckWeightStorageShape(const gert::StorageShape &weightShape);
+    bool CheckWeightNzStorageShape(const gert::Shape &storageShape);
     bool CheckScaleAndOffsetShapes();
     bool SetLogicalMKN(const gert::Shape &xShape, const gert::Shape &wShape);
     void SetBasicBlock();
     ge::graphStatus ValidateFixedTileResources(uint64_t kL1) const;
+    void SetMmTilingData(uint64_t kL1);
+    ge::graphStatus ComputeWorkspaceLayout();
+    bool AnalyzeInputDtypes();
+    bool CheckDtypeAndFormat();
+    bool AnalyzeBiasAndOffset();
 
     static constexpr uint32_t QUANT_GROUP_SIZE = 256U;
     static constexpr uint32_t S8S4_BASE_M = 256U;
@@ -343,8 +351,16 @@ protected:
     bool CheckEveryTensorSingleXMultiWeightSingleY(const gert::TilingContext *context) const;
     bool CheckGroupList(const gert::TilingContext *context) const;
     bool AnalyzeAttr(const gert::TilingContext *context);
+    bool AnalyzeCompileInfoAndAttrs(const gert::TilingContext *context);
+    bool AnalyzeTensorLayout(const gert::TilingContext *context);
+    bool CheckAllParams(const gert::TilingContext *context);
     bool AnalyzeInput(const gert::TilingContext *context);
     bool CalcResplitTiling(const gert::TilingContext *context);
+    bool CalcMxA8W4BandwidthResplit(const gert::TilingContext *context, uint64_t c0Size, uint64_t &selectedNBlockCount,
+                                    uint64_t &selectedNBlockSize) const;
+    double GetHbmBW(fe::PlatFormInfos *platformInfo) const;
+    double GetL2BW(fe::PlatFormInfos *platformInfo) const;
+    double GetCoreFreq(fe::PlatFormInfos *platformInfo) const;
     bool SetBaseTiling();
     void SetMatMulTiling();
     void SetTilingKey(gert::TilingContext *context);
@@ -384,6 +400,7 @@ protected:
     void PrintInputParam(const gert::TilingContext *context) const;
     void PrintTilingResult(const gert::TilingContext *context);
     bool EnableTailResplit() const;
+    bool TraverseForBalanceBaseN();
 
 private:
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};

@@ -57,9 +57,9 @@ constexpr uint64_t HCCL_MAX_COMM_TILES = 62; // 总通信次数上限63, tile+ta
 
 class AllGatherMatmulTilingBase : public TilingBaseClass {
 public:
-    explicit AllGatherMatmulTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit AllGatherMatmulTilingBase(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {}
     ~AllGatherMatmulTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -132,6 +132,9 @@ protected:
     bool enableNd2Nz_{false};
     bool castBias_{false};
     uint32_t gatherIndex_{0};
+#if MC2_DFX_ENABLE
+    Utils::DfxWorkspaceLayoutInfo workspaceLayout_{};
+#endif
 };
 } // namespace optiling
 

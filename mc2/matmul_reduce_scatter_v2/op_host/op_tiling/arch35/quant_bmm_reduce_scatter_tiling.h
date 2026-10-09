@@ -78,6 +78,9 @@ protected:
 
     Mc2Tiling::RCSTiling &MutableRCSTilingDataA5() const;
 
+#if MC2_DFX_ENABLE
+    ge::graphStatus BuildQuantWorkspaceLayout();
+#endif
     ge::graphStatus DoAdaptSlidWindowTiling();
     ge::graphStatus SetMc2Hcomm();
     ge::graphStatus CheckInput() override;
@@ -128,6 +131,5 @@ private:
     bool isSerial_{false};
 };
 } // namespace optiling
-
 
 #endif //__QUANT_BMM_REDUCE_SCATTER_TILING_H__

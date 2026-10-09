@@ -36,21 +36,23 @@ constexpr uint32_t SEND_COUNTS_OUT_INDEX = 2U;
 constexpr uint32_t RECV_COUNTS_OUT_INDEX = 3U;
 constexpr uint32_t RECV_LOCAL_ENTRY_OUT_INDEX = 4U;
 constexpr uint32_t NUM_RECV_OUT_INDEX = 5U;
+constexpr uint32_t FETCHED_SF_INDEX = 6U;
 
 constexpr uint32_t ATTR_HIDDEN_SIZE_INDEX = 0U;
 constexpr uint32_t ATTR_NUM_ENTRIES_PER_RANK_INDEX = 1U;
 constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 2U;
 constexpr uint32_t ATTR_COMM_BUFFER_SIZE_INDEX = 3U;
 constexpr uint32_t ATTR_WITH_GRAD_INDEX = 4U;
+constexpr uint32_t SF_TABLE_INDEX = 3U;
 
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
-constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 constexpr int64_t UB_ALIGN = 32;
 constexpr int64_t FLAG_SCRATCH_SIZE = 32;
 constexpr int64_t WORKSPACE_ALIGN_2MB = 2 * 1024 * 1024;
+constexpr int64_t SIMT_DCACHE_SIZE = 64 * 1024LL; // SortLib SIMT dcache 预留
 
 static int64_t CeilDiv(int64_t x, int64_t y)
 {
@@ -62,7 +64,8 @@ static int64_t AlignTo(int64_t x, int64_t y)
     return CeilDiv(x, y) * y;
 }
 
-static const std::vector<ge::DataType> OUTPUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
+static const std::vector<ge::DataType> OUTPUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT,
+                                                            ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
 
 static bool IsContains(const std::vector<ge::DataType> &list, ge::DataType value)
 {
@@ -86,6 +89,9 @@ static void PrintEngramFetchTilingData(const EngramFetchTilingData *tilingData, 
     OP_LOGD(nodeName, "numMaxTokensPerRank is %ld", tilingData->numMaxTokensPerRank);
     OP_LOGD(nodeName, "totalRecv is %ld", tilingData->totalRecv);
     OP_LOGD(nodeName, "commBufferSize is %ld", tilingData->commBufferSize);
+    OP_LOGD(nodeName, "sortNumTileData is %u", tilingData->sortNumTileData);
+    OP_LOGD(nodeName, "sortTileCount is %u", tilingData->sortTileCount);
+    OP_LOGD(nodeName, "sortTmpUbSize is %u", tilingData->sortTmpUbSize);
 }
 
 /**
@@ -129,8 +135,9 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
     ge::DataType fetchedDtype = fetchedDesc->GetDataType();
     OP_TILING_CHECK(
         !IsContains(OUTPUT_DTYPE_LIST, fetchedDtype),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "fetched", Ops::Base::ToString(fetchedDtype).c_str(),
-                                              "The dtype of fetched must be DT_BF16, DT_FLOAT16 or DT_FLOAT."),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            nodeName, "fetched", Ops::Base::ToString(fetchedDtype).c_str(),
+            "The dtype of fetched must be DT_BF16, DT_FLOAT16, DT_FLOAT, DT_FLOAT8_E4M3FN or DT_FLOAT8_E5M2."),
         return ge::GRAPH_FAILED);
 
     auto localStorageAddrDesc = context->GetInputDesc(LOCAL_STORAGE_ADDR_INDEX);
@@ -157,12 +164,12 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
     const gert::StorageShape *commContextShape = context->GetInputShape(COMM_CONTEXT_INDEX);
     OP_TILING_CHECK(commContextShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commContext"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commContextShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "commContext",
-                        (std::to_string(commContextShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of commContext must be 1D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        commContextShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "commContext", (std::to_string(commContextShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of commContext must be 1D."),
+        return ge::GRAPH_FAILED);
     int64_t commContextDim0 = commContextShape->GetStorageShape().GetDim(0);
     OP_LOGD(nodeName, "commContext dim0 = %ld", commContextDim0);
     OP_TILING_CHECK(commContextDim0 <= 0,
@@ -172,12 +179,12 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
 
     const gert::StorageShape *indicesShape = context->GetInputShape(INDICES_INDEX);
     OP_TILING_CHECK(indicesShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "indices"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(indicesShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "indices",
-                        (std::to_string(indicesShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of indices must be 1D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        indicesShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "indices", (std::to_string(indicesShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of indices must be 1D."),
+        return ge::GRAPH_FAILED);
     numTokens = indicesShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(numTokens < 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "indices",
@@ -188,12 +195,12 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
     // output dim check
     const gert::StorageShape *fetchedShape = context->GetOutputShape(FETCHED_INDEX);
     OP_TILING_CHECK(fetchedShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "fetched"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(fetchedShape->GetStorageShape().GetDimNum() != DIM_TWO,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "fetched",
-                        (std::to_string(fetchedShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of fetched must be 2D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        fetchedShape->GetStorageShape().GetDimNum() != DIM_TWO,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "fetched", (std::to_string(fetchedShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of fetched must be 2D."),
+        return ge::GRAPH_FAILED);
     const int64_t fetchedDim0 = fetchedShape->GetStorageShape().GetDim(0);
     const int64_t fetchedDim1 = fetchedShape->GetStorageShape().GetDim(1);
     OP_LOGD(nodeName, "fetched dim0 = %ld", fetchedDim0);
@@ -312,11 +319,6 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context)
     OP_TILING_CHECK(*hiddenSizePtr <= 0,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "hidden_size", std::to_string(*hiddenSizePtr).c_str(), "> 0"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        *hiddenSizePtr % HIDDEN_SIZE_ALIGN != 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "hidden_size", std::to_string(*hiddenSizePtr).c_str(),
-                                  (std::string("must be ") + std::to_string(HIDDEN_SIZE_ALIGN) + "-aligned").c_str()),
-        return ge::GRAPH_FAILED);
     OP_LOGD(nodeName, "hidden_size is %ld", *hiddenSizePtr);
 
     // fetched dim1 must equal hidden_size attr
@@ -353,11 +355,11 @@ static ge::graphStatus CheckTrainingParams(const gert::TilingContext *context, i
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "num_max_tokens_per_rank",
                                               std::to_string(*numMaxTokensPerRankPtr).c_str(), "> 0"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*numMaxTokensPerRankPtr < numTokens,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "num_max_tokens_per_rank",
-                                              std::to_string(*numMaxTokensPerRankPtr).c_str(),
-                                              (std::string(">= numTokens(") + std::to_string(numTokens) + ")").c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        *numMaxTokensPerRankPtr < numTokens,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "num_max_tokens_per_rank", std::to_string(*numMaxTokensPerRankPtr).c_str(),
+                                  (std::string(">= numTokens(") + std::to_string(numTokens) + ")").c_str()),
+        return ge::GRAPH_FAILED);
 
     auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE_INDEX);
     OP_TILING_CHECK(commBufferSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "comm_buffer_size"),
@@ -369,12 +371,12 @@ static ge::graphStatus CheckTrainingParams(const gert::TilingContext *context, i
 
     const gert::StorageShape *permOutShape = context->GetOutputShape(PERM_OUT_INDEX);
     OP_TILING_CHECK(permOutShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "permOut"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(permOutShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "permOut",
-                        (std::to_string(permOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of permOut must be 1D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        permOutShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "permOut", (std::to_string(permOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of permOut must be 1D."),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(permOutShape->GetStorageShape().GetDim(0) != numTokens,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "permOut",
@@ -424,21 +426,21 @@ static ge::graphStatus CheckTrainingParams(const gert::TilingContext *context, i
                         "The shape dim of recvLocalEntryOut must be 1D."),
                     return ge::GRAPH_FAILED);
     int64_t recvLocalEntryDim0 = recvLocalEntryOutShape->GetStorageShape().GetDim(0);
-    OP_TILING_CHECK(recvLocalEntryDim0 < 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "recvLocalEntryOut",
-                                              (std::string("dim0=") + std::to_string(recvLocalEntryDim0)).c_str(),
-                                              ">= 0"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        recvLocalEntryDim0 < 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "recvLocalEntryOut",
+                                  (std::string("dim0=") + std::to_string(recvLocalEntryDim0)).c_str(), ">= 0"),
+        return ge::GRAPH_FAILED);
 
     const gert::StorageShape *numRecvOutShape = context->GetOutputShape(NUM_RECV_OUT_INDEX);
     OP_TILING_CHECK(numRecvOutShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numRecvOut"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(numRecvOutShape->GetStorageShape().GetDimNum() != DIM_ONE,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "numRecvOut",
-                        (std::to_string(numRecvOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
-                        "The shape dim of numRecvOut must be 1D."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        numRecvOutShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+            nodeName, "numRecvOut", (std::to_string(numRecvOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of numRecvOut must be 1D."),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numRecvOutShape->GetStorageShape().GetDim(0) != 1,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         nodeName, "numRecvOut",
@@ -468,7 +470,7 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
 /**
  * @brief 设置平台信息
  */
-static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetchTilingData &tilingData)
+static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetchTilingData &tilingData, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
 
@@ -482,14 +484,30 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext *context, EngramFetch
     tilingData.aivNum = aivNum;
     OP_LOGD(nodeName, "aicNum=%u, aivNum=%u, numBlocks=%u", aicNum, aivNum, numBlocks);
 
+    if (isTraining) {
+        // 训练模式 kernel 内借用 SortLib（SIMT）做收端全局排序，须预留 SIMT dcache
+        uint64_t ubSize = 0;
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+        int64_t availUbSize = static_cast<int64_t>(ubSize) - SIMT_DCACHE_SIZE;
+        OP_TILING_CHECK(availUbSize <= 0,
+                        OP_LOGE(nodeName, "availUbSize(%lld) <= 0, ubSize=%llu, SIMT_DCACHE_SIZE=%lld", availUbSize,
+                                ubSize, SIMT_DCACHE_SIZE),
+                        return ge::GRAPH_FAILED);
+        auto ret = context->SetLocalMemorySize(static_cast<size_t>(availUbSize));
+        OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS,
+                        OP_LOGE(nodeName, "SetLocalMemorySize failed, availUbSize=%lld", availUbSize),
+                        return ge::GRAPH_FAILED);
+        OP_LOGD(nodeName, "SetLocalMemorySize: ubSize=%llu, availUbSize=%lld", ubSize, availUbSize);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
 /**
  * @brief 设置tiling数据
  */
-static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTilingData &tilingData, int64_t numTokens,
-                                     bool isTraining)
+static ge::graphStatus SetTilingData(const gert::TilingContext *context, EngramFetchTilingData &tilingData,
+                                     int64_t numTokens, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
     auto attrs = context->GetAttrs();
@@ -499,6 +517,11 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
     tilingData.numMaxTokensPerRank = 0;
     tilingData.totalRecv = 0;
     tilingData.commBufferSize = 0;
+    tilingData.numSfPacks = 0;
+    tilingData.sfElemSize = 0;
+    tilingData.sortNumTileData = 0;
+    tilingData.sortTileCount = 0;
+    tilingData.sortTmpUbSize = 0;
 
     auto hiddenSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_HIDDEN_SIZE_INDEX);
     tilingData.hiddenDim = *hiddenSizePtr;
@@ -516,11 +539,27 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
                     return ge::GRAPH_FAILED);
     tilingData.hiddenBytes = hiddenDim * bytesPerElem;
 
+    auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
+    if (fetchedSfDesc != nullptr) {
+        const gert::StorageShape *fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
+        if (fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO) {
+            tilingData.numSfPacks = fetchedSfShape->GetStorageShape().GetDim(1);
+        }
+        ge::DataType sfDtype = fetchedSfDesc->GetDataType();
+        tilingData.sfElemSize = ge::GetSizeByDataType(sfDtype);
+    }
+
     auto platformInfo = context->GetPlatformInfo();
     OPS_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint64_t ubSize = 0;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    if (isTraining) {
+        OP_TILING_CHECK(static_cast<int64_t>(ubSize) <= SIMT_DCACHE_SIZE,
+                        OP_LOGE(nodeName, "ubSize(%llu) <= SIMT_DCACHE_SIZE(%lld)", ubSize, SIMT_DCACHE_SIZE),
+                        return ge::GRAPH_FAILED);
+        ubSize -= SIMT_DCACHE_SIZE;
+    }
     tilingData.ubSize = ubSize;
 
     if (isTraining) {
@@ -541,6 +580,35 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
         if (commBufferSizePtr != nullptr) {
             tilingData.commBufferSize = *commBufferSizePtr;
         }
+
+        // SortLib 参数：请求方对输入 indices 全局排序（key = entry id，规模 numTokens）
+        constexpr uint64_t kSortLibFixedBytes = 5120U;
+        // sortlib 内部 histUb/histCumsumUb 队列按 256 bin × uint16 = 512B 使用
+        // 而 outValueQueue_ 仅按 numTileData 字节分配，故 numTileData 下界为 512
+        constexpr uint64_t kMinTileElems = 512U;
+        constexpr uint64_t kBytesPerElem = 21U;
+        uint64_t budget = tilingData.ubSize;
+        OP_TILING_CHECK(budget < kSortLibFixedBytes + kMinTileElems * kBytesPerElem,
+                        OP_LOGE(nodeName, "SortLib UB budget too small: ubSize=%llu, need>=%llu",
+                                static_cast<unsigned long long>(budget),
+                                static_cast<unsigned long long>(kSortLibFixedBytes + kMinTileElems * kBytesPerElem)),
+                        return ge::GRAPH_FAILED);
+        int64_t numTokensI64 = tilingData.numTokens;
+        int64_t aivNumI64 = static_cast<int64_t>(tilingData.aivNum);
+        uint32_t numTile = static_cast<uint32_t>((numTokensI64 + aivNumI64 - 1) / aivNumI64);
+        uint32_t ubCap = static_cast<uint32_t>((budget - kSortLibFixedBytes) / kBytesPerElem);
+        if (numTile < kMinTileElems) {
+            numTile = kMinTileElems;
+        }
+        if (numTile > ubCap) {
+            numTile = ubCap;
+        }
+        tilingData.sortNumTileData = numTile;
+        tilingData.sortTileCount =
+            static_cast<uint32_t>((numTokensI64 + static_cast<int64_t>(numTile) - 1) / static_cast<int64_t>(numTile));
+        tilingData.sortTmpUbSize = 512U + 7U * ((numTile + 31U) / 32U * 32U) + 256U;
+        OP_LOGD(nodeName, "SortLib params: numTile=%u tileCount=%u tmpUb=%u budget=%llu", tilingData.sortNumTileData,
+                tilingData.sortTileCount, tilingData.sortTmpUbSize, static_cast<unsigned long long>(budget));
     }
 
     OP_LOGD(nodeName,
@@ -558,10 +626,22 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTi
 static void SetTilingKey(gert::TilingContext *context, bool isTraining)
 {
     const char *nodeName = context->GetNodeName();
-    const uint64_t tilingKey =
-        isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE) : GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE);
+    bool hasSf = false;
+    auto sfTableDesc = context->GetInputDesc(SF_TABLE_INDEX);
+    auto sfTableShape = context->GetInputShape(SF_TABLE_INDEX);
+    auto fetchedSfDesc = context->GetOutputDesc(FETCHED_SF_INDEX);
+    auto fetchedSfShape = context->GetOutputShape(FETCHED_SF_INDEX);
+    // hasSf 训练/推理统一判定: sf_table 与 fetched_sf 成对提供时为真。
+    // 无 SF 时两者均为空占位 (1-D), fetched_sf 非 2D 使 hasSf 恒为假;
+    // 训练的 sf_table 为本卡 SF 表地址 (1元 int64 张量), 推理为全量 SF 表。
+    hasSf = sfTableDesc != nullptr && sfTableShape != nullptr && fetchedSfDesc != nullptr &&
+            fetchedSfShape != nullptr && fetchedSfShape->GetStorageShape().GetDimNum() == DIM_TWO &&
+            fetchedSfShape->GetStorageShape().GetDim(1) > 0;
+    const uint64_t tilingKey = isTraining ? GET_TPL_TILING_KEY(ENGRAM_FETCH_TRAIN_MODE, hasSf) :
+                                            GET_TPL_TILING_KEY(ENGRAM_FETCH_DEFAULT_MODE, hasSf);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d).", tilingKey, isTraining);
+    OP_LOGD(nodeName, "tilingKey is [%lu] in engram_fetch (isTraining=%d, hasSf=%d).", tilingKey, isTraining,
+            static_cast<int32_t>(hasSf));
 }
 
 /**
@@ -577,19 +657,51 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
     if (isTraining) {
         int64_t numRanks = static_cast<int64_t>(tilingData.rankSize);
         int64_t numTokens = tilingData.numTokens;
-        int64_t hiddenBytes = tilingData.hiddenBytes;
-        int64_t totalRecv = tilingData.totalRecv;
+        int64_t aivNum = static_cast<int64_t>(tilingData.aivNum);
+        OP_TILING_CHECK(aivNum <= 0, OP_LOGE(nodeName, "aivNum is %ld, must be positive.", aivNum),
+                        return ge::GRAPH_FAILED);
 
         int64_t wsSdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
         int64_t wsRdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
         int64_t wsSortedIndices = AlignTo(numTokens * static_cast<int64_t>(sizeof(int32_t)), UB_ALIGN);
-        int64_t wsLocalData = totalRecv * hiddenBytes;
-        int64_t wsRecvData = numTokens * hiddenBytes;
-        int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
-        int64_t wsFlagScratch = FLAG_SCRATCH_SIZE;
+        int64_t wsCounterScratch = aivNum * UB_ALIGN;
+        int64_t wsPartialCounts = aivNum * numRanks * static_cast<int64_t>(sizeof(int32_t));
+        int64_t wsIndicesReadyFlag = AlignTo(numRanks * static_cast<int64_t>(sizeof(int32_t)), UB_ALIGN);
+        // 数值安全防护：sf 分量非负、乘法不溢出，numSfPacks=0 为无 sf 合法场景
+        OP_TILING_CHECK(tilingData.numSfPacks < 0 || tilingData.sfElemSize < 0 ||
+                            (tilingData.sfElemSize > 0 && tilingData.numSfPacks > INT64_MAX / tilingData.sfElemSize),
+                        OP_LOGE(nodeName, "invalid sf dims: numSfPacks=%ld, sfElemSize=%ld", tilingData.numSfPacks,
+                                tilingData.sfElemSize),
+                        return ge::GRAPH_FAILED);
+        int64_t sfBytes = static_cast<int64_t>(tilingData.numSfPacks) * static_cast<int64_t>(tilingData.sfElemSize);
+        int64_t rowStride = tilingData.hiddenBytes + sfBytes;
+        OP_TILING_CHECK(tilingData.totalRecv < 0 || rowStride <= 0 || tilingData.totalRecv > INT64_MAX / rowStride,
+                        OP_LOGE(nodeName, "token staging size overflow: totalRecv=%ld, rowStride=%ld",
+                                tilingData.totalRecv, rowStride),
+                        return ge::GRAPH_FAILED);
+        int64_t wsTokenStaging = tilingData.totalRecv * rowStride;
+        OP_LOGD(nodeName, "token staging bytes = %ld, totalRecv=%ld, rowStride=%ld", wsTokenStaging,
+                tilingData.totalRecv, rowStride);
 
-        int64_t wsTotal =
-            wsSdispls + wsRdispls + wsSortedIndices + wsLocalData + wsRecvData + wsCounterScratch + wsFlagScratch;
+        // SortLib 六段 workspace，与 kernel 侧 InitWorkspaceLayout 逐段一致（按 numTokens 规模）；
+        // 前段尺寸不保证 32B 对齐，与 kernel 一致在排序区前插入对齐 padding
+        int64_t wsBeforeSort = wsSdispls + wsRdispls + wsSortedIndices + wsCounterScratch + wsPartialCounts +
+                               wsIndicesReadyFlag + wsTokenStaging;
+        int64_t wsSortPad = AlignTo(wsBeforeSort, UB_ALIGN) - wsBeforeSort;
+        int64_t numTokensI64 = tilingData.numTokens;
+        OP_TILING_CHECK(numTokensI64 > INT64_MAX / static_cast<int64_t>(sizeof(int32_t)),
+                        OP_LOGE(nodeName, "sort array overflow: numTokens=%lld", numTokensI64),
+                        return ge::GRAPH_FAILED);
+        constexpr int64_t kRadixRounds = 4;
+        int64_t slSeg0 = AlignTo(256LL * kRadixRounds * 4LL, UB_ALIGN);
+        int64_t slSeg1 = AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * kRadixRounds * 4LL, UB_ALIGN);
+        int64_t slSeg2 = AlignTo(numTokensI64 * 4LL, UB_ALIGN);
+        int64_t slSeg3 = 2LL * AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * 256LL * 2LL, UB_ALIGN);
+        int64_t slSeg4 = AlignTo(static_cast<int64_t>(tilingData.sortTileCount) * tilingData.sortNumTileData, UB_ALIGN);
+        int64_t slSeg5 = AlignTo(numTokensI64 * 4LL, UB_ALIGN);
+        int64_t wsSortTotal = wsSortPad + slSeg0 + slSeg1 + slSeg2 + slSeg3 + slSeg4 + slSeg5;
+
+        int64_t wsTotal = wsBeforeSort + wsSortTotal;
         wsTotal = ((wsTotal + WORKSPACE_ALIGN_2MB - 1) / WORKSPACE_ALIGN_2MB) * WORKSPACE_ALIGN_2MB;
         wsTotal += SYSTEM_NEED_WORKSPACE;
         workSpaces[0] = static_cast<size_t>(wsTotal);
@@ -639,8 +751,14 @@ static ge::graphStatus EngramFetchTilingFunc(gert::TilingContext *context)
     }
 
     // 3. platform info
-    OP_TILING_CHECK(SetPlatformInfo(context, *tilingData) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetPlatformInfo(context, *tilingData, isTraining) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "set platform info failed."), return ge::GRAPH_FAILED);
+
+    if (isTraining) {
+        auto schedRet = context->SetScheduleMode(1);
+        OP_TILING_CHECK(schedRet != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "SetScheduleMode(1) failed"),
+                        return ge::GRAPH_FAILED);
+    }
 
     // 4. set tiling data
     OP_TILING_CHECK(SetTilingData(context, *tilingData, numTokens, isTraining) != ge::GRAPH_SUCCESS,

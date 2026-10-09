@@ -15,6 +15,7 @@
 
 #include "dense_lightning_indexer_kl_loss_grad_tiling_general_regbase.h"
 #include "op_host/tiling_templates_registry.h"
+#include "../../op_kernel/arch35/dense_lightning_indexer_kl_loss_grad_metadata_arch35.h"
 #include <tiling/tiling_api.h>
 
 using namespace ge;
@@ -121,16 +122,17 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::ValidateReq
     OP_CHECK_IF(metadataTensor == nullptr, OP_LOGE(opName, "metadata must be provided."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(metadataDesc == nullptr, OP_LOGE(opName, "metadata desc must be provided."), return ge::GRAPH_FAILED);
 
-    if (layoutQuery == "TND") {
-        auto cuSeqQInput = context_->GetOptionalInputTensor(CU_SEQLENS_QUERY_INPUT_INDEX);
-        OP_CHECK_IF(cuSeqQInput == nullptr, OP_LOGE(opName, "cuSeqlensQ must be provided when layoutQ is TND."),
-                    return ge::GRAPH_FAILED);
-    }
-    if (layoutKey == "TND") {
-        auto cuSeqKInput = context_->GetOptionalInputTensor(CU_SEQLENS_KEY_INPUT_INDEX);
-        OP_CHECK_IF(cuSeqKInput == nullptr, OP_LOGE(opName, "cuSeqlensK must be provided when layoutK is TND."),
-                    return ge::GRAPH_FAILED);
-    }
+    // metadata由DenseLightningIndexerKLLossGradMetadata算子生成，长度固定
+    const gert::Shape &metadataShape = metadataTensor->GetStorageShape();
+    OP_CHECK_IF(metadataShape.GetDimNum() != 1UL,
+                OP_LOGE(opName, "The dim num of metadata must be 1, but got %zu.", metadataShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(metadataShape.GetDim(0) != static_cast<int64_t>(DLIKG_METADATA_SIZE),
+                OP_LOGE(opName, "The element num of metadata must be %u, but got %ld.", DLIKG_METADATA_SIZE,
+                        metadataShape.GetDim(0)),
+                return ge::GRAPH_FAILED);
+
+    // layout相关的校验依赖attr，放在AnalyzeAttrs中处理
     return ge::GRAPH_SUCCESS;
 }
 
@@ -190,6 +192,16 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutPut
                         "is not equal to layoutQuery [%s] len[%ld].",
                         queryIndexShape.GetDimNum(), keyIndexShape.GetDimNum(), attnSoftmaxL1Shape.GetDimNum(),
                         layoutQuery, layoutLen),
+                return ge::GRAPH_FAILED);
+
+    // w为(T1,N1)/(B,S1,N1)，softmaxLse为(N2,T1)/(B,N2,S1)，均比layout少一维
+    // CrossShapeVerify按固定下标访问二者，维数不符时GetDim会越界取到0
+    size_t expectDimNum = layoutLen - 1UL;
+    OP_CHECK_IF(weightsShape.GetDimNum() != expectDimNum || softmaxLseShape.GetDimNum() != expectDimNum,
+                OP_LOGE(opName,
+                        "Invalid data, inputdata w shapelen [%zu] softmaxLse shapelen [%zu] "
+                        "is not equal to layoutQuery [%s] len[%zu] minus one.",
+                        weightsShape.GetDimNum(), softmaxLseShape.GetDimNum(), layoutQuery, layoutLen),
                 return ge::GRAPH_FAILED);
 
     auto qIdxDimNum = queryIndexShape.GetDimNum();
@@ -308,14 +320,20 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
         OP_LOGE(opName, "Layout of Query and Key need to be consistent, but now layoutQuery is %s and layoutKey is %s.",
                 layoutQuery, layoutKey),
         return false);
+    // TND下AnalyzeDimLayout会直接解引用cuSeqlens，此处必须拦截
     OP_CHECK_IF(
-        (sparseMode != SPARSE_MODE_SIZE_3 && sparseMode != SPARSE_MODE_SIZE_0),
-        OP_LOGE(opName, " The value of mask_mode is [%d], but currently only supports mode [0,3].", sparseMode),
-        return false);
-    OP_CHECK_IF((cmpRatio < CMP_RATIO_1 || cmpRatio > CMP_RATIO_128),
-                OP_LOGE(opName, " The value of cmpRatio is [%d], but currently only supports ranging from 1 to 128.",
-                        cmpRatio),
+        strcmp(layoutQuery, "TND") == 0 && context_->GetOptionalInputTensor(CU_SEQLENS_QUERY_INPUT_INDEX) == nullptr,
+        OP_LOGE(opName, "cuSeqlensQ must be provided when layoutQ is TND."), return false);
+    OP_CHECK_IF(
+        strcmp(layoutKey, "TND") == 0 && context_->GetOptionalInputTensor(CU_SEQLENS_KEY_INPUT_INDEX) == nullptr,
+        OP_LOGE(opName, "cuSeqlensK must be provided when layoutK is TND."), return false);
+    OP_CHECK_IF((sparseMode != SPARSE_MODE_SIZE_3 && sparseMode != SPARSE_MODE_SIZE_0),
+                OP_LOGE(opName, " The value of mask_mode is [%d], but currently only supports mode [0,3].", sparseMode),
                 return false);
+    OP_CHECK_IF(
+        (cmpRatio < CMP_RATIO_1 || cmpRatio > CMP_RATIO_128),
+        OP_LOGE(opName, " The value of cmpRatio is [%d], but currently only supports ranging from 1 to 128.", cmpRatio),
+        return false);
     OP_CHECK_IF((sparseMode == SPARSE_MODE_SIZE_3 && cmpRatio != 1 && cmpResidualK == nullptr),
                 OP_LOGE(opName, " cmp_residual_k is required when mask_mode is 3 with cmp_ratio not equal to 1!"),
                 return false);
@@ -356,8 +374,7 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(const
             gSizeQueryIndex = queryIndexShape.GetDim(1) / n2Size;
             dSizeQueryIndex = queryIndexShape.GetDim(2);
             OP_CHECK_IF(dSizeQueryIndex != 128,
-                        OP_LOGE(opName, "Inputshape D Size should be 128, but got %d.", dSizeQueryIndex),
-                        return false);
+                        OP_LOGE(opName, "Inputshape D Size should be 128, but got %d.", dSizeQueryIndex), return false);
             maxSeqlenK = attnSoftmaxL1Shape.GetDim(2);
             tilingData->baseParams.set_maxSeqlenK(static_cast<uint32_t>(maxSeqlenK));
             topKRange = TopKRangeRegbase::RANGE_0_2K;
@@ -386,8 +403,7 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(const
             gSizeQueryIndex = queryIndexShape.GetDim(2) / n2Size;
             dSizeQueryIndex = queryIndexShape.GetDim(3);
             OP_CHECK_IF(dSizeQueryIndex != 128,
-                        OP_LOGE(opName, "Inputshape D Size should be 128, but got %d.", dSizeQueryIndex),
-                        return false);
+                        OP_LOGE(opName, "Inputshape D Size should be 128, but got %d.", dSizeQueryIndex), return false);
             maxSeqlenK = attnSoftmaxL1Shape.GetDim(3);
             tilingData->baseParams.set_maxSeqlenK(static_cast<uint32_t>(maxSeqlenK));
             topKRange = TopKRangeRegbase::RANGE_0_2K;
@@ -398,6 +414,35 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDimLayout(const
         return false;
     }
 
+    return true;
+}
+
+// 可选输入均按int32解析，未传入的跳过校验
+bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeOptionalDtype()
+{
+    struct OptionalInput {
+        uint32_t index;
+        const char *name;
+    };
+    static const OptionalInput optionalInputs[] = {
+        {CU_SEQLENS_QUERY_INPUT_INDEX, "cu_seqlens_q"},   {CU_SEQLENS_KEY_INPUT_INDEX, "cu_seqlens_k"},
+        {SEQUSED_QUERY_INPUT_INDEX, "seqused_q"},         {SEQUSED_KEY_INPUT_INDEX, "seqused_k"},
+        {CMP_RESIDUAL_KEY_INPUT_INDEX, "cmp_residual_k"}, {METADATA_INPUT_INDEX, "metadata"},
+    };
+
+    for (const auto &optionalInput : optionalInputs) {
+        // 未传入的可选输入tensor为空指针，无需校验
+        if (context_->GetOptionalInputTensor(optionalInput.index) == nullptr) {
+            continue;
+        }
+        auto desc = context_->GetOptionalInputDesc(optionalInput.index);
+        OP_CHECK_IF(desc == nullptr, OP_LOGE(context_, "%s desc must be provided.", optionalInput.name), return false);
+        auto dtype = desc->GetDataType();
+        OP_CHECK_IF(dtype != ge::DT_INT32,
+                    OP_LOGE(context_, "Input dtype is invalid: %s must be int32, but got [%s].", optionalInput.name,
+                            ge::TypeUtils::DataTypeToSerialString(dtype).c_str()),
+                    return false);
+    }
     return true;
 }
 
@@ -442,8 +487,8 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDtype()
         same32 = true;
     } else {
         OP_LOGE(context_,
-                "InputDtype is fault: weightsDtype must be float32, but[%s]; softmaxLseDtype must be float32, but[%s]; "
-                "attnSoftmaxL1Dtype must be float32, but[%s].",
+                "Input dtype is invalid: weightsDtype must be float32, but got [%s]; softmaxLseDtype must be float32, "
+                "but got [%s]; attnSoftmaxL1Dtype must be float32, but got [%s].",
                 ge::TypeUtils::DataTypeToSerialString(weightsDtype).c_str(),
                 ge::TypeUtils::DataTypeToSerialString(softmaxLseDtype).c_str(),
                 ge::TypeUtils::DataTypeToSerialString(attnSoftmaxL1Dtype).c_str());
@@ -451,6 +496,10 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeDtype()
     }
     // 所有类型不满足返回false
     if (!same16 || !same32) {
+        return false;
+    }
+    // 可选输入的int32类型校验
+    if (!AnalyzeOptionalDtype()) {
         return false;
     }
     OP_LOGI(context_, "InputDtype: queryDtype[%s], keyDtype[%s],",
@@ -644,6 +693,42 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::CrossShapeVerify()
     return true;
 }
 
+// 5个可选输入均为1维，长度需与bSize推导出的B保持一致；未传入的跳过
+bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOptionalShape()
+{
+    struct OptionalShapeRule {
+        uint32_t index;
+        const char *name;
+        int64_t expectLen;
+    };
+    // cu_seqlens为累积长度，元素数为B+1；其余按batch给出，元素数为B
+    const int64_t cuSeqlensLen = static_cast<int64_t>(bSize) + 1;
+    const int64_t perBatchLen = static_cast<int64_t>(bSize);
+    const OptionalShapeRule rules[] = {
+        {CU_SEQLENS_QUERY_INPUT_INDEX, "cu_seqlens_q", cuSeqlensLen},
+        {CU_SEQLENS_KEY_INPUT_INDEX, "cu_seqlens_k", cuSeqlensLen},
+        {SEQUSED_QUERY_INPUT_INDEX, "seqused_q", perBatchLen},
+        {SEQUSED_KEY_INPUT_INDEX, "seqused_k", perBatchLen},
+        {CMP_RESIDUAL_KEY_INPUT_INDEX, "cmp_residual_k", perBatchLen},
+    };
+
+    for (const auto &rule : rules) {
+        auto tensor = context_->GetOptionalInputTensor(rule.index);
+        if (tensor == nullptr) {
+            continue;
+        }
+        const gert::Shape &shape = tensor->GetStorageShape();
+        OP_CHECK_IF(shape.GetDimNum() != 1UL,
+                    OP_LOGE(opName, "The dim num of %s must be 1, but got %zu.", rule.name, shape.GetDimNum()),
+                    return false);
+        OP_CHECK_IF(shape.GetDim(0) != rule.expectLen,
+                    OP_LOGE(opName, "The length of %s must be %ld when batch size is %d, but got %ld.", rule.name,
+                            rule.expectLen, bSize, shape.GetDim(0)),
+                    return false);
+    }
+    return true;
+}
+
 bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeLayout()
 {
     auto &queryIndexShape = context_->GetInputShape(QUERY_INPUT_INDEX)->GetStorageShape();
@@ -658,8 +743,10 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeLayout()
                 OP_LOGE(opName, "Layout %s data analyze failed.", layoutQuery), return false);
     OP_CHECK_IF(gSizeQueryIndex == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "gSizeQueryIndex is zero"), return false);
     OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "n2Size is zero"), return false);
-    OP_CHECK_IF(dSizeQueryIndex <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "dSizeQueryIndex is not support <= 0"),
+    OP_CHECK_IF(dSizeQueryIndex <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "dSizeQueryIndex must be greater than 0"),
                 return false);
+    // bSize在AnalyzeDimLayout中得出，可选输入的长度校验必须放在其后
+    OP_CHECK_IF(!CheckOptionalShape(), OP_LOGE(opName, "CheckOptionalShape failed."), return false);
     return true;
 }
 
@@ -893,9 +980,15 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoOpTiling(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::PostTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::PostTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 uint64_t DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetTilingKey() const
 {

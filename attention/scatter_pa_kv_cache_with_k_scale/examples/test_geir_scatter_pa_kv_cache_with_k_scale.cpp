@@ -42,41 +42,36 @@ using std::map;
 using std::string;
 using std::vector;
 
-#define ADD_INPUT(intputIndex, intputName, intputDtype, inputShape)                          \
-    vector<int64_t> placeholder##intputIndex##_shape = inputShape;                           \
+#define ADD_INPUT(intputIndex, intputName, intputDtype, inputShape) \
+    vector<int64_t> placeholder##intputIndex##_shape = inputShape; \
     auto placeholder##intputIndex = op::Data("placeholder" + intputIndex).set_attr_index(0); \
-    TensorDesc placeholder##intputIndex##_desc =                                             \
-        TensorDesc(ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype);     \
-    placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost);                        \
-    placeholder##intputIndex##_desc.SetFormat(FORMAT_ND);                                    \
-    Tensor tensor_placeholder##intputIndex;                                                  \
-    ret = GenOnesData(placeholder##intputIndex##_shape,                                      \
-        tensor_placeholder##intputIndex,                                                     \
-        placeholder##intputIndex##_desc,                                                     \
-        intputDtype,                                                                         \
-        2);                                                                                  \
-    if (ret != SUCCESS) {                                                                    \
-        printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str());       \
-        return FAILED;                                                                       \
-    }                                                                                        \
-    placeholder##intputIndex.update_input_desc_x(placeholder##intputIndex##_desc);           \
-    input.push_back(tensor_placeholder##intputIndex);                                        \
-    graph.AddOp(placeholder##intputIndex);                                                   \
-    scatter_op.set_input_##intputName(placeholder##intputIndex);                             \
+    TensorDesc placeholder##intputIndex##_desc = \
+        TensorDesc(ge::Shape(placeholder##intputIndex##_shape), FORMAT_ND, intputDtype); \
+    placeholder##intputIndex##_desc.SetPlacement(ge::kPlacementHost); \
+    placeholder##intputIndex##_desc.SetFormat(FORMAT_ND); \
+    Tensor tensor_placeholder##intputIndex; \
+    ret = GenOnesData(placeholder##intputIndex##_shape, tensor_placeholder##intputIndex, \
+                      placeholder##intputIndex##_desc, intputDtype, 2); \
+    if (ret != SUCCESS) { \
+        printf("%s - ERROR - [XIR]: Generate input data failed\n", GetTime().c_str()); \
+        return FAILED; \
+    } \
+    placeholder##intputIndex.update_input_desc_x(placeholder##intputIndex##_desc); \
+    input.push_back(tensor_placeholder##intputIndex); \
+    graph.AddOp(placeholder##intputIndex); \
+    scatter_op.set_input_##intputName(placeholder##intputIndex); \
     inputs.push_back(placeholder##intputIndex);
 
-#define ADD_OUTPUT(outputIndex, outputName, outputDtype, outputShape)                        \
-    TensorDesc outputName##outputIndex##_desc =                                              \
-        TensorDesc(ge::Shape(outputShape), FORMAT_ND, outputDtype);                          \
+#define ADD_OUTPUT(outputIndex, outputName, outputDtype, outputShape) \
+    TensorDesc outputName##outputIndex##_desc = TensorDesc(ge::Shape(outputShape), FORMAT_ND, outputDtype); \
     scatter_op.update_output_desc_##outputName(outputName##outputIndex##_desc);
 
-#define ADD_INPUT_ATTR(attrName, attrValue)                                                  \
-    scatter_op.set_attr_##attrName(attrValue);
+#define ADD_INPUT_ATTR(attrName, attrValue) scatter_op.set_attr_##attrName(attrValue);
 
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    printf(message, ##__VA_ARGS__); \
-  } while (0)
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
+    } while (0)
 
 string GetTime()
 {
@@ -123,8 +118,8 @@ uint32_t GetDataTypeSize(DataType dt)
     return dilation;
 }
 
-int32_t GenOnesData(
-    vector<int64_t> shapes, Tensor &input_tensor, TensorDesc &input_tensor_desc, DataType data_type, int value)
+int32_t GenOnesData(vector<int64_t> shapes, Tensor &input_tensor, TensorDesc &input_tensor_desc, DataType data_type,
+                    int value)
 {
     input_tensor_desc.SetRealDimCnt(shapes.size());
     size_t size = 1;
@@ -133,10 +128,15 @@ int32_t GenOnesData(
     }
     uint32_t data_len = size * GetDataTypeSize(data_type);
     int32_t *pData = new (std::nothrow) int32_t[data_len];
+    if (pData == nullptr) {
+        printf("%s - ERROR - [XIR]: Allocate input data failed\n", GetTime().c_str());
+        return FAILED;
+    }
     for (size_t i = 0; i < size; ++i) {
         *(pData + i) = value;
     }
     input_tensor = Tensor(input_tensor_desc, reinterpret_cast<uint8_t *>(pData), data_len);
+    delete[] pData;
     return SUCCESS;
 }
 
@@ -150,20 +150,20 @@ int32_t WriteDataToFile(string bin_file, uint64_t data_size, uint8_t *inputData)
 }
 
 int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vector<Operator> &inputs,
-    std::vector<Operator> &outputs, Graph &graph)
+                     std::vector<Operator> &outputs, Graph &graph)
 {
     Status ret = SUCCESS;
     // 自定义代码：添加单算子定义到图中
     auto scatter_op = op::ScatterPaKvCacheWithKScale("scatter_pa_kv_cache_with_k_scale");
 
     // shape定义（参考原型定义）
-    std::vector<int64_t> keyShape = {2, 2, 64};                  // num_tokens=2, num_head=2, k_head_size=64
-    std::vector<int64_t> valueShape = {2, 2, 64};                // num_tokens=2, num_head=2, v_head_size=64
-    std::vector<int64_t> keyCacheShape = {4, 2, 16, 64};         // num_blocks=4, num_head=2, block_size=16
-    std::vector<int64_t> valueCacheShape = {4, 2, 16, 64};      // num_blocks=4, num_head=2, block_size=16
-    std::vector<int64_t> slotMappingShape = {2};                // num_tokens=2
-    std::vector<int64_t> keyScaleShape = {2, 2};                 // num_tokens=2, num_head=2
-    std::vector<int64_t> keyScaleCacheShape = {4, 2, 16, 1};    // num_blocks=4, num_head=2, block_size=16
+    std::vector<int64_t> keyShape = {2, 2, 64};              // num_tokens=2, num_head=2, k_head_size=64
+    std::vector<int64_t> valueShape = {2, 2, 64};            // num_tokens=2, num_head=2, v_head_size=64
+    std::vector<int64_t> keyCacheShape = {4, 2, 16, 64};     // num_blocks=4, num_head=2, block_size=16
+    std::vector<int64_t> valueCacheShape = {4, 2, 16, 64};   // num_blocks=4, num_head=2, block_size=16
+    std::vector<int64_t> slotMappingShape = {2};             // num_tokens=2
+    std::vector<int64_t> keyScaleShape = {2, 2};             // num_tokens=2, num_head=2
+    std::vector<int64_t> keyScaleCacheShape = {4, 2, 16, 1}; // num_blocks=4, num_head=2, block_size=16
 
     // 添加输入（顺序严格匹配 proto.h）
     ADD_INPUT(1, key, inDtype, keyShape);
@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
     std::cout << argv[1] << std::endl;
     char *endptr;
 
-    DataType inDtype = DT_FLOAT8_E5M2;  // 使用 FP8_E5M2 数据类型
+    DataType inDtype = DT_FLOAT8_E5M2; // 使用 FP8_E5M2 数据类型
 
     std::cout << inDtype << std::endl;
 
@@ -276,7 +276,7 @@ int main(int argc, char *argv[])
         std::cout << "this is " << i << "th output, output shape size =" << output_shape << std::endl;
         uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
-        float *resultData = (float*)output_data_i;
+        float *resultData = (float *)output_data_i;
         for (int64_t j = 0; j < output_shape && j < 10; j++) {
             LOG_PRINT("result[%ld] is: %f\n", j, resultData[j]);
         }

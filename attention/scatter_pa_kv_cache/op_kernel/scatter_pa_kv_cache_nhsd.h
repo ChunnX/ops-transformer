@@ -24,9 +24,11 @@ using namespace AscendC;
 template <typename T1, typename T2>
 class ScatterPaKvCacheNHSD {
 public:
-    __aicore__ inline ScatterPaKvCacheNHSD(TPipe *pipe): pipe_(pipe){};
+    __aicore__ inline ScatterPaKvCacheNHSD(TPipe *pipe)
+        : pipe_(pipe){};
     __aicore__ inline void Init(GM_ADDR key, GM_ADDR value, GM_ADDR slotIndices, GM_ADDR keyCacheOut,
-                                GM_ADDR valueCacheOut, const ScatterPaKvCacheTilingData* tilingData) {
+                                GM_ADDR valueCacheOut, const ScatterPaKvCacheTilingData *tilingData)
+    {
         this->blockIdx = AscendC::GetBlockIdx();
         ParseTilingData(tilingData);
 
@@ -36,11 +38,11 @@ public:
 
         this->perCoreKeySize = numHead * kHeadSize;
         this->perCoreValueSize = numHead * vHeadSize;
-        keyInGm.SetGlobalBuffer((__gm__ T1*)key + keyInOffset);
-        valueInGm.SetGlobalBuffer((__gm__ T1*)value + valueInOffset);
-        keycacheOutGm.SetGlobalBuffer((__gm__ T1*)keyCacheOut);
-        valuecacheOutGm.SetGlobalBuffer((__gm__ T1*)valueCacheOut);
-        slotmappingGm.SetGlobalBuffer((__gm__ T2*)slotIndices + slotmappingOffset);
+        keyInGm.SetGlobalBuffer((__gm__ T1 *)key + keyInOffset);
+        valueInGm.SetGlobalBuffer((__gm__ T1 *)value + valueInOffset);
+        keycacheOutGm.SetGlobalBuffer((__gm__ T1 *)keyCacheOut);
+        valuecacheOutGm.SetGlobalBuffer((__gm__ T1 *)valueCacheOut);
+        slotmappingGm.SetGlobalBuffer((__gm__ T2 *)slotIndices + slotmappingOffset);
         pipe_->InitBuffer(keyInBuf, this->perCoreKeySize * sizeof(T1));
         pipe_->InitBuffer(valueInBuf, this->perCoreValueSize * sizeof(T1));
 
@@ -75,18 +77,27 @@ public:
             int64_t slotmappingValue = static_cast<int64_t>(slotmappingGm.GetValue(n));
             blockIndex = slotmappingValue / blockSize;
             blockOffset = slotmappingValue % blockSize;
-            keycacheOutGmOffset = blockIndex * numHead * blockSize * kHeadSize + blockOffset * kHeadSize;
-            valuecacheOutGmOffset = blockIndex * numHead * blockSize * vHeadSize + blockOffset * vHeadSize;
-            DataCopyOut<T1>(keycacheOutGm[keycacheOutGmOffset], keyIn,
-                        static_cast<uint32_t>(kHeadSize), keyCacheStride, static_cast<uint16_t>(numHead));
-            DataCopyOut<T1>(valuecacheOutGm[valuecacheOutGmOffset], valueIn,
-                        static_cast<uint32_t>(vHeadSize), valueCacheStride, static_cast<uint16_t>(numHead));
+            if (kCacheBlockStride > 0) {
+                keycacheOutGmOffset = blockIndex * kCacheBlockStride + blockOffset * kHeadSize;
+            } else {
+                keycacheOutGmOffset = blockIndex * numHead * blockSize * kHeadSize + blockOffset * kHeadSize;
+            }
+            if (vCacheBlockStride > 0) {
+                valuecacheOutGmOffset = blockIndex * vCacheBlockStride + blockOffset * vHeadSize;
+            } else {
+                valuecacheOutGmOffset = blockIndex * numHead * blockSize * vHeadSize + blockOffset * vHeadSize;
+            }
+            DataCopyOut<T1>(keycacheOutGm[keycacheOutGmOffset], keyIn, static_cast<uint32_t>(kHeadSize), keyCacheStride,
+                            static_cast<uint16_t>(numHead));
+            DataCopyOut<T1>(valuecacheOutGm[valuecacheOutGmOffset], valueIn, static_cast<uint32_t>(vHeadSize),
+                            valueCacheStride, static_cast<uint16_t>(numHead));
             PipeSync<AscendC::HardEvent::MTE3_MTE2>();
         }
     }
 
 private:
-    __aicore__ inline void ParseTilingData(const ScatterPaKvCacheTilingData* tilingData) {
+    __aicore__ inline void ParseTilingData(const ScatterPaKvCacheTilingData *tilingData)
+    {
         blockFactor = tilingData->blockFactor;
         tailBlockFactor = tilingData->tailBlockFactor;
         useCoreNum = tilingData->usedCoreNum;
@@ -95,11 +106,13 @@ private:
         kHeadSize = tilingData->kHeadSize;
         vHeadSize = tilingData->vHeadSize;
         blockSize = tilingData->blockSize;
+        kCacheBlockStride = tilingData->kCacheBlockStride;
+        vCacheBlockStride = tilingData->vCacheBlockStride;
     }
 
     template <typename U>
-    __aicore__ inline void DataCopyIn(
-        const AscendC::LocalTensor<U>& dst, const AscendC::GlobalTensor<U>& src, uint32_t count)
+    __aicore__ inline void DataCopyIn(const AscendC::LocalTensor<U> &dst, const AscendC::GlobalTensor<U> &src,
+                                      uint32_t count)
     {
         AscendC::DataCopyExtParams copyParams{1, static_cast<uint32_t>(count * sizeof(U)), 0, 0, 0};
         AscendC::DataCopyPadExtParams<U> padParams{false, 0, 0, 0};
@@ -107,11 +120,11 @@ private:
     }
 
     template <typename U>
-    __aicore__ inline void DataCopyOut(
-        const AscendC::GlobalTensor<U>& dst, const AscendC::LocalTensor<U>& src, uint32_t perHeadCount,
-        uint32_t dstStride, uint16_t blockCount)
+    __aicore__ inline void DataCopyOut(const AscendC::GlobalTensor<U> &dst, const AscendC::LocalTensor<U> &src,
+                                       uint32_t perHeadCount, uint32_t dstStride, uint16_t blockCount)
     {
-        AscendC::DataCopyExtParams copyParams{blockCount, static_cast<uint32_t>(perHeadCount * sizeof(U)), 0, static_cast<uint32_t>(dstStride * sizeof(U)), 0};
+        AscendC::DataCopyExtParams copyParams{blockCount, static_cast<uint32_t>(perHeadCount * sizeof(U)), 0,
+                                              static_cast<uint32_t>(dstStride * sizeof(U)), 0};
         AscendC::DataCopyPad(dst, src, copyParams);
     }
 
@@ -144,6 +157,8 @@ private:
     int64_t kHeadSize = 0;
     int64_t vHeadSize = 0;
     int64_t blockSize = 0;
+    int64_t kCacheBlockStride = 0;
+    int64_t vCacheBlockStride = 0;
     int32_t blockIdx = 0;
     int64_t useCoreNum = 0;
     int64_t keyInOffset = 0;
@@ -151,7 +166,6 @@ private:
     int64_t slotmappingOffset = 0;
     int64_t perCoreKeySize = 0;
     int64_t perCoreValueSize = 0;
-
 };
 } // namespace ScatterPaKvCache
 #endif

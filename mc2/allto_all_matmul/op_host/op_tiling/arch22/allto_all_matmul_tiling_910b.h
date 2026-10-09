@@ -19,8 +19,6 @@
 #include "../../../op_kernel/arch22/allto_all_matmul_tiling.h"
 #include "../../../op_kernel/arch22/allto_all_matmul_tiling_key.h"
 #include "../allto_all_matmul_tiling_base.h"
-#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_common_advanced.h"
-#include "mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_tiling_strategy.h"
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
 #include "mc2_matmul_tiling_cfg.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
@@ -33,9 +31,9 @@ struct AlltoAllMatmulTilingValue {
     int32_t value = -1;
     std::map<int, std::vector<std::vector<int>>> conditionMap = {};
     explicit AlltoAllMatmulTilingValue(int32_t v = -1, std::map<int, std::vector<std::vector<int>>> m = {})
-        : value(v), conditionMap(std::move(m))
-    {
-    }
+        : value(v),
+          conditionMap(std::move(m))
+    {}
 };
 
 class AlltoAllMatmulTiling910b : public AllToAllMatmulTilingBase {
@@ -55,6 +53,10 @@ protected:
     ge::graphStatus CheckOpInputInfo(AlltoAllMatmulInfo &info);
     ge::graphStatus CheckAndSetAttrsInfo(AlltoAllMatmulInfo &info);
     ge::graphStatus CheckTensorDataType(AlltoAllMatmulInfo &info);
+    ge::graphStatus CheckQuantScaleDataType(const AlltoAllMatmulInfo &info, ge::DataType x1Dtype, ge::DataType x2Dtype);
+    ge::graphStatus CheckQuantScaleShape(const AlltoAllMatmulInfo &info, int64_t tokenSize);
+    ge::graphStatus CheckQuantMatrixShape(const AlltoAllMatmulInfo &info, int64_t tokenSize);
+    ge::graphStatus CheckX2ScaleShape(const AlltoAllMatmulInfo &info);
     ge::graphStatus CheckShapeInfo(AlltoAllMatmulInfo &info);
     ge::graphStatus DoMmCommTiling(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info);
     // basic和A4W4的tiling
@@ -72,8 +74,6 @@ protected:
     void CalTilingParam(CoCTiling &cocTilingData, const std::map<int *, AlltoAllMatmulTilingValue> &TilingParamMap,
                         AlltoAllMatmulInfo &info);
     void DecodeTilingData(int32_t code, CoCTiling &cocTilingData);
-    int32_t GetValueFromMKNConditionMap(int32_t m, int32_t k, int32_t n, int32_t defaultValue,
-                                        std::map<int, std::vector<std::vector<int>>> conditionMap);
     ge::graphStatus SetHcclTiling(AlltoAllMatmulTilingData *tilingData);
     void PrintAlltoAllMatmulTilingData(CoCTiling &cocTilingData, AlltoAllMatmulInfo &info);
 

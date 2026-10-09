@@ -32,7 +32,7 @@ enum class SFA_LAYOUT {
 
 template <typename Q_T, typename KV_T, typename OUT_T, const bool FLASH_DECODE = false,
           SFA_LAYOUT LAYOUT_T = SFA_LAYOUT::BSND, SFA_LAYOUT KV_LAYOUT_T = SFA_LAYOUT::BSND,
-          const int TEMPLATE_MODE = C_TEMPLATE, typename... Args>
+          const int TEMPLATE_MODE = C_TEMPLATE, const bool HAS_ROPE = true, typename... Args>
 struct SFAType {
     using queryType = Q_T;
     using kvType = KV_T;
@@ -42,6 +42,7 @@ struct SFAType {
     static constexpr SFA_LAYOUT kvLayout = KV_LAYOUT_T;
     static constexpr int templateMode = TEMPLATE_MODE;
     static constexpr bool pageAttention = (KV_LAYOUT_T == SFA_LAYOUT::PA_BSND);
+    static constexpr bool hasRope = HAS_ROPE;
 };
 
 // ================================Util functions==================================
@@ -118,16 +119,16 @@ struct ConstInfo {
     // CUBE与VEC核间同步的模式
     static constexpr uint32_t SFA_SYNC_MODE2 = 2;
     // BUFFER的字节数
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+    static constexpr uint32_t SFA_BUFFER_BYTES_32 = 32;
+    static constexpr uint32_t SFA_BUFFER_BYTES_64 = 64;
+    static constexpr uint32_t SFA_BUFFER_BYTES_256 = 256;
+    static constexpr uint32_t SFA_BUFFER_BYTES_512 = 512;
+    static constexpr uint32_t SFA_BUFFER_BYTES_1K = 1024;
+    static constexpr uint32_t SFA_BUFFER_BYTES_2K = 2048;
+    static constexpr uint32_t SFA_BUFFER_BYTES_4K = 4096;
+    static constexpr uint32_t SFA_BUFFER_BYTES_8K = 8192;
+    static constexpr uint32_t SFA_BUFFER_BYTES_16K = 16384;
+    static constexpr uint32_t SFA_BUFFER_BYTES_32K = 32768;
     // FP32的0值和极大值
     static constexpr float FLOAT_ZERO = 0;
     static constexpr float FLOAT_MAX = 3.402823466e+38F;

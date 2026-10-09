@@ -26,9 +26,7 @@ using namespace AscendC;
 template <typename T>
 class MhcPreSinkhornMSplitCorePart1 {
 public:
-    __aicore__ inline MhcPreSinkhornMSplitCorePart1()
-    {
-    }
+    __aicore__ inline MhcPreSinkhornMSplitCorePart1() {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcFn, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y, GM_ADDR post,
                                 GM_ADDR combFrag, const MhcPreSinkhornRegbaseTilingData *tilingDataPtr, TPipe *pipePtr)
@@ -82,6 +80,13 @@ public:
             logicalBlockIdx = curBlockIdx / 2;
         }
         if (logicalBlockIdx >= tilingData->cubeBlockDimM) {
+            if ASCEND_IS_AIV {
+                // Drain the two double-buffer credits seeded by the paired AIC.
+                CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
+                CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
+            } else {
+                mmService_.End();
+            }
             return;
         }
 
@@ -150,8 +155,8 @@ public:
             if ASCEND_IS_AIV {
                 tbufPool1.Reset();
                 tbufPool1.InitBuffer(xQue, 2, tilingData->mUbSize * RoundUp<T>(tilingData->kUbSize) * sizeof(T));
-                tbufPool1.InitBuffer(castBuf, tilingData->mUbSize *
-                                                  (RoundUp<float>(tilingData->kUbSize) * sizeof(float) + BLOCK_SIZE));
+                tbufPool1.InitBuffer(
+                    castBuf, tilingData->mUbSize * (RoundUp<float>(tilingData->kUbSize) * sizeof(float) + BLOCK_SIZE));
                 tbufPool1.InitBuffer(nd2NzBuf, nd2NzBufSize * sizeof(float) * DOUBLE_BUFFER);
 
                 xCastLocal = castBuf.Get<float>();
@@ -269,14 +274,11 @@ public:
                 CrossCoreWaitFlag<SYNC_MODE4, PIPE_V>(SYNC_AIC_AIV_PRE_POST_FLAG);
                 // mm计算结果存入mmXLocal，mmXLocal每轮循环需要累加;
                 tbufPool1.Reset();
-                tbufPool1.InitBuffer(xQue, 2,
-                                     tilingData->rowInnerFactor * tilingData->hcMult * RoundUp<T>(tilingData->dFactor) *
-                                         sizeof(T));
+                tbufPool1.InitBuffer(
+                    xQue, 2,
+                    tilingData->rowInnerFactor * tilingData->hcMult * RoundUp<T>(tilingData->dFactor) * sizeof(T));
                 tbufPool1.InitBuffer(yQue, 2, tilingData->rowInnerFactor * RoundUp<T>(tilingData->dFactor) * sizeof(T));
                 tbufPool1.InitBuffer(postQue, 2, tilingData->rowInnerFactor * tilingData->hcMultAlign * sizeof(float));
-                tbufPool1.InitBuffer(combFragQue, 2,
-                                     tilingData->rowInnerFactor * tilingData->hcMult * tilingData->hcMultAlign *
-                                         sizeof(float));
 
                 // TBuf
                 tbufPool1.InitBuffer(mixesBuf,
@@ -340,28 +342,24 @@ public:
                                roundIdx * tilingData->mL1Size * tilingData->hcMult + innerRowIdx * tilingData->hcMult],
                         currentInnerRowFactor, tilingData->hcMult);
                     postQue.FreeTensor(postLocal);
-
-                    // combFrag
-                    combFragLocal = combFragQue.AllocTensor<float>();
-                    VFProcessCombFragRLessVLUseFourUnfold(combFragLocal, mixesLocal[tilingData->hcMult * 2],
-                                                          hcBase2Local, hcScaleGm.GetValue(2), tilingData->hcEps,
-                                                          tilingData->iterTimes - 1, currentInnerRowFactor,
-                                                          tilingData->hcMult, tilingData->hcMult, tilingData->hcMix);
-
-                    combFragQue.EnQue(combFragLocal);
-                    combFragLocal = combFragQue.DeQue<float>();
-                    CopyOut(combFragLocal,
-                            combFragGm[combFragGmBaseOffset + combFragSplitOffset +
-                                       roundIdx * tilingData->mL1Size * tilingData->hcMult * tilingData->hcMult +
-                                       innerRowIdx * tilingData->hcMult * tilingData->hcMult],
-                            currentInnerRowFactor * tilingData->hcMult, tilingData->hcMult);
-                    combFragQue.FreeTensor(combFragLocal);
                 }
+                // Sinkhorn batches are independent of the x/y tile's UB row factor.
+                VFProcessCombFragElementMajor(mmXLocal, rmsNormLocal, hcBase2Local, hcScaleGm.GetValue(2),
+                                              tilingData->hcEps, tilingData->normEps, tilingData->iterTimes - 1,
+                                              currentRow);
+                SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
+                CopyOut(mmXLocal,
+                        combFragGm[combFragGmBaseOffset + combFragSplitOffset +
+                                   roundIdx * tilingData->mL1Size * tilingData->hcMult * tilingData->hcMult],
+                        1, currentRow * tilingData->hcMult * tilingData->hcMult);
                 SetFlag<HardEvent::MTE3_MTE2>(static_cast<event_t>(0));
             }
         }
         if ASCEND_IS_AIV {
             WaitFlag<HardEvent::MTE3_MTE2>(static_cast<event_t>(0));
+            // Drain the two double-buffer credits seeded by the paired AIC.
+            CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
+            CrossCoreWaitFlag<SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
         } else {
             mmService_.End();
         }

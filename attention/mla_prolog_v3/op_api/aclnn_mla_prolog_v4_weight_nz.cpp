@@ -60,33 +60,33 @@ class TensorHolder {
 public:
     TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName)
     {
-        inner_ = nullptr;
-        name_ = varName;
+        holderTensor_ = nullptr;
+        holderName_ = varName;
         if (output == nullptr) {
             std::vector<int64_t> shape = {0};
             int64_t addr = 0xff;
-            inner_ = aclCreateTensor(shape.data(), shape.size(), dataType, shape.data(), 0, ACL_FORMAT_ND, shape.data(),
-                                     shape.size(), static_cast<void *>(&addr));
-            output = inner_;
+            holderTensor_ = aclCreateTensor(shape.data(), shape.size(), dataType, shape.data(), 0, ACL_FORMAT_ND,
+                                            shape.data(), shape.size(), static_cast<void *>(&addr));
+            output = holderTensor_;
         }
     }
 
     ~TensorHolder()
     {
-        if (inner_) {
-            aclDestroyTensor(inner_);
-            inner_ = nullptr;
+        if (holderTensor_) {
+            aclDestroyTensor(holderTensor_);
+            holderTensor_ = nullptr;
         }
     }
 
     bool CheckTensorConditionalNotNull(bool conditional) const
     {
-        if (inner_ && conditional) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMlaPrologV4", name_.c_str(), "null",
+        if (holderTensor_ && conditional) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMlaPrologV4", holderName_.c_str(), "null",
                                                   "this parameter is required under current configuration");
             return false;
-        } else if (!inner_ && !conditional) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMlaPrologV4", name_.c_str(), "not null",
+        } else if (!holderTensor_ && !conditional) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMlaPrologV4", holderName_.c_str(), "not null",
                                                   "this parameter should be empty under current configuration");
             return false;
         }
@@ -95,12 +95,12 @@ public:
 
     bool IsTensorNotNull() const
     {
-        return inner_ == nullptr;
+        return holderTensor_ == nullptr;
     }
 
 private:
-    const aclTensor *inner_;
-    std::string name_;
+    const aclTensor *holderTensor_;
+    std::string holderName_;
 };
 
 bool CheckWeightQuantModeValidity(int64_t weightQuantMode)
@@ -227,13 +227,11 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
     };
 
     // do_rope 作为 attr 透传 inner，tiling 通过 do_rope attr 判断 RoPE 开关；
-    // doRope=true 时 ropeSin/ropeCos 不允许为空（null 或空 tensor）；
+    // doRope=true 时 ropeSin/ropeCos 不允许为空（nullptr）；
     // doRope=false 时 ropeSin/ropeCos 必须同时为空，并利用 TensorHolder 将 null 转为空 tensor 传入 inner，
     std::unique_ptr<TensorHolder> ropeSinHolder;
     std::unique_ptr<TensorHolder> ropeCosHolder;
-    auto IsRopeInputEmpty = [](const aclTensor *rope) {
-        return rope == nullptr || rope->GetViewShape().GetShapeSize() == 0;
-    };
+    auto IsRopeInputEmpty = [](const aclTensor *rope) { return rope == nullptr; };
     if (doRope) {
         if (IsRopeInputEmpty(ropeSin)) {
             OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeSin");
@@ -245,11 +243,13 @@ aclnnStatus aclnnMlaPrologV4WeightNzGetWorkspaceSize(
         }
     } else {
         if (!IsRopeInputEmpty(ropeSin)) {
-            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeSin");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "Parameter ropeSin of aclnnMlaPrologV4 required nullptr when doRope is false, but got non-null.");
             return ge::GRAPH_FAILED;
         }
         if (!IsRopeInputEmpty(ropeCos)) {
-            OP_LOGE_WITH_INVALID_INPUT("aclnnMlaPrologV4", "ropeCos");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "Parameter ropeCos of aclnnMlaPrologV4 required nullptr when doRope is false, but got non-null.");
             return ge::GRAPH_FAILED;
         }
         ropeSinHolder = std::make_unique<TensorHolder>(ropeSin, aclDataType::ACL_BF16, std::string("ropeSin"));

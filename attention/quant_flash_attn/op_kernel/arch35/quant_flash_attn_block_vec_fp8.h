@@ -41,13 +41,12 @@ using namespace AttentionCommon;
 
 namespace BaseApi {
 
-template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
-    DTemplateType dVTemplateType = DTemplateType::Aligned128,
-    bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false,
-    bool useDn = false>
+template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool isFd = false, bool useDn = false>
 class QuantFlashAttnBlockVecGqaFp8 {
 public:
     /* =================编译期常量的基本块信息================= */
@@ -66,6 +65,8 @@ public:
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
 
     static constexpr bool USE_DN = useDn;
+    static constexpr UbFormat OUT_UB_FORMAT = USE_DN ? UbFormat::S1_ONLY : GetOutUbFormat<layout>();
+    using OutGmCoord = std::conditional_t<USE_DN, GmCoordS1Only, GmCoordGs1Merge>;
     static constexpr bool IS_PER_TOEKN_HEAD = true;
     static constexpr bool PAGE_ATTENTION = (KvLayoutType > 0);
 
@@ -108,8 +109,7 @@ public:
     postQuantBf16GmType postQuantScaleBf16Gm_;
     postQuantBf16GmType postQuantOffsetBf16Gm_;
     quantGmType pScaleGm_;
-    static constexpr bool Q_SCALE_NEEDS_WZH =
-        (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_ANTIQ_NT);
+    static constexpr bool Q_SCALE_NEEDS_WZH = (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_ANTIQ_NT);
     using FaGmTensorQScale = FaGmTensor<float, Q_SCALE_FORMAT, int32_t, Q_SCALE_NEEDS_WZH>;
     using FaGmTensorKScale = FaGmTensor<float, K_SCALE_FORMAT, int32_t>;
     FaGmTensorQScale queryScaleGm_;
@@ -175,8 +175,9 @@ public:
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
 
-        uint64_t actualLenQSize =
-            (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) ? constInfo_.cuSeqLensQSize : constInfo_.seqUsedQSize;
+        uint64_t actualLenQSize = (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) ?
+                                      constInfo_.cuSeqLensQSize :
+                                      constInfo_.seqUsedQSize;
         actualSeqLengthsGmQ_.SetGlobalBuffer((__gm__ int32_t *)actualSeqQlenAddr, actualLenQSize);
 
         if (pScale != nullptr) {
@@ -265,8 +266,7 @@ public:
         if constexpr (POST_QUANT) {
             totalOutputSize /= 2;
         }
-        int64_t singleCoreSize =
-            (totalOutputSize + (2 * constInfo_.coreNum) - 1) / (2 * constInfo_.coreNum);
+        int64_t singleCoreSize = (totalOutputSize + (2 * constInfo_.coreNum) - 1) / (2 * constInfo_.coreNum);
         int64_t tailSize = totalOutputSize - constInfo_.aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
@@ -275,8 +275,8 @@ public:
             if constexpr (IsSameType<OUT_T, int8_t>::value) {
                 GlobalTensor<half> attentionOutTmpGm;
                 attentionOutTmpGm.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(attentionOutGm_.GetPhyAddr(0)));
-                matmul::InitOutput<half>(attentionOutTmpGm[constInfo_.aivIdx * singleCoreSize],
-                                         singleInitOutputSize, 0);
+                matmul::InitOutput<half>(attentionOutTmpGm[constInfo_.aivIdx * singleCoreSize], singleInitOutputSize,
+                                         0);
             } else {
                 matmul::InitOutput<OUT_T>(attentionOutGm_[constInfo_.aivIdx * singleCoreSize], singleInitOutputSize, 0);
             }
@@ -292,8 +292,7 @@ public:
             tSize = qActSeqLensParser_->GetTSize();
         }
         int64_t totalOutputSize = tSize * constInfo_.realN2Size * constInfo_.realGSize;
-        int64_t singleCoreSize =
-            (totalOutputSize + (2 * constInfo_.coreNum) - 1) / (2 * constInfo_.coreNum);
+        int64_t singleCoreSize = (totalOutputSize + (2 * constInfo_.coreNum) - 1) / (2 * constInfo_.coreNum);
         int64_t tailSize = totalOutputSize - constInfo_.aivIdx * singleCoreSize;
         int64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
 
@@ -313,7 +312,7 @@ public:
             .colCount = dRealSize,
         };
 
-        GmCoord gmCoord{
+        GmCoordGs1Merge gmCoord{
             .bIdx = runInfo.bIdx,
             .n2Idx = runInfo.realN2Idx,
             .gS1Idx = runInfo.gS1Idx + runInfo.vecMbaseIdx,
@@ -492,8 +491,7 @@ public:
         uint32_t mm2aBase = constInfo_.subBlockIdx * singleProcessSOuterSize * s2RealSizeAlign;
         DataCopy(mm2AL1Tensor[mm2aBase], stage1CastTensor,
                  {static_cast<uint16_t>((runInfo.actSingleLoopS2Size + 63) >> 6), 64, 66, 0});
-        DataCopy(mm2AL1Tensor[mm2aBase + s2RealSizeAlign * 32],
-                 stage1CastTensor[65 << 5],
+        DataCopy(mm2AL1Tensor[mm2aBase + s2RealSizeAlign * 32], stage1CastTensor[65 << 5],
                  {static_cast<uint16_t>((runInfo.actSingleLoopS2Size + 63) >> 6), 64, 66, 0});
 
         //-----------------------------------------------------------------
@@ -541,8 +539,7 @@ public:
         softmaxLseQueue_.DeQue<float>();
 
         uint32_t prefixBS1 = qActSeqLensParser_->GetTBase(runInfo.bIdx);
-        uint64_t bN2Offset =
-            runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
+        uint64_t bN2Offset = runInfo.realN2Idx * constInfo_.realGSize * constInfo_.t1Size + prefixBS1;
         DataCopySoftmaxLseTNDtoNTArch35NoGS1Merge<T, ConstInfoX>(softmaxLseGm_, lseUb, bN2Offset, vecMIdx,
                                                                  runInfo.actVecMSize, constInfo_);
 
@@ -733,19 +730,29 @@ public:
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfoX &info, LocalTensor<OUTPUT_T> &attenOutUb,
                                                 uint32_t vecMIdx, uint32_t dealRowCount)
     {
-        FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb,
-                                      .rowCount = dealRowCount,
-                                      .colCount = dTemplateAlign64};
-        GmCoord gmCoord{.bIdx = info.bIdx,
-                        .n2Idx = info.realN2Idx,
-                        .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo_.dSizeV};
-        CopyAttentionOut(ubTensor, gmCoord);
+        FaUbTensor<OUTPUT_T> ubTensor{.tensor = attenOutUb, .rowCount = dealRowCount, .colCount = dTemplateAlign64};
+        if constexpr (USE_DN) {
+            // DN分支下realGSize=1，gS1Idx即s1Idx，gIdx恒为0
+            OutGmCoord gmCoord{.bIdx = info.bIdx,
+                               .n2Idx = info.realN2Idx,
+                               .gIdx = 0,
+                               .s1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                               .dIdx = 0,
+                               .s1DealSize = dealRowCount,
+                               .dDealSize = (uint32_t)constInfo_.dSizeV};
+            CopyAttentionOut(ubTensor, gmCoord);
+        } else {
+            OutGmCoord gmCoord{.bIdx = info.bIdx,
+                               .n2Idx = info.realN2Idx,
+                               .gS1Idx = info.gS1Idx + info.vecMbaseIdx + vecMIdx,
+                               .dIdx = 0,
+                               .gS1DealSize = dealRowCount,
+                               .dDealSize = (uint32_t)constInfo_.dSizeV};
+            CopyAttentionOut(ubTensor, gmCoord);
+        }
     }
 
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, GmCoord &gmCoord)
+    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUTPUT_T> &ubTensor, OutGmCoord &gmCoord)
     {
         if constexpr (outLayout == LayOutTypeEnum::LAYOUT_TND) {
             constexpr GmFormat OUT_FORMAT = GmFormat::TNGD;
@@ -753,7 +760,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm_;
             outGmTensor.offsetCalculator.Init(constInfo_.realN2Size, constInfo_.realGSize, constInfo_.dSizeV,
                                               *qActSeqLensParser_);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_NTD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::NGTD;
@@ -761,7 +768,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm_;
             outGmTensor.offsetCalculator.Init(constInfo_.realN2Size, constInfo_.realGSize, constInfo_.dSizeV,
                                               *qActSeqLensParser_);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BSH) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
@@ -769,7 +776,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm_;
             outGmTensor.offsetCalculator.Init(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize,
                                               constInfo_.s1Size, constInfo_.dSizeV, *qActSeqLensParser_);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         } else if constexpr (outLayout == LayOutTypeEnum::LAYOUT_BNSD) {
             constexpr GmFormat OUT_FORMAT = GmFormat::BNGSD;
@@ -777,7 +784,7 @@ public:
             outGmTensor.gmTensor = attentionOutGm_;
             outGmTensor.offsetCalculator.Init(constInfo_.bSize, constInfo_.realN2Size, constInfo_.realGSize,
                                               constInfo_.s1Size, constInfo_.dSizeV, *qActSeqLensParser_);
-            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, OUT_UB_FORMAT> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
     }
@@ -924,13 +931,12 @@ public:
     }
 };
 
-template <
-    typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
-    LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
-    S2TemplateType s2TemplateType = S2TemplateType::Aligned128, DTemplateType dTemplateType = DTemplateType::Aligned128,
-    DTemplateType dVTemplateType = DTemplateType::Aligned128,
-    bool hasAtten = false, uint8_t KvLayoutType = 0, bool isFd = false,
-    bool useDn = false>
+template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
+          LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
+          S2TemplateType s2TemplateType = S2TemplateType::Aligned128,
+          DTemplateType dTemplateType = DTemplateType::Aligned128,
+          DTemplateType dVTemplateType = DTemplateType::Aligned128, bool hasAtten = false, uint8_t KvLayoutType = 0,
+          bool isFd = false, bool useDn = false>
 class QuantFlashAttnBlockVecGqaFp8Dummy {
 public:
     static constexpr bool HAS_MASK = hasAtten;

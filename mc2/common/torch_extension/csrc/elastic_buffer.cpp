@@ -20,11 +20,14 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 #include <cstring>
 #include <atomic>
 #include <cstdint>
 #include <algorithm>
+#include <array>
+#include <mutex>
 #include <unordered_map>
 
 // CANN ACL Runtime API
@@ -40,6 +43,7 @@
 #include "aclnn_common.h"
 
 // torch_npu stream utilities
+#include "torch_npu/csrc/aten/common/from_blob.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 
 namespace Mc2Api {
@@ -50,20 +54,27 @@ constexpr uint32_t HCCL_MIN_RANK_SIZE = 2;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
-constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
-constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
-constexpr int COMM_PROTOCOL_UBG_VALUE = 9;
 constexpr int64_t NETWORK_DIRECT = 0;
 constexpr int64_t NETWORK_HYBRID = 1;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
+constexpr int64_t MB_SIZE = 1024LL * 1024LL;
+constexpr int64_t HUGE1G_SIZE = 1024ULL * 1024ULL * 1024ULL;
+constexpr int DIM_ONE = 1;
 constexpr int DIM_TWO = 2;
-constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 72U;
+constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 64U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
+constexpr uint32_t MEM_HANDLE_NUM = 1U;
 constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
+constexpr int64_t MOE_EP_METADATA_FIELDS = 5;
+constexpr int64_t MOE_EP_METADATA_ALIGN_BYTES = 512;
+constexpr uint32_t MIX_LAYERED = 2U;
+constexpr uint32_t MIX_CLOS_SLOT = 0U;
+constexpr uint32_t MIX_MESH_SLOT = 1U;
+constexpr uint32_t MIX_LAYERED_RANK_SIZE = 8U;
 
 // RAII guard for multi-step host buffer allocation
 struct HostBufferGuard {
-    void *hostPtr = nullptr;
+    void* hostPtr = nullptr;
     bool registered = false;
 
     ~HostBufferGuard()
@@ -98,6 +109,31 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
     return CeilDiv(x, y) * y;
 }
 
+static inline void CheckMoeEpMetadataTensor(const at::Tensor& metadata, const char* name, int64_t capacity,
+                                            int64_t epWorldSize, int64_t routeSlots, const at::Device& device)
+{
+    TORCH_CHECK(capacity >= 0 && capacity <= INT32_MAX, "metadata capacity must be in [0, INT32_MAX]");
+    TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024, "ep_world_size must be in [2, 1024]");
+    TORCH_CHECK(routeSlots >= 0 && routeSlots <= INT32_MAX, "metadata route_slots must be in [0, INT32_MAX]");
+    // Packed ABI: five-column A_alloc rows, rank offsets, then the local [token, top_k] reverse index.
+    const int64_t elementBytes = sizeof(int32_t);
+    const int64_t rankOffsetsOffset =
+        AlignTo(capacity * MOE_EP_METADATA_FIELDS * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
+    const int64_t localIndexOffset =
+        rankOffsetsOffset + AlignTo((epWorldSize + 1) * elementBytes, MOE_EP_METADATA_ALIGN_BYTES);
+    const int64_t elements = (localIndexOffset + AlignTo(routeSlots * elementBytes, MOE_EP_METADATA_ALIGN_BYTES) +
+                              2 * AlignTo(capacity * elementBytes, MOE_EP_METADATA_ALIGN_BYTES)) /
+                             elementBytes;
+    TORCH_CHECK(metadata.scalar_type() == at::kInt && metadata.dim() == DIM_ONE, name,
+                " must be a 1D int32 packed tensor");
+    TORCH_CHECK(metadata.numel() == static_cast<int64_t>(elements), name, " packed length must be ", elements);
+    TORCH_CHECK(metadata.is_contiguous() && metadata.storage_offset() == 0, name,
+                " must describe the full contiguous packed allocation, not a metadata-only view");
+    TORCH_CHECK(metadata.device() == device, name, " must be on device ", device);
+    TORCH_CHECK(reinterpret_cast<uintptr_t>(metadata.data_ptr()) % MOE_EP_METADATA_ALIGN_BYTES == 0, name,
+                " base address must be 512-byte aligned");
+}
+
 static inline void NpuStreamWait(aclrtStream waitStream, aclrtStream recordStream)
 {
     if (waitStream == recordStream) {
@@ -119,7 +155,7 @@ struct EngramCommContext {
     uint32_t rankId = 0;
     uint32_t rankSize = 0;
     uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};
-    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE * 2] = {};
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};
     uint32_t channelsPerRank = 1;
 };
 
@@ -131,18 +167,81 @@ struct MoeCommContext {
     uint32_t channelsPerRank = 1;
 };
 
+struct RankLinkInfo {
+    CommProtocol protocol;
+    uint32_t layer;
+};
+
+struct LayerRanks {
+    uint32_t layer;
+    std::vector<uint32_t> ranks;
+};
+struct MixLayeredInfo {
+    // Channel 0 uses Clos; channel 1 uses the direct mesh.
+    std::array<uint32_t, MIX_LAYERED> layerIds = {};
+    std::array<std::vector<CommLink>, MIX_LAYERED> linksByRank;
+    bool isUseMixLayered = false;
+};
+
+struct MoeContextResources {
+    at::Tensor contextTensor;
+    int64_t cclBufferSize = 0;
+    uint32_t rankSizePerServer = 0;
+    void* deviceBufPtr = nullptr;
+    aclrtDrvMemHandle physicalMemHandle = nullptr;
+    HcclMemHandle memHandle = nullptr;
+    std::string contextTag;
+};
+
+// 进程级 MoE 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内，注册内存
+// (HcclCommMemReg)与 channel 均无反注册/销毁接口，其内容(epHcclBuffer[])指向本类自建的
+// 物理内存。因此物理内存生命周期与 tag 绑定并保留至进程级：同 tag 多实例共享，Destroy 仅
+// 解除本实例引用、不释放内存，同 group destroy 后重建 ElasticBuffer 时按既有容量直接复用
+// (重建声明的 cclBufferSize 不得超过首建值)。
+struct MoeSharedBufferEntry {
+    void* deviceBufPtr = nullptr;
+    aclrtDrvMemHandle physicalMemHandle = nullptr;
+    HcclMemHandle memHandle = nullptr;
+    int64_t cclBufferSize = 0; // 实际已申请的物理内存字节数
+};
+static std::mutex gMoeSharedBufferMutex;
+static std::unordered_map<std::string, MoeSharedBufferEntry> gMoeSharedBuffers;
+
 struct EngramContextResources {
     HcclComm hcclComm = nullptr;
     HcclMemHandle memHandle = nullptr;
-    void *hostBufPtr = nullptr;
-    void *deviceBufPtr = nullptr;
+    void* hostBufPtr = nullptr;
+    void* deviceBufPtr = nullptr;
+    bool externalRegistered = false;
     int64_t commBufferSize = 0;
     EngramCommContext context;
     at::Tensor contextTensor;
+    void* sfDeviceBufPtr = nullptr;
+    bool sfExternalRegistered = false;
 };
 
+// 进程级 Engram 通信 buffer 共享池：HCCL 引擎 ctx 以 tag 为单例缓存在通信域内，注册内存
+// (HcclCommMemReg)与 channel 均无反注册/销毁接口，ctx 的 virtualAddrList[] 指向注册的 host
+// 映射内存。因此注册内存生命周期与 tag 绑定并保留至进程级：同 tag 多实例共享，Destroy 仅
+// 解除本实例引用、不释放内存，同 group destroy 后重建 ElasticBuffer 时直接复用(自建 buffer
+// 重建容量不得超过首建值；外部零拷贝 buffer 重建时地址与大小必须与首建注册一致)。
+struct EngramSharedBufferEntry {
+    void* hostBufPtr = nullptr;
+    void* deviceBufPtr = nullptr;
+    HcclMemHandle memHandle = nullptr;
+    bool external = false; // buffer 是否来自调用方零拷贝存储
+    bool externalRegistered = false;
+    int64_t registeredBytes = 0; // 实际已注册的字节数
+    int64_t commBufferSize = 0;
+    EngramCommContext context;
+    void* sfDeviceBufPtr = nullptr;
+    bool sfExternalRegistered = false;
+};
+static std::mutex gEngramSharedBufferMutex;
+static std::unordered_map<std::string, EngramSharedBufferEntry> gEngramSharedBuffers;
+
 template <typename ContextT>
-static at::Tensor CreateCommContextTensor(const ContextT &context)
+static at::Tensor CreateCommContextTensor(const ContextT& context)
 {
     int64_t numElements = (sizeof(ContextT) + sizeof(int32_t) - 1) / sizeof(int32_t);
     at::Tensor tensor = at::empty({numElements}, at::TensorOptions()
@@ -158,33 +257,33 @@ static at::Tensor CreateCommContextTensor(const ContextT &context)
 
 class HcclContextBuilderBase {
 protected:
-    static void AcquireHcclHandle(const std::string &groupName, HcclComm &hcclComm)
+    static void AcquireHcclHandle(const std::string& groupName, HcclComm& hcclComm)
     {
         auto hcclRet = HcomGetCommHandleByGroupFunc(groupName.c_str(), &hcclComm);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL handle failed, group: ", groupName.c_str(), ", ret: ", hcclRet);
     }
 
-    static void CheckContextTag(const std::string &contextTag)
+    static void CheckContextTag(const std::string& contextTag)
     {
         TORCH_CHECK(contextTag.size() <= 255, "Mc2ContextTag is too long, max size is 255, got ", contextTag.size());
     }
 
-    static void CreateEngineContext(const HcclComm &commHandle, const std::string &contextTag, const CommEngine &engine,
-                                    uint64_t contextSize, void *&ctx)
+    static void CreateEngineContext(const HcclComm& commHandle, const std::string& contextTag, const CommEngine& engine,
+                                    uint64_t contextSize, void*& ctx)
     {
         auto hcclRet = HcclEngineCtxCreateFunc(commHandle, contextTag.c_str(), engine, contextSize, &ctx);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Create HCCL context memory failed, ret: ", hcclRet);
     }
 
-    static void CopyContextToDevice(const HcclComm &commHandle, const std::string &contextTag, const CommEngine &engine,
-                                    const void *context, uint64_t contextSize)
+    static void CopyContextToDevice(const HcclComm& commHandle, const std::string& contextTag, const CommEngine& engine,
+                                    const void* context, uint64_t contextSize)
     {
         auto hcclRet =
-            HcclEngineCtxCopyFunc(commHandle, engine, contextTag.c_str(), const_cast<void *>(context), contextSize, 0);
+            HcclEngineCtxCopyFunc(commHandle, engine, contextTag.c_str(), const_cast<void*>(context), contextSize, 0);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Copy context from host to device failed, ret: ", hcclRet);
     }
 
-    static void GetRankInfo(const HcclComm &commHandle, uint32_t &rankId, uint32_t &rankSize)
+    static void GetRankInfo(const HcclComm& commHandle, uint32_t& rankId, uint32_t& rankSize)
     {
         auto hcclRet = HcclGetRankIdFunc(commHandle, &rankId);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank ID failed, ret: ", hcclRet);
@@ -193,24 +292,214 @@ protected:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
     }
 
-    static void AcquireChannels(const HcclComm &commHandle, const CommEngine &engine,
-                                std::vector<HcclChannelDesc> &descs, ChannelHandle *channels)
+    static void AcquireChannels(const HcclComm& commHandle, const CommEngine& engine,
+                                std::vector<HcclChannelDesc>& descs, ChannelHandle* channels)
     {
         auto hcclRet =
             HcclChannelAcquireFunc(commHandle, engine, descs.data(), static_cast<uint32_t>(descs.size()), channels);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Acquire HCCL channel failed, ret: ", hcclRet);
     }
 
-    static void GetNetLayers(const HcclComm &commHandle, uint32_t *&netLayerList, uint32_t &netLayerNum)
+    static void GetNetLayers(const HcclComm& commHandle, uint32_t*& netLayerList, uint32_t& netLayerNum)
     {
         auto hcclRet = HcclRankGraphGetLayersFunc(commHandle, &netLayerList, &netLayerNum);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL layers failed, ret: ", hcclRet);
     }
+
+    bool SupportsProtocol(const HcclComm& commHandle, uint32_t layerId, uint32_t srcRankId, uint32_t dstRankId,
+                          const CommProtocol& protocol) const
+    {
+        CommLink* linksList = nullptr;
+        uint32_t netLinkNum = 0;
+        auto hcclRet = HcclRankGraphGetLinksFunc(commHandle, layerId, srcRankId, dstRankId, &linksList, &netLinkNum);
+        if (hcclRet != HCCL_SUCCESS || netLinkNum == 0) {
+            ASCEND_LOGW("Get HCCL links failed when checking protocol support, srcRankId: %u, dstRankId: %u, "
+                        "layerId: %u, protocol: %u, ret: %d, netLinkNum: %u",
+                        srcRankId, dstRankId, layerId, protocol, hcclRet, netLinkNum);
+            return false;
+        }
+        return HasLinkWithProtocol(linksList, netLinkNum, protocol);
+    }
+
+    void CheckProtocolSupport(const HcclComm& commHandle, const uint32_t* layerList, uint32_t layerNum,
+                              const CommProtocol& protocol)
+    {
+        ASCEND_LOGI("start CheckProtocolSupport");
+        uint32_t srcRankId = 0;
+        uint32_t rankSize = 0;
+        GetRankInfo(commHandle, srcRankId, rankSize);
+        rankLinkMap_.clear();
+        rankNumPerUbDomain_ = 0;
+
+        LayerRanks ubDomain;
+        if (!FindUbDomain(commHandle, layerList, layerNum, protocol, srcRankId, ubDomain)) {
+            TORCH_CHECK(false, "Failed to determine UB domain for rank ", srcRankId,
+                        ", rank has no peer supporting protocol ", static_cast<int>(protocol));
+        }
+        rankNumPerUbDomain_ = static_cast<uint32_t>(ubDomain.ranks.size());
+        ASCEND_LOGI("Layer %u is current rank's UB domain, rankNumPerUbDomain_: %u", ubDomain.layer,
+                    rankNumPerUbDomain_);
+
+        ASCEND_LOGI("complete FindUbDomain");
+        if (IsSingleUbDomain(ubDomain, rankSize)) {
+            return;
+        }
+
+        TORCH_CHECK(rankSize >= rankNumPerUbDomain_ && rankSize % rankNumPerUbDomain_ == 0,
+                    "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
+                    rankNumPerUbDomain_, ", rankSize: ", rankSize);
+
+        TORCH_CHECK(CheckIntraUbDomainProtocol(commHandle, srcRankId), "Rank ", srcRankId,
+                    " does not support UB_CTP with peers inside its UB domain");
+        TORCH_CHECK(CheckCrossUbDomainProtocols(commHandle, layerList, layerNum, srcRankId), "Rank ", srcRankId,
+                    " does not support UBG with peers outside its UB domain");
+        TORCH_CHECK(rankLinkMap_.size() == rankSize - 1, "Incomplete topology info for rank ", srcRankId, ", recorded ",
+                    rankLinkMap_.size(), " of ", rankSize - 1);
+        ASCEND_LOGI("Cross-server confirmed, use UB_CTP inside UB domain and UBG across UB domains");
+    }
+
+    bool FindUbDomain(const HcclComm& commHandle, const uint32_t* layerList, uint32_t layerNum,
+                      const CommProtocol& domainProtocol, uint32_t srcRankId, LayerRanks& ubDomain)
+    {
+        bool hasDomainLayer = false;
+        for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
+            LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex]);
+            if (!SupportsDomainProtocolWithAllRanks(commHandle, layer, domainProtocol, srcRankId)) {
+                break;
+            }
+            RecordDomainLayerRanks(domainProtocol, layer, srcRankId);
+            ubDomain = std::move(layer);
+            hasDomainLayer = true;
+        }
+        return hasDomainLayer;
+    }
+
+    bool CheckIntraUbDomainProtocol(const HcclComm& commHandle, uint32_t srcRankId)
+    {
+        for (auto& linkEntry : rankLinkMap_) {
+            uint32_t dstRank = linkEntry.first;
+            uint32_t layer = linkEntry.second.layer;
+            if (!SupportsProtocol(commHandle, layer, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UB_CTP)) {
+                ASCEND_LOGW("Rank %u does not support UB_CTP with rank %u in UB domain layer %u", srcRankId, dstRank,
+                            layer);
+                return false;
+            }
+            linkEntry.second.protocol = CommProtocol::COMM_PROTOCOL_UB_CTP;
+        }
+        return true;
+    }
+
+    bool CheckCrossUbDomainProtocols(const HcclComm& commHandle, const uint32_t* layerList, uint32_t layerNum,
+                                     uint32_t srcRankId)
+    {
+        bool isSupportUBG = false;
+        for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
+            LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex]);
+            for (uint32_t dstRank : layer.ranks) {
+                if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
+                    continue;
+                }
+                if (SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank, CommProtocol::COMM_PROTOCOL_UB_RTP)) {
+                    ASCEND_LOGI("Rank %u does support UBG with cross-domain rank %u in layer %u", srcRankId, dstRank,
+                                layer.layer);
+                    isSupportUBG = true;
+                    rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UB_RTP, layer.layer};
+                }
+            }
+        }
+        return isSupportUBG;
+    }
+
+    LayerRanks GetLayerRanks(const HcclComm& commHandle, uint32_t layerId) const
+    {
+        uint32_t rankNum = 0;
+        uint32_t* rankList = nullptr;
+        auto hcclRet = HcclRankGraphGetRanksByLayerFunc(commHandle, layerId, &rankList, &rankNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
+        return {layerId, std::vector<uint32_t>(rankList, rankList + rankNum)};
+    }
+
+    bool SupportsDomainProtocolWithAllRanks(const HcclComm& commHandle, const LayerRanks& layer,
+                                            const CommProtocol& domainProtocol, uint32_t srcRankId) const
+    {
+        for (uint32_t dstRank : layer.ranks) {
+            if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
+                continue;
+            }
+            if (!SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank, domainProtocol)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool IsSingleUbDomain(const LayerRanks& ubDomain, uint32_t rankSize) const
+    {
+        return ubDomain.ranks.size() == rankSize;
+    }
+
+    void RecordDomainLayerRanks(const CommProtocol& protocol, const LayerRanks& layer, uint32_t srcRankId)
+    {
+        for (uint32_t dstRank : layer.ranks) {
+            if (dstRank != srcRankId && rankLinkMap_.count(dstRank) == 0) {
+                rankLinkMap_[dstRank] = {protocol, layer.layer};
+            }
+        }
+    }
+
+    static bool HasLinkWithProtocol(const CommLink* linksList, uint32_t netLinkNum, const CommProtocol& protocol)
+    {
+        for (uint32_t linkIdx = 0; linkIdx < netLinkNum; ++linkIdx) {
+            if (linksList[linkIdx].linkAttr.linkProtocol == protocol) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static void GetHcclCommLink(const HcclComm& commHandle, uint32_t netLayerId, uint32_t srcRankId, uint32_t dstRankId,
+                                const CommProtocol& protocol, CommLink*& links)
+    {
+        CommLink* linksList = nullptr;
+        uint32_t netLinkNum = 0;
+        auto hcclRet = HcclRankGraphGetLinksFunc(commHandle, netLayerId, srcRankId, dstRankId, &linksList, &netLinkNum);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Communication link failed, ret: ", hcclRet);
+        TORCH_CHECK(netLinkNum > 0, "The Net Link Is nullptr. srcRankId is ", srcRankId, ", dstRankId is ", dstRankId,
+                    ", layerId is ", netLayerId);
+        uint32_t index = 0;
+        for (; index < netLinkNum; ++index) {
+            if (linksList[index].linkAttr.linkProtocol == protocol) {
+                links = &linksList[index];
+                break;
+            }
+        }
+        TORCH_CHECK(index < netLinkNum, "No matching communication protocol found in HCCL links, protocol is ",
+                    static_cast<int>(protocol));
+        ASCEND_LOGI("Get HCCL Communication link Success,srcRankId %u, dstRankId %u, protocol is: %u", srcRankId,
+                    dstRankId, protocol);
+    }
+
+    RankLinkInfo ResolveLinkInfo(uint32_t dstRank, const CommProtocol& protocol, const uint32_t* netLayerList) const
+    {
+        auto linkIter = rankLinkMap_.find(dstRank);
+        if (linkIter != rankLinkMap_.end()) {
+            return linkIter->second;
+        }
+        uint32_t fallbackLayer = netLayerList[HCCL_COMM_LAYERS_UB_MEM];
+        ASCEND_LOGW("Topology info not found for dstRank: %u, fallback to layer %u with protocol %d", dstRank,
+                    fallbackLayer, static_cast<int>(protocol));
+        return {protocol, fallbackLayer};
+    }
+
+    std::unordered_map<uint32_t, RankLinkInfo> rankLinkMap_;
+    uint32_t rankNumPerUbDomain_ = 0;
 };
 
 class EngramContextBuilder : public HcclContextBuilderBase {
 public:
-    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad)
+    EngramContextResources Build(const std::string& groupName, int64_t numCpuBytes, bool withGrad,
+                                 void* externalHostPtr = nullptr, int64_t externalBytes = 0, void* sfHostPtr = nullptr,
+                                 int64_t sfBytes = 0)
     {
         withGrad_ = withGrad;
         EngramContextResources resources;
@@ -219,10 +508,144 @@ public:
         std::string contextTag = groupName + "engram_embedding";
         CheckContextTag(contextTag);
 
-        HostBufferGuard guard;
-        CreateContext(resources, contextTag, numCpuBytes, guard);
+        std::lock_guard<std::mutex> lock(gEngramSharedBufferMutex);
+
+        uint64_t ctxSize = 0;
+        void* ctx = nullptr;
+        auto hcclRet =
+            HcclEngineCtxGetFunc(resources.hcclComm, contextTag.c_str(), CommEngine::COMM_ENGINE_AIV, &ctx, &ctxSize);
+        if (hcclRet != HCCL_SUCCESS) {
+            HostBufferGuard guard;
+            HostBufferGuard sfGuard;
+            try {
+                CreateContext(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes, sfHostPtr,
+                              sfBytes, sfGuard);
+            } catch (...) {
+                if (externalHostPtr != nullptr && resources.externalRegistered) {
+                    (void)aclrtHostUnregister(externalHostPtr);
+                    resources.externalRegistered = false;
+                }
+                if (sfHostPtr != nullptr && resources.sfExternalRegistered) {
+                    (void)aclrtHostUnregister(sfHostPtr);
+                    resources.sfExternalRegistered = false;
+                }
+                throw;
+            }
+            resources.contextTensor = CreateCommContextTensor(resources.context);
+            // 首次创建: 注册内存入共享池(与 tag 绑定的不可销毁资源同生命周期)，Destroy 不释放。
+            // 入池成功前不解除 guard 所有权，入池抛异常时由 guard 析构兜底释放自建 buffer，防资源失联。
+            try {
+                EngramSharedBufferEntry& entry = gEngramSharedBuffers[contextTag];
+                entry.hostBufPtr = resources.hostBufPtr;
+                entry.deviceBufPtr = resources.deviceBufPtr;
+                entry.memHandle = resources.memHandle;
+                entry.external = (externalHostPtr != nullptr);
+                entry.externalRegistered = resources.externalRegistered;
+                entry.registeredBytes =
+                    resources.hostBufPtr != nullptr ? ((externalHostPtr != nullptr) ? externalBytes : numCpuBytes) : 0;
+                entry.commBufferSize = resources.commBufferSize;
+                entry.context = resources.context;
+                entry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
+                entry.sfExternalRegistered = resources.sfExternalRegistered;
+            } catch (...) {
+                ASCEND_LOGW("failed to record engram shared buffer for tag %s, buffer will be rolled back",
+                            contextTag.c_str());
+                throw;
+            }
+            guard.Release();
+            sfGuard.Release();
+            return resources;
+        }
+        // ctx 已存在(同 group 曾创建过，含 destroy 后重建)：注册内存与 channel 均无反注册接口，
+        // 由进程级共享池按 tag 复用，Destroy 不释放。
+        EngramSharedBufferEntry entry;
+        {
+            auto iter = gEngramSharedBuffers.find(contextTag);
+            TORCH_CHECK(iter != gEngramSharedBuffers.end(), "Engram comm context of group '", contextTag,
+                        "' exists but its buffer is missing from the shared pool; an earlier build on this "
+                        "group may have failed midway, please use a new comm group");
+            entry = iter->second;
+        }
+        bool callerHasBuffer = (numCpuBytes > 0) || (externalHostPtr != nullptr);
+        if (!callerHasBuffer) {
+            // 仅初始化 ctx(如 engram_barrier 无存储场景)：复用共享池既有状态
+            resources.hostBufPtr = entry.hostBufPtr;
+            resources.deviceBufPtr = entry.deviceBufPtr;
+            resources.memHandle = entry.memHandle;
+            resources.externalRegistered = entry.externalRegistered;
+            resources.commBufferSize = entry.commBufferSize;
+            resources.context = entry.context;
+            resources.contextTensor = CreateCommContextTensor(resources.context);
+            resources.sfDeviceBufPtr = entry.sfDeviceBufPtr;
+            resources.sfExternalRegistered = entry.sfExternalRegistered;
+            return resources;
+        }
+        if (entry.hostBufPtr == nullptr) {
+            // ctx 已存在但存储尚未注册(先前仅 barrier 初始化)：补注册一次并回填共享池
+            GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
+            ValidateRankSize(resources.context.rankSize);
+            HostBufferGuard guard;
+            HostBufferGuard sfGuard;
+            try {
+                SetupEngramBuffer(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes, sfHostPtr,
+                                  sfBytes, sfGuard);
+            } catch (...) {
+                if (externalHostPtr != nullptr && resources.externalRegistered) {
+                    (void)aclrtHostUnregister(externalHostPtr);
+                    resources.externalRegistered = false;
+                }
+                if (sfHostPtr != nullptr && resources.sfExternalRegistered) {
+                    (void)aclrtHostUnregister(sfHostPtr);
+                    resources.sfExternalRegistered = false;
+                }
+                throw;
+            }
+            resources.contextTensor = CreateCommContextTensor(resources.context);
+            try {
+                EngramSharedBufferEntry& poolEntry = gEngramSharedBuffers[contextTag];
+                poolEntry.hostBufPtr = resources.hostBufPtr;
+                poolEntry.deviceBufPtr = resources.deviceBufPtr;
+                poolEntry.memHandle = resources.memHandle;
+                poolEntry.external = (externalHostPtr != nullptr);
+                poolEntry.externalRegistered = resources.externalRegistered;
+                poolEntry.registeredBytes = (externalHostPtr != nullptr) ? externalBytes : numCpuBytes;
+                poolEntry.commBufferSize = resources.commBufferSize;
+                poolEntry.context = resources.context;
+                poolEntry.sfDeviceBufPtr = resources.sfDeviceBufPtr;
+                poolEntry.sfExternalRegistered = resources.sfExternalRegistered;
+            } catch (...) {
+                ASCEND_LOGW("failed to record engram shared buffer for tag %s, buffer will be rolled back",
+                            contextTag.c_str());
+                throw;
+            }
+            guard.Release();
+            sfGuard.Release();
+            return resources;
+        }
+        if (externalHostPtr != nullptr) {
+            TORCH_CHECK(entry.external && externalHostPtr == entry.hostBufPtr && externalBytes == entry.registeredBytes,
+                        "Engram comm context of group '", contextTag, "' has registered external storage at address ",
+                        entry.hostBufPtr, ", size ", entry.registeredBytes,
+                        "; zero-copy rebuild requires the same pinned storage address and size, please use a new "
+                        "comm group");
+        } else {
+            TORCH_CHECK(!entry.external, "Engram comm context of group '", contextTag,
+                        "' has registered external (zero-copy) storage; self-allocated buffer rebuild is not "
+                        "supported on this group, please use a new comm group");
+            TORCH_CHECK(numCpuBytes <= entry.registeredBytes,
+                        "engram buffer size exceeds the existing buffer of this group, requested ", numCpuBytes,
+                        ", allocated ", entry.registeredBytes,
+                        "; the shared engram storage is sized by the first ElasticBuffer created on this group, "
+                        "destroy and recreate with a larger size is not supported, please use a new comm group");
+        }
+        resources.hostBufPtr = entry.hostBufPtr;
+        resources.deviceBufPtr = entry.deviceBufPtr;
+        resources.memHandle = entry.memHandle;
+        resources.externalRegistered = entry.externalRegistered;
+        resources.commBufferSize = entry.commBufferSize;
+        resources.context = entry.context;
         resources.contextTensor = CreateCommContextTensor(resources.context);
-        guard.Release();
+        resources.sfDeviceBufPtr = entry.sfDeviceBufPtr;
         return resources;
     }
 
@@ -237,90 +660,136 @@ private:
                     HCCL_MAX_RANK_SIZE);
     }
 
-    static void AllocateAndRegisterBuffer(const HcclComm &commHandle, const std::string &memBufferTag,
-                                          int64_t numCpuBytes, EngramContextResources &resources,
-                                          HostBufferGuard &guard)
+    static void AllocateAndRegisterBuffer(const HcclComm& commHandle, const std::string& memBufferTag,
+                                          int64_t numCpuBytes, EngramContextResources& resources,
+                                          HostBufferGuard& guard, void* externalHostPtr = nullptr,
+                                          int64_t externalBytes = 0)
     {
-        aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
+        if (externalHostPtr == nullptr) {
+            aclError ar = aclrtMallocHost(&guard.hostPtr, static_cast<uint64_t>(numCpuBytes));
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtMallocHost(", numCpuBytes, " B) failed, ret=", ar);
 
-        ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
-        guard.registered = true;
+            ar = aclrtHostRegisterV2(guard.hostPtr, static_cast<uint64_t>(numCpuBytes), ACL_HOST_REG_MAPPED);
+            TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostRegisterV2(", numCpuBytes, " B) failed, ret=", ar);
+            guard.registered = true;
+        } else {
+            // Map caller-owned storage memory directly (zero-copy): plain memory is supported
+            aclError ar =
+                aclrtHostRegisterV2(externalHostPtr, static_cast<uint64_t>(externalBytes), ACL_HOST_REG_MAPPED);
+            if (ar != ACL_SUCCESS) {
+                ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration",
+                            externalBytes, static_cast<int>(ar));
+            }
+            resources.externalRegistered = (ar == ACL_SUCCESS);
+        }
 
-        void *devPtr = nullptr;
-        ar = aclrtHostGetDevicePointer(guard.hostPtr, &devPtr, 0);
-        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar);
+        void* hostPtr = (externalHostPtr != nullptr) ? externalHostPtr : guard.hostPtr;
+        void* devPtr = nullptr;
+        aclError ar = aclrtHostGetDevicePointer(hostPtr, &devPtr, 0);
+        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
+                    ", host memory cannot be mapped to device");
 
         CommMem mem;
         mem.type = COMM_MEM_TYPE_DEVICE;
         mem.addr = devPtr;
-        mem.size = static_cast<uint64_t>(numCpuBytes);
-
+        mem.size = static_cast<uint64_t>((externalHostPtr != nullptr) ? externalBytes : numCpuBytes);
         auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &resources.memHandle);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", numCpuBytes,
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", mem.size,
                     ") failed, ret=", hcclRet);
 
-        resources.hostBufPtr = guard.hostPtr;
+        resources.hostBufPtr = hostPtr;
         resources.deviceBufPtr = devPtr;
     }
 
-    static void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim,
-                                  uint32_t channelsPerRank, HcclMemHandle &memHandle,
-                                  std::vector<HcclChannelDesc> &channelDesc)
+    // SF 表仅本核经映射地址直读 (参数路由): 只做 host->device 映射, 不自建内存、不入 HCCL 通信域。
+    static void MapSfTableBuffer(EngramContextResources& resources, void* sfHostPtr, int64_t sfBytes)
+    {
+        aclError ar = aclrtHostRegisterV2(sfHostPtr, static_cast<uint64_t>(sfBytes), ACL_HOST_REG_MAPPED);
+        if (ar != ACL_SUCCESS) {
+            ASCEND_LOGW("aclrtHostRegisterV2(%lld B) failed, ret=%d, fallback to existing registration", sfBytes,
+                        static_cast<int>(ar));
+        }
+        resources.sfExternalRegistered = (ar == ACL_SUCCESS);
+
+        void* devPtr = nullptr;
+        ar = aclrtHostGetDevicePointer(sfHostPtr, &devPtr, 0);
+        TORCH_CHECK(ar == ACL_SUCCESS, "aclrtHostGetDevicePointer failed, ret=", ar,
+                    ", storage host memory cannot be mapped to device");
+
+        resources.sfDeviceBufPtr = devPtr;
+    }
+
+    void BuildChannelDescs(const HcclComm& commHandle, uint32_t srcRankId, uint32_t rankDim, uint32_t channelsPerRank,
+                           HcclMemHandle& memHandle, std::vector<HcclChannelDesc>& channelDesc)
     {
         channelDesc.clear();
         uint32_t totalChannels = (rankDim - 1) * channelsPerRank;
         channelDesc.reserve(totalChannels);
 
-        uint32_t *netLayers = nullptr;
+        uint32_t* netLayers = nullptr;
         uint32_t netLayerNum = 0;
         GetNetLayers(commHandle, netLayers, netLayerNum);
+        TORCH_CHECK(netLayerNum > 0, "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
 
-        HcclResult r;
         for (uint32_t peer = 0; peer < rankDim; ++peer) {
             if (peer == srcRankId) {
                 continue;
             }
-            bool found = false;
-            for (uint32_t li = 0; li < netLayerNum && !found; ++li) {
-                CommLink *linkList = nullptr;
-                uint32_t listSize = 0;
-                r = HcclRankGraphGetLinksFunc(commHandle, netLayers[li], srcRankId, peer, &linkList, &listSize);
-                if (r != HCCL_SUCCESS)
-                    continue;
-                for (uint32_t i = 0; i < listSize && !found; ++i) {
-                    const int p = static_cast<int>(linkList[i].linkAttr.linkProtocol);
-                    if ((p != COMM_PROTOCOL_UBC_CTP_VALUE) && (p != COMM_PROTOCOL_UBC_TP_VALUE) &&
-                        (p != COMM_PROTOCOL_UBG_VALUE)) {
+            auto linkIter = rankLinkMap_.find(peer);
+            if (linkIter != rankLinkMap_.end()) {
+                RankLinkInfo linkInfo = linkIter->second;
+                CommLink* links = nullptr;
+                GetHcclCommLink(commHandle, linkInfo.layer, srcRankId, peer, linkInfo.protocol, links);
+                for (uint32_t ch = 0; ch < channelsPerRank; ++ch) {
+                    HcclChannelDesc desc;
+                    HcclResult initRet = HcclChannelDescInit(&desc, 1);
+                    TORCH_CHECK(initRet == HCCL_SUCCESS, "HcclChannelDescInit failed, ret=", initRet);
+                    desc.remoteRank = peer;
+                    desc.channelProtocol = linkInfo.protocol;
+                    desc.localEndpoint = links->srcEndpointDesc;
+                    desc.remoteEndpoint = links->dstEndpointDesc;
+                    desc.notifyNum = 3;
+                    desc.memHandles = &memHandle;
+                    desc.memHandleNum = 1;
+                    channelDesc.push_back(desc);
+                }
+            } else {
+                bool found = false;
+                for (uint32_t li = 0; li < netLayerNum && !found; ++li) {
+                    CommLink* linkList = nullptr;
+                    uint32_t listSize = 0;
+                    if (HcclRankGraphGetLinksFunc(commHandle, netLayers[li], srcRankId, peer, &linkList, &listSize) !=
+                        HCCL_SUCCESS) {
                         continue;
                     }
-                    for (uint32_t ch = 0; ch < channelsPerRank; ++ch) {
-                        HcclChannelDesc desc;
-                        HcclResult initRet = HcclChannelDescInit(&desc, 1);
-                        TORCH_CHECK(initRet == HCCL_SUCCESS, "HcclChannelDescInit failed, ret=", initRet);
-                        desc.remoteRank = peer;
-                        desc.channelProtocol = linkList[i].linkAttr.linkProtocol;
-                        desc.localEndpoint.protocol = linkList[i].srcEndpointDesc.protocol;
-                        desc.localEndpoint.commAddr = linkList[i].srcEndpointDesc.commAddr;
-                        desc.localEndpoint.loc = linkList[i].srcEndpointDesc.loc;
-                        desc.remoteEndpoint.protocol = linkList[i].dstEndpointDesc.protocol;
-                        desc.remoteEndpoint.commAddr = linkList[i].dstEndpointDesc.commAddr;
-                        desc.remoteEndpoint.loc = linkList[i].dstEndpointDesc.loc;
-                        desc.notifyNum = 3;
-                        desc.memHandles = &memHandle;
-                        desc.memHandleNum = 1;
-                        channelDesc.push_back(desc);
+                    for (uint32_t i = 0; i < listSize && !found; ++i) {
+                        const int p = static_cast<int>(linkList[i].linkAttr.linkProtocol);
+                        if (p != 4 && p != 5 && p != 9) {
+                            continue;
+                        }
+                        for (uint32_t ch = 0; ch < channelsPerRank; ++ch) {
+                            HcclChannelDesc desc;
+                            HcclResult initRet = HcclChannelDescInit(&desc, 1);
+                            TORCH_CHECK(initRet == HCCL_SUCCESS, "HcclChannelDescInit failed, ret=", initRet);
+                            desc.remoteRank = peer;
+                            desc.channelProtocol = linkList[i].linkAttr.linkProtocol;
+                            desc.localEndpoint = linkList[i].srcEndpointDesc;
+                            desc.remoteEndpoint = linkList[i].dstEndpointDesc;
+                            desc.notifyNum = 3;
+                            desc.memHandles = &memHandle;
+                            desc.memHandleNum = 1;
+                            channelDesc.push_back(desc);
+                        }
+                        found = true;
                     }
-                    found = true;
                 }
+                TORCH_CHECK(found, "No UB_CTP/UBC_TP/UBG link found for srcRankID ", srcRankId, ", dstRankID ", peer);
             }
-            TORCH_CHECK(found, "No UBC_CTP/UBC_TP/UBG link found for srcRankID ", srcRankId, ", dstRankID ", peer);
         }
     }
 
-    static void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
-                                   uint32_t channelsPerRank, HcclMemHandle &memHandle, ChannelHandle *channels)
+    void GetHcclCommChannel(const HcclComm& commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
+                            HcclMemHandle& memHandle, ChannelHandle* channels)
     {
         std::vector<HcclChannelDesc> descs;
         ChannelHandle channelBuf[HCCL_MAX_RANK_SIZE] = {};
@@ -337,14 +806,26 @@ private:
         }
     }
 
-    static void GetHcclCommResource(const HcclComm &commHandle, EngramContextResources &resources,
-                                    const std::string &targetTag)
+    void GetHcclCommResource(const HcclComm& commHandle, EngramContextResources& resources,
+                             const std::string& targetTag)
     {
         uint32_t rankId = resources.context.rankId;
-        constexpr uint32_t handleArraySize = 72U;
-        resources.context.channelsPerRank = static_cast<uint32_t>(CeilDiv(handleArraySize, resources.context.rankSize));
-        if (resources.context.channelsPerRank == 0U) {
+        bool hasUbGPeer = false;
+        for (auto& entry : rankLinkMap_) {
+            if (entry.second.protocol == CommProtocol::COMM_PROTOCOL_UB_RTP) {
+                hasUbGPeer = true;
+                break;
+            }
+        }
+        if (hasUbGPeer) {
             resources.context.channelsPerRank = 1U;
+        } else {
+            constexpr uint32_t handleArraySize = 72U;
+            resources.context.channelsPerRank =
+                static_cast<uint32_t>(CeilDiv(handleArraySize, resources.context.rankSize));
+            if (resources.context.channelsPerRank == 0U) {
+                resources.context.channelsPerRank = 1U;
+            }
         }
         uint32_t channelsPerRank = resources.context.channelsPerRank;
 
@@ -366,8 +847,8 @@ private:
             if (i == rankId)
                 continue;
             uint32_t memNum = 0;
-            CommMem *remoteMems = nullptr;
-            char **memTags = nullptr;
+            CommMem* remoteMems = nullptr;
+            char** memTags = nullptr;
             auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, resources.context.hcommHandle[i * channelsPerRank],
                                                         &memNum, &remoteMems, &memTags);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
@@ -382,28 +863,42 @@ private:
                     ASCEND_LOGI("Get Target Mem(%s) Success, Mem id is %d, Addr is %lu", targetTag.c_str(), j,
                                 targetMemAddr);
                     hasTargetMem = true;
-                    break;
                 }
             }
             TORCH_CHECK(hasTargetMem, "Target Mem : ", targetTag, " is not found.");
         }
     }
 
-    static void QueryHcclBufferResource(const HcclComm &commHandle, EngramContextResources &resources)
+    void QueryHcclBufferResource(const HcclComm& commHandle, EngramContextResources& resources)
     {
         uint32_t rankId = resources.context.rankId;
         uint32_t rankSize = resources.context.rankSize;
-        constexpr uint32_t aivNum = 72U;
-        uint32_t numSendCores = aivNum / 2U;
-        if (numSendCores == 0U) {
-            numSendCores = 1U;
+        TORCH_CHECK(rankSize > 0, "rankSize must be positive, got ", rankSize);
+        bool hasUbGPeer = false;
+        for (auto& entry : rankLinkMap_) {
+            if (entry.second.protocol == CommProtocol::COMM_PROTOCOL_UB_RTP) {
+                hasUbGPeer = true;
+                break;
+            }
         }
-        uint32_t groupSize = numSendCores / rankSize;
-        if (groupSize == 0U) {
-            groupSize = 1U;
+
+        uint32_t channelsPerPeer = 1U;
+        if (!hasUbGPeer) {
+            constexpr uint32_t aivNum = 72U;
+            uint32_t numSendCores = aivNum / 2U;
+            if (numSendCores == 0U) {
+                numSendCores = 1U;
+            }
+            uint32_t groupSize = numSendCores / rankSize;
+            if (groupSize == 0U) {
+                groupSize = 1U;
+            }
+            channelsPerPeer = groupSize;
         }
-        uint32_t channelsPerPeer = groupSize * 2U;
         resources.context.channelsPerRank = channelsPerPeer;
+        TORCH_CHECK(channelsPerPeer <= HCCL_MAX_RANK_SIZE / rankSize,
+                    "HCCL channel handles exceed capacity, rank size ", rankSize, ", channels per rank ",
+                    channelsPerPeer);
 
         std::vector<ChannelHandle> handlesByRank(rankSize * channelsPerPeer);
         GetHcclCommChannel(commHandle, rankSize, rankId, channelsPerPeer, resources.memHandle, handlesByRank.data());
@@ -415,7 +910,7 @@ private:
             }
         }
 
-        void *localBuffer = nullptr;
+        void* localBuffer = nullptr;
         uint64_t localBufferSize = 0;
         auto hcclRet = HcclGetHcclBufferFunc(commHandle, &localBuffer, &localBufferSize);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclGetHcclBuffer failed, ret=", hcclRet);
@@ -429,7 +924,7 @@ private:
             if (i == rankId) {
                 continue;
             }
-            void *remoteBuffer = nullptr;
+            void* remoteBuffer = nullptr;
             uint64_t remoteBufSize = 0;
             hcclRet = HcclChannelGetHcclBufferFunc(commHandle, resources.context.hcommHandle[i * channelsPerPeer],
                                                    &remoteBuffer, &remoteBufSize);
@@ -439,22 +934,45 @@ private:
         }
     }
 
-    void CreateContext(EngramContextResources &resources, const std::string &contextTag, int64_t numCpuBytes,
-                       HostBufferGuard &guard)
+    void CreateContext(EngramContextResources& resources, const std::string& contextTag, int64_t numCpuBytes,
+                       HostBufferGuard& guard, void* externalHostPtr, int64_t externalBytes, void* sfHostPtr,
+                       int64_t sfBytes, HostBufferGuard& sfGuard)
     {
         uint64_t contextSize = sizeof(EngramCommContext);
-        void *ctx = nullptr;
+        void* ctx = nullptr;
         CreateEngineContext(resources.hcclComm, contextTag, CommEngine::COMM_ENGINE_AIV, contextSize, ctx);
 
         GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
         ValidateRankSize(resources.context.rankSize);
 
-        if (numCpuBytes == 0) {
+        SetupEngramBuffer(resources, contextTag, numCpuBytes, guard, externalHostPtr, externalBytes, sfHostPtr, sfBytes,
+                          sfGuard);
+    }
+
+    // 注册存储并构建 channel/远端地址信息，最后把完整 context 拷贝到设备端引擎 ctx。
+    // 复用路径(ctx 已存在但共享池尚无注册内存)重建时也会走到这里。
+    void SetupEngramBuffer(EngramContextResources& resources, const std::string& contextTag, int64_t numCpuBytes,
+                           HostBufferGuard& guard, void* externalHostPtr, int64_t externalBytes, void* sfHostPtr,
+                           int64_t sfBytes, HostBufferGuard& sfGuard)
+    {
+        if (numCpuBytes == 0 && externalHostPtr == nullptr) {
             return;
         }
 
         std::string memBufferTag = contextTag + "_buffer";
-        AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard);
+        AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard, externalHostPtr,
+                                  externalBytes);
+
+        if (sfHostPtr != nullptr && sfBytes > 0) {
+            MapSfTableBuffer(resources, sfHostPtr, sfBytes);
+        }
+
+        uint32_t* netLayerList = nullptr;
+        uint32_t netLayerNum = 0;
+        GetNetLayers(resources.hcclComm, netLayerList, netLayerNum);
+        if (netLayerNum != HCCL_COMM_LAYERS_MTE_CCU) {
+            CheckProtocolSupport(resources.hcclComm, netLayerList, netLayerNum, CommProtocol::COMM_PROTOCOL_UB_CTP);
+        }
 
         if (withGrad_) {
             QueryHcclBufferResource(resources.hcclComm, resources);
@@ -463,75 +981,408 @@ private:
         }
 
         CopyContextToDevice(resources.hcclComm, contextTag, CommEngine::COMM_ENGINE_AIV, &resources.context,
-                            contextSize);
+                            sizeof(EngramCommContext));
     }
 };
 
 class MoeContextBuilder : public HcclContextBuilderBase {
 public:
-    at::Tensor Build(const std::string &groupName, int64_t &cclBufferSize, uint32_t &rankSizePerServer)
+    MoeContextBuilder() = default;
+    ~MoeContextBuilder()
     {
+        // RAII: Build 完整成功(所有权已转移)之外的任意异常路径，回滚已申请的物理内存，防泄露
+        if (!ownershipReleased_) {
+            ReleaseLocalDeviceBuffer();
+        }
+    }
+    MoeContextBuilder(const MoeContextBuilder&) = delete;
+    MoeContextBuilder& operator=(const MoeContextBuilder&) = delete;
+
+    MoeContextResources Build(const std::string& groupName, int64_t customCclBufferSize)
+    {
+        ASCEND_LOGI("start build");
         InitHcclEngineCtxFunctions();
 
         HcclComm hcclComm = nullptr;
         AcquireHcclHandle(groupName, hcclComm);
 
-        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
+        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_CTP;
         GetCommProtocol(hcclComm, protocol);
 
-        MoeCommContext context;
-        BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, cclBufferSize);
-        rankNumPerServer_ = rankNumPerUbDomain_;
-        TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after building MoE context");
-        context.rankSizePerServer = rankNumPerServer_;
-        rankSizePerServer = rankNumPerServer_;
+        // 所需实际总字节数需要大于0，且2MB对齐
+        TORCH_CHECK(customCclBufferSize > 0, "ccl buffer size must be greater than 0, got ", customCclBufferSize);
+        TORCH_CHECK(customCclBufferSize % (2 * MB_SIZE) == 0, "ccl buffer size must be divisible by 2MB, got ",
+                    customCclBufferSize);
+        cclBufferSize_ = customCclBufferSize;
 
-        return CreateCommContextTensor(context);
+        MoeCommContext context;
+        rankNumPerServer_ = rankNumPerUbDomain_;
+        TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after resolving MoE topology");
+        context.rankSizePerServer = rankNumPerServer_;
+
+        CheckIsMixLayered(hcclComm);
+
+        void* ctx = nullptr;
+        BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, ctx);
+        TORCH_CHECK(ctx != nullptr, "Create MoE context tensor failed: ctx is nullptr");
+        int64_t numElements = (sizeof(MoeCommContext) + sizeof(int32_t) - 1) / sizeof(int32_t);
+        auto options = at::TensorOptions().dtype(at::kInt).device(c10::DeviceType::PrivateUse1);
+        // HCCL owns ctx; the tensor only provides a non-owning view of the cached device context.
+        MoeContextResources resources;
+        resources.contextTensor = at_npu::native::from_blob(ctx, {numElements}, options);
+        resources.cclBufferSize = cclBufferSize_;
+        resources.rankSizePerServer = rankNumPerServer_;
+        resources.deviceBufPtr = deviceBufPtr_;
+        resources.physicalMemHandle = physicalMemHandle_;
+        resources.memHandle = memHandle_;
+        resources.contextTag = groupName + "moe_dispatch_combine_multi_channel";
+        if (createdNew_) {
+            // 首次创建: 物理内存入共享池(与 tag 绑定的不可销毁资源同生命周期)，Destroy 不释放，同 group 重建时复用
+            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
+            MoeSharedBufferEntry& entry = gMoeSharedBuffers[resources.contextTag];
+            entry.deviceBufPtr = deviceBufPtr_;
+            entry.physicalMemHandle = physicalMemHandle_;
+            entry.memHandle = memHandle_;
+            entry.cclBufferSize = cclBufferSize_;
+        }
+        ownershipReleased_ = true; // 所有权已转移(共享池/既有持有者)，builder 析构不释放
+        return resources;
     }
 
 private:
-    void BuildContext(const HcclComm &commHandle, const std::string &groupName, const std::string &opName,
-                      const CommProtocol &protocol, MoeCommContext &context, int64_t &cclBufferSize)
+    // 回滚本 builder 持有的物理内存(异常路径)，顺序与申请严格互逆
+    void ReleaseLocalDeviceBuffer()
+    {
+        if (deviceBufPtr_ != nullptr) {
+            if (physicalMemHandle_ != nullptr) {
+                (void)aclrtUnmapMem(deviceBufPtr_);
+                (void)aclrtFreePhysical(physicalMemHandle_);
+                physicalMemHandle_ = nullptr;
+            }
+            (void)aclrtReleaseMemAddress(deviceBufPtr_);
+            deviceBufPtr_ = nullptr;
+        }
+        memHandle_ = nullptr;
+    }
+
+    static bool CoversAllRanks(const std::vector<uint32_t>& ranks, uint32_t rankSize)
+    {
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
+            if (std::find(ranks.begin(), ranks.end(), peer) == ranks.end()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static bool MatchesInstanceEndpoint(const EndpointDesc& linkEndpoint, const EndpointDesc& instanceEndpoint)
+    {
+        if (linkEndpoint.protocol != instanceEndpoint.protocol ||
+            linkEndpoint.loc.locType != instanceEndpoint.loc.locType ||
+            linkEndpoint.commAddr.type != instanceEndpoint.commAddr.type) {
+            return false;
+        }
+        // Instance queries do not populate device location IDs; compare the active address field only.
+        const auto& lhs = linkEndpoint.commAddr;
+        const auto& rhs = instanceEndpoint.commAddr;
+        switch (lhs.type) {
+            case COMM_ADDR_TYPE_EID:
+                return std::memcmp(lhs.eid, rhs.eid, sizeof(lhs.eid)) == 0;
+            case COMM_ADDR_TYPE_IP_V4:
+                return std::memcmp(&lhs.addr, &rhs.addr, sizeof(lhs.addr)) == 0;
+            case COMM_ADDR_TYPE_IP_V6:
+                return std::memcmp(&lhs.addr6, &rhs.addr6, sizeof(lhs.addr6)) == 0;
+            case COMM_ADDR_TYPE_ID:
+                return lhs.id == rhs.id;
+            default:
+                return false;
+        }
+    }
+
+    bool CollectMixLinks(const HcclComm& commHandle, uint32_t layerId, uint32_t srcRankId, uint32_t rankSize,
+                         const std::vector<EndpointDesc>* instanceEndpoints, std::vector<CommLink>& selectedLinks)
+    {
+        selectedLinks.resize(rankSize);
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
+            if (peer == srcRankId) {
+                continue;
+            }
+            CommLink* links = nullptr;
+            uint32_t linkNum = 0;
+            auto ret = HcclRankGraphGetLinksFunc(commHandle, layerId, srcRankId, peer, &links, &linkNum);
+            TORCH_CHECK(ret == HCCL_SUCCESS, "Get mixed-layer links failed, layer: ", layerId, ", srcRank: ", srcRankId,
+                        ", peer: ", peer, ", ret: ", ret);
+            TORCH_CHECK(linkNum == 0 || links != nullptr, "Null mixed-layer links, layer: ", layerId);
+            bool found = false;
+            for (uint32_t i = 0; i < linkNum; ++i) {
+                if (links[i].linkAttr.linkProtocol != CommProtocol::COMM_PROTOCOL_UB_CTP) {
+                    continue;
+                }
+                if (instanceEndpoints != nullptr &&
+                    std::none_of(instanceEndpoints->begin(), instanceEndpoints->end(), [&](const EndpointDesc& ep) {
+                        return MatchesInstanceEndpoint(links[i].srcEndpointDesc, ep);
+                    })) {
+                    continue;
+                }
+                // HCCL owns the returned list. Keep the exact validated link for channel construction.
+                selectedLinks[peer] = links[i];
+                found = true;
+                break;
+            }
+            if (!found) {
+                ASCEND_LOGI("[MixLayer] rank %u layer %u: no matching UB_CTP link to peer %u", srcRankId, layerId,
+                            peer);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    std::vector<uint32_t> GetTopologyInstanceIds(const HcclComm& commHandle, uint32_t layerId)
+    {
+        uint32_t* instanceList = nullptr;
+        uint32_t instanceCount = 0;
+        auto ret = HcclRankGraphGetTopoInstsByLayerFunc(commHandle, layerId, &instanceList, &instanceCount);
+        TORCH_CHECK(ret == HCCL_SUCCESS, "Get topology instances failed, layer: ", layerId, ", ret: ", ret);
+        TORCH_CHECK(instanceCount == 0 || instanceList != nullptr, "Null topology instance list, layer: ", layerId);
+        if (instanceCount == 0) {
+            return {};
+        }
+        return {instanceList, instanceList + instanceCount};
+    }
+
+    bool InstanceCoversAllRanks(const HcclComm& commHandle, uint32_t layerId, uint32_t instanceId, uint32_t rankSize)
+    {
+        uint32_t* rankList = nullptr;
+        uint32_t rankCount = 0;
+        auto ret = HcclRankGraphGetRanksByTopoInstFunc(commHandle, layerId, instanceId, &rankList, &rankCount);
+        TORCH_CHECK(ret == HCCL_SUCCESS, "Get instance ranks failed, layer: ", layerId, ", instance: ", instanceId,
+                    ", ret: ", ret);
+        TORCH_CHECK(rankCount == 0 || rankList != nullptr, "Null instance ranks, layer: ", layerId);
+        return rankCount != 0 && CoversAllRanks(std::vector<uint32_t>(rankList, rankList + rankCount), rankSize);
+    }
+
+    std::vector<EndpointDesc> GetInstanceEndpoints(const HcclComm& commHandle, uint32_t layerId, uint32_t instanceId)
+    {
+        uint32_t endpointCapacity = 0;
+        auto ret = HcclRankGraphGetEndpointNumFunc(commHandle, layerId, instanceId, &endpointCapacity);
+        TORCH_CHECK(ret == HCCL_SUCCESS, "Get instance endpoint count failed, layer: ", layerId,
+                    ", instance: ", instanceId, ", ret: ", ret);
+        if (endpointCapacity == 0) {
+            return {};
+        }
+        std::vector<EndpointDesc> endpoints(endpointCapacity);
+        uint32_t actualEndpointCount = endpointCapacity;
+        ret = HcclRankGraphGetEndpointDescFunc(commHandle, layerId, instanceId, &actualEndpointCount, endpoints.data());
+        TORCH_CHECK(ret == HCCL_SUCCESS && actualEndpointCount <= endpointCapacity,
+                    "Get instance endpoints failed, layer: ", layerId, ", instance: ", instanceId, ", ret: ", ret);
+        endpoints.resize(actualEndpointCount);
+        return endpoints;
+    }
+
+    bool CollectInstanceMixLinks(const HcclComm& commHandle, uint32_t layerId, uint32_t instanceId, uint32_t srcRankId,
+                                 uint32_t rankSize, std::vector<CommLink>& selectedLinks)
+    {
+        if (!InstanceCoversAllRanks(commHandle, layerId, instanceId, rankSize)) {
+            ASCEND_LOGI("[MixLayer] rank %u skips layer %u instance %u: incomplete rank coverage", srcRankId, layerId,
+                        instanceId);
+            return false;
+        }
+        const auto endpoints = GetInstanceEndpoints(commHandle, layerId, instanceId);
+        if (endpoints.empty()) {
+            ASCEND_LOGI("[MixLayer] rank %u skips layer %u instance %u: no local endpoints", srcRankId, layerId,
+                        instanceId);
+            return false;
+        }
+        if (!CollectMixLinks(commHandle, layerId, srcRankId, rankSize, &endpoints, selectedLinks)) {
+            ASCEND_LOGI("[MixLayer] rank %u skips layer %u instance %u: incomplete instance CTP links", srcRankId,
+                        layerId, instanceId);
+            return false;
+        }
+        return true;
+    }
+
+    bool FindCustomMixInstance(const HcclComm& commHandle, uint32_t layerId, CommTopo targetType, uint32_t srcRankId,
+                               uint32_t rankSize, std::vector<CommLink>& selectedLinks)
+    {
+        const auto instanceIds = GetTopologyInstanceIds(commHandle, layerId);
+        for (uint32_t instanceId : instanceIds) {
+            CommTopo instanceType = COMM_TOPO_RESERVED;
+            auto ret = HcclRankGraphGetTopoTypeFunc(commHandle, layerId, instanceId, &instanceType);
+            TORCH_CHECK(ret == HCCL_SUCCESS, "Get instance type failed, layer: ", layerId, ", instance:  ", instanceId,
+                        ", ret: ", ret);
+            if (instanceType != targetType) {
+                ASCEND_LOGD("[MixLayer] rank %u layer %u instance %u: type %d, looking for %d", srcRankId, layerId,
+                            instanceId, static_cast<int>(instanceType), static_cast<int>(targetType));
+                continue;
+            }
+            if (!CollectInstanceMixLinks(commHandle, layerId, instanceId, srcRankId, rankSize, selectedLinks)) {
+                continue;
+            }
+            ASCEND_LOGI("[MixLayer] rank %u selects CUSTOM layer %u instance %u as %s", srcRankId, layerId, instanceId,
+                        targetType == COMM_TOPO_CLOS ? "Clos" : "fullmesh");
+            return true;
+        }
+        ASCEND_LOGI("[MixLayer] rank %u CUSTOM layer %u: no qualified %s instance among %zu instances", srcRankId,
+                    layerId, targetType == COMM_TOPO_CLOS ? "Clos" : "fullmesh", instanceIds.size());
+        return false;
+    }
+
+    void SelectExplicitMixLayers(const HcclComm& commHandle, const std::vector<uint32_t>& layerIds, uint32_t srcRankId,
+                                 uint32_t rankSize, std::vector<uint32_t>& customLayers,
+                                 std::array<bool, MIX_LAYERED>& found)
+    {
+        for (uint32_t layerId : layerIds) {
+            CommTopo topoType = COMM_TOPO_RESERVED;
+            auto ret = HcclRankGraphGetTopoTypeByLayerFunc(commHandle, layerId, &topoType);
+            TORCH_CHECK(ret == HCCL_SUCCESS, "Get HCCL topology type failed, layer: ", layerId, ", ret: ", ret);
+            ASCEND_LOGI("[MixLayer] rank %u layer %u: topology %d", srcRankId, layerId, static_cast<int>(topoType));
+            if (topoType == COMM_TOPO_CUSTOM) {
+                customLayers.push_back(layerId);
+                continue;
+            }
+            if (topoType != COMM_TOPO_CLOS && topoType != COMM_TOPO_1DMESH) {
+                continue;
+            }
+            const uint32_t slot = topoType == COMM_TOPO_CLOS ? MIX_CLOS_SLOT : MIX_MESH_SLOT;
+            if (found[slot]) {
+                continue;
+            }
+            if (!CoversAllRanks(GetLayerRanks(commHandle, layerId).ranks, rankSize)) {
+                ASCEND_LOGI("[MixLayer] rank %u skips layer %u: incomplete rank coverage", srcRankId, layerId);
+                continue;
+            }
+            if (CollectMixLinks(commHandle, layerId, srcRankId, rankSize, nullptr, mixLayeredInfo_.linksByRank[slot])) {
+                mixLayeredInfo_.layerIds[slot] = layerId;
+                found[slot] = true;
+                if (found[MIX_CLOS_SLOT] && found[MIX_MESH_SLOT]) {
+                    break;
+                }
+            }
+        }
+    }
+
+    void SelectCustomMixLayers(const HcclComm& commHandle, const std::vector<uint32_t>& customLayers,
+                               uint32_t srcRankId, uint32_t rankSize, std::array<bool, MIX_LAYERED>& found)
+    {
+        // When both roles are missing, prefer fullmesh first, then Clos on a different layer.
+        for (uint32_t slot : {MIX_MESH_SLOT, MIX_CLOS_SLOT}) {
+            if (found[slot]) {
+                continue;
+            }
+            const uint32_t otherSlot = slot == MIX_MESH_SLOT ? MIX_CLOS_SLOT : MIX_MESH_SLOT;
+            const CommTopo targetType = slot == MIX_MESH_SLOT ? COMM_TOPO_1DMESH : COMM_TOPO_CLOS;
+            for (uint32_t layerId : customLayers) {
+                if (found[otherSlot] && layerId == mixLayeredInfo_.layerIds[otherSlot]) {
+                    continue;
+                }
+                if (FindCustomMixInstance(commHandle, layerId, targetType, srcRankId, rankSize,
+                                          mixLayeredInfo_.linksByRank[slot])) {
+                    mixLayeredInfo_.layerIds[slot] = layerId;
+                    found[slot] = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    void CheckIsMixLayered(const HcclComm& commHandle)
+    {
+        mixLayeredInfo_ = {};
+        uint32_t srcRankId = 0;
+        uint32_t rankSize = 0;
+        GetRankInfo(commHandle, srcRankId, rankSize);
+        if (rankNumPerServer_ != MIX_LAYERED_RANK_SIZE || rankSize != rankNumPerServer_) {
+            return;
+        }
+        uint32_t layerNum = 0;
+        uint32_t* layerList = nullptr;
+        GetNetLayers(commHandle, layerList, layerNum);
+        if (layerNum < MIX_LAYERED) {
+            return;
+        }
+        TORCH_CHECK(layerList != nullptr, "HCCL returned a null layer list");
+        std::vector<uint32_t> layerIds(layerList, layerList + layerNum);
+        std::vector<uint32_t> customLayers;
+        std::array<bool, MIX_LAYERED> found = {};
+        // Preserve HCCL order and prefer explicit types before filling missing roles from CUSTOM layers.
+        SelectExplicitMixLayers(commHandle, layerIds, srcRankId, rankSize, customLayers, found);
+        SelectCustomMixLayers(commHandle, customLayers, srcRankId, rankSize, found);
+        mixLayeredInfo_.isUseMixLayered = found[MIX_CLOS_SLOT] && found[MIX_MESH_SLOT];
+        if (mixLayeredInfo_.isUseMixLayered) {
+            ASCEND_LOGI("[MixLayer] rank %u enables mixed CTP channels: Clos layer %u, fullmesh layer %u", srcRankId,
+                        mixLayeredInfo_.layerIds[MIX_CLOS_SLOT], mixLayeredInfo_.layerIds[MIX_MESH_SLOT]);
+        } else {
+            ASCEND_LOGI("[MixLayer] rank %u uses default topology: Clos found %u, fullmesh found %u", srcRankId,
+                        static_cast<uint32_t>(found[MIX_CLOS_SLOT]), static_cast<uint32_t>(found[MIX_MESH_SLOT]));
+        }
+    }
+
+    void BuildContext(const HcclComm& commHandle, const std::string& groupName, const std::string& opName,
+                      const CommProtocol& protocol, MoeCommContext& context, void*& ctx)
     {
         std::string contextTag = groupName + opName;
         CheckContextTag(contextTag);
         CommEngine engine = CommEngine::COMM_ENGINE_AIV;
-        void *ctx = nullptr;
-        uint64_t hcclBufferSize = 0;
 
-        GetOrCreateContext(commHandle, contextTag, engine, protocol, ctx, hcclBufferSize, context);
-        cclBufferSize = static_cast<int64_t>(hcclBufferSize);
+        GetOrCreateContext(commHandle, contextTag, engine, protocol, ctx, context);
     }
 
-    void CreateContext(const HcclComm &commHandle, const std::string &contextTag, const CommEngine &engine,
-                       const CommProtocol &protocol, void *&ctx, MoeCommContext *context, uint64_t &hcclBufferSize)
+    void CreateContext(const HcclComm& commHandle, const std::string& contextTag, const CommEngine& engine,
+                       const CommProtocol& protocol, void*& ctx, MoeCommContext* context)
     {
         uint64_t contextSize = sizeof(MoeCommContext);
         CreateEngineContext(commHandle, contextTag, engine, contextSize, ctx);
 
         uint32_t rankSize = 0;
         GetRankInfo(commHandle, context->epRankId, rankSize);
-        GetHcclCommResource(commHandle, engine, protocol, *context, rankSize, hcclBufferSize);
+
+        std::string memBufferTag = contextTag + "_buffer";
+        CheckContextTag(memBufferTag);
+        AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
+
+        GetHcclCommResource(commHandle, engine, protocol, *context, rankSize, memBufferTag);
 
         CopyContextToDevice(commHandle, contextTag, engine, context, contextSize);
     }
 
-    void GetOrCreateContext(const HcclComm &commHandle, const std::string &contextTag, const CommEngine &engine,
-                            const CommProtocol &protocol, void *&ctx, uint64_t &hcclBufferSize, MoeCommContext &context)
+    void GetOrCreateContext(const HcclComm& commHandle, const std::string& contextTag, const CommEngine& engine,
+                            const CommProtocol& protocol, void*& ctx, MoeCommContext& context)
     {
         uint64_t ctxSize = 0;
         auto hcclRet = HcclEngineCtxGetFunc(commHandle, contextTag.c_str(), engine, &ctx, &ctxSize);
         if (hcclRet != HCCL_SUCCESS) {
-            CreateContext(commHandle, contextTag, engine, protocol, ctx, &context, hcclBufferSize);
-        } else {
-            GetHcclBufferSize(commHandle, hcclBufferSize);
+            CreateContext(commHandle, contextTag, engine, protocol, ctx, &context);
+            createdNew_ = true;
+            return;
         }
+        // ctx 已存在(同 group 曾创建过，含 destroy 后重建)：物理内存由共享池按 tag 保留，复用既有 buffer。
+        // 重建声明的容量不得超过首建容量，否则 tiling 按声明值校验通过、 kernel 经共享 ctx 写入会超出实际物理内存。
+        MoeSharedBufferEntry entry;
+        {
+            std::lock_guard<std::mutex> lock(gMoeSharedBufferMutex);
+            auto iter = gMoeSharedBuffers.find(contextTag);
+            TORCH_CHECK(iter != gMoeSharedBuffers.end(), "MoE comm context of group '", contextTag,
+                        "' exists but its buffer is missing from the shared pool; an earlier build on this "
+                        "group may have failed midway, please use a new comm group");
+            TORCH_CHECK(cclBufferSize_ <= iter->second.cclBufferSize,
+                        "ccl buffer size exceeds the existing buffer of this group, requested ", cclBufferSize_,
+                        ", allocated ", iter->second.cclBufferSize,
+                        "; the shared comm buffer is sized by the first ElasticBuffer created on this group, "
+                        "destroy and recreate with a larger size is not supported, please use a new comm group");
+            entry = iter->second;
+        }
+        deviceBufPtr_ = entry.deviceBufPtr;
+        physicalMemHandle_ = entry.physicalMemHandle;
+        memHandle_ = entry.memHandle;
+        ownershipReleased_ = true; // 复用资源不归本 builder 所有，析构不得释放
     }
 
-    void GetCommProtocol(const HcclComm &commHandle, CommProtocol &protocol)
+    void GetCommProtocol(const HcclComm& commHandle, CommProtocol& protocol)
     {
+        ASCEND_LOGI("start GetCommProtocol");
         uint32_t layerNum = 0;
-        uint32_t *layerList = nullptr;
+        uint32_t* layerList = nullptr;
         GetNetLayers(commHandle, layerList, layerNum);
 
         if (layerNum == HCCL_COMM_LAYERS_MTE_CCU) {
@@ -542,123 +1393,25 @@ private:
         CheckProtocolSupport(commHandle, layerList, layerNum, protocol);
     }
 
-    void CheckProtocolSupport(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
-                              CommProtocol &protocol)
+    bool HasUbGPeer() const
     {
-        uint32_t srcRankId = 0;
-        uint32_t rankSize = 0;
-        GetRankInfo(commHandle, srcRankId, rankSize);
-
-        for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-            uint32_t *rankIdLists = nullptr;
-            uint32_t rankNumInLayer = 0;
-            auto hcclRet =
-                HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
-
-            bool allSupportProtocol = true;
-            for (uint32_t rankId = 0; rankId < rankNumInLayer; ++rankId) {
-                if (rankIdLists[rankId] == srcRankId || layerMap_.find(rankIdLists[rankId]) != layerMap_.end()) {
-                    continue;
-                }
-                CommLink *linksList = nullptr;
-                uint32_t netLinkNum = 0;
-                hcclRet = HcclRankGraphGetLinksFunc(commHandle, layerList[layerIndex], srcRankId, rankIdLists[rankId],
-                                                    &linksList, &netLinkNum);
-                TORCH_CHECK(hcclRet == HCCL_SUCCESS,
-                            "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
-                TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
-                if (!CheckLinks(netLinkNum, linksList, protocol)) {
-                    allSupportProtocol = false;
-                    break;
-                }
-                layerMap_[rankIdLists[rankId]] = layerList[layerIndex];
-            }
-            if (!allSupportProtocol) {
-                break;
-            }
-            rankNumPerUbDomain_ = rankNumInLayer;
-        }
-
-        if (rankNumPerUbDomain_ != 0 && rankNumPerUbDomain_ < rankSize) {
-            TORCH_CHECK(rankSize % rankNumPerUbDomain_ == 0,
-                        "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
-                        rankNumPerUbDomain_, ", rankSize: ", rankSize);
-            CheckIsCrossSuperNode(commHandle, layerList, layerNum, protocol, srcRankId);
-        }
-    }
-
-    void CheckIsCrossSuperNode(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
-                               CommProtocol &protocol, uint32_t srcRankId)
-    {
-        protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
-        layerMap_.clear();
-
-        for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
-            uint32_t *rankIdLists = nullptr;
-            uint32_t rankNumInLayer = 0;
-            auto hcclRet =
-                HcclRankGraphGetRanksByLayerFunc(commHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank IDs by layer failed, ret: ", hcclRet);
-
-            for (uint32_t rankIdx = 0; rankIdx < rankNumInLayer; ++rankIdx) {
-                if (rankIdLists[rankIdx] == srcRankId || layerMap_.find(rankIdLists[rankIdx]) != layerMap_.end()) {
-                    continue;
-                }
-                CommLink *linksList = nullptr;
-                uint32_t netLinkNum = 0;
-                hcclRet = HcclRankGraphGetLinksFunc(commHandle, layerList[layerIndex], srcRankId, rankIdLists[rankIdx],
-                                                    &linksList, &netLinkNum);
-                TORCH_CHECK(hcclRet == HCCL_SUCCESS,
-                            "Get HCCL links failed when checking protocol support, ret: ", hcclRet);
-                TORCH_CHECK(netLinkNum > 0, "No available HCCL links found");
-                if (!CheckLinks(netLinkNum, linksList, protocol)) {
-                    return;
-                }
-                layerMap_[rankIdLists[rankIdx]] = layerList[layerIndex];
-            }
-        }
-    }
-
-    static bool CheckLinks(uint32_t netLinkNum, CommLink *linksList, const CommProtocol &protocol)
-    {
-        for (uint32_t i = 0; i < netLinkNum; ++i) {
-            if (linksList[i].linkAttr.linkProtocol == protocol) {
+        for (const auto& entry : rankLinkMap_) {
+            if (entry.second.protocol == CommProtocol::COMM_PROTOCOL_UB_RTP) {
                 return true;
             }
         }
         return false;
     }
 
-    static void GetHcclCommLink(const HcclComm &commHandle, uint32_t netLayerId, uint32_t srcRankId, uint32_t dstRankId,
-                                const CommProtocol &protocol, CommLink *&links)
-    {
-        CommLink *linksList = nullptr;
-        uint32_t netLinkNum = 0;
-        auto hcclRet = HcclRankGraphGetLinksFunc(commHandle, netLayerId, srcRankId, dstRankId, &linksList, &netLinkNum);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Communication link failed, ret: ", hcclRet);
-        TORCH_CHECK(netLinkNum > 0, "The Net Link Is nullptr. srcRankId is ", srcRankId, ", dstRankId is ", dstRankId,
-                    ", layerId is ", netLayerId);
-        uint32_t index = 0;
-        for (; index < netLinkNum; ++index) {
-            if (linksList[index].linkAttr.linkProtocol == protocol) {
-                links = &linksList[index];
-                break;
-            }
-        }
-        TORCH_CHECK(index < netLinkNum, "No matching communication protocol found in HCCL links, protocol is ",
-                    static_cast<int>(protocol));
-    }
-
-    void InitHcclChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
-                         const CommProtocol &protocol, std::vector<HcclChannelDesc> &channelDesc)
+    void InitHcclChannel(const HcclComm& commHandle, uint32_t rankDim, uint32_t srcRankId, uint32_t channelsPerRank,
+                         const CommProtocol& protocol, std::vector<HcclChannelDesc>& channelDesc)
     {
         uint32_t channelNum = static_cast<uint32_t>(channelDesc.size());
         auto hcclRet = HcclChannelDescInit(channelDesc.data(), channelNum);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HCCL channel init failed, ret: ", hcclRet);
 
         uint32_t netLayerNum = 0;
-        uint32_t *netLayerList = nullptr;
+        uint32_t* netLayerList = nullptr;
         GetNetLayers(commHandle, netLayerList, netLayerNum);
         TORCH_CHECK(netLayerNum > 0, "Get HCCL net layers failed, netLayerNum is ", netLayerNum);
 
@@ -667,27 +1420,39 @@ private:
                 continue;
             }
             uint32_t peerIndex = (peer > srcRankId) ? (peer - 1) : peer;
-            uint32_t layerId = netLayerNum == 1 ? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap_[peer];
-            CommLink *links = nullptr;
-            GetHcclCommLink(commHandle, layerId, srcRankId, peer, protocol, links);
+            RankLinkInfo linkInfo = ResolveLinkInfo(peer, protocol, netLayerList);
+            CommLink* links = nullptr;
+            if (!mixLayeredInfo_.isUseMixLayered) {
+                GetHcclCommLink(commHandle, linkInfo.layer, srcRankId, peer, linkInfo.protocol, links);
+            }
             for (uint32_t channel = 0; channel < channelsPerRank; ++channel) {
                 // Handles are compact by remote rank because the local rank does not need an HCOMM channel.
+                if (mixLayeredInfo_.isUseMixLayered) {
+                    links = &mixLayeredInfo_.linksByRank[channel % MIX_LAYERED][peer];
+                }
                 uint32_t channelId = peerIndex * channelsPerRank + channel;
-                channelDesc[channelId].channelProtocol = protocol;
+                channelDesc[channelId].channelProtocol =
+                    mixLayeredInfo_.isUseMixLayered ? CommProtocol::COMM_PROTOCOL_UB_CTP : linkInfo.protocol;
                 channelDesc[channelId].remoteRank = peer;
                 channelDesc[channelId].notifyNum = MOE_CHANNEL_NOTIFY_NUM;
                 channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
                 channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+                channelDesc[channelId].memHandles = &memHandle_;
+                channelDesc[channelId].memHandleNum = MEM_HANDLE_NUM;
             }
         }
     }
 
-    void GetHcclCommChannel(const HcclComm &commHandle, const CommEngine &engine, uint32_t rankDim, uint32_t srcRankId,
-                            const CommProtocol &protocol, MoeCommContext &context)
+    void GetHcclCommChannel(const HcclComm& commHandle, const CommEngine& engine, uint32_t rankDim, uint32_t srcRankId,
+                            const CommProtocol& protocol, MoeCommContext& context)
     {
         TORCH_CHECK(rankDim >= HCCL_MIN_RANK_SIZE && rankDim <= HCCL_MAX_RANK_SIZE, "Invalid HCCL rank size ", rankDim);
         uint32_t remoteRankNum = rankDim - 1;
-        context.channelsPerRank = static_cast<uint32_t>(CeilDiv(MOE_CHANNEL_HANDLE_NUM, rankDim));
+        bool hasUbGPeer = HasUbGPeer();
+        context.channelsPerRank = 1U;
+        if (!hasUbGPeer && rankDim < MOE_CHANNEL_HANDLE_NUM) {
+            context.channelsPerRank = MOE_CHANNEL_HANDLE_NUM / rankDim;
+        }
         TORCH_CHECK(context.channelsPerRank > 0, "No HCCL channel capacity for rank size ", rankDim);
         TORCH_CHECK(context.channelsPerRank <= HCCL_MAX_RANK_SIZE / rankDim,
                     "HCCL channel handles exceed capacity, rank size ", rankDim, ", channels per rank ",
@@ -710,41 +1475,141 @@ private:
         }
     }
 
-    void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
-                             MoeCommContext &context, uint32_t rankSize, uint64_t &hcclBufferSize)
+    void GetHcclCommResource(const HcclComm& commHandle, const CommEngine& engine, const CommProtocol& protocol,
+                             MoeCommContext& context, uint32_t rankSize, const std::string& targetTag)
     {
         uint32_t rankId = context.epRankId;
         GetHcclCommChannel(commHandle, engine, rankSize, rankId, protocol, context);
 
-        for (uint32_t i = 0; i < rankSize; ++i) {
-            void *tempBuffer = nullptr;
-            uint64_t bufferSize = 0;
-            HcclResult hcclRet;
+        GetRegisteredCommResource(commHandle, context, rankSize, targetTag);
+    }
 
-            if (i == rankId) {
-                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBufferSize);
-            } else {
-                uint32_t channelIndex = i * context.channelsPerRank;
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, context.hcommHandle[channelIndex], &tempBuffer,
-                                                       &bufferSize);
+    // 单次物理内存申请(预留虚拟地址→分配物理→映射→设权限→清零)，失败时回滚已完成的步骤。
+    // prop由调用方预先构造，内部仅按memAttr变更大页规格后使用。
+    bool AllocateHugePageBuffer(uint64_t allocSizeBytes, aclrtPhysicalMemProp& prop, aclrtMemAttr memAttr)
+    {
+        void* virPtr = nullptr;
+        aclError ret = aclrtReserveMemAddress(&virPtr, allocSizeBytes, 0, nullptr, 0);
+        if (ret != ACL_SUCCESS) {
+            ASCEND_LOGI("aclrtReserveMemAddress(%lu) failed, ret=%d", allocSizeBytes, ret);
+            return false;
+        }
+
+        prop.memAttr = memAttr;
+        aclrtDrvMemHandle physicalHandle = nullptr;
+        ret = aclrtMallocPhysical(&physicalHandle, allocSizeBytes, &prop, 0);
+        if (ret != ACL_SUCCESS) {
+            ASCEND_LOGI("aclrtMallocPhysical(%lu) failed, ret=%d", allocSizeBytes, ret);
+            (void)aclrtReleaseMemAddress(virPtr);
+            return false;
+        }
+
+        ret = aclrtMapMem(virPtr, allocSizeBytes, 0, physicalHandle, 0);
+        if (ret != ACL_SUCCESS) {
+            ASCEND_LOGI("aclrtMapMem(%lu) failed, ret=%d", allocSizeBytes, ret);
+            (void)aclrtFreePhysical(physicalHandle);
+            (void)aclrtReleaseMemAddress(virPtr);
+            return false;
+        }
+
+        int32_t deviceId = 0;
+        ret = aclrtGetDevice(&deviceId);
+        if (ret != ACL_SUCCESS) {
+            // 设备句柄获取失败非内存不足，直接报错；报错前回滚已完成的步骤防泄露
+            (void)aclrtUnmapMem(virPtr);
+            (void)aclrtFreePhysical(physicalHandle);
+            (void)aclrtReleaseMemAddress(virPtr);
+            TORCH_CHECK(false, "aclrtGetDevice failed, ret=", ret);
+        }
+        aclrtMemAccessDesc accessDesc = {};
+        accessDesc.flags = ACL_RT_MEM_ACCESS_FLAGS_READWRITE;
+        accessDesc.location.id = static_cast<uint32_t>(deviceId);
+        accessDesc.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
+        ret = aclrtMemSetAccess(virPtr, allocSizeBytes, &accessDesc, 1);
+        if (ret != ACL_SUCCESS) {
+            ASCEND_LOGI("aclrtMemSetAccess failed, ret=%d", ret);
+            (void)aclrtUnmapMem(virPtr);
+            (void)aclrtFreePhysical(physicalHandle);
+            (void)aclrtReleaseMemAddress(virPtr);
+            return false;
+        }
+
+        deviceBufPtr_ = virPtr;
+        physicalMemHandle_ = physicalHandle;
+        return true;
+    }
+
+    void AllocateAndRegisterDeviceBuffer(const HcclComm& commHandle, const std::string& memBufferTag)
+    {
+        TORCH_CHECK(cclBufferSize_ > 0, "ccl buffer size must be greater than 0, got ", cclBufferSize_);
+        uint64_t bufferSizeBytes = static_cast<uint64_t>(cclBufferSize_);
+        if (deviceBufPtr_ == nullptr) {
+            // 物理内存属性: PINNED(物理地址连续) + 当前设备定位，大页规格按实际情况调整
+            int32_t deviceId = 0;
+            aclError ret = aclrtGetDevice(&deviceId);
+            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtGetDevice failed, ret=", ret);
+            aclrtPhysicalMemProp prop = {};
+            prop.handleType = ACL_MEM_HANDLE_TYPE_NONE;
+            prop.allocationType = ACL_MEM_ALLOCATION_TYPE_PINNED;
+            prop.location.id = static_cast<uint32_t>(deviceId);
+            prop.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
+
+            // 优先1G大页(申请量按1G向上对齐)，不足时降级2M大页(申请量=原始需求，天然2M对齐)
+            uint64_t allocBufferBytesAlign = CeilDiv(cclBufferSize_, HUGE1G_SIZE) * HUGE1G_SIZE;
+            if (!AllocateHugePageBuffer(allocBufferBytesAlign, prop, ACL_MEM_HUGE1G)) {
+                ASCEND_LOGI("1G hugepage allocation failed, fallback to 2M hugepage");
+                TORCH_CHECK(AllocateHugePageBuffer(bufferSizeBytes, prop, ACL_MEM_HUGE),
+                            "Allocate ccl buffer failed for both 1G and 2M hugepage, size=", bufferSizeBytes);
             }
 
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
-                        ", ret: ", hcclRet);
-            context.epHcclBuffer[i] = reinterpret_cast<uint64_t>(tempBuffer);
+            // 按实际通信窗口大小清零（1G大页对齐时申请量大于需求，尾部无需清零）
+            ret = aclrtMemset(deviceBufPtr_, bufferSizeBytes, 0, bufferSizeBytes);
+            TORCH_CHECK(ret == ACL_SUCCESS, "aclrtMemset(deviceBufPtr_) failed, ret=", ret);
+        }
+        if (memHandle_ == nullptr) {
+            CommMem mem;
+            mem.type = COMM_MEM_TYPE_DEVICE;
+            mem.addr = deviceBufPtr_;
+            mem.size = bufferSizeBytes;
+            auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, &memHandle_);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag, "', size=", bufferSizeBytes,
+                        ") failed, ret=", hcclRet);
         }
     }
 
-    static void GetHcclBufferSize(const HcclComm &commHandle, uint64_t &hcclBufferSize)
+    void GetRegisteredCommResource(const HcclComm& commHandle, MoeCommContext& context, uint32_t rankSize,
+                                   const std::string& targetTag)
     {
-        void *tempBuffer = nullptr;
-        auto hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBufferSize);
-        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL Buffer Size failed, ret: ", hcclRet);
+        uint32_t rankId = context.epRankId;
+        context.epHcclBuffer[rankId] = reinterpret_cast<uint64_t>(deviceBufPtr_);
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
+            if (peer == rankId) {
+                continue;
+            }
+            uint32_t memNum = 0;
+            CommMem* remoteMems = nullptr;
+            char** memTags = nullptr;
+            auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, context.hcommHandle[peer * context.channelsPerRank],
+                                                        &memNum, &remoteMems, &memTags);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", peer, ") failed, ret=", hcclRet);
+            bool hasTargetMem = false;
+            for (uint32_t j = 0; j < memNum; ++j) {
+                if (memTags == nullptr || remoteMems == nullptr) {
+                    break;
+                }
+                if (memTags[j] != nullptr && targetTag == memTags[j]) {
+                    context.epHcclBuffer[peer] = reinterpret_cast<uint64_t>(remoteMems[j].addr);
+                    hasTargetMem = true;
+                    break;
+                }
+            }
+            TORCH_CHECK(hasTargetMem, "Target Mem : ", targetTag, " is not found.");
+        }
     }
 
-    static void GetRankSizePerServer(const HcclComm &commHandle, uint32_t &rankSizePerServer)
+    static void GetRankSizePerServer(const HcclComm& commHandle, uint32_t& rankSizePerServer)
     {
-        uint32_t *netLayerList = nullptr;
+        uint32_t* netLayerList = nullptr;
         uint32_t netLayerNum = 0;
         GetNetLayers(commHandle, netLayerList, netLayerNum);
 
@@ -753,33 +1618,38 @@ private:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL rank size per server failed, ret: ", hcclRet);
     }
 
-    std::unordered_map<uint32_t, uint32_t> layerMap_;
-    uint32_t rankNumPerUbDomain_ = 0;
+    MixLayeredInfo mixLayeredInfo_;
     uint32_t rankNumPerServer_ = 2;
+    int64_t cclBufferSize_ = 0;
+    void* deviceBufPtr_ = nullptr;
+    aclrtDrvMemHandle physicalMemHandle_ = nullptr;
+    HcclMemHandle memHandle_ = nullptr;
+    bool createdNew_ = false;        // 本次 Build 是否首次创建(ctx 不存在)
+    bool ownershipReleased_ = false; // 物理内存所有权是否已转移(共享池/复用)，析构不再释放
 };
 
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
 class ElasticBuffer {
 public:
-    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
+    ElasticBuffer(const std::string& groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
                   bool withGrad = false, bool explicitlyDestroy = false);
     ~ElasticBuffer();
 
-    void EngramWrite(const at::Tensor &storage);
+    void EngramWrite(const at::Tensor& storage, const c10::optional<at::Tensor>& sf);
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
-    int64_t GetHostBufPtr() const
-    {
-        return reinterpret_cast<int64_t>(engramHostBufPtr_);
-    }
-    const at::Tensor &GetContextTensor() const
+    const at::Tensor& GetContextTensor() const
     {
         return engramContextTensor_;
     }
-    const at::Tensor &GetLocalStorageAddrTensor() const
+    const at::Tensor& GetLocalStorageAddrTensor() const
     {
         return localStorageAddrTensor_;
+    }
+    const at::Tensor& GetLocalSfTableAddrTensor() const
+    {
+        return localSfTableTensor_;
     }
     int64_t GetCommBufferSize() const
     {
@@ -790,33 +1660,26 @@ public:
         return engramCommContext_.rankSize;
     }
 
-    static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                  int64_t numEntries, int64_t dtypeEnum);
+    static at::Tensor EngramFetch(const at::Tensor& context, const at::Tensor& indices, int64_t hiddenSize,
+                                  int64_t numEntries, int64_t dtypeEnum, const at::Tensor& sfTable,
+                                  at::Tensor& fetchedSf);
     using EngramFetchTrainOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
-    static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
+    static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor& context, const at::Tensor& indices,
                                                    int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
-                                                   const at::Tensor &localStorageAddr, int64_t numMaxTokensPerRank,
+                                                   const at::Tensor& localStorageAddr, const at::Tensor& sfTableAddr,
+                                                   at::Tensor& fetchedSf, int64_t numMaxTokensPerRank,
                                                    int64_t commBufferSize, int64_t rankSize);
-    static at::Tensor EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched);
-
-    std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(const at::Tensor &gradFetched, const at::Tensor &perm,
-                                                       const at::Tensor &sendCounts, const at::Tensor &recvCounts,
-                                                       const at::Tensor &recvLocalEntry, const at::Tensor &numRecv);
+    static at::Tensor EngramFetchWait(const at::Tensor& context, const at::Tensor& fetched);
 
     // Stateless static method for training backward (graph-mode compatible).
     // Outputs: gradUnique [maxR, H], uniqueLocalEntry [maxR], numUnique [1] (NOT narrowed).
     // Caller is responsible for narrowing by numUnique.item() outside the graph.
     using EngramFetchGradOutput = std::tuple<at::Tensor, at::Tensor, at::Tensor>;
-    static EngramFetchGradOutput EngramFetchGrad(const at::Tensor &context, const at::Tensor &gradFetched,
-                                                 const at::Tensor &perm, const at::Tensor &sendCounts,
-                                                 const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
-                                                 const at::Tensor &numRecv, int64_t numEntries, int64_t commBufferSize,
+    static EngramFetchGradOutput EngramFetchGrad(const at::Tensor& context, const at::Tensor& gradFetched,
+                                                 const at::Tensor& perm, const at::Tensor& sendCounts,
+                                                 const at::Tensor& recvCounts, const at::Tensor& recvLocalEntry,
+                                                 const at::Tensor& numRecv, int64_t numEntries, int64_t commBufferSize,
                                                  int64_t numMaxTokensPerRank, int64_t rankSize);
-
-    bool IsWithGrad() const
-    {
-        return withGrad_;
-    }
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
@@ -826,32 +1689,34 @@ public:
         std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>>;
     using CombineEpilogueTensorList = std::tuple<at::Tensor, c10::optional<at::Tensor>>;
 
-    DispatchTensorList MoeEpDispatch(const at::Tensor &x, const at::Tensor &topkIdx,
-                                     const c10::optional<at::Tensor> &topkWeights,
-                                     const c10::optional<at::Tensor> &scales,
-                                     const c10::optional<at::Tensor> &cachedDstSlotIdx,
-                                     const c10::optional<at::Tensor> &cachedRouteCount,
-                                     const c10::optional<at::Tensor> &cachedRouteDstScaleout,
-                                     const c10::optional<at::Tensor> &cachedRouteScaleoutSlot, int64_t epWorldSize,
-                                     int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
-                                     int64_t expertAlignment, bool doCpuSync, int64_t hostPinnedCounterAddr);
+    DispatchTensorList MoeEpDispatch(
+        const at::Tensor& x, const at::Tensor& topkIdx, const c10::optional<at::Tensor>& topkWeights,
+        const c10::optional<at::Tensor>& scales, const c10::optional<at::Tensor>& cachedDstSlotIdx,
+        const c10::optional<at::Tensor>& cachedRouteCount, const c10::optional<at::Tensor>& cachedRouteDstScaleout,
+        const c10::optional<at::Tensor>& cachedRouteScaleoutSlot, int64_t epWorldSize, int64_t epRankId,
+        int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment, bool doCpuSync,
+        int64_t hostPinnedCounterAddr, int64_t cclBufferSize);
     DispatchEpilogueTensorList MoeEpDispatchEpilogue(
-        const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
-        const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize, int64_t epRankId,
-        int64_t numExperts, int64_t numMaxTokensPerRank, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
-        const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt);
-    void MoeEpCombine(const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
-                      const at::Tensor &numRecvTokensPerExpert, const c10::optional<at::Tensor> &topkWeights,
-                      int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank);
-    CombineEpilogueTensorList MoeEpCombineEpilogue(const at::Tensor &topkIdx,
-                                                   const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize,
+        const at::Tensor& x, const at::Tensor& topkIdx, const at::Tensor& numRecvPerRank,
+        const at::Tensor& numRecvPerExpert, const c10::optional<at::Tensor>& cachedRecvSrcMetadata, int64_t epWorldSize,
+        int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor& recvX,
+        at::Tensor& recvSrcMetadata, const c10::optional<at::Tensor>& recvTopkWeightsOpt,
+        const c10::optional<at::Tensor>& recvScalesOpt);
+    void MoeEpCombine(const at::Tensor& x, const at::Tensor& topkIdx, const at::Tensor& recvSrcMetadata,
+                      const at::Tensor& numRecvTokensPerExpert, const c10::optional<at::Tensor>& topkWeights,
+                      int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
+                      int64_t cclBufferSize);
+    CombineEpilogueTensorList MoeEpCombineEpilogue(const at::Tensor& x, const at::Tensor& topkIdx,
+                                                   const at::Tensor& recvSrcMetadata,
+                                                   const c10::optional<at::Tensor>& topkWeights, int64_t epWorldSize,
                                                    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
-                                                   at::Tensor &combinedX,
-                                                   const c10::optional<at::Tensor> &combinedTopkWeightsOpt);
+                                                   int64_t cclBufferSize, at::Tensor& combinedX,
+                                                   const c10::optional<at::Tensor>& combinedTopkWeightsOpt);
 
 private:
-    void EnsureEngramContext();
-    void EnsureMoeContext();
+    void EnsureEngramContext(void* externalHostPtr = nullptr, int64_t externalBytes = 0, void* sfHostPtr = nullptr,
+                             int64_t sfBytes = 0);
+    void EnsureMoeContext(int64_t cclBufferSize);
     int64_t ResolveRankNumPerServer(int64_t epWorldSize) const;
     int64_t ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const;
 
@@ -861,19 +1726,30 @@ private:
     bool explicitlyDestroy_ = false;
     bool withGrad_ = false;
 
-    void *engramHostBufPtr_ = nullptr;
-    void *engramDeviceBufPtr_ = nullptr;
+    void* engramHostBufPtr_ = nullptr;
+    void* engramDeviceBufPtr_ = nullptr;
     HcclMemHandle engramMemHandle_ = nullptr;
     int64_t commBufferSize_ = 0; // HCCL 默认 buffer 大小（从 HcclGetHcclBufferFunc 查询，训练 a2a 收发缓冲）
     HcclComm engramHcclComm_ = nullptr;
     EngramCommContext engramCommContext_;
     at::Tensor engramContextTensor_;    // Cached Engram context tensor
     at::Tensor localStorageAddrTensor_; // int64 scalar tensor, stores deviceBufPtr_ address
+    at::Tensor localSfTableTensor_;     // FP8 device tensor view of HCCL-registered sf table
+    void* sfDeviceBufPtr_ = nullptr;
+    bool sfExternalRegistered_ = false;
     bool engramContextInitialized_ = false;
+    bool engramStorageExternal_ = false;
+    bool engramExternalRegisteredByUs_ = false;
+    int64_t engramExternalBytes_ = 0;
+    bool engramBufferPooled_ = false; // host buffer 归进程级共享池所有，Destroy 不反注册/释放
 
     at::Tensor moeContextTensor_;
-    int64_t moeCclBufferSize_ = 0;
+    int64_t moeCclBufferSize_ = 0; // MoE 通信 buffer 大小（首次调用时按算子参数计算并内部申请注册）
     uint32_t moeRankSizePerServer_ = 2;
+    void* moeDeviceBufPtr_ = nullptr;
+    aclrtDrvMemHandle moePhysicalMemHandle_ = nullptr;
+    HcclMemHandle moeMemHandle_ = nullptr;
+    std::string moeContextTag_; // 共享池 key（group + opName），复用/入池时使用
     bool moeContextInitialized_ = false;
 
     int64_t engramHiddenSize_ = 0;
@@ -887,7 +1763,7 @@ private:
 
 // Constructor
 
-ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
+ElasticBuffer::ElasticBuffer(const std::string& groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
                              bool withGrad, bool explicitlyDestroy)
     : groupName_(groupName),
       engramNumCpuBytes_(numCpuBytes),
@@ -913,12 +1789,12 @@ ElasticBuffer::~ElasticBuffer()
     }
     try {
         Destroy();
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         ASCEND_LOGE("ElasticBuffer destructor cleanup failed: %s", e.what());
     }
 }
 
-void ElasticBuffer::EnsureEngramContext()
+void ElasticBuffer::EnsureEngramContext(void* externalHostPtr, int64_t externalBytes, void* sfHostPtr, int64_t sfBytes)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
     if (engramContextInitialized_) {
@@ -927,7 +1803,8 @@ void ElasticBuffer::EnsureEngramContext()
     commStream_ = c10_npu::getNPUStreamFromPool().stream(false);
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
     EngramContextBuilder builder;
-    EngramContextResources resources = builder.Build(groupName_, engramNumCpuBytes_, withGrad_);
+    EngramContextResources resources = builder.Build(groupName_, withGrad_ ? 0 : engramNumCpuBytes_, withGrad_,
+                                                     externalHostPtr, externalBytes, sfHostPtr, sfBytes);
     engramHcclComm_ = resources.hcclComm;
     engramMemHandle_ = resources.memHandle;
     engramHostBufPtr_ = resources.hostBufPtr;
@@ -935,20 +1812,42 @@ void ElasticBuffer::EnsureEngramContext()
     engramCommContext_ = resources.context;
     engramContextTensor_ = resources.contextTensor;
     commBufferSize_ = resources.commBufferSize;
+    engramStorageExternal_ = (externalHostPtr != nullptr);
+    engramExternalRegisteredByUs_ = resources.externalRegistered;
+    sfDeviceBufPtr_ = resources.sfDeviceBufPtr;
+    sfExternalRegistered_ = resources.sfExternalRegistered;
+    if (sfDeviceBufPtr_ != nullptr) {
+        int64_t sfAddrValue = reinterpret_cast<int64_t>(sfDeviceBufPtr_);
+        auto hostSfAddrTensor = at::full({1}, sfAddrValue, at::TensorOptions().dtype(at::kLong));
+        localSfTableTensor_ = hostSfAddrTensor.to(c10::DeviceType::PrivateUse1);
+    }
+    engramExternalBytes_ = externalBytes;
+    engramBufferPooled_ = (engramHostBufPtr_ != nullptr);
     int64_t addrValue = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
     auto hostAddrTensor = at::full({1}, addrValue, at::TensorOptions().dtype(at::kLong));
     localStorageAddrTensor_ = hostAddrTensor.to(c10::DeviceType::PrivateUse1);
     engramContextInitialized_ = true;
 }
 
-void ElasticBuffer::EnsureMoeContext()
+// Lazy-initialize the MoE comm context on the first MoE kernel invocation (four entry points
+// keep equal triggering rights, same as the original pattern). The CCL buffer size is computed
+// by Python from the actual operator arguments and passed in; it is internally allocated as
+// 2M-hugepage pinned physical memory and registered to the comm domain.
+void ElasticBuffer::EnsureMoeContext(int64_t cclBufferSize)
 {
     TORCH_CHECK(!destroyed_, "ElasticBuffer cannot be used after destroy, please create a new ElasticBuffer instance");
     if (moeContextInitialized_) {
         return;
     }
     MoeContextBuilder builder;
-    moeContextTensor_ = builder.Build(groupName_, moeCclBufferSize_, moeRankSizePerServer_);
+    MoeContextResources resources = builder.Build(groupName_, cclBufferSize);
+    moeContextTensor_ = resources.contextTensor;
+    moeCclBufferSize_ = resources.cclBufferSize;
+    moeRankSizePerServer_ = resources.rankSizePerServer;
+    moeDeviceBufPtr_ = resources.deviceBufPtr;
+    moePhysicalMemHandle_ = resources.physicalMemHandle;
+    moeMemHandle_ = resources.memHandle;
+    moeContextTag_ = resources.contextTag;
     moeContextInitialized_ = true;
 }
 
@@ -966,15 +1865,44 @@ int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerSe
     return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
 }
 
-// EngramWrite - write data with automatic barrier
-void ElasticBuffer::EngramWrite(const at::Tensor &storage)
+// EngramWrite - write data with automatic barrier.
+void ElasticBuffer::EngramWrite(const at::Tensor& storage, const c10::optional<at::Tensor>& sf)
 {
     TORCH_CHECK(!destroyed_, "engram_write cannot be called after destroy, "
                              "please create a new ElasticBuffer instance");
-    EnsureEngramContext();
+    void* externalHostPtr = nullptr;
+    int64_t externalBytes = 0;
+    void* sfHostPtr = nullptr;
+    int64_t sfBytes = 0;
+    if (withGrad_) {
+        TORCH_CHECK(storage.nbytes() > 0, "engram_write in with_grad mode requires non-empty storage, got ",
+                    storage.nbytes(), " bytes");
+        if (engramContextInitialized_) {
+            TORCH_CHECK(engramHostBufPtr_ == storage.data_ptr(),
+                        "engram_write: engram storage is already initialized from a different address, expected "
+                        "ptr=",
+                        engramHostBufPtr_, ", got ptr=", storage.data_ptr(),
+                        "; note: in with_grad mode the first engram API call initializes the context, an earlier "
+                        "engram_barrier without storage would initialize it with no storage");
+            TORCH_CHECK(engramExternalBytes_ == static_cast<int64_t>(storage.nbytes()),
+                        "engram_write: storage size changed after the engram storage was registered from this "
+                        "address, registered ",
+                        engramExternalBytes_, " bytes, got ", storage.nbytes(), " bytes");
+        } else {
+            externalHostPtr = storage.data_ptr();
+            externalBytes = static_cast<int64_t>(storage.nbytes());
+            if (sf.has_value()) {
+                sfHostPtr = sf.value().data_ptr();
+                sfBytes = static_cast<int64_t>(sf.value().nbytes());
+            }
+        }
+    }
+    EnsureEngramContext(externalHostPtr, externalBytes, sfHostPtr, sfBytes);
 
-    TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(engramNumCpuBytes_), "storage size ", storage.nbytes(),
-                " exceeds buffer capacity ", engramNumCpuBytes_);
+    if (!withGrad_) {
+        TORCH_CHECK(storage.nbytes() <= static_cast<size_t>(engramNumCpuBytes_), "storage size ", storage.nbytes(),
+                    " exceeds buffer capacity ", engramNumCpuBytes_);
+    }
 
     constexpr int64_t int32Max = static_cast<int64_t>(INT32_MAX);
     TORCH_CHECK(storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize) <= int32Max,
@@ -988,12 +1916,12 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     engramNumEntries_ = storage.size(0);
     engramDtype_ = storage.scalar_type();
 
-    if (engramNumEntries_ > 0) {
+    if (!withGrad_ && engramNumEntries_ > 0) {
         constexpr size_t MEMCPY_MAX_BYTES = 0x7fffffff;
         size_t totalBytes = storage.nbytes();
         size_t remaining = totalBytes;
-        uint8_t *dst = static_cast<uint8_t *>(engramHostBufPtr_);
-        const uint8_t *src = static_cast<const uint8_t *>(storage.data_ptr());
+        uint8_t* dst = static_cast<uint8_t*>(engramHostBufPtr_);
+        const uint8_t* src = static_cast<const uint8_t*>(storage.data_ptr());
         while (remaining > 0) {
             size_t chunkSize = std::min(remaining, MEMCPY_MAX_BYTES);
             errno_t memRet = memcpy_s(dst, chunkSize, src, chunkSize);
@@ -1010,8 +1938,9 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 }
 
 // EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
-at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
-                                      int64_t numEntries, int64_t dtypeEnum)
+at::Tensor ElasticBuffer::EngramFetch(const at::Tensor& context, const at::Tensor& indices, int64_t hiddenSize,
+                                      int64_t numEntries, int64_t dtypeEnum, const at::Tensor& sfTable,
+                                      at::Tensor& fetchedSf)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1019,18 +1948,19 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
     if (numTokens == 0) {
         return fetched;
     }
-    aclTensor *nullTensor = nullptr;
+    aclTensor* nullTensor = nullptr;
     int64_t zero = 0;
-    ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, fetched, nullTensor, nullTensor, nullTensor, nullTensor,
-              nullTensor, hiddenSize, numEntries, zero, zero, zero);
+    ACLNN_CMD(aclnnEngramFetch, context, indices, nullTensor, sfTable, fetched, nullTensor, nullTensor, nullTensor,
+              nullTensor, nullTensor, fetchedSf, hiddenSize, numEntries, zero, zero, zero);
     return fetched;
 }
 
 // EngramFetchTrain - stateless static method for training forward (graph-mode compatible).
 // Outputs: fetched + save-for-backward ctx tensors (perm, sendCounts, recvCounts, recvLocalEntry, numRecv).
 ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
-    const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
-    const at::Tensor &localStorageAddr, int64_t numMaxTokensPerRank, int64_t commBufferSize, int64_t rankSize)
+    const at::Tensor& context, const at::Tensor& indices, int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
+    const at::Tensor& localStorageAddr, const at::Tensor& sfTableAddr, at::Tensor& fetchedSf,
+    int64_t numMaxTokensPerRank, int64_t commBufferSize, int64_t rankSize)
 {
     auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
@@ -1040,22 +1970,24 @@ ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(
                 "numMaxTokensPerRank * rankSize overflow, got numMaxTokensPerRank=", numMaxTokensPerRank,
                 ", rankSize=", rankSize);
     int64_t maxR = numMaxTokensPerRank * rankSize;
-    at::Tensor perm = at::empty({numTokens}, intOpts);
-    at::Tensor sendCounts = at::empty({rankSize * SEND_COUNTS_ALIGN_FACTOR}, intOpts); // 32b对齐
-    at::Tensor recvCounts = at::empty({rankSize}, intOpts);
-    at::Tensor recvLocalEntry = at::empty({maxR}, intOpts);
-    at::Tensor numRecv = at::empty({1}, intOpts);
+    at::Tensor perm = at::zeros({numTokens}, intOpts);
+    at::Tensor sendCounts = at::zeros({rankSize * SEND_COUNTS_ALIGN_FACTOR}, intOpts); // 32b对齐
+    at::Tensor recvCounts = at::zeros({rankSize}, intOpts);
+    at::Tensor recvLocalEntry = at::zeros({maxR}, intOpts);
+    at::Tensor numRecv = at::zeros({1}, intOpts);
 
     if (numTokens > 0) {
         constexpr int64_t withGrad = 1;
-        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, fetched, perm, sendCounts, recvCounts,
-                  recvLocalEntry, numRecv, hiddenSize, numEntries, numMaxTokensPerRank, commBufferSize, withGrad);
+        int64_t zero = 0;
+        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, sfTableAddr, fetched, perm, sendCounts,
+                  recvCounts, recvLocalEntry, numRecv, fetchedSf, hiddenSize, numEntries, numMaxTokensPerRank,
+                  commBufferSize, withGrad);
     }
     return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
 }
 
 // EngramFetchWait - stateless static method for torch CustomOp registration.
-at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched)
+at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor& context, const at::Tensor& fetched)
 {
     if (fetched.size(0) == 0) {
         return fetched;
@@ -1064,46 +1996,10 @@ at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::T
     return fetched;
 }
 
-// EngramFetchGrad - training backward: produce gradUnique, uniqueLocalEntry (sparse index).。
-std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(const at::Tensor &gradFetched, const at::Tensor &perm,
-                                                                  const at::Tensor &sendCounts,
-                                                                  const at::Tensor &recvCounts,
-                                                                  const at::Tensor &recvLocalEntry,
-                                                                  const at::Tensor &numRecv)
-{
-    EnsureEngramContext();
-    TORCH_CHECK(!destroyed_, "engram_fetch_grad cannot be called after destroy");
-    TORCH_CHECK(withGrad_, "engram_fetch_grad requires with_grad=True");
-    TORCH_CHECK(engramWriteCalled_, "engram_fetch_grad must be called after at least one engram_write");
-
-    int64_t hidden = gradFetched.size(1);
-    uint32_t rankSize = engramCommContext_.rankSize;
-    int64_t rankSizeI64 = static_cast<int64_t>(rankSize);
-    TORCH_CHECK(rankSizeI64 > 0 && numMaxTokensPerRank_ <= INT64_MAX / rankSizeI64,
-                "numMaxTokensPerRank_ * rankSize overflow, got numMaxTokensPerRank_=", numMaxTokensPerRank_,
-                ", rankSize=", rankSize);
-    int64_t maxR = numMaxTokensPerRank_ * rankSizeI64;
-
-    auto gradUnique =
-        at::empty({maxR, hidden}, at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
-    auto uniqueLocalEntry = at::empty({maxR}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
-    auto numUnique = at::empty({1}, at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
-
-    ACLNN_CMD(aclnnEngramFetchGrad, engramContextTensor_, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
-              numRecv, gradUnique, uniqueLocalEntry, numUnique, engramNumEntries_, commBufferSize_);
-
-    int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
-    if (actualK < maxR) {
-        gradUnique = gradUnique.narrow(0, 0, actualK);
-        uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
-    }
-    return {gradUnique, uniqueLocalEntry};
-}
-
 // EngramFetchGrad - stateless static method for training backward (graph-mode compatible).
 ElasticBuffer::EngramFetchGradOutput ElasticBuffer::EngramFetchGrad(
-    const at::Tensor &context, const at::Tensor &gradFetched, const at::Tensor &perm, const at::Tensor &sendCounts,
-    const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry, const at::Tensor &numRecv, int64_t numEntries,
+    const at::Tensor& context, const at::Tensor& gradFetched, const at::Tensor& perm, const at::Tensor& sendCounts,
+    const at::Tensor& recvCounts, const at::Tensor& recvLocalEntry, const at::Tensor& numRecv, int64_t numEntries,
     int64_t commBufferSize, int64_t numMaxTokensPerRank, int64_t rankSize)
 {
     int64_t hidden = gradFetched.size(1);
@@ -1165,26 +2061,52 @@ void ElasticBuffer::Destroy()
 
     try {
         EngramBarrier(true, true);
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         ASCEND_LOGE("EngramBarrier in Destroy failed: %s", e.what());
     }
 
     // HCCL 默认 buffer 由框架管理，无需手动释放
     commBufferSize_ = 0;
 
+    // MoE 通信 buffer 已按 tag 注册进 HCCL 通信域(HcclCommMemReg 无反注册接口)，其地址被
+    // 引擎 ctx(含其他 rank 缓存的 epHcclBuffer[])引用且无法销毁：Destroy 仅解除本实例引用，
+    // 物理内存由共享池按 tag 保留，同 group 重建 ElasticBuffer 时复用(容量以首建为准)。
+    moeDeviceBufPtr_ = nullptr;
+    moePhysicalMemHandle_ = nullptr;
+    moeMemHandle_ = nullptr;
+    moeContextTag_.clear();
+    moeCclBufferSize_ = 0;
+
+    // 注册内存与 host buffer 已按 tag 入进程级共享池(引擎 ctx 的 virtualAddrList[] 引用且无法
+    // 反注册)：Destroy 仅解除本实例引用、不释放内存，同 group 重建 ElasticBuffer 时复用。
     if (engramHostBufPtr_ != nullptr) {
-        aclError ret = aclrtHostUnregister(engramHostBufPtr_);
-        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
-        ret = aclrtFreeHost(engramHostBufPtr_);
-        TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed, ret: ", ret);
+        if (!engramBufferPooled_) {
+            if (!engramStorageExternal_ || engramExternalRegisteredByUs_) {
+                aclError ret = aclrtHostUnregister(engramHostBufPtr_);
+                TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
+            }
+            if (!engramStorageExternal_) {
+                aclError ret = aclrtFreeHost(engramHostBufPtr_);
+                TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed, ret: ", ret);
+            }
+        }
         engramHostBufPtr_ = nullptr;
         engramDeviceBufPtr_ = nullptr;
+        engramStorageExternal_ = false;
+        engramExternalRegisteredByUs_ = false;
+        engramExternalBytes_ = 0;
+        engramBufferPooled_ = false;
     }
     engramContextInitialized_ = false;
     moeContextInitialized_ = false;
     engramContextTensor_ = at::Tensor();
     localStorageAddrTensor_ = at::Tensor();
+    localSfTableTensor_ = at::Tensor();
     moeContextTensor_ = at::Tensor();
+
+    // SF 注册内存同样按 tag 入进程级共享池，Destroy 仅解除本实例引用、不释放内存。
+    sfDeviceBufPtr_ = nullptr;
+    sfExternalRegistered_ = false;
 
     destroyed_ = true;
 }
@@ -1242,13 +2164,13 @@ public:
 
     void Reset()
     {
-        *reinterpret_cast<volatile int64_t *>(hostPtr_) = -1;
+        *reinterpret_cast<volatile int64_t*>(hostPtr_) = -1;
     }
 
     int64_t SpinWait()
     {
         while (true) {
-            int64_t v = *reinterpret_cast<volatile int64_t *>(hostPtr_);
+            int64_t v = *reinterpret_cast<volatile int64_t*>(hostPtr_);
             if (v >= 0) {
                 return v;
             }
@@ -1266,22 +2188,24 @@ public:
     }
 
 private:
-    void *hostPtr_ = nullptr;
-    void *devPtr_ = nullptr;
+    void* hostPtr_ = nullptr;
+    void* devPtr_ = nullptr;
 };
 
 } // namespace OpApi
 
 Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
-    const at::Tensor &x, const at::Tensor &topkIdx, const c10::optional<at::Tensor> &topkWeights,
-    const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &cachedDstSlotIdx,
-    const c10::optional<at::Tensor> &cachedRouteCount, const c10::optional<at::Tensor> &cachedRouteDstScaleout,
-    const c10::optional<at::Tensor> &cachedRouteScaleoutSlot, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
-    int64_t numMaxTokensPerRank, int64_t expertAlignment, bool doCpuSync, int64_t hostPinnedCounterAddr)
+    const at::Tensor& x, const at::Tensor& topkIdx, const c10::optional<at::Tensor>& topkWeights,
+    const c10::optional<at::Tensor>& scales, const c10::optional<at::Tensor>& cachedDstSlotIdx,
+    const c10::optional<at::Tensor>& cachedRouteCount, const c10::optional<at::Tensor>& cachedRouteDstScaleout,
+    const c10::optional<at::Tensor>& cachedRouteScaleoutSlot, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
+    int64_t numMaxTokensPerRank, int64_t expertAlignment, bool doCpuSync, int64_t hostPinnedCounterAddr,
+    int64_t cclBufferSize)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
-    EnsureMoeContext();
+    TORCH_CHECK(epWorldSize > 0, "ep_world_size must be positive, got ", epWorldSize);
+    EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
@@ -1292,6 +2216,7 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     bool allCachedRoute =
         cachedRouteCount.has_value() && cachedRouteDstScaleout.has_value() && cachedRouteScaleoutSlot.has_value();
     TORCH_CHECK(!anyCachedRoute || allCachedRoute, "cached route tensors must be all present or all absent");
+    bool isDirect = (topoType == NETWORK_DIRECT);
     bool hybridCached = anyCached && topoType == NETWORK_HYBRID;
     TORCH_CHECK(!hybridCached || allCachedRoute, "hybrid cached dispatch requires all cached route tensors");
 
@@ -1303,7 +2228,8 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
 
     at::Tensor numRecvPerRank = at::empty({epWorldSize}, x.options().dtype(at::kInt));
     at::Tensor numRecvPerExpert = at::empty({numLocalExperts}, x.options().dtype(at::kLong));
-    at::Tensor dstSlot = at::empty({numTokens, topK}, x.options().dtype(at::kInt));
+    at::Tensor dstSlot = isDirect ? at::full({epWorldSize, numTokens + 1}, -1, x.options().dtype(at::kInt)) :
+                                    at::full({numTokens, topK}, -1, x.options().dtype(at::kInt));
     at::Tensor routeCount = at::zeros({numTokens}, x.options().dtype(at::kInt));
     at::Tensor routeDstScaleout = at::full({numTokens, routeCapacity}, -1, x.options().dtype(at::kInt));
     at::Tensor routeScaleoutSlot = at::full({numTokens, routeCapacity}, -1, x.options().dtype(at::kInt));
@@ -1332,12 +2258,22 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
 }
 
 Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue(
-    const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
-    const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
-    int64_t numMaxTokensPerRank, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
-    const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt)
+    const at::Tensor& x, const at::Tensor& topkIdx, const at::Tensor& numRecvPerRank,
+    const at::Tensor& numRecvPerExpert, const c10::optional<at::Tensor>& cachedRecvSrcMetadata, int64_t epWorldSize,
+    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor& recvX,
+    at::Tensor& recvSrcMetadata, const c10::optional<at::Tensor>& recvTopkWeightsOpt,
+    const c10::optional<at::Tensor>& recvScalesOpt)
 {
-    EnsureMoeContext();
+    TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
+    TORCH_CHECK(recvX.dim() == DIM_TWO, "recv_x dims must be 2, but got ", recvX.dim());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", recvX.size(0), epWorldSize, topkIdx.numel(),
+                             recvX.device());
+    if (cachedRecvSrcMetadata.has_value()) {
+        CheckMoeEpMetadataTensor(*cachedRecvSrcMetadata, "cached_recv_src_metadata", recvX.size(0), epWorldSize,
+                                 topkIdx.numel(), recvX.device());
+    }
+
+    EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
@@ -1356,7 +2292,7 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
         recvTopkWeightsOpt.has_value() ? *recvTopkWeightsOpt : at::empty({1}, recvX.options().dtype(at::kFloat));
     bool hasTopkWeights = recvTopkWeightsOpt.has_value();
 
-    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, moeContextTensor_, dstBufferSlotIdx, numRecvPerRank, numRecvPerExpert,
+    ACLNN_CMD(aclnnMoeEpDispatchEpilogue, moeContextTensor_, x, topkIdx, numRecvPerRank, numRecvPerExpert,
               cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_,
               hasTopkWeights, topoType, rankNumPerServer, recvX, recvSrcMetadata, recvTopkWeightsTensor,
               recvScalesWrapper);
@@ -1372,14 +2308,16 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     return std::make_tuple(recvX, recvSrcMetadata, recvTopkWeightsOutput, recvScalesOutput);
 }
 
-void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &topkIdx,
-                                         const at::Tensor &recvSrcMetadata, const at::Tensor &numRecvTokensPerExpert,
-                                         const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize,
-                                         int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank)
+void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor& x, const at::Tensor& topkIdx,
+                                         const at::Tensor& recvSrcMetadata, const at::Tensor& numRecvTokensPerExpert,
+                                         const c10::optional<at::Tensor>& topkWeights, int64_t epWorldSize,
+                                         int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
+                                         int64_t cclBufferSize)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
-    EnsureMoeContext();
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, topkIdx.numel(), x.device());
+    EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
@@ -1390,11 +2328,15 @@ void Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &
 }
 
 Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCombineEpilogue(
-    const at::Tensor &topkIdx, const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize, int64_t epRankId,
-    int64_t numExperts, int64_t numMaxTokensPerRank, at::Tensor &combinedX,
-    const c10::optional<at::Tensor> &combinedTopkWeightsOpt)
+    const at::Tensor& x, const at::Tensor& topkIdx, const at::Tensor& recvSrcMetadata,
+    const c10::optional<at::Tensor>& topkWeights, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
+    int64_t numMaxTokensPerRank, int64_t cclBufferSize, at::Tensor& combinedX,
+    const c10::optional<at::Tensor>& combinedTopkWeightsOpt)
 {
-    EnsureMoeContext();
+    TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
+    TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
+    CheckMoeEpMetadataTensor(recvSrcMetadata, "recv_src_metadata", x.size(0), epWorldSize, topkIdx.numel(), x.device());
+    EnsureMoeContext(cclBufferSize);
     int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
     int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
@@ -1403,9 +2345,9 @@ Mc2Api::ElasticBuffer::CombineEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpCom
                                                *combinedTopkWeightsOpt :
                                                at::empty({1}, combinedX.options().dtype(at::kFloat));
 
-    ACLNN_CMD(aclnnMoeEpCombineEpilogue, moeContextTensor_, topkIdx, epWorldSize, epRankId, numExperts,
-              numMaxTokensPerRank, moeCclBufferSize_, hasTopkWeights, topoType, rankNumPerServer, combinedX,
-              combinedTopkWeightsTensor);
+    ACLNN_CMD(aclnnMoeEpCombineEpilogue, moeContextTensor_, x, topkIdx, recvSrcMetadata, topkWeights, epWorldSize,
+              epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, hasTopkWeights, topoType, rankNumPerServer,
+              combinedX, combinedTopkWeightsTensor);
 
     c10::optional<at::Tensor> combinedTopkWeightsOutput;
     if (hasTopkWeights) {
@@ -1425,46 +2367,40 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("host_ptr", &OpApi::HostPinnedCounter::HostPtr);
 
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
-        .def(pybind11::init<const std::string &, int64_t, int64_t, bool, bool>(), pybind11::arg("groupName"),
+        .def(pybind11::init<const std::string&, int64_t, int64_t, bool, bool>(), pybind11::arg("groupName"),
              pybind11::arg("numCpuBytes"), pybind11::arg("numMaxTokensPerRank") = 0, pybind11::arg("withGrad") = false,
              pybind11::arg("explicitlyDestroy") = false)
-        .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
+        .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert(),
+             pybind11::arg("sf") = pybind11::none())
         .def_static("engram_fetch",
-                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t)>(
-                        &Mc2Api::ElasticBuffer::EngramFetch),
+                    static_cast<at::Tensor (*)(const at::Tensor&, const at::Tensor&, int64_t, int64_t, int64_t,
+                                               const at::Tensor&, at::Tensor&)>(&Mc2Api::ElasticBuffer::EngramFetch),
                     pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
-                    pybind11::arg("num_entries"), pybind11::arg("dtype"))
+                    pybind11::arg("num_entries"), pybind11::arg("dtype"), pybind11::arg("sf_table"),
+                    pybind11::arg("fetched_sf"))
         .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
-                    pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),
-                    pybind11::arg("num_max_tokens_per_rank"), pybind11::arg("comm_buffer_size"),
-                    pybind11::arg("rank_size"))
+                    pybind11::arg("dtype"), pybind11::arg("local_storage_addr"), pybind11::arg("sf_table_addr"),
+                    pybind11::arg("fetched_sf"), pybind11::arg("num_max_tokens_per_rank"),
+                    pybind11::arg("comm_buffer_size"), pybind11::arg("rank_size"))
         .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
                     pybind11::arg("fetched"))
-        .def("engram_fetch_grad",
-             static_cast<std::tuple<at::Tensor, at::Tensor> (Mc2Api::ElasticBuffer::*)(
-                 const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
-                 const at::Tensor &)>(&Mc2Api::ElasticBuffer::EngramFetchGrad),
-             pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
-             pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
-             pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert())
-        .def_static(
-            "engram_fetch_grad_op",
-            static_cast<Mc2Api::ElasticBuffer::EngramFetchGradOutput (*)(
-                const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &, const at::Tensor &,
-                const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t, int64_t)>(
-                &Mc2Api::ElasticBuffer::EngramFetchGrad),
-            pybind11::arg("context"), pybind11::arg("gradFetched").noconvert(), pybind11::arg("perm").noconvert(),
-            pybind11::arg("sendCounts").noconvert(), pybind11::arg("recvCounts").noconvert(),
-            pybind11::arg("recvLocalEntry").noconvert(), pybind11::arg("numRecv").noconvert(),
-            pybind11::arg("numEntries"), pybind11::arg("commBufferSize"), pybind11::arg("numMaxTokensPerRank"),
-            pybind11::arg("rankSize"))
+        .def_static("engram_fetch_grad_op",
+                    static_cast<Mc2Api::ElasticBuffer::EngramFetchGradOutput (*)(
+                        const at::Tensor&, const at::Tensor&, const at::Tensor&, const at::Tensor&, const at::Tensor&,
+                        const at::Tensor&, const at::Tensor&, int64_t, int64_t, int64_t, int64_t)>(
+                        &Mc2Api::ElasticBuffer::EngramFetchGrad),
+                    pybind11::arg("context"), pybind11::arg("gradFetched").noconvert(),
+                    pybind11::arg("perm").noconvert(), pybind11::arg("sendCounts").noconvert(),
+                    pybind11::arg("recvCounts").noconvert(), pybind11::arg("recvLocalEntry").noconvert(),
+                    pybind11::arg("numRecv").noconvert(), pybind11::arg("numEntries"), pybind11::arg("commBufferSize"),
+                    pybind11::arg("numMaxTokensPerRank"), pybind11::arg("rankSize"))
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
-        .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
         .def("get_context_tensor", &Mc2Api::ElasticBuffer::GetContextTensor)
         .def("get_local_storage_addr", &Mc2Api::ElasticBuffer::GetLocalStorageAddrTensor)
+        .def("get_local_sf_table_addr", &Mc2Api::ElasticBuffer::GetLocalSfTableAddrTensor)
         .def("get_comm_buffer_size", &Mc2Api::ElasticBuffer::GetCommBufferSize)
         .def("get_rank_size", &Mc2Api::ElasticBuffer::GetRankSize)
         .def("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)

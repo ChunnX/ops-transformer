@@ -18,7 +18,7 @@
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mla.h"
 #include "fia_block_vec_fullquant_mla.h"
-#include "fia_block_vec_flashdecode_fullquant.h"
+#include "fia_block_vec_flashdecode_arch35.h"
 #include "memory_copy_arch35_fused_infer.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -164,8 +164,8 @@ public:
 
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *&workspace)
     {
-        uint32_t mm1OutDtype = sizeof(T);
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
+        constexpr uint32_t mm1OutDtype = sizeof(T);
+        constexpr uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
         constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
@@ -220,13 +220,10 @@ public:
             constInfo.dSizeRope = fiaBaseParams.dSizeRope;
             constInfo.kRopeStrides.bnStride = fiaBaseParams.kRopeStrides.bnStride;
             constInfo.kRopeStrides.n2Stride = fiaBaseParams.kRopeStrides.n2Stride;
-        } else {
-            constInfo.dSizeRope = 0;
         }
         constInfo.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
-        constInfo.isKvContinuous = true;
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
         constInfo.keyStrides.bnStride = fiaBaseParams.keyStrides.bnStride;
@@ -593,7 +590,7 @@ public:
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
-        info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+        info.actMSizeAlign = (info.actMSize + 31) >> 5 << 5;
         info.actVecMSize = (info.actMSize + 1) >> 1;
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {

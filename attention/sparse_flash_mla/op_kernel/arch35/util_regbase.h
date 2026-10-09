@@ -17,18 +17,19 @@
 #define SMLA_UTIL_REGBASE_H
 
 #include "util.h"
+#include "common/util_regbase_const_info.h"
 
 using AscendC::QuePosition;
 using AscendC::TQue;
 
 namespace regbaseutil {
-constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+constexpr int64_t SMLA_MAX_WINDOW_TOKENS = 0x7FFFFFFF;
 enum class VselrIndexEnum {
     GT_64_AND_LTE_128_INDEX = 0,
     GT_0_AND_LTE_64_INDEX = 1
 };
 
-#define COMMON_RUN_PARAM \
+#define SMLA_RUN_PARAM_FIELDS \
     int64_t boIdx; \
     int64_t s1oIdx; \
     int64_t n2oIdx; \
@@ -57,17 +58,17 @@ enum class VselrIndexEnum {
     int32_t cmpResidual         /* cmp的余数，用于mask计算 */
 
 struct RunParamStr { // 分核与切块需要使用到参数
-    COMMON_RUN_PARAM;
+    SMLA_RUN_PARAM_FIELDS;
     /* 推理新增 */
     int64_t gs1LoopStartIdx;
     int64_t gs1LoopEndIdx;
     // BN循环生产的数据
 
-    int64_t preTokensPerBatchOri = MAX_PRE_NEXT_TOKENS;  // 左上顶点的pretoken
-    int64_t nextTokensPerBatchOri = MAX_PRE_NEXT_TOKENS; // 左上顶点的nexttoken
+    int64_t preTokensPerBatchOri = SMLA_MAX_WINDOW_TOKENS;  // 左上顶点的pretoken
+    int64_t nextTokensPerBatchOri = SMLA_MAX_WINDOW_TOKENS; // 左上顶点的nexttoken
 
-    int64_t preTokensPerBatchCmp = MAX_PRE_NEXT_TOKENS;  // 左上顶点的pretoken
-    int64_t nextTokensPerBatchCmp = MAX_PRE_NEXT_TOKENS; // 左上顶点的nexttoken
+    int64_t preTokensPerBatchCmp = SMLA_MAX_WINDOW_TOKENS;  // 左上顶点的pretoken
+    int64_t nextTokensPerBatchCmp = SMLA_MAX_WINDOW_TOKENS; // 左上顶点的nexttoken
 
     // NBS1循环生产的数据
     int64_t sOuterOffset;     // 单个S内 souter的 souterIdx * halfS1RealSize souter层确定
@@ -91,7 +92,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t baseBlockNumPerReductionBlock = 1;
 };
 
-#define COMMON_RUN_INFO \
+#define SMLA_RUN_INFO_FIELDS \
     int64_t s2StartIdx; /* s2的起始位置，sparse场景下可能不是0 */ \
     int64_t s2EndIdx; \
     int64_t s2LoopCount; /* s2循环当前的循环index */ \
@@ -137,7 +138,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t baseBlockNumPerReductionBlock = 1
 
 struct RunInfo {
-    COMMON_RUN_INFO;
+    SMLA_RUN_INFO_FIELDS;
     // 推理新增
     // lse 输出offset
     int64_t softmaxLseOffset;
@@ -154,121 +155,12 @@ struct RunInfo {
     int64_t reduceBlockId = 0;
 };
 
-#define COMMON_CONST_INFO \
-    /* 全局的基本块信息 */ \
-    uint32_t bSize; \
-    uint32_t needInit; \
-    uint32_t s1BaseSize; \
-    uint32_t s2BaseSize; \
-    int64_t dSize;       /* query d 512 */ \
-    int64_t dSizeV;      /* key d 512 */ \
-    int64_t dSizeVInput; /* key inpue d 640 = rope + nope + scale + pad */ \
-    int64_t dSizeNope;   /* key nope d 448 */ \
-    int64_t dSizeRope;   /* key rope d 64 */ \
-    int64_t tileSize;    /* 64 */ \
-    int64_t sparseMode = 3; \
-    int64_t gSize; /* g轴的大小 */ \
-    int64_t n2Size; \
-    int64_t s1Size;    /* s1总大小 */ \
-    int64_t s2Size;    /* s2总大小 */ \
-    int64_t cmpS2Size; /* s2总大小 */ \
-    /* 轴的乘积 */ \
-    int64_t s1D; \
-    int64_t gS1D; \
-    int64_t n2GS1D; \
-    int64_t s2D; \
-    int64_t n2S2D; \
-    int64_t s1Dv; \
-    int64_t gS1Dv; \
-    int64_t n2GS1Dv; \
-    int64_t s2Dv; \
-    int64_t n2S2Dv; \
-    int64_t s1S2; \
-    int64_t gS1; \
-    int64_t gD; \
-    int64_t n2D; \
-    int64_t bN2D; \
-    int64_t gDv; \
-    int64_t n2Dv; \
-    int64_t bN2Dv; \
-    int64_t n2G; \
-    int64_t n2GD; \
-    int64_t bN2GD; \
-    int64_t n2GDv; \
-    int64_t bN2GDv; \
-    int64_t gS2; \
-    int64_t s1Dr; \
-    int64_t gS1Dr; \
-    int64_t n2GS1Dr; \
-    int64_t s2Dr; \
-    int64_t n2S2Dr; \
-    int64_t gDr; \
-    int64_t n2Dr; \
-    int64_t bN2Dr; \
-    int64_t n2GDr; \
-    int64_t bN2GDr; \
-    int32_t s2BaseN2D; \
-    int32_t s1BaseN2GD; \
-    int64_t s2BaseBN2D; \
-    int64_t s1BaseBN2GD; \
-    int32_t s1BaseD; \
-    int32_t s2BaseD; \
-    int64_t s2BaseN2Dv; \
-    int64_t s2BaseBN2Dv; \
-    int64_t s1BaseN2GDv; \
-    int64_t s1BaseBN2GDv; \
-    int32_t s1BaseDv; \
-    int32_t s2BaseDv; \
-    /* matmul跳读参数 */ \
-    int64_t mm1Ka; \
-    int64_t mm1Kb; \
-    /* dq 或者attentionOut的Stride */ \
-    int64_t attentionOutStride; \
-    uint32_t aivIdx; \
-    uint8_t layoutType; \
-    uint8_t subBlockIdx; \
-    bool hasOriTopkLength; \
-    bool hasCmpTopkLength; \
-    /* nonContiguous */ \
-    int64_t oriKeyStride0; \
-    int64_t cmpKeyStride0
-
-#define INFER_CONST_INFO \
-    /* 推理 */ \
-    bool isActualLenDimsNull;      /* 判断是否有actualseq */ \
-    bool isActualLenDimsKVNull;    /* 判断是否有actualseq_kv */ \
-    bool isActualLenDimsOriKVNull; /* 判断是否有actualseq_kv */ \
-    bool isActualLenDimsCmpKVNull; /* 判断是否有actualseq_kv */ \
-    bool cmpResidualKVNull;        /* 判断是否有actualseq_kv */ \
-    bool isSoftmaxLseEnable; \
-    bool rsvd1; \
-    bool returnSoftmaxLse; \
-    uint32_t oriSparseBlockCount; \
-    uint32_t cmpSparseBlockCount; \
-    uint32_t alignedOriSparseBlockCount; \
-    uint32_t alignedCmpSparseBlockCount; \
-    uint32_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */ \
-    uint32_t actualLenDimsOriKV; /* seqused_ori_kv的维度 */ \
-    uint32_t actualLenDimsCmpKV; /* seqused_cmp_kv的维度 */ \
-    uint32_t cmpResidualKVSize;  /* cmp_residual_kv的长度 */ \
-    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */ \
-    /* service mm1 mm2 pageAttention */ \
-    uint32_t oriBlockSize; \
-    uint32_t cmpBlockSize; \
-    uint32_t paLayoutType; \
-    uint32_t oriMaxBlockNumPerBatch; \
-    uint32_t cmpMaxBlockNumPerBatch; \
-    int32_t oriWinLeft; \
-    int32_t oriWinRight; \
-    uint32_t sparseBlockSize; \
-    uint32_t cmpRatio; \
-    float softmaxScale; \
-    uint32_t oriMaskMode; \
-    uint32_t cmpMaskMode
-
 struct ConstInfo {
-    COMMON_CONST_INFO;
-    INFER_CONST_INFO;
+    SMLA_CONST_INFO_COMMON_FIELDS;
+    SMLA_CONST_INFO_KV_STRIDE_FIELDS;
+    SMLA_CONST_INFO_SPARSE_ONLY_FIELDS;
+    SMLA_CONST_INFO_TOPK_FIELDS;
+    SMLA_CONST_INFO_LSE_FIELDS;
 };
 } // namespace regbaseutil
 

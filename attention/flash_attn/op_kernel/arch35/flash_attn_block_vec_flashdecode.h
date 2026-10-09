@@ -16,20 +16,17 @@
 #define FLASH_ATTN_BLOCK_VEC_FLASHDECODE_H
 
 #include "../utils/attenmask_gs1.h"
-
-#if __has_include("../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h")
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#else
-#include "../../common/arch35/vf/vf_flash_decode_arch35.h"
-#endif
-
 #include "memory_copy_arch35.h"
 
 namespace FlashAttnKernel {
 struct TaskInfo {
     uint32_t bIdx;
+    uint32_t n1Idx; // 不合轴: 当前 query 头(DN_LAYOUT 使用)
     uint32_t n2Idx;
-    uint32_t gS1Idx;
+    uint32_t gIdx;   // 不合轴: 头内 G 下标(DN_LAYOUT 使用)
+    uint32_t s1Idx;  // 纯 s1 坐标(DN_LAYOUT 使用)
+    uint32_t gS1Idx; // 合轴 gs1 坐标(非 DN_LAYOUT 使用)
     uint32_t actualCombineLoopSize;
 };
 
@@ -45,7 +42,7 @@ __aicore__ inline constexpr fa_base_vector::UbInputFormat GeInputUbFormat()
     }
 }
 
-template <typename FA_T>
+template <typename FA_T, bool DN_LAYOUT = false>
 class FiaBlockVecFlashDecode {
 public:
     using INPUT_T = typename FA_T::inputType;
@@ -97,7 +94,7 @@ protected:
     GlobalTensor<float> accumOutGm_;
     GlobalTensor<float> softmaxLseGm_;
 
-    static constexpr UbFormat UB_FORMAT = GetOutUbFormat<LAYOUT_T>();
+    static constexpr UbFormat UB_FORMAT = DN_LAYOUT ? UbFormat::S1_ONLY : GetOutUbFormat<LAYOUT_T>();
     int64_t preTokensPerBatch_ = 0;
     int64_t nextTokensPerBatch_ = 0;
 
@@ -117,7 +114,7 @@ protected:
     static constexpr GmFormat OUT_FORMAT = GetAttentionOutGmFormat<LAYOUT_OUT>();
     using FaGmTensorOut = FaGmTensor<OUTPUT_T, OUT_FORMAT, SEQLEN_T, IS_TND<LAYOUT_OUT>()>;
     FaGmTensorOut outGmTensor_;
-    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm_;
+    CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, UB_FORMAT> copyAttenOutUbToGm_;
 
 private:
     // ================================FD Local Buffer区====================================
@@ -169,17 +166,16 @@ public:
         this->accumOutGm_ = accumOutGm;
     }
 
+    template <uint32_t UB_FD_BASE_OFFSET>
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
             // 与 FA block 共享UB布局：bmm1/bmm2 区域在前，FD 业务缓冲区紧随其后。
             // 使用 LocalTensor 构造函数直接指定绝对字节偏移，实现内存完全自主管理，
             // 无需 LocalMemAllocator 线性分配器。
-            constexpr uint32_t mm1Sz = mBaseSize / 2U * s2BaseSize * sizeof(T);
-            constexpr uint32_t mm2Sz = mBaseSize / 2U * dVBaseSize * sizeof(T);
-
-            // FD 业务区起始字节偏移（跳过 bmm1/bmm2/mm2In 区域）
-            constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U;
+            // FD 业务区起始字节偏移（跳过 FA 侧 bmm1/bmm2/mm2In 区域），
+            // 以模板参数传入（取值为 FA vec block 的 GetFdBaseOffset()），避免两侧重复推导漂移
+            constexpr uint32_t BASE = UB_FD_BASE_OFFSET;
 
             // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
             // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes
@@ -286,9 +282,9 @@ protected:
 
         LocalTensor<T> sinkExpBuf;
         LocalTensor<T> maxLseUb = fdLseUbBuf_;
-        bool learnableSinkFlag = false;
-        ComputeScaleValue_VF_FD(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb, lseMaxUb, dealRowCount,
-                                actualCombineLoopSize, constInfo_.isSoftmaxLseEnable, learnableSinkFlag);
+        ComputeScaleValue_VF_FD<T, T, SinkInjectStage::AT_FA_PROLOGUE>(sinkExpBuf, lseMax, lseSum, lseExp, maxLseUb,
+                                                                       lseMaxUb, dealRowCount, actualCombineLoopSize,
+                                                                       constInfo_.isSoftmaxLseEnable, false);
     }
 
     __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
@@ -299,13 +295,24 @@ protected:
             .rowCount = dealRowCount,
             .colCount = columnCount,
         };
-        GmCoord gmCoord{.bIdx = taskInfo_.bIdx,
-                        .n2Idx = taskInfo_.n2Idx,
-                        .gS1Idx = taskInfo_.gS1Idx + startRow,
-                        .dIdx = 0,
-                        .gS1DealSize = dealRowCount,
-                        .dDealSize = (uint32_t)constInfo_.dSizeV};
-        copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
+        if constexpr (DN_LAYOUT) {
+            GmCoordS1Only gmCoord{.bIdx = taskInfo_.bIdx,
+                                  .n2Idx = taskInfo_.n2Idx,
+                                  .gIdx = taskInfo_.gIdx,
+                                  .s1Idx = taskInfo_.s1Idx + startRow,
+                                  .dIdx = 0,
+                                  .s1DealSize = dealRowCount,
+                                  .dDealSize = (uint32_t)constInfo_.dSizeV};
+            copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
+        } else {
+            GmCoordGs1Merge gmCoord{.bIdx = taskInfo_.bIdx,
+                                    .n2Idx = taskInfo_.n2Idx,
+                                    .gS1Idx = taskInfo_.gS1Idx + startRow,
+                                    .dIdx = 0,
+                                    .gS1DealSize = dealRowCount,
+                                    .dDealSize = (uint32_t)constInfo_.dSizeV};
+            copyAttenOutUbToGm_(outGmTensor_, ubTensor, gmCoord);
+        }
     }
     __aicore__ inline void ReduceFinalRes(LocalTensor<T> &reduceOut, LocalTensor<T> &mm2Res, LocalTensor<T> &lseLocal,
                                           uint32_t cntKV, uint32_t dealRowCount)
@@ -373,14 +380,16 @@ protected:
         fa_base_vector::InvalidRowParams params{
             .actS1Size = actSeqLensQ_,
             .gSize = static_cast<uint64_t>(constInfo_.gSize),
-            .gS1Idx = taskInfo_.gS1Idx + startRow,
+            .gS1Idx = (DN_LAYOUT ? taskInfo_.s1Idx : taskInfo_.gS1Idx) + startRow,
             .dealRowCount = dealRowCount,
             .columnCount = columnCount,
             .preTokensPerBatch = preTokensPerBatch_,
             .nextTokensPerBatch = nextTokensPerBatch_,
         };
 
-        fa_base_vector::InvalidRows<UBOUT_T, GeInputUbFormat<LAYOUT_T>()> invalidRows;
+        fa_base_vector::InvalidRows<UBOUT_T,
+                                    DN_LAYOUT ? fa_base_vector::UbInputFormat::GS1 : GeInputUbFormat<LAYOUT_T>()>
+            invalidRows;
         invalidRows(attenOutUb, params);
     }
 
@@ -416,9 +425,18 @@ public:
 
         uint32_t tmpFdS1gOuterMStart = 0;
         uint32_t tmpFdS1gOuterMEnd = fdBalanceMSplitNum - 1;
-        taskInfo_.bIdx = fd.fdBN2Idx / constInfo_.n2Size;
-        taskInfo_.n2Idx = fd.fdBN2Idx % constInfo_.n2Size;
-        taskInfo_.gS1Idx = fd.fdMIdx * mBaseSize;
+        if constexpr (DN_LAYOUT) {
+            // 不合轴(BN1_S1): fdBN1Idx 语义为 bn1 = b*n1, K/V 按 n2 = n1/gSize 共享
+            taskInfo_.bIdx = fd.fdBN1Idx / constInfo_.n1Size;
+            taskInfo_.n1Idx = fd.fdBN1Idx % constInfo_.n1Size;
+            taskInfo_.n2Idx = taskInfo_.n1Idx / constInfo_.gSize;
+            taskInfo_.gIdx = taskInfo_.n1Idx % constInfo_.gSize;
+            taskInfo_.s1Idx = fd.fdMIdx * mBaseSize;
+        } else {
+            taskInfo_.bIdx = fd.fdBN2Idx / constInfo_.n2Size;
+            taskInfo_.n2Idx = fd.fdBN2Idx % constInfo_.n2Size;
+            taskInfo_.gS1Idx = fd.fdMIdx * mBaseSize;
+        }
         taskInfo_.actualCombineLoopSize = fd.fdS2SplitNum; // 当前规约任务kv方向有几份
         uint64_t combineTaskPrefixSum = fd.fdWorkspaceIdx;
         uint64_t taskOffset = combineTaskPrefixSum * mBaseSize;
@@ -452,7 +470,11 @@ public:
                 LocalTensor<T> maxLseUb = fdLseUbBuf_;
                 Mutex::Lock<PIPE_MTE3>(SYNC_LSEOUTPUT_BUF_FLAG);
                 uint32_t mOffset = taskInfo_.gS1Idx + startRow;
-                if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
+                if constexpr (DN_LAYOUT) {
+                    DataCopySoftmaxLseS1Only<LAYOUT_T>(softmaxLseGm_, maxLseUb, taskInfo_.bIdx, taskInfo_.n2Idx,
+                                                       taskInfo_.gIdx, taskInfo_.s1Idx + startRow, actualGSplitSize,
+                                                       constInfo_, qSeqLensTool_);
+                } else if constexpr (LAYOUT_T == FA_LAYOUT::TND) {
                     uint32_t prefixBS1 = qSeqLensTool_.cuSeqLensParser.GetTBase(taskInfo_.bIdx);
                     uint64_t bN2Offset = taskInfo_.n2Idx * constInfo_.gSize * constInfo_.t1Size + prefixBS1;
                     DataCopySoftmaxLseTNDtoNTArch35<T, ConstInfo_t>(softmaxLseGm_, maxLseUb, bN2Offset, mOffset,

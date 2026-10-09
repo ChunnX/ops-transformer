@@ -20,6 +20,7 @@
 #include "flash_attention_score_common_regbase_arch38.h"
 #include "kernel_operator.h"
 #include "attenmask_arch38.h"
+#include "const_def.h"
 
 // 线上编包
 #include "matmul_arch38.h"
@@ -44,40 +45,43 @@ public:
     __aicore__ inline FlashAttentionScoreKernelBase(){};
 
     __aicore__ inline void InitBaseAPI(
-        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-        __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix,
-        __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
-        __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ,
-        __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *deqScaleQK, __gm__ uint8_t *quantScaleP,
-        __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *queryRope,
-        __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut,
-        __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-        const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
+        __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pse,
+        __gm__ uint8_t* dropMask, __gm__ uint8_t* paddingMask, __gm__ uint8_t* attenMask, __gm__ uint8_t* prefix,
+        __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKv, __gm__ uint8_t* blockTable,
+        __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize, __gm__ uint8_t* deqScaleQ,
+        __gm__ uint8_t* deqScaleK, __gm__ uint8_t* deqScaleV, __gm__ uint8_t* deqScaleQK, __gm__ uint8_t* quantScaleP,
+        __gm__ uint8_t* postQuantScale, __gm__ uint8_t* postQuantOffset, __gm__ uint8_t* queryRope,
+        __gm__ uint8_t* keyRope, __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum, __gm__ uint8_t* softmaxOut,
+        __gm__ uint8_t* softmaxLse, __gm__ uint8_t* attentionOut, __gm__ uint8_t* workspace,
+        const FlashAttentionScoreSimplifiedTilingData* __restrict tiling, TPipe* tPipe);
     __aicore__ inline void Process();
-    __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
+    __aicore__ inline void GetExtremeValue(T& negativeScalar, T& positiveScalar);
     __aicore__ inline void InitGlobalBuffer(
-        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-        __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix,
-        __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *deqScaleQ,
-        __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *deqScaleQK, __gm__ uint8_t *quantScaleP,
-        __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *queryRope,
-        __gm__ uint8_t *keyRope, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
-        __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-        __gm__ uint8_t *softmaxOut, __gm__ uint8_t *workspace,
-        const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
+        __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pse,
+        __gm__ uint8_t* dropMask, __gm__ uint8_t* paddingMask, __gm__ uint8_t* attenMask, __gm__ uint8_t* prefix,
+        __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKv, __gm__ uint8_t* deqScaleQ,
+        __gm__ uint8_t* deqScaleK, __gm__ uint8_t* deqScaleV, __gm__ uint8_t* deqScaleQK, __gm__ uint8_t* quantScaleP,
+        __gm__ uint8_t* postQuantScale, __gm__ uint8_t* postQuantOffset, __gm__ uint8_t* queryRope,
+        __gm__ uint8_t* keyRope, __gm__ uint8_t* blockTable, __gm__ uint8_t* queryPaddingSize,
+        __gm__ uint8_t* kvPaddingSize, __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum,
+        __gm__ uint8_t* softmaxOut, __gm__ uint8_t* workspace,
+        const FlashAttentionScoreSimplifiedTilingData* __restrict tiling, TPipe* tPipe);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf();
     __aicore__ inline void ComputeConstexpr();
-    __aicore__ inline void SetRunInfo(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId,
+    __aicore__ inline void SetRunInfo(RunInfo<isInfer>& runInfo, RunParamStr<isInfer>& runParam, int64_t taskId,
                                       int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
-    __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam);
-    __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
-    __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
+    __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr<isInfer>& runParam);
+    __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer>& runInfo, RunParamStr<isInfer>& runParam);
+    __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t& actualSeqQlen, int64_t& actualSeqKvLen);
 
-    __aicore__ inline ChildClass *GetDerived() { return static_cast<ChildClass *>(this); }
-    TPipe *pipe;
+    __aicore__ inline ChildClass* GetDerived()
+    {
+        return static_cast<ChildClass*>(this);
+    }
+    TPipe* pipe;
 
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tilingData;
+    const FlashAttentionScoreSimplifiedTilingData* __restrict tilingData;
     /* 编译期常量的基本块信息 */
     static constexpr uint32_t dTemplateAlign64 = Align64Func((uint16_t)dVTemplateType);
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
@@ -89,9 +93,7 @@ public:
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
     static constexpr bool splitD = CubeBlockType::splitD;
     static constexpr uint64_t SYNC_MODE = 4;
-    static constexpr uint64_t SYNC_C1_V1_FLAG[2] = {0, 1};
-    static constexpr uint64_t SYNC_V1_C2_FLAG[3] = {2, 3, 4};
-    static constexpr uint64_t SYNC_C2_V2_FLAG[2] = {5, 6};
+
     /* 核间通道 */
     BufferManager<BufferType::GM> gmBufferManager;
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
@@ -108,8 +110,8 @@ public:
     /* GM信息 */
     using keyGmType = typename std::conditional<isInfer, GlobalTensor<INPUT_T>, int32_t>::type;
     keyGmType keyGm; // kv不连续场景需要使用来获取shape
-    __gm__ int64_t *actualSeqQlenAddr;
-    __gm__ int64_t *actualSeqKvlenAddr;
+    __gm__ int64_t* actualSeqQlenAddr;
+    __gm__ int64_t* actualSeqKvlenAddr;
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -126,20 +128,22 @@ public:
     /* 模板库Block */
     CubeBlockType cubeBlock;
     VecBlockType vecBlock;
+    /* C/V跨队列同步事件号 */
+    CVSyncEventIds cvSync;
 };
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitBaseAPI(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse, __gm__ uint8_t *dropMask,
-    __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
-    __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-    __gm__ uint8_t *deqScaleQK, __gm__ uint8_t *quantScaleP, __gm__ uint8_t *postQuantScale,
-    __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxMax,
-    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-    __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pse, __gm__ uint8_t* dropMask,
+    __gm__ uint8_t* paddingMask, __gm__ uint8_t* attenMask, __gm__ uint8_t* prefix, __gm__ uint8_t* actualSeqLengths,
+    __gm__ uint8_t* actualSeqLengthsKv, __gm__ uint8_t* blockTable, __gm__ uint8_t* queryPaddingSize,
+    __gm__ uint8_t* kvPaddingSize, __gm__ uint8_t* deqScaleQ, __gm__ uint8_t* deqScaleK, __gm__ uint8_t* deqScaleV,
+    __gm__ uint8_t* deqScaleQK, __gm__ uint8_t* quantScaleP, __gm__ uint8_t* postQuantScale,
+    __gm__ uint8_t* postQuantOffset, __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope, __gm__ uint8_t* softmaxMax,
+    __gm__ uint8_t* softmaxSum, __gm__ uint8_t* softmaxOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* attentionOut,
+    __gm__ uint8_t* workspace, const FlashAttentionScoreSimplifiedTilingData* __restrict tiling, TPipe* tPipe)
 {
-    fa_base_matmul::idCounterNum = 0;
+    fa_base_matmul::ResetIdCounter();
     constInfo.subBlockIdx = GetSubBlockIdx();
     constInfo.aivIdx = GetBlockIdx();
     this->aicIdx = constInfo.aivIdx;
@@ -157,31 +161,33 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
                            actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, deqScaleQK, quantScaleP, postQuantScale,
                            postQuantOffset, queryRope, keyRope, blockTable, queryPaddingSize, kvPaddingSize, softmaxMax,
                            softmaxSum, softmaxOut, workspace, tiling, tPipe); // gm设置
+    vecBlock.cvSyncPtr = &cvSync;
+    cubeBlock.cvSyncPtr = &cvSync;
     this->InitLocalBuffer();
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitGlobalBuffer(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse, __gm__ uint8_t *dropMask,
-    __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-    __gm__ uint8_t *deqScaleQK, __gm__ uint8_t *quantScaleP, __gm__ uint8_t *postQuantScale,
-    __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax,
-    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pse, __gm__ uint8_t* dropMask,
+    __gm__ uint8_t* paddingMask, __gm__ uint8_t* attenMask, __gm__ uint8_t* prefix, __gm__ uint8_t* actualSeqLengths,
+    __gm__ uint8_t* actualSeqLengthsKv, __gm__ uint8_t* deqScaleQ, __gm__ uint8_t* deqScaleK, __gm__ uint8_t* deqScaleV,
+    __gm__ uint8_t* deqScaleQK, __gm__ uint8_t* quantScaleP, __gm__ uint8_t* postQuantScale,
+    __gm__ uint8_t* postQuantOffset, __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope, __gm__ uint8_t* blockTable,
+    __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize, __gm__ uint8_t* softmaxMax,
+    __gm__ uint8_t* softmaxSum, __gm__ uint8_t* softmaxOut, __gm__ uint8_t* workspace,
+    const FlashAttentionScoreSimplifiedTilingData* __restrict tiling, TPipe* tPipe)
 {
     // 初始化vector用到的global buffer
     if constexpr (isInfer) {
-        keyGm.SetGlobalBuffer((__gm__ INPUT_T *)(key));
+        keyGm.SetGlobalBuffer((__gm__ INPUT_T*)(key));
         if (constInfo.isQHasLeftPadding) {
-            constInfo.queryRightPaddingSize = ((__gm__ int64_t *)queryPaddingSize)[0];
+            constInfo.queryRightPaddingSize = ((__gm__ int64_t*)queryPaddingSize)[0];
             if (constInfo.queryRightPaddingSize < 0) {
                 constInfo.queryRightPaddingSize = 0;
             }
         }
         if (constInfo.isKVHasLeftPadding) {
-            constInfo.kvRightPaddingSize = ((__gm__ int64_t *)kvPaddingSize)[0];
+            constInfo.kvRightPaddingSize = ((__gm__ int64_t*)kvPaddingSize)[0];
             if (constInfo.kvRightPaddingSize < 0) {
                 constInfo.kvRightPaddingSize = 0;
             }
@@ -191,15 +197,15 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         attenMaskInfo.prefixNAddr = prefix;
     }
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-        actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
-        actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
+        actualSeqQlenAddr = (__gm__ int64_t*)actualSeqLengths;
+        actualSeqKvlenAddr = (__gm__ int64_t*)actualSeqLengthsKv;
     } else {
         if constexpr (isInfer) {
             if (!constInfo.isActualLenDimsNull) {
-                actualSeqQlenAddr = (__gm__ int64_t *)actualSeqLengths;
+                actualSeqQlenAddr = (__gm__ int64_t*)actualSeqLengths;
             }
             if (!constInfo.isActualLenDimsKVNull) {
-                actualSeqKvlenAddr = (__gm__ int64_t *)actualSeqLengthsKv;
+                actualSeqKvlenAddr = (__gm__ int64_t*)actualSeqLengthsKv;
             }
         }
     }
@@ -240,13 +246,11 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     constexpr uint32_t mm2LeftSize = s1BaseSize * s2BaseSize * sizeof(INPUT_T);
     l1BufferManager.Init(pipe, 524288); // 512 * 1024
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-    PipeBarrier<PIPE_ALL>();
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-    PipeBarrier<PIPE_ALL>();
+
     if constexpr (bmm2Write2Ub) {
         if constexpr (!(useDn && isFp8)) {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
-            PipeBarrier<PIPE_ALL>();
             bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         } else {
             ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
@@ -261,6 +265,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
+    cvSync.Init();
     vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
@@ -370,7 +375,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
         constInfo.attentionOutStride = 0;
     }
 
-    auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
+    auto& inputParamsRegbase = this->tilingData->inputParamsRegbase;
     if constexpr (pseMode != PseTypeEnum::PSE_NONE_TYPE) {
         pseInfo.pseLayoutType = inputParamsRegbase.pseShapeType;
         pseInfo.pseType = inputParamsRegbase.pseType;
@@ -408,7 +413,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBoidx(
-    int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
+    int64_t boIdx, int64_t& actualSeqQlen, int64_t& actualSeqKvlen)
 {
     if (unlikely(boIdx == 0)) {
         actualSeqQlen = actualSeqQlenAddr[0];
@@ -421,7 +426,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeAxisIdx(
-    int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam)
+    int64_t multiCoreInnerIdx, RunParamStr<isInfer>& runParam)
 {
     // 计算轴的idx
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
@@ -478,7 +483,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
-    RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
+    RunInfo<isInfer>& runInfo, RunParamStr<isInfer>& runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
     int64_t multiCoreInnerIdx)
 {
     runInfo.s2StartIdx = runParam.s2LineStartIdx;
@@ -517,7 +522,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeBmm1Tail(
-    RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam)
+    RunInfo<isInfer>& runInfo, RunParamStr<isInfer>& runParam)
 {
     // ------------------------S1 Base Related---------------------------
     runInfo.s1RealSize = runParam.s1RealSize;
@@ -532,7 +537,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     runInfo.s2AlignedSize = runInfo.s2RealSize;
     if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
         runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
-        runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
+        runInfo.s2AlignedSize = AttentionCommon::Align((uint32_t)runInfo.s2RealSize,
+                                                       (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
     }
 }
 } // namespace BaseApi

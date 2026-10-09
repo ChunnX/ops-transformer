@@ -16,14 +16,13 @@
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A3_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_PRELOAD_FIXPIPE_QUANT_A3_HPP
 
-#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
-#include "../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
-#include "../template_linear_algebra_v2/tla_v2_coord.hpp"
-#include "../template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
-#include "../template_linear_algebra_v2/gemm/mega_moe_gemm_dispatch_policy.hpp"
-#include "../template_linear_algebra_v2/gemm/mega_moe_gemm_helper.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemm/helper.hpp"
 #include "dispatch_policy_custom.hpp"
-
 
 namespace Catlass::Gemm::Block {
 
@@ -129,6 +128,13 @@ public:
         InitL0B(resource);
         InitL0C(resource);
     }
+
+    // InitL1 计算出的 L1 真实占用末偏移：权重预取 scratch 在此之上取用，与流水线 stage/S/F 零地址交集
+    CATLASS_DEVICE uint32_t GetL1EndOffset() const
+    {
+        return l1EndOffset_;
+    }
+    uint32_t l1EndOffset_ = 0U;
 
     CATLASS_DEVICE
     ~BlockMmad()
@@ -291,9 +297,11 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventList[i]);
         }
         uint32_t l1SOffset = l1BOffset + L1B_TILE_SIZE * L1_STAGES;
+        l1EndOffset_ = l1SOffset;
         if constexpr (std::is_same_v<ElementA, int8_t>) {
             l1STensor = resource.l1Buf.template GetBufferByByte<uint64_t>(l1SOffset);
             AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(0);
+            l1EndOffset_ += L1S_TILE_SIZE;
         }
         if (ptrSoftFlagBase_ != nullptr) {
             // Initialize the flag matrix (structure as below):
@@ -307,6 +315,7 @@ private:
             AscendC::GlobalTensor<int32_t> flagBase;
             flagBase.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(ptrSoftFlagBase_));
             AscendC::DataCopy(l1FTensor, flagBase, expertPerRank_ * FLAGSTRIDE);
+            l1EndOffset_ = l1FOffset + expertPerRank_ * FLAGSTRIDE * sizeof(int32_t);
         }
     }
 

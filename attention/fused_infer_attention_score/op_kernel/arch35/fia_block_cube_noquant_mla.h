@@ -53,7 +53,7 @@ public:
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using KV_BUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoX = ConstInfo_t;
 
     TPipe *tPipe = nullptr;
 
@@ -217,12 +217,12 @@ public:
         {
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor, .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = 0,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = (uint32_t)constInfo.dSize};
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                    .n2Idx = runInfo.n2Idx,
+                                    .gS1Idx = runInfo.gS1Idx,
+                                    .dIdx = 0,
+                                    .gS1DealSize = runInfo.actMSize,
+                                    .dDealSize = (uint32_t)constInfo.dSize};
             copyQueryGmToL1(l1Tensor, queryGm, gmCoord);
         }
 
@@ -230,12 +230,12 @@ public:
             uint32_t queryRopeL1Offset = constInfo.dSize * dstStride;
             FaL1Tensor<Q_T, L1Format::NZ> l1Tensor{.tensor = dstTensor[queryRopeL1Offset], .rowCount = dstStride};
 
-            GmCoord gmCoord{.bIdx = runInfo.bIdx,
-                            .n2Idx = runInfo.n2Idx,
-                            .gS1Idx = runInfo.gS1Idx,
-                            .dIdx = 0,
-                            .gS1DealSize = runInfo.actMSize,
-                            .dDealSize = (uint32_t)constInfo.dSizeRope};
+            GmCoordGs1Merge gmCoord{.bIdx = runInfo.bIdx,
+                                    .n2Idx = runInfo.n2Idx,
+                                    .gS1Idx = runInfo.gS1Idx,
+                                    .dIdx = 0,
+                                    .gS1DealSize = runInfo.actMSize,
+                                    .dDealSize = (uint32_t)constInfo.dSizeRope};
             copyQueryGmToL1(l1Tensor, queryRopeGm, gmCoord);
         }
     }
@@ -399,7 +399,7 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::NO_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     __aicore__ inline FANoQuantMlaBlockCubeDummy(ConstInfoX &constInfo){};
 };
 

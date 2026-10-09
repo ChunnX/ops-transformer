@@ -16,11 +16,11 @@
 #ifndef GROUPED_MATMUL_SWIGLU_QUANT_V2_TENSOR_API_TILING_DATA_H
 #define GROUPED_MATMUL_SWIGLU_QUANT_V2_TENSOR_API_TILING_DATA_H
 
-#include "kernel_tiling/kernel_tiling.h"
-
 #ifndef __CCE_AICORE__
 #include <cstdint>
 #endif
+
+#include "grouped_matmul_swiglu_quant_swiglu_params.h"
 
 namespace GroupedMatmulSwigluQuantV2TensorApi {
 #pragma pack(push, 8)
@@ -62,6 +62,7 @@ struct GMMTensorApiMMTiling {
 struct GMMSwigluQuantV2TensorApiTilingData {
     GMMTensorApiQuantParams gmmQuantParams;
     GMMTensorApiMMTiling mmTilingData;
+    GMMSwigluQuantSwigluParams swigluParams;
 };
 #pragma pack(pop)
 } // namespace GroupedMatmulSwigluQuantV2TensorApi

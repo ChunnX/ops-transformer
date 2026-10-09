@@ -12,8 +12,46 @@ import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder import OpBuilder, get_as_library
 
-FA_METADATA_SIZE = 1024
 FA_METADATA_OP_NAME = "flash_attn_metadata"
+METADATA_STRIDE = 16
+FAG_METADATA_SIZE = 412  # FAG (Flash Attn Grad) metadata size, in int32 elements
+
+
+_LAYOUT_DIMS = {
+    "TND": 3,
+    "BSND": 4,
+    "BNSD": 4,
+    "PA_BBND": 4,
+    "PA_BNBD": 4,
+    "PA_NZ": 5,
+}
+
+
+def _check_layout_dims(tensor, name, layout):
+    # Layout validity is checked by tiling; only check rank here to prevent out-of-range shape access.
+    expected = _LAYOUT_DIMS.get(layout)
+    if expected is None:
+        return
+    torch._check(
+        tensor.dim() == expected,
+        lambda: f"{name} with layout {layout} expects {expected} dims, "
+        f"but got {tensor.dim()} dims {tuple(tensor.shape)}",
+    )
+
+
+def _validate_layout_dims(q, k, v, layout_q, layout_kv):
+    # Validate before indexing shapes or inferring output dimensions.
+    _check_layout_dims(q, "q", layout_q)
+    _check_layout_dims(k, "k", layout_kv)
+    _check_layout_dims(v, "v", layout_kv)
+
+
+def _get_npu_core_nums():
+    try:
+        properties = torch.npu.get_device_properties()
+        return properties.cube_core_num, properties.vector_core_num
+    except Exception:
+        return 128, 128
 
 
 def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
@@ -36,8 +74,15 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
 
 def _calculate_metadata_size(batch_size, num_heads_kv):
     """计算 metadata tensor 的对齐后大小"""
-    metadata_size = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
-    return ((metadata_size + 4095) // 4096) * 4096
+    align_size = 4096
+    head_size = 1 * METADATA_STRIDE
+    aic_num, aiv_num = _get_npu_core_nums()
+    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_kv
+    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_kv
+
+    metadata_size = head_size + fa_size + fd_size
+    metadata_size += FAG_METADATA_SIZE  # FAG (Flash Attn Grad) metadata size
+    return ((metadata_size + align_size - 1) // align_size) * align_size
 
 
 class FlashAttenOpBuilder(OpBuilder):
@@ -52,10 +97,12 @@ class FlashAttenOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             "flash_attn_metadata(int num_heads_q, int num_heads_kv, int head_dim, *, "
+            "int? head_dim_v=None, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None,"
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, int? win_left=None, int? win_right=None, "
-            "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
+            "str? layout_q=None, str? layout_kv=None, str? layout_out=None, "
+            "bool is_grad_enabled=False) -> Tensor",
             "flash_attn(Tensor q, Tensor k, Tensor v,"
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None,"
             "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None,"
@@ -77,6 +124,7 @@ class FlashAttenOpBuilder(OpBuilder):
             num_heads_q: int,
             num_heads_kv: int,
             head_dim: int,
+            head_dim_v: Optional[int] = None,
             cu_seqlens_q: Optional[torch.Tensor] = None,
             cu_seqlens_kv: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
@@ -90,6 +138,7 @@ class FlashAttenOpBuilder(OpBuilder):
             layout_q: Optional[str] = None,
             layout_kv: Optional[str] = None,
             layout_out: Optional[str] = None,
+            is_grad_enabled: Optional[bool] = False,
         ):
             b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
             metadata_size = _calculate_metadata_size(b_size, num_heads_kv)
@@ -119,23 +168,26 @@ class FlashAttenOpBuilder(OpBuilder):
             layout_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False,
         ):
+            _validate_layout_dims(q, k, v, layout_q, layout_kv)
             if layout_q == "TND":
                 t_size = q.size(0)
                 n_size = q.size(1)
-                d_size = v.size(2)
                 softmax_out_size = (n_size, t_size)
             elif layout_q == "BSND":
                 b_size = q.size(0)
                 s_size = q.size(1)
                 n_size = q.size(2)
-                d_size = v.size(3)
                 softmax_out_size = (b_size, n_size, s_size)
             else:
                 b_size = q.size(0)
                 n_size = q.size(1)
                 s_size = q.size(2)
-                d_size = v.size(3)
                 softmax_out_size = (b_size, n_size, s_size)
+
+            if layout_kv == "PA_NZ":
+                d_size = v.size(-3) * v.size(-1)
+            else:
+                d_size = v.size(-1)
 
             if layout_out == "TND":
                 torch._check(
@@ -157,8 +209,8 @@ class FlashAttenOpBuilder(OpBuilder):
                 attention_out_size = (b_size, s_size, n_size, d_size)
 
             return (
-                torch.empty(attention_out_size, dtype=q.dtype, device="meta"),
-                torch.empty(softmax_out_size, dtype=torch.float, device="meta"),
+                torch.empty(attention_out_size, dtype=q.dtype, device=q.device),
+                torch.empty(softmax_out_size, dtype=torch.float, device=q.device),
             )
 
 
@@ -172,6 +224,7 @@ def flash_attn_metadata(
     num_heads_q: int,
     num_heads_kv: int,
     head_dim: int,
+    head_dim_v: Optional[int] = None,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
@@ -185,6 +238,7 @@ def flash_attn_metadata(
     layout_q: Optional[str] = "BSND",
     layout_kv: Optional[str] = "BSND",
     layout_out: Optional[str] = "BSND",
+    is_grad_enabled: Optional[bool] = False,
 ):
     """
     Dispatcher implementation: NPU.
@@ -193,6 +247,7 @@ def flash_attn_metadata(
     b_size = _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
 
     batch_size = -1 if batch_size is None else batch_size
+    head_dim_v = -1 if head_dim_v is None else head_dim_v
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     mask_mode = 1 if mask_mode is None else mask_mode
     win_left = -1 if win_left is None else win_left
@@ -213,6 +268,7 @@ def flash_attn_metadata(
         num_heads_q,
         num_heads_kv,
         head_dim,
+        head_dim_v,
         batch_size,
         max_seqlen_q,
         max_seqlen_kv,
@@ -222,6 +278,7 @@ def flash_attn_metadata(
         layout_q,
         layout_kv,
         layout_out,
+        is_grad_enabled,
         output,
     )
 
@@ -234,6 +291,7 @@ def flash_attn_metadata_fallback(
     num_heads_q: int,
     num_heads_kv: int,
     head_dim: int,
+    head_dim_v: Optional[int] = None,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
@@ -247,12 +305,14 @@ def flash_attn_metadata_fallback(
     layout_q: Optional[str] = None,
     layout_kv: Optional[str] = None,
     layout_out: Optional[str] = None,
+    is_grad_enabled: Optional[bool] = False,
 ):
     # 处理所有 tensor 都为 None 的情况
     return _flash_attn_metadata(
         num_heads_q=num_heads_q,
         num_heads_kv=num_heads_kv,
         head_dim=head_dim,
+        head_dim_v=head_dim_v,
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_kv=cu_seqlens_kv,
         seqused_q=seqused_q,
@@ -266,6 +326,7 @@ def flash_attn_metadata_fallback(
         layout_q=layout_q,
         layout_kv=layout_kv,
         layout_out=layout_out,
+        is_grad_enabled=is_grad_enabled,
     )
 
 
@@ -297,6 +358,14 @@ def flash_attn(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    _validate_layout_dims(q, k, v, layout_q, layout_kv)
+    # FA 不支持 k/v 的 stride 中含 0
+    for name, tensor in (("k", k), ("v", v)):
+        if 0 in tensor.stride():
+            raise ValueError(
+                f"flash_attn does not support {name} with stride containing 0, "
+                f"got {name}.stride() = {tensor.stride()}"
+            )
     op_module = flash_attn_op_builder.load()
     return op_module.flash_attn(
         q,

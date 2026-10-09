@@ -21,12 +21,13 @@ using namespace ge;
 using namespace gert;
 
 // input index
-constexpr size_t X_INDEX = 0;
-constexpr size_t SCALES_INDEX = 1;
+constexpr size_t CONTEXT_IDDEX = 0;
+constexpr size_t X_INDEX = 1;
+constexpr size_t SCALES_INDEX = 2;
 // output index
 constexpr size_t OUTPUT_INDEX = 0;
 // attr index
-constexpr size_t GROUP_INDEX = 0;
+constexpr size_t HCCL_BUFFER_SIZE_INDEX = 0;
 constexpr size_t REDUCE_OP_INDEX = 1;
 constexpr size_t OUTPUT_DTYPE_INDEX = 2;
 constexpr size_t WORLD_SIZE_INDEX = 3;
@@ -52,6 +53,7 @@ constexpr size_t DIM_THREE = 3;
 // 量化模式
 constexpr uint32_t TG_QUANT_MOD = 1;
 constexpr uint32_t MX_QUANT_MOD = 2;
+constexpr uint32_t PT_QUANT_MOD = 3;
 constexpr uint64_t TG_QUANT_NUMBER = 128UL;
 constexpr uint64_t MX_QUANT_NUMBER = 64UL;
 // MX量化模式下scales的最后一维一定是2，比如(bs, h/64, 2)
@@ -75,10 +77,9 @@ enum OpType : size_t {
 
 // 封装参数
 struct TilingRunInfo {
-    const char *groupPtr; // group指针
-    std::string group;    // group属性
-    uint32_t quantMode;   // 量化方式
-    int64_t rankSize;     // rank大小
+    uint32_t quantMode; // 量化方式
+    int64_t rankSize;   // rank大小
+    int64_t hcclBufferSize;
 };
 
 class QuantReduceScatterUtilTiling {

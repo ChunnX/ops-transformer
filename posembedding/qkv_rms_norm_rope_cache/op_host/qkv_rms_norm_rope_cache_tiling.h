@@ -24,13 +24,13 @@ namespace optiling {
 BEGIN_TILING_DATA_DEF(QkvRmsNormRopeCacheTilingData)
 TILING_DATA_FIELD_DEF(int64_t, batchSize); // Bqkv
 TILING_DATA_FIELD_DEF(int64_t, seqLength); // Sqkv
-TILING_DATA_FIELD_DEF(int64_t, numHead); // Nqkv
-TILING_DATA_FIELD_DEF(int64_t, qkvDim); // D
+TILING_DATA_FIELD_DEF(int64_t, numHead);   // Nqkv
+TILING_DATA_FIELD_DEF(int64_t, qkvDim);    // D
 TILING_DATA_FIELD_DEF(int64_t, ropeRange); // D
-TILING_DATA_FIELD_DEF(int64_t, numHeadQ); // Nq
-TILING_DATA_FIELD_DEF(int64_t, numHeadK); // Nk
-TILING_DATA_FIELD_DEF(int64_t, numHeadV); //Nv
-TILING_DATA_FIELD_DEF(int64_t, blockNum); // k_cache/v_cache的blockNum
+TILING_DATA_FIELD_DEF(int64_t, numHeadQ);  // Nq
+TILING_DATA_FIELD_DEF(int64_t, numHeadK);  // Nk
+TILING_DATA_FIELD_DEF(int64_t, numHeadV);  // Nv
+TILING_DATA_FIELD_DEF(int64_t, blockNum);  // k_cache/v_cache的blockNum
 TILING_DATA_FIELD_DEF(int64_t, blockSize); // k_cache/v_cache的blockSize
 TILING_DATA_FIELD_DEF(float, epsilon);
 TILING_DATA_FIELD_DEF(int64_t, blockFactor);
@@ -53,15 +53,60 @@ END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(QkvRmsNormRopeCache, QkvRmsNormRopeCacheTilingData)
 
+// ---------------------------------------------------------------------------
+// arch35(Ascend950)regbase tiling 结构体。
+// 与 A2 结构体不共用:用独立 tiling key(10000)注册,避免 A5 结构与 A2 的
+// REGISTER_TILING_DATA_CLASS(QkvRmsNormRopeCache, ...) 默认注册相互覆盖。
+// 同族先例:kv_rms_norm_rope_cache(legacy 1000~5011 / regbase 10000、20000)。
+// ---------------------------------------------------------------------------
+BEGIN_TILING_DATA_DEF(QkvRmsNormRopeCacheRegbaseTilingData)
+TILING_DATA_FIELD_DEF(int64_t, batchSize);   // Bqkv
+TILING_DATA_FIELD_DEF(int64_t, seqLength);   // Sqkv
+TILING_DATA_FIELD_DEF(int64_t, numHead);     // Nqkv
+TILING_DATA_FIELD_DEF(int64_t, qkvDim);      // D(恒 128)
+TILING_DATA_FIELD_DEF(int64_t, numHeadQ);    // Nq
+TILING_DATA_FIELD_DEF(int64_t, numHeadK);    // Nk
+TILING_DATA_FIELD_DEF(int64_t, numHeadV);    // Nv
+TILING_DATA_FIELD_DEF(int64_t, blockSize);   // k_cache/v_cache 的 blockSize
+TILING_DATA_FIELD_DEF(int64_t, blockNum);    // 同上;index 的合法上界 = blockNum * blockSize
+TILING_DATA_FIELD_DEF(int64_t, blockFactor); // 每核负责的 token 数(末核吸收余数)
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);    // 每次 UB 迭代处理的 token 数
+TILING_DATA_FIELD_DEF(int64_t, isOutputQkv); // 是否输出 *_before_quant
+TILING_DATA_FIELD_DEF(float, epsilon);
+TILING_DATA_FIELD_DEF(float, reciprocal); // 1 / D
+// UB buffer 字节数一律由 host 一次算准、内核只透传,不在内核里重算
+// (否则 host 预算与内核实际分配是两套算法,少算一个通道就越界)
+TILING_DATA_FIELD_DEF(int64_t, inUbBytes);
+TILING_DATA_FIELD_DEF(int64_t, cosSinUbBytes);
+TILING_DATA_FIELD_DEF(int64_t, qOutUbBytes);
+TILING_DATA_FIELD_DEF(int64_t, kProtoUbBytes);
+TILING_DATA_FIELD_DEF(int64_t, vProtoUbBytes);
+TILING_DATA_FIELD_DEF(int64_t, kCacheUbBytes);
+TILING_DATA_FIELD_DEF(int64_t, vCacheUbBytes);
+TILING_DATA_FIELD_DEF(int64_t, gammaUbBytes);
+TILING_DATA_FIELD_DEF(int64_t, quantUbBytes);
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(QkvRmsNormRopeCache_10000, QkvRmsNormRopeCacheRegbaseTilingData)
+
 constexpr int32_t TEMPLATE_DS_PRIORITY = 1000;
+// arch35 模板优先级必须高于 A2 模板:D2 模板的 IsCapable() 在 regbase SoC 上返回 false,
+// 两个模板并存,由优先级升序取第一个 capable 的模板。
+constexpr int32_t TEMPLATE_REGBASE_PRIORITY = 2000;
+// arch35 的 tiling key(cache_mode 恒 PA_NZ)
+constexpr int64_t TILING_KEY_REGBASE_PA_NZ = 10000;
 
 struct QkvRmsNormRopeCacheCompileInfo {
     int64_t coreNum = 0;
     int64_t ubSize = 0;
+    // 本编译目标是否为 regbase(arch35)SoC。
+    // 与 coreNum/ubSize 同理:TilingPrepare 阶段 platformInfo 保证非空,那时算好存下,
+    // tiling 阶段 platformInfo 为空时才有得可用 —— 否则 isRegbase_ 会停在默认 false,
+    // 让 arch35 误选 A2 的 DS 模板。框架自己的 CompileInfoCommon.socVersion 就是这个用法。
+    bool isRegbase = false;
 };
 
-enum CacheMode
-{
+enum CacheMode {
     Norm = 0,
     PA = 1,
     PA_NZ = 2,
@@ -81,15 +126,15 @@ constexpr int64_t SIN_INDEX = 4;
 constexpr int64_t INDEX_INDEX = 5;
 // In-place inputs
 constexpr int64_t Q_OUT_INDEX = 6;
-constexpr int64_t K_CACHE_INDEX = 7;     
-constexpr int64_t V_CACHE_INDEX = 8;    
+constexpr int64_t K_CACHE_INDEX = 7;
+constexpr int64_t V_CACHE_INDEX = 8;
 // Quant Scale
-constexpr int64_t K_SCALE_IDX = 9; 
-constexpr int64_t V_SCALE_IDX = 10;   
+constexpr int64_t K_SCALE_IDX = 9;
+constexpr int64_t V_SCALE_IDX = 10;
 // Quant Offset
-constexpr int64_t K_OFFSET_IDX = 11;   
-constexpr int64_t V_OFFSET_IDX = 12;  
-constexpr float FAC_K = 0.6;  // K路和V路计算量的比例
+constexpr int64_t K_OFFSET_IDX = 11;
+constexpr int64_t V_OFFSET_IDX = 12;
+constexpr float FAC_K = 0.6; // K路和V路计算量的比例
 constexpr float NEAR_ONE = 0.999999f;
 
 // Attr Indices
@@ -133,10 +178,10 @@ static constexpr int64_t UB_RESERVED_BYTES = 1 * BYTES_PER_KILO_BYTE; // 多留1
 
 class QkvRmsNormRopeCacheTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit QkvRmsNormRopeCacheTilingBase(gert::TilingContext* tillingContext) : TilingBaseClass(tillingContext)
+    explicit QkvRmsNormRopeCacheTilingBase(gert::TilingContext *tillingContext)
+        : TilingBaseClass(tillingContext)
     {}
-    ~QkvRmsNormRopeCacheTilingBase() override
-    {}
+    ~QkvRmsNormRopeCacheTilingBase() override {}
     uint64_t tilingKey_{0};
     uint64_t coreNum_ = 0;
     uint64_t ubSize_ = 0;
@@ -173,7 +218,7 @@ public:
     int64_t isVQuant_ = 1;
 
     ge::DataType qkvDtype_{ge::DataType::DT_FLOAT16};
-    int64_t qkvDtypeSize_{0};// qkv数据类型所占字节数
+    int64_t qkvDtypeSize_{0}; // qkv数据类型所占字节数
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override
@@ -205,18 +250,17 @@ protected:
     void DumpTilingInfo() override {}
 
 protected:
-    std::tuple<int64_t, int64_t, int64_t, int64_t> GetShapeTuple(
-        const gert::TilingContext* context, const int64_t index = 0);
-    std::tuple<int64_t, int64_t> GetShapeTupleOfTH(
-        const gert::TilingContext* context, const int64_t index = 0);
+    std::tuple<int64_t, int64_t, int64_t, int64_t> GetShapeTuple(const gert::TilingContext *context,
+                                                                 const int64_t index = 0);
+    std::tuple<int64_t, int64_t> GetShapeTupleOfTH(const gert::TilingContext *context, const int64_t index = 0);
 };
 
 class QkvRmsNormRopeCacheTilingDs : virtual public QkvRmsNormRopeCacheTilingBase {
 public:
-    explicit QkvRmsNormRopeCacheTilingDs(gert::TilingContext* tillingContext) : QkvRmsNormRopeCacheTilingBase(tillingContext)
+    explicit QkvRmsNormRopeCacheTilingDs(gert::TilingContext *tillingContext)
+        : QkvRmsNormRopeCacheTilingBase(tillingContext)
     {}
-    ~QkvRmsNormRopeCacheTilingDs()
-    {}
+    ~QkvRmsNormRopeCacheTilingDs() {}
 
 protected:
     bool IsCapable() override;
@@ -241,6 +285,47 @@ protected:
 
 private:
     QkvRmsNormRopeCacheTilingData tilingData_;
+};
+
+// arch35(Ascend950 / DAV_3510)regbase tiling 模板。
+// 派生自 A2 的 Ds 模板,复用其 GetShapeAttrsInfoInner() 与全部 Check*Valid()
+// (shape/dtype/attr 支持面与 A2 严格一致),只重写切核/UB 反推与 tiling key。
+class QkvRmsNormRopeCacheTilingRegbase : public QkvRmsNormRopeCacheTilingDs {
+public:
+    // 基类是虚继承,最派生类必须显式初始化虚基类
+    explicit QkvRmsNormRopeCacheTilingRegbase(gert::TilingContext *tillingContext)
+        : QkvRmsNormRopeCacheTilingBase(tillingContext),
+          QkvRmsNormRopeCacheTilingDs(tillingContext)
+    {}
+    ~QkvRmsNormRopeCacheTilingRegbase() {}
+
+protected:
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus PostTiling() override;
+    void DumpTilingInfo() override;
+
+private:
+    void CalBlockTiling();
+    ge::graphStatus CalUbTiling();
+    // A5 侧收紧:cos/sin 第一维必须恰为 B*S(原委见 regbase_tiling.cpp 实现处)。
+    // 基类 CheckCosSinValid 是 A2/A3 共享的,额外放行了 [B,D] 广播形态;
+    // 本模板只在 regbase 内再校一次,不改动公共逻辑。
+    ge::graphStatus CheckCosSinExact();
+
+private:
+    QkvRmsNormRopeCacheRegbaseTilingData tilingData_;
+    // host 侧一次算准的 UB buffer 字节数,内核只透传
+    int64_t perTokenUbBytes_{0};
+    int64_t cosSinUbBytes_{0};
+    int64_t qOutUbBytes_{0};
+    int64_t kProtoUbBytes_{0};
+    int64_t vProtoUbBytes_{0};
+    int64_t kCacheUbBytes_{0};
+    int64_t vCacheUbBytes_{0};
+    int64_t inUbBytes_{0};
+    int64_t gammaUbBytes_{0};
+    int64_t quantUbBytes_{0};
 };
 } // namespace optiling
 

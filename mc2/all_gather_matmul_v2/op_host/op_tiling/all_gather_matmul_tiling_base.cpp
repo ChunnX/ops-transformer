@@ -1,12 +1,12 @@
-/* *
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file all_gather_matmul_tiling_base.cpp
@@ -207,6 +207,7 @@ bool AllGatherMatmulTilingBase::CheckGatherOutPara()
 {
     auto attrs = context_->GetAttrs();
     auto isGatherout = attrs->GetAttrPointer<bool>(IS_GATHER_OUT);
+    OP_TILING_CHECK(isGatherout == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "is_gather_out"), return false);
     auto gatherIndex = attrs->GetAttrPointer<int64_t>(GATHER_IDX);
     auto gatherOutShape = context_->GetOutputShape(GATHER_OUT);
     const gert::StorageShape *x1Shape = context_->GetInputShape(INPUT_X1);
@@ -430,9 +431,10 @@ ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
                                           // 返回1000+该数据类型的bit位数，比如DT_INT4数据类型，返回1004。
         sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
     } else {
-        sizeOfSingleM = args_.kValue * args_.rankDim *
-                        static_cast<uint64_t>(ge::GetSizeByDataType(args_.geAType) - GET_SIZE_BY_DATATYPE_THRESHOLD) /
-                        SINGLE_BYTE_BIT_LENGTH;
+        // 子字节类型返回值为1000+bit位数，先按bit累乘再CeilDiv向上取整换算为字节，避免整数除法截断为0
+        uint64_t bitsPerElem = static_cast<uint64_t>(ge::GetSizeByDataType(args_.geAType)) -
+                               static_cast<uint64_t>(GET_SIZE_BY_DATATYPE_THRESHOLD);
+        sizeOfSingleM = Ops::Base::CeilDiv(args_.kValue * args_.rankDim * bitsPerElem, SINGLE_BYTE_BIT_LENGTH);
     }
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
@@ -526,9 +528,8 @@ uint32_t AllGatherMatmulTilingBase::AllGatherSplitM(mc2tiling::TilingArgs &args,
 
 CutResult AllGatherMatmulTilingBase::GetTilingResult()
 {
-    SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
     OP_LOGD(opName_, "Start to find proper tileCnt by formulaic tiling.");
-    AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, inputSocVersion);
+    AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, npuArch_);
     tileFormulate.GetTiling();
     return tileFormulate.tilingM_.cutRes;
 }
@@ -613,6 +614,7 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK((attrs == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "attrs"), return false);
     group_ = attrs->GetAttrPointer<char>(GROUP);
+    OP_TILING_CHECK(group_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "group"), return false);
     commMode_ = attrs->GetAttrPointer<char>(COMM_MODE_INDEX);
     auto isTransA = attrs->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = attrs->GetAttrPointer<bool>(IS_TRANS_B);
@@ -648,8 +650,16 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     gatherIndex_ = gatherIndexPtr ? static_cast<uint32_t>(*gatherIndexPtr) : 0;
     OP_TILING_CHECK((args_.isATrans != 0), OP_LOGE_WITH_INVALID_ATTR(opName_, "isTransA", "true", "false"),
                     return false);
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
-    OP_TILING_CHECK(blockSize != 0,
+    // blockSize 语义:
+    //   0      - 非量化 (fp16/bf16 V2 路径)
+    //   32     - MX 量化  (fp8 QuantBmm 路径, FLOAT8_E8M0 scale, README §情形4)
+    //   packed - PerBlock 量化 (M | N<<16 | K<<32, FLOAT scale)
+    // 仅对非 fp8 输入硬拒非零值; fp8 路径由子类 IsCapable +
+    // AllGatherQuantBmmHelper::GetShapeAttrsInfo 区分校验, base 不拒 (否则 MX/PerBlock 不可达)。
+    auto blockSizePtr = attrs->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
+    const int64_t blockSize = blockSizePtr != nullptr ? *blockSizePtr : 0;
+    bool x1IsFp8 = CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST);
+    OP_TILING_CHECK(!x1IsFp8 && blockSize != 0,
                     OP_LOGE_WITH_INVALID_ATTR(opName_, "blockSize", std::to_string(blockSize).c_str(), "0"),
                     return false);
     OP_LOGD(opName_,
@@ -672,8 +682,14 @@ ge::graphStatus AllGatherMatmulTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 };
 
-ge::graphStatus AllGatherMatmulTilingBase::GetShapeAttrsInfo() { return AnalyzeShapeAttr(); };
-ge::graphStatus AllGatherMatmulTilingBase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus AllGatherMatmulTilingBase::GetShapeAttrsInfo()
+{
+    return AnalyzeShapeAttr();
+};
+ge::graphStatus AllGatherMatmulTilingBase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 uint64_t AllGatherMatmulTilingBase::CalcGatherLen(uint32_t dimA, uint32_t dimB, uint64_t alignAddrLen)
 {
@@ -692,7 +708,7 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
     uint64_t storageA = 0;
 
     // DAV_3510 全场景未使用nd2nzLen这个空间，无需申请
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != Ops::Base::DAV_3510) {
         // step1: ND2NZ
         if (gatherIndex == 0U) { // 转置B
             // 计算ND2NZ需使用空间方法保持与MMV3 tiling计算逻辑一致
@@ -746,7 +762,7 @@ uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
 
     // Non-A5 platform must use AICPU mode
     uint8_t commMode = Mc2Comm::COMM_MODE_AICPU;
-    if (npuArch_ == NpuArch::DAV_3510) {
+    if (npuArch_ == Ops::Base::DAV_3510) {
         if (std::strncmp(commMode_, "ccu", CMP_MAX_LEN) == 0) {
             commMode = Mc2Comm::COMM_MODE_CCU;
         }

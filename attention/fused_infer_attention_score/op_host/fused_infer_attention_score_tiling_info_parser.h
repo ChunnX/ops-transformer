@@ -30,8 +30,7 @@ class FiaInfoParser {
 public:
     explicit FiaInfoParser(const gert::TilingContext *context)
         : context_(context)
-    {
-    }
+    {}
     ~FiaInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -57,8 +56,7 @@ public:
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetKvCache();
     ge::graphStatus GetTensorListCache(uint32_t index, const std::string &name,
-                                       std::vector<gert::StorageShape *> &cache,
-                                       std::vector<gert::Stride *> &strides);
+                                       std::vector<gert::StorageShape *> &cache, std::vector<gert::Stride *> &strides);
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetEmptyTensorFlag();
@@ -156,8 +154,12 @@ public:
     const gert::Stride *kRopeStrides_ = nullptr;
     gert::Stride keyScaleContiguousStrides_;
     gert::Stride valueScaleContiguousStrides_;
+    gert::Stride keyOffsetContiguousStrides_;
+    gert::Stride valueOffsetContiguousStrides_;
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
+    const gert::Stride *kOffsetStrides_ = nullptr;
+    const gert::Stride *vOffsetStrides_ = nullptr;
     bool hasViewStride_ = true;
     uint64_t keyBnStride_ = 0;
     uint64_t keyN2Stride_ = 0;
@@ -165,6 +167,14 @@ public:
     uint64_t valueN2Stride_ = 0;
     uint64_t kRopeBnStride_ = 0;
     uint64_t kRopeN2Stride_ = 0;
+    uint64_t kScaleBnStride_ = 0;
+    uint64_t kScaleN2Stride_ = 0;
+    uint64_t vScaleBnStride_ = 0;
+    uint64_t vScaleN2Stride_ = 0;
+    uint64_t kOffsetBnStride_ = 0;
+    uint64_t kOffsetN2Stride_ = 0;
+    uint64_t vOffsetBnStride_ = 0;
+    uint64_t vOffsetN2Stride_ = 0;
     int32_t keyNonContigDim_ = -1;
     int32_t valueNonContigDim_ = -1;
     int32_t keyRopeNonContigDim_ = -1;

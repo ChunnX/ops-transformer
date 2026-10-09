@@ -23,6 +23,8 @@ namespace optiling {
 namespace sfag {
 constexpr int64_t MAX_CORE_NUM = 36;
 
+constexpr int64_t MAX_N1 = 128;
+
 class SparseFlashAttentionGradBaseParamsRegbase {
 public:
     int64_t b;
@@ -34,6 +36,8 @@ public:
     int64_t d1;
     int64_t totalSize;
     int64_t selectedBlockCount;
+    int64_t selectedBlockSize;
+    int64_t scatterWsRows;
     int64_t usedCoreNum;
     int64_t formerCoreNum;
     int64_t formerCoreProcessNNum;
@@ -45,7 +49,6 @@ public:
     int64_t mm4ResWorkSpaceOffset;
     int64_t mm5ResWorkSpaceOffset;
     int64_t isHeadNLe64;
-
     int64_t get_b() const
     {
         return b;
@@ -81,6 +84,14 @@ public:
     int64_t get_selectedBlockCount() const
     {
         return selectedBlockCount;
+    }
+    int64_t get_selectedBlockSize() const
+    {
+        return selectedBlockSize;
+    }
+    int64_t get_scatterWsRows() const
+    {
+        return scatterWsRows;
     }
     int64_t get_usedCoreNum() const
     {
@@ -162,6 +173,14 @@ public:
     void set_selectedBlockCount(int64_t selectedBlockCountParam)
     {
         this->selectedBlockCount = selectedBlockCountParam;
+    }
+    void set_selectedBlockSize(int64_t selectedBlockSizeParam)
+    {
+        this->selectedBlockSize = selectedBlockSizeParam;
+    }
+    void set_scatterWsRows(int64_t scatterWsRowsParam)
+    {
+        this->scatterWsRows = scatterWsRowsParam;
     }
     void set_usedCoreNum(int64_t usedCoreNumParam)
     {
@@ -314,6 +333,7 @@ public:
     int64_t dqWorkSpaceOffset;
     int64_t dkWorkSpaceOffset;
     int64_t dvWorkSpaceOffset;
+    int64_t dSinkWorkSpaceOffset;
 
     int64_t get_postUbBaseSize() const
     {
@@ -379,6 +399,10 @@ public:
     {
         return dvWorkSpaceOffset;
     }
+    int64_t get_dSinkWorkSpaceOffset() const
+    {
+        return dSinkWorkSpaceOffset;
+    }
 
     void set_postUbBaseSize(int64_t value)
     {
@@ -443,6 +467,10 @@ public:
     void set_dvWorkSpaceOffset(int64_t value)
     {
         this->dvWorkSpaceOffset = value;
+    }
+    void set_dSinkWorkSpaceOffset(int64_t value)
+    {
+        this->dSinkWorkSpaceOffset = value;
     }
 };
 

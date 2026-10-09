@@ -15,14 +15,14 @@
 #ifndef ALLTO_ALLV_GROUPED_MATMUL_TILING_A3_H
 #define ALLTO_ALLV_GROUPED_MATMUL_TILING_A3_H
 #include <vector>
-#include "../allto_allv_grouped_mat_mul_tiling.h"
+#include "../allto_allv_grouped_mat_mul_tiling_host.h"
 
 namespace optiling {
 class AlltoAllvGmmTilingA3 : public AlltoAllvGmmTiling {
 public:
-    explicit AlltoAllvGmmTilingA3(gert::TilingContext *context) : AlltoAllvGmmTiling(context)
-    {
-    }
+    explicit AlltoAllvGmmTilingA3(gert::TilingContext *context)
+        : AlltoAllvGmmTiling(context)
+    {}
     std::vector<int64_t> GetEpWorldSizeOptional() const override;
     bool NeedToCheckCounts() const override;
 };
@@ -34,10 +34,15 @@ public:
 
 class AlltoAllvGmmTilingStructA3 : public AlltoAllvGmmTilingStruct {
 public:
-    explicit AlltoAllvGmmTilingStructA3(gert::TilingContext *context) : AlltoAllvGmmTilingStruct(context) {};
+    explicit AlltoAllvGmmTilingStructA3(gert::TilingContext *context)
+        : AlltoAllvGmmTilingStruct(context) {};
 
 protected:
     ge::graphStatus DoOpTiling() override;
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus DoLibApiTiling() override;
+    ge::graphStatus GetWorkspaceSize() override;
+    ge::graphStatus PostTiling() override;
 };
 } // namespace optiling
 

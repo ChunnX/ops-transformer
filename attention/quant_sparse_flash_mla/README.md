@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :------------------------------------------------------------ | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>                        | √  |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>        | ×  |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>        | ×  |
-|<term>Atlas 200I/500 A2 推理产品</term>                    | ×  |
-|<term>Atlas 推理系列产品</term>                                | ×  |
-|<term>Atlas 训练系列产品</term>                                | ×  |
+|<term>Ascend 950PR&950DT系列产品</term>                        | √  |
+|<term>Atlas A3系列产品</term>        | ×  |
+|<term>Atlas A2系列产品</term>        | ×  |
+|<term>Atlas 200I/500 A2推理产品</term>                    | ×  |
+|<term>Atlas推理系列产品</term>                                | ×  |
+|<term>Atlas训练系列产品</term>                                | ×  |
 
 ## 功能说明
 
@@ -268,7 +268,7 @@
     <tr>
       <td>topk_value_mode</td>
       <td>可选属性</td>
-      <td>表示TopK索引取值模式。</td>
+      <td>表示TopK索引取值模式，默认值为1，支持1和2。取值1时稀疏索引表示逻辑token索引；取值2时，PA_BBND布局的稀疏索引表示物理token offset，即physical_block_id * block_size + offset_in_block。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -304,7 +304,7 @@
 - 通用规格约束如下：
   - N2仅支持1，D仅支持512。
   - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1；支持1到128。
-  - `ori_mask_mode`支持0/3/4，`cmp_mask_mode`支持0/3，`ori_win_left`支持-1或非负数，`ori_win_right`支持-1或非负数。
+  - `ori_mask_mode`支持0/3/4，`cmp_mask_mode`支持0/3，`ori_win_left`支持-1或非负数，`ori_win_right`支持-1或非负数，只有`ori_mask_mode`为4时，`ori_win_left`和`ori_win_right`可以>=0。
   - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致；PA_BBND场景下`block_size`支持1到1024。
   - 全平台均不支持传入非空Tensor。
 
@@ -339,4 +339,4 @@
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn API | [test_aclnn_quant_sparse_flash_mla](./examples/test_aclnn_quant_sparse_flash_mla.cpp) | 通过[aclnnQuantSparseFlashMla](./docs/aclnnQuantSparseFlashMla.md)调用QuantSparseFlashMla算子 |
-| PyTorch API | [quant_sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/quant_sparse_flash_mla.md) | 通过`cann_ops_transformer.quant_sparse_flash_mla`调用QuantSparseFlashMla算子 |
+| PyTorch API | [quant_sparse_flash_mla](../../attention/quant_sparse_flash_mla/docs/torchapi_quant_sparse_flash_mla.md) | 通过`cann_ops_transformer.quant_sparse_flash_mla`调用QuantSparseFlashMla算子 |
