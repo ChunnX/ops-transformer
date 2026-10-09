@@ -73,7 +73,7 @@ public:
                   "TileShape is too large to fit in UB");
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> const &resource)
+    BlockEpilogue(Arch::Resource<ArchTag> const& resource)
     {
         Mc2MatmulAivDequant::UbTensorAllocator<Arch::Resource<ArchTag>> ubAllocator(resource);
         Mc2MatmulAivDequant::EventIdAllocator eventAllocator;
@@ -119,9 +119,9 @@ public:
 
     // perChannel、perToken
     CATLASS_DEVICE
-    void operator()(__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
-                    __gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
-                    __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD, LayoutD layoutD,
+    void operator()(__gm__ ElementScale* ptrScale, LayoutScale layoutScale,
+                    __gm__ ElementPerTokenScale* ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
+                    __gm__ ElementC* ptrC, LayoutC layoutC, __gm__ ElementD* ptrD, LayoutD layoutD,
                     GemmCoord problemShape, bool isInt4Type = false)
     {
         gmScale.SetGlobalBuffer(ptrScale);
@@ -135,8 +135,8 @@ public:
 
     // perChannel
     CATLASS_DEVICE
-    void operator()(__gm__ ElementScale *ptrScale, LayoutScale layoutScale, __gm__ ElementC *ptrC, LayoutC layoutC,
-                    __gm__ ElementD *ptrD, LayoutD layoutD, GemmCoord problemShape, bool isInt4Type = false)
+    void operator()(__gm__ ElementScale* ptrScale, LayoutScale layoutScale, __gm__ ElementC* ptrC, LayoutC layoutC,
+                    __gm__ ElementD* ptrD, LayoutD layoutD, GemmCoord problemShape, bool isInt4Type = false)
     {
         gmScale.SetGlobalBuffer(ptrScale);
         gmC.SetGlobalBuffer(ptrC);
@@ -148,8 +148,8 @@ public:
 
     // perToken
     CATLASS_DEVICE
-    void operator()(__gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
-                    __gm__ ElementD *ptrD, LayoutD layoutD, GemmCoord problemShape, bool isInt4Type = false)
+    void operator()(__gm__ ElementPerTokenScale* ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
+                    __gm__ ElementD* ptrD, LayoutD layoutD, GemmCoord problemShape, bool isInt4Type = false)
     {
         gmPerTokenScale.SetGlobalBuffer(ptrPerTokenScale);
         gmD.SetGlobalBuffer(ptrD);
@@ -162,10 +162,10 @@ private:
     template <bool EnableScale, bool EnablePerToken, bool DAsInput>
     CATLASS_DEVICE void ComputeDequantTile()
     {
-        auto &ubD = ubDList[ubListId];
-        auto &ubC = ubCList[ubListId];
-        auto &ubScale = ubScaleList[ubListId];
-        auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
+        auto& ubD = ubDList[ubListId];
+        auto& ubC = ubCList[ubListId];
+        auto& ubScale = ubScaleList[ubListId];
+        auto& ubPerTokenScale = ubPerTokenScaleList[ubListId];
         // 在UB上把主输入 cast到FP32
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
         if constexpr (DAsInput) {
@@ -238,10 +238,10 @@ private:
             auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
             auto tileOffset = tileCoord * tileShape;
 
-            auto &ubD = ubDList[ubListId];
-            auto &ubC = ubCList[ubListId];
-            auto &ubScale = ubScaleList[ubListId];
-            auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
+            auto& ubD = ubDList[ubListId];
+            auto& ubC = ubCList[ubListId];
+            auto& ubScale = ubScaleList[ubListId];
+            auto& ubPerTokenScale = ubPerTokenScaleList[ubListId];
             auto gmTileD = gmD[layoutD.GetOffset(tileOffset)];
             auto layoutGmTileD = layoutD.GetTileLayout(actualTileShape);
             LayoutD layoutUbD{actualTileShape, ubTileStride};
