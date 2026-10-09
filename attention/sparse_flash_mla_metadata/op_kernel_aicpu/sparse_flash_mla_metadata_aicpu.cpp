@@ -1566,8 +1566,8 @@ bool SparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
     const uint32_t aicCoreMaxNum =
         ProcessSocVersion() == ValidSocVersion::ASCEND960 ? SMLA_A6_AIC_CORE_MAX_NUM : AIC_CORE_MAX_NUM;
     uint32_t *metadataBase = static_cast<uint32_t *>(metadata_->GetData());
-    auto *metadataPtr = reinterpret_cast<FaView *>(metadataBase);
-    auto *fdPtr = reinterpret_cast<FdView *>(metadataBase + FA_METADATA_SIZE * aicCoreMaxNum);
+    auto *metadataPtr = static_cast<FaView *>(static_cast<void *>(metadataBase));
+    auto *fdPtr = static_cast<FdView *>(static_cast<void *>(metadataBase + FA_METADATA_SIZE * aicCoreMaxNum));
     *metadataPtr = {};
     *fdPtr = {};
     // FA Metadata Generate

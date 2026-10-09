@@ -22,7 +22,7 @@
 namespace optiling {
 
 // Constants
-#if (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
 constexpr uint32_t AIC_CORE_MAX_NUM = 80;
 constexpr uint32_t AIV_CORE_MAX_NUM = 80;
 #else
