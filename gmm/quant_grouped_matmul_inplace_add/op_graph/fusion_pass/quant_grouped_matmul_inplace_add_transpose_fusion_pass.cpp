@@ -16,8 +16,10 @@
 #include <vector>
 
 #include "ge/fusion/pass/pattern_fusion_pass.h"
+#include "acl/acl_rt.h"
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
+#include "securec.h"
 #include "version/ge-compiler_version.h"
 
 namespace ge {
@@ -27,14 +29,22 @@ namespace fusion {
 // compatibility with both GE versions.
 class GraphFuseInspectorUtils {
 public:
-    static Status ReportFuse(const std::vector<GNode> &nodesBeforeFuse,
-        const std::vector<GNode> &nodesAfterFuse, CustomPassContext &ctx) __attribute__((weak));
+    static Status ReportFuse(const std::vector<GNode>& nodesBeforeFuse, const std::vector<GNode>& nodesAfterFuse,
+                             CustomPassContext& ctx) __attribute__((weak));
 };
 } // namespace fusion
 } // namespace ge
 
 namespace ops {
 namespace {
+constexpr int32_t kCompatibleInheritedSupportVersion = 90100000;
+
+bool IsTargetVersion()
+{
+    int32_t version = 0;
+    return aclsysGetVersionNum("ge-compiler", &version) == ACL_SUCCESS && version >= kCompatibleInheritedSupportVersion;
+}
+
 constexpr char kPassName[] = "QuantGroupedMatmulInplaceAddTransposeFusionPass";
 constexpr char kTargetType[] = "QuantGroupedMatmulInplaceAdd";
 constexpr char kTransposeType[] = "Transpose";
@@ -57,7 +67,7 @@ struct InputPattern {
     int32_t sourcePort = 0;
 };
 
-bool IsType(const ge::GNodePtr &node, const char *expected)
+bool IsType(const ge::GNodePtr& node, const char* expected)
 {
     if (node == nullptr) {
         return false;
@@ -66,13 +76,13 @@ bool IsType(const ge::GNodePtr &node, const char *expected)
     return node->GetType(type) == ge::GRAPH_SUCCESS && type == expected;
 }
 
-bool IsType(const ge::GNode &node, const char *expected)
+bool IsType(const ge::GNode& node, const char* expected)
 {
     ge::AscendString type;
     return node.GetType(type) == ge::GRAPH_SUCCESS && type == expected;
 }
 
-ge::GNodePtr GetInputNode(const ge::GNode &node, int32_t inputIndex, int32_t *outputPort = nullptr)
+ge::GNodePtr GetInputNode(const ge::GNode& node, int32_t inputIndex, int32_t* outputPort = nullptr)
 {
     auto [inputNode, inputPort] = node.GetInDataNodesAndPortIndexs(inputIndex);
     if (outputPort != nullptr) {
@@ -81,7 +91,7 @@ ge::GNodePtr GetInputNode(const ge::GNode &node, int32_t inputIndex, int32_t *ou
     return inputNode;
 }
 
-bool BuildInputPattern(ge::GNode &target, int32_t inputIndex, InputPattern &pattern)
+bool BuildInputPattern(ge::GNode& target, int32_t inputIndex, InputPattern& pattern)
 {
     auto immediateInput = GetInputNode(target, inputIndex);
     if (IsType(immediateInput, kBitcastType)) {
@@ -98,7 +108,7 @@ bool BuildInputPattern(ge::GNode &target, int32_t inputIndex, InputPattern &patt
     return pattern.source != nullptr;
 }
 
-bool GetTransposePerm(const ge::GNodePtr &node, std::vector<int64_t> &perm)
+bool GetTransposePerm(const ge::GNodePtr& node, std::vector<int64_t>& perm)
 {
     if (IsType(node, kTransposeDType)) {
         return node->GetAttr("perm", perm) == ge::GRAPH_SUCCESS;
@@ -116,9 +126,18 @@ bool GetTransposePerm(const ge::GNodePtr &node, std::vector<int64_t> &perm)
                            value.GetSize() / sizeof(int32_t) :
                            (desc.GetDataType() == ge::DT_INT64 ? value.GetSize() / sizeof(int64_t) : 0U);
     for (std::size_t i = 0; i < count; ++i) {
-        perm.emplace_back(desc.GetDataType() == ge::DT_INT32 ?
-                              static_cast<int64_t>(reinterpret_cast<const int32_t *>(value.GetData())[i]) :
-                              reinterpret_cast<const int64_t *>(value.GetData())[i]);
+        int64_t element = 0;
+        if (desc.GetDataType() == ge::DT_INT32) {
+            int32_t element32 = 0;
+            if (memcpy_s(&element32, sizeof(element32), value.GetData() + i * sizeof(element32), sizeof(element32)) !=
+                EOK) {
+                return false;
+            }
+            element = element32;
+        } else if (memcpy_s(&element, sizeof(element), value.GetData() + i * sizeof(element), sizeof(element)) != EOK) {
+            return false;
+        }
+        perm.emplace_back(element);
     }
     return count != 0U;
 }
@@ -136,7 +155,7 @@ bool IsSameOrUnknown(int64_t expected, int64_t actual)
     return expected == actual || IsUnknownDim(expected) || IsUnknownDim(actual);
 }
 
-bool IsEquivalentReshape(const ge::GNodePtr &node, const std::vector<int64_t> &perm)
+bool IsEquivalentReshape(const ge::GNodePtr& node, const std::vector<int64_t>& perm)
 {
     if (!IsType(node, kReshapeType)) {
         return false;
@@ -183,7 +202,7 @@ bool IsEquivalentReshape(const ge::GNodePtr &node, const std::vector<int64_t> &p
     return true;
 }
 
-bool CheckPattern(const InputPattern &pattern, const std::vector<int64_t> &expectedPerm)
+bool CheckPattern(const InputPattern& pattern, const std::vector<int64_t>& expectedPerm)
 {
     if (pattern.bitcast != nullptr && pattern.bitcast->GetOutDataNodesAndPortIndexs(0).size() != 1U) {
         return false;
@@ -198,7 +217,7 @@ bool CheckPattern(const InputPattern &pattern, const std::vector<int64_t> &expec
     return GetTransposePerm(pattern.transposeLike, actualPerm) && actualPerm == expectedPerm;
 }
 
-bool CheckTarget(ge::GNode &target)
+bool CheckTarget(ge::GNode& target)
 {
     ge::TensorDesc x1Desc;
     ge::TensorDesc x2Desc;
@@ -215,14 +234,14 @@ bool CheckTarget(ge::GNode &target)
            x2Desc.GetShape().GetDimNum() >= 2U;
 }
 
-bool IsMxMode(ge::GNode &target)
+bool IsMxMode(ge::GNode& target)
 {
     ge::TensorDesc scale1Desc;
     return target.GetInputDesc(kScale1Index, scale1Desc) == ge::GRAPH_SUCCESS &&
            scale1Desc.GetDataType() == ge::DT_FLOAT8_E8M0;
 }
 
-bool UpdateBitcast(ge::GNode &bitcast, const ge::TensorDesc &sourceDesc, ge::TensorDesc &targetDesc)
+bool UpdateBitcast(ge::GNode& bitcast, const ge::TensorDesc& sourceDesc, ge::TensorDesc& targetDesc)
 {
     ge::TensorDesc bitcastOutput;
     if (bitcast.GetOutputDesc(0, bitcastOutput) != ge::GRAPH_SUCCESS ||
@@ -244,9 +263,9 @@ bool UpdateBitcast(ge::GNode &bitcast, const ge::TensorDesc &sourceDesc, ge::Ten
     return true;
 }
 
-bool RelinkInput(ge::GraphPtr &graph, ge::GNode &target, int32_t inputIndex, const InputPattern &pattern)
+bool RelinkInput(ge::GraphPtr& graph, ge::GNode& target, int32_t inputIndex, const InputPattern& pattern)
 {
-    ge::GNode &destination = pattern.bitcast == nullptr ? target : *pattern.bitcast;
+    ge::GNode& destination = pattern.bitcast == nullptr ? target : *pattern.bitcast;
     const int32_t destinationPort = pattern.bitcast == nullptr ? inputIndex : 0;
     if (graph->RemoveEdge(*pattern.oldSource, 0, destination, destinationPort) != ge::GRAPH_SUCCESS ||
         graph->AddDataEdge(*pattern.source, pattern.sourcePort, destination, destinationPort) != ge::GRAPH_SUCCESS) {
@@ -263,7 +282,7 @@ bool RelinkInput(ge::GraphPtr &graph, ge::GNode &target, int32_t inputIndex, con
     return target.UpdateInputDesc(inputIndex, targetDesc) == ge::GRAPH_SUCCESS;
 }
 
-bool RemoveNodeIfUnused(ge::GraphPtr &graph, const ge::GNodePtr &node)
+bool RemoveNodeIfUnused(ge::GraphPtr& graph, const ge::GNodePtr& node)
 {
     if (node == nullptr || !node->GetOutDataNodesAndPortIndexs(0).empty()) {
         return true;
@@ -285,7 +304,7 @@ bool RemoveNodeIfUnused(ge::GraphPtr &graph, const ge::GNodePtr &node)
     if (graph->RemoveNode(*node) != ge::GRAPH_SUCCESS) {
         return false;
     }
-    for (const auto &constNode : constNodes) {
+    for (const auto& constNode : constNodes) {
         if (!RemoveNodeIfUnused(graph, constNode)) {
             return false;
         }
@@ -293,8 +312,8 @@ bool RemoveNodeIfUnused(ge::GraphPtr &graph, const ge::GNodePtr &node)
     return true;
 }
 
-void ReportFusion(const std::vector<ge::GNode> &nodesBeforeFuse, const ge::GNode &target,
-                  ge::CustomPassContext &passContext)
+void ReportFusion(const std::vector<ge::GNode>& nodesBeforeFuse, const ge::GNode& target,
+                  ge::CustomPassContext& passContext)
 {
     const auto reportFuse = ge::fusion::GraphFuseInspectorUtils::ReportFuse;
     if (reportFuse == nullptr) {
@@ -306,14 +325,14 @@ void ReportFusion(const std::vector<ge::GNode> &nodesBeforeFuse, const ge::GNode
     }
 }
 
-void AddNodeToReport(const ge::GNodePtr &node, std::vector<ge::GNode> &nodesBeforeFuse)
+void AddNodeToReport(const ge::GNodePtr& node, std::vector<ge::GNode>& nodesBeforeFuse)
 {
     if (node != nullptr) {
         nodesBeforeFuse.emplace_back(*node);
     }
 }
 
-ge::Status FuseNode(ge::GraphPtr &graph, ge::GNode &target, ge::CustomPassContext &passContext)
+ge::Status FuseNode(ge::GraphPtr& graph, ge::GNode& target, ge::CustomPassContext& passContext)
 {
     if (!CheckTarget(target)) {
         return ge::GRAPH_NOT_CHANGED;
@@ -346,26 +365,26 @@ ge::Status FuseNode(ge::GraphPtr &graph, ge::GNode &target, ge::CustomPassContex
     return ge::SUCCESS;
 }
 
-ge::Status RunFusion(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
+ge::Status RunFusion(ge::GraphPtr& graph, ge::CustomPassContext& passContext)
 {
-    OP_LOGD(kPassName,
+    OP_LOGD(
+        kPassName,
         "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] Enter migrated QuantGroupedMatmulInplaceAdd transpose fusion pass.");
     if (graph == nullptr || !graph->IsValid()) {
         return ge::GRAPH_NOT_CHANGED;
     }
-    passContext.SetPassName(kPassName);
     std::vector<ge::GNode> targets;
-    for (auto &node : graph->GetDirectNode()) {
+    for (auto& node : graph->GetDirectNode()) {
         if (IsType(node, kTargetType)) {
             targets.emplace_back(node);
         }
     }
     bool changed = false;
-    for (auto &target : targets) {
+    for (auto& target : targets) {
         const auto status = FuseNode(graph, target, passContext);
         if (status == ge::SUCCESS) {
             OP_LOGD(kPassName,
-                "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] QuantGroupedMatmulInplaceAdd fusion triggered.");
+                    "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] QuantGroupedMatmulInplaceAdd fusion triggered.");
             changed = true;
         } else if (status != ge::GRAPH_NOT_CHANGED) {
             return status;
@@ -375,13 +394,17 @@ ge::Status RunFusion(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
 }
 } // namespace
 
-ge::Status QuantGroupedMatmulInplaceAddTransposeFusionPass::Run(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
+ge::Status QuantGroupedMatmulInplaceAddTransposeFusionPass::Run(ge::GraphPtr& graph, ge::CustomPassContext& passContext)
 {
+    if (!IsTargetVersion()) {
+        return ge::GRAPH_NOT_CHANGED;
+    }
     return RunFusion(graph, passContext);
 }
 
 #if GE_COMPILER_VERSION_NUM >= 90100000
-REG_FUSION_PASS(QuantGroupedMatmulInplaceAddTransposeFusionPass).Stage(ge::CustomPassStage::kCompatibleInherited);
+REG_FUSION_PASS(QuantGroupedMatmulInplaceAddTransposeFusionPass)
+    .Stage(IsTargetVersion() ? ge::CustomPassStage::kCompatibleInherited : ge::CustomPassStage::kAfterInferShape);
 #endif
 } // namespace ops
 #endif

@@ -52,13 +52,13 @@ struct FusionCase {
 
 class TestGroupedMatmulSwigluQuantTransposeFusionPass : public ops::GroupedMatmulSwigluQuantTransposeFusionPass {
 public:
-    Status RunForTest(GraphPtr &graph, CustomPassContext &passContext)
+    Status RunForTest(GraphPtr& graph, CustomPassContext& passContext)
     {
         return Run(graph, passContext);
     }
 };
 
-static std::vector<std::pair<int64_t, int64_t>> MakeShapeRange(const std::vector<int64_t> &shape)
+static std::vector<std::pair<int64_t, int64_t>> MakeShapeRange(const std::vector<int64_t>& shape)
 {
     std::vector<std::pair<int64_t, int64_t>> range;
     range.reserve(shape.size());
@@ -68,7 +68,7 @@ static std::vector<std::pair<int64_t, int64_t>> MakeShapeRange(const std::vector
     return range;
 }
 
-static TensorDesc MakeTensorDesc(const std::vector<int64_t> &shape, DataType dtype, Format format = FORMAT_ND)
+static TensorDesc MakeTensorDesc(const std::vector<int64_t>& shape, DataType dtype, Format format = FORMAT_ND)
 {
     TensorDesc desc(Shape(shape), format, dtype);
     desc.SetOriginFormat(format);
@@ -77,7 +77,7 @@ static TensorDesc MakeTensorDesc(const std::vector<int64_t> &shape, DataType dty
     return desc;
 }
 
-static std::vector<int64_t> TransposeLastTwoDims(const std::vector<int64_t> &shape)
+static std::vector<int64_t> TransposeLastTwoDims(const std::vector<int64_t>& shape)
 {
     auto transposedShape = shape;
     if (transposedShape.size() >= 2) {
@@ -86,7 +86,7 @@ static std::vector<int64_t> TransposeLastTwoDims(const std::vector<int64_t> &sha
     return transposedShape;
 }
 
-static GNode BuildUnaryNode(Graph *graph, const char *opType, const char *nodeName, const TensorDesc &outputDesc)
+static GNode BuildUnaryNode(Graph* graph, const char* opType, const char* nodeName, const TensorDesc& outputDesc)
 {
     return ge::es::CompliantNodeBuilder(graph)
         .OpType(opType)
@@ -99,8 +99,8 @@ static GNode BuildUnaryNode(Graph *graph, const char *opType, const char *nodeNa
         .Build();
 }
 
-static void LinkUnaryNode(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input, GNode &node,
-                          const TensorDesc &outputDesc)
+static void LinkUnaryNode(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input, GNode& node,
+                          const TensorDesc& outputDesc)
 {
     ge::es::AddEdgeAndUpdatePeerDesc(*graph, *input.tensor.GetProducer(), input.tensor.GetProducerOutIndex(), node, 0);
     node.UpdateInputDesc(0, input.desc);
@@ -109,8 +109,8 @@ static void LinkUnaryNode(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Te
     input.desc = outputDesc;
 }
 
-static void AddTranspose(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input,
-                         const char *nodeName, bool validPerm = true)
+static void AddTranspose(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input,
+                         const char* nodeName, bool validPerm = true)
 {
     auto outputDims = input.desc.GetShape().GetDims();
     std::vector<int64_t> perm;
@@ -130,7 +130,7 @@ static void AddTranspose(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Ten
     LinkUnaryNode(graph, graphBuilder, input, transposeNode, outputDesc);
 }
 
-static void AddReshape(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input, const char *nodeName,
+static void AddReshape(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input, const char* nodeName,
                        bool validShape)
 {
     auto outputDims = TransposeLastTwoDims(input.desc.GetShape().GetDims());
@@ -142,7 +142,7 @@ static void AddReshape(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Tenso
     LinkUnaryNode(graph, graphBuilder, input, reshapeNode, outputDesc);
 }
 
-static void AddBitcast(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input, const char *nodeName)
+static void AddBitcast(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input, const char* nodeName)
 {
     auto outputDesc = input.desc;
     outputDesc.SetDataType(DT_HIFLOAT8);
@@ -152,14 +152,14 @@ static void AddBitcast(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Tenso
     bitcastNode.SetAttr("type", bitcastType);
 }
 
-static void LinkGmmInput(Graph *graph, GNode &gmmNode, const TensorWithDesc &input, int64_t inputIndex)
+static void LinkGmmInput(Graph* graph, GNode& gmmNode, const TensorWithDesc& input, int64_t inputIndex)
 {
     ge::es::AddEdgeAndUpdatePeerDesc(*graph, *input.tensor.GetProducer(), input.tensor.GetProducerOutIndex(), gmmNode,
                                      inputIndex);
     gmmNode.UpdateInputDesc(inputIndex, input.desc);
 }
 
-static GNode BuildGmmNode(Graph *graph)
+static GNode BuildGmmNode(Graph* graph)
 {
     return ge::es::CompliantNodeBuilder(graph)
         .OpType("GroupedMatmulSwigluQuantV2")
@@ -187,10 +187,10 @@ static GNode BuildGmmNode(Graph *graph)
         .Build();
 }
 
-static GraphPtr BuildGraph(const FusionCase &param)
+static GraphPtr BuildGraph(const FusionCase& param)
 {
     auto graphBuilder = ge::es::EsGraphBuilder(param.caseName.c_str());
-    auto *graph = graphBuilder.GetCGraphBuilder()->GetGraph();
+    auto* graph = graphBuilder.GetCGraphBuilder()->GetGraph();
 
     auto xDesc = MakeTensorDesc({4, 64}, param.xDtype);
     auto xScaleDesc = MakeTensorDesc({4, 1}, DT_FLOAT);
@@ -252,7 +252,7 @@ static GraphPtr BuildGraph(const FusionCase &param)
     return graphBuilder.BuildAndReset({output});
 }
 
-static int CountNodes(const GraphPtr &graph, const char *nodeType)
+static int CountNodes(const GraphPtr& graph, const char* nodeType)
 {
     int count = 0;
     for (auto node : graph->GetAllNodes()) {
@@ -264,7 +264,7 @@ static int CountNodes(const GraphPtr &graph, const char *nodeType)
     return count;
 }
 
-static GNode FindGmmNode(const GraphPtr &graph)
+static GNode FindGmmNode(const GraphPtr& graph)
 {
     for (auto node : graph->GetAllNodes()) {
         AscendString type;
@@ -280,11 +280,10 @@ class GroupedMatmulSwigluQuantTransposeFusionPassTest : public testing::TestWith
 
 TEST_P(GroupedMatmulSwigluQuantTransposeFusionPassTest, RunFusionPass)
 {
-    const auto &param = GetParam();
+    const auto& param = GetParam();
     auto graph = BuildGraph(param);
 
     CustomPassContext passContext;
-    passContext.SetPassName("GroupedMatmulSwigluQuantTransposeFusionPass");
     TestGroupedMatmulSwigluQuantTransposeFusionPass pass;
     auto status = pass.RunForTest(graph, passContext);
 
@@ -299,7 +298,7 @@ TEST_P(GroupedMatmulSwigluQuantTransposeFusionPassTest, RunFusionPass)
     EXPECT_EQ(transposeWeight, param.expectedTransposeWeight);
 }
 
-std::string TestName(const testing::TestParamInfo<FusionCase> &info)
+std::string TestName(const testing::TestParamInfo<FusionCase>& info)
 {
     return info.param.caseName;
 }

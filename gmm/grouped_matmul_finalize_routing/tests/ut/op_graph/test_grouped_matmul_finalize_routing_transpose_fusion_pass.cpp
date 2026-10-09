@@ -56,13 +56,13 @@ struct FusionCase {
 class TestGroupedMatmulFinalizeRoutingTransposeFusionPass
     : public ops::GroupedMatmulFinalizeRoutingTransposeFusionPass {
 public:
-    Status RunForTest(GraphPtr &graph, CustomPassContext &passContext)
+    Status RunForTest(GraphPtr& graph, CustomPassContext& passContext)
     {
         return Run(graph, passContext);
     }
 };
 
-static std::vector<std::pair<int64_t, int64_t>> MakeShapeRange(const std::vector<int64_t> &shape)
+static std::vector<std::pair<int64_t, int64_t>> MakeShapeRange(const std::vector<int64_t>& shape)
 {
     std::vector<std::pair<int64_t, int64_t>> range;
     range.reserve(shape.size());
@@ -72,12 +72,12 @@ static std::vector<std::pair<int64_t, int64_t>> MakeShapeRange(const std::vector
     return range;
 }
 
-static void SetPlatformSupport()
+static void SetPlatformSupport(const std::string& socVersion = "Ascend950")
 {
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
-    platformInfo.str_info.short_soc_version = "Ascend950";
-    optionalInfo.soc_version = "Ascend950";
+    platformInfo.str_info.short_soc_version = socVersion;
+    optionalInfo.soc_version = socVersion;
     fe::PlatformInfoManager::Instance().platform_info_map_.clear();
     fe::PlatformInfoManager::Instance().platform_info_map_[optionalInfo.soc_version] = platformInfo;
     fe::PlatformInfoManager::Instance().SetOptionalCompilationInfo(optionalInfo);
@@ -88,7 +88,7 @@ static void ClearPlatformSupport()
     fe::PlatformInfoManager::Instance().platform_info_map_.clear();
 }
 
-static TensorDesc MakeTensorDesc(const std::vector<int64_t> &shape, DataType dtype, Format format = FORMAT_ND)
+static TensorDesc MakeTensorDesc(const std::vector<int64_t>& shape, DataType dtype, Format format = FORMAT_ND)
 {
     TensorDesc desc(Shape(shape), format, dtype);
     desc.SetOriginFormat(format);
@@ -97,7 +97,7 @@ static TensorDesc MakeTensorDesc(const std::vector<int64_t> &shape, DataType dty
     return desc;
 }
 
-static std::vector<int64_t> TransposeLastTwoDims(const std::vector<int64_t> &shape)
+static std::vector<int64_t> TransposeLastTwoDims(const std::vector<int64_t>& shape)
 {
     auto transposedShape = shape;
     if (transposedShape.size() >= 2) {
@@ -106,7 +106,7 @@ static std::vector<int64_t> TransposeLastTwoDims(const std::vector<int64_t> &sha
     return transposedShape;
 }
 
-static GNode BuildUnaryNode(Graph *graph, const char *opType, const char *nodeName, const TensorDesc &outputDesc)
+static GNode BuildUnaryNode(Graph* graph, const char* opType, const char* nodeName, const TensorDesc& outputDesc)
 {
     return ge::es::CompliantNodeBuilder(graph)
         .OpType(opType)
@@ -119,8 +119,8 @@ static GNode BuildUnaryNode(Graph *graph, const char *opType, const char *nodeNa
         .Build();
 }
 
-static void LinkUnaryNode(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input, GNode &node,
-                          const TensorDesc &outputDesc)
+static void LinkUnaryNode(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input, GNode& node,
+                          const TensorDesc& outputDesc)
 {
     ge::es::AddEdgeAndUpdatePeerDesc(*graph, *input.tensor.GetProducer(), input.tensor.GetProducerOutIndex(), node, 0);
     node.UpdateInputDesc(0, input.desc);
@@ -129,8 +129,8 @@ static void LinkUnaryNode(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Te
     input.desc = outputDesc;
 }
 
-static void AddTranspose(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input,
-                         const char *nodeName, bool validPerm = true)
+static void AddTranspose(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input,
+                         const char* nodeName, bool validPerm = true)
 {
     auto outputDims = input.desc.GetShape().GetDims();
     std::vector<int64_t> perm;
@@ -150,7 +150,7 @@ static void AddTranspose(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Ten
     LinkUnaryNode(graph, graphBuilder, input, transposeNode, outputDesc);
 }
 
-static void AddReshape(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input, const char *nodeName,
+static void AddReshape(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input, const char* nodeName,
                        bool validShape)
 {
     auto outputDims = TransposeLastTwoDims(input.desc.GetShape().GetDims());
@@ -162,7 +162,7 @@ static void AddReshape(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Tenso
     LinkUnaryNode(graph, graphBuilder, input, reshapeNode, outputDesc);
 }
 
-static void AddBitcast(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input, const char *nodeName)
+static void AddBitcast(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input, const char* nodeName)
 {
     auto outputDesc = input.desc;
     outputDesc.SetDataType(DT_HIFLOAT8);
@@ -172,7 +172,7 @@ static void AddBitcast(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, Tenso
     bitcastNode.SetAttr("type", bitcastType);
 }
 
-static void AddStaticFp4WeightChain(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input)
+static void AddStaticFp4WeightChain(Graph* graph, ge::es::EsGraphBuilder& graphBuilder, TensorWithDesc& input)
 {
     // This is the static graph emitted by TorchAir for a single-group FP4
     // transposed weight: carrier Reshape -> 2-D Transpose -> Reshape ->
@@ -204,14 +204,14 @@ static void AddStaticFp4WeightChain(Graph *graph, ge::es::EsGraphBuilder &graphB
     LinkUnaryNode(graph, graphBuilder, input, tail, tailDesc);
 }
 
-static void LinkGmmInput(Graph *graph, GNode &gmmNode, const TensorWithDesc &input, int64_t inputIndex)
+static void LinkGmmInput(Graph* graph, GNode& gmmNode, const TensorWithDesc& input, int64_t inputIndex)
 {
     ge::es::AddEdgeAndUpdatePeerDesc(*graph, *input.tensor.GetProducer(), input.tensor.GetProducerOutIndex(), gmmNode,
                                      inputIndex);
     gmmNode.UpdateInputDesc(inputIndex, input.desc);
 }
 
-static GNode BuildGmmNode(Graph *graph)
+static GNode BuildGmmNode(Graph* graph)
 {
     return ge::es::CompliantNodeBuilder(graph)
         .OpType("GroupedMatmulFinalizeRouting")
@@ -235,15 +235,17 @@ static GNode BuildGmmNode(Graph *graph)
         .Build();
 }
 
-static GraphPtr BuildGraph(const FusionCase &param)
+static GraphPtr BuildGraph(const FusionCase& param)
 {
     auto graphBuilder = ge::es::EsGraphBuilder(param.caseName.c_str());
-    auto *graph = graphBuilder.GetCGraphBuilder()->GetGraph();
+    auto* graph = graphBuilder.GetCGraphBuilder()->GetGraph();
 
     auto xDesc = MakeTensorDesc({4, 64}, param.xDtype);
-    const auto weightShape = param.specialFp4StaticChain ? std::vector<int64_t>{1, 7168, 1024} :
-        (param.useWeightReshape && param.validWeightPattern && !param.nonUnitWeightReshape ?
-             std::vector<int64_t>{2, 1, 64} : std::vector<int64_t>{2, 32, 64});
+    const auto weightShape = param.specialFp4StaticChain ?
+                                 std::vector<int64_t>{1, 7168, 1024} :
+                                 (param.useWeightReshape && param.validWeightPattern && !param.nonUnitWeightReshape ?
+                                      std::vector<int64_t>{2, 1, 64} :
+                                      std::vector<int64_t>{2, 32, 64});
     auto weightDesc = MakeTensorDesc(weightShape, param.specialFp4StaticChain ? DT_INT8 : param.weightDtype);
     const auto weightScaleShape =
         param.weightScaleDtype == DT_FLOAT8_E8M0 ? std::vector<int64_t>{2, 32, 1, 2} : std::vector<int64_t>{2, 1};
@@ -290,7 +292,7 @@ static GraphPtr BuildGraph(const FusionCase &param)
     return graphBuilder.BuildAndReset({output});
 }
 
-static int CountNodes(const GraphPtr &graph, const char *nodeType)
+static int CountNodes(const GraphPtr& graph, const char* nodeType)
 {
     int count = 0;
     for (auto node : graph->GetAllNodes()) {
@@ -302,7 +304,7 @@ static int CountNodes(const GraphPtr &graph, const char *nodeType)
     return count;
 }
 
-static GNode FindGmmNode(const GraphPtr &graph)
+static GNode FindGmmNode(const GraphPtr& graph)
 {
     for (auto node : graph->GetAllNodes()) {
         AscendString type;
@@ -316,13 +318,24 @@ static GNode FindGmmNode(const GraphPtr &graph)
 
 class GroupedMatmulFinalizeRoutingTransposeFusionPassTest : public testing::TestWithParam<FusionCase> {};
 
+TEST(GroupedMatmulFinalizeRoutingTransposeFusionPlatformTest, Ascend350SupportsTransposeFusion)
+{
+    FusionCase param{"ascend350", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, false, true, true, SUCCESS, 0, 0, 0, true};
+    auto graph = BuildGraph(param);
+    CustomPassContext passContext;
+    TestGroupedMatmulFinalizeRoutingTransposeFusionPass pass;
+    SetPlatformSupport("Ascend350");
+    EXPECT_EQ(pass.RunForTest(graph, passContext), SUCCESS);
+    EXPECT_EQ(CountNodes(graph, "TransposeD"), 0);
+    ClearPlatformSupport();
+}
+
 TEST_P(GroupedMatmulFinalizeRoutingTransposeFusionPassTest, RunFusionPass)
 {
-    const auto &param = GetParam();
+    const auto& param = GetParam();
     auto graph = BuildGraph(param);
 
     CustomPassContext passContext;
-    passContext.SetPassName("GroupedMatmulFinalizeRoutingTransposeFusionPass");
     TestGroupedMatmulFinalizeRoutingTransposeFusionPass pass;
     SetPlatformSupport();
     auto status = pass.RunForTest(graph, passContext);
@@ -339,35 +352,34 @@ TEST_P(GroupedMatmulFinalizeRoutingTransposeFusionPassTest, RunFusionPass)
     EXPECT_EQ(transposeWeight, param.expectedTransposeWeight);
 }
 
-std::string TestName(const testing::TestParamInfo<FusionCase> &info)
+std::string TestName(const testing::TestParamInfo<FusionCase>& info)
 {
     return info.param.caseName;
 }
 
-INSTANTIATE_TEST_CASE_P(GroupedMatmulFinalizeRoutingTransposeFusionPass,
-                        GroupedMatmulFinalizeRoutingTransposeFusionPassTest,
-                        testing::Values(FusionCase{"mx_direct_weight_scale_transpose", DT_INT8, DT_INT8, DT_FLOAT8_E8M0,
-                                                   false, false, true, true, SUCCESS, 0, 0, 0, true},
-                                        FusionCase{"mx_bitcast_weight_transpose", DT_INT8, DT_FLOAT4_E2M1,
-                                                   DT_FLOAT8_E8M0, true, false, true, true, SUCCESS, 0, 0, 1, true},
-                                        FusionCase{"mx_weight_scale_transpose", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false,
-                                                   false, true, true, SUCCESS, 0, 0, 0, true},
-                                        FusionCase{"unsupported_x_dtype", DT_FLOAT16, DT_INT8, DT_FLOAT8_E8M0, false,
-                                                   false, true, true, GRAPH_NOT_CHANGED, 2, 0, 0, false},
-                                        FusionCase{"invalid_weight_perm", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false,
-                                                   false, false, true, GRAPH_NOT_CHANGED, 2, 0, 0, false},
-                                        FusionCase{"mx_missing_scale_transpose", DT_INT8, DT_INT8, DT_FLOAT8_E8M0,
-                                                   false, false, true, false, GRAPH_NOT_CHANGED, 1, 0, 0, false},
-                                        FusionCase{"non_mx_scale", DT_INT8, DT_INT8, DT_FLOAT, false, false, true,
-                                                   false, GRAPH_NOT_CHANGED, 1, 0, 0, false},
-                                        FusionCase{"static_fp4_single_group_packed_chain", DT_INT8, DT_INT8,
-                                                   DT_FLOAT8_E8M0, false, false, true, true, SUCCESS, 0, 1, 1, true,
-                                                   false, true},
-                                        FusionCase{"unit_axis_reshape", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, true,
-                                                   true, true, SUCCESS, 0, 0, 0, true},
-                                        FusionCase{"regular_reshape_without_unit_axis", DT_INT8, DT_INT8, DT_FLOAT8_E8M0,
-                                                   false, true, true, true, SUCCESS, 0, 0, 0, true, true},
-                                        FusionCase{"invalid_reshape", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, true,
-                                                   false, true, GRAPH_NOT_CHANGED, 1, 1, 0, false}),
-                        TestName);
+INSTANTIATE_TEST_CASE_P(
+    GroupedMatmulFinalizeRoutingTransposeFusionPass, GroupedMatmulFinalizeRoutingTransposeFusionPassTest,
+    testing::Values(FusionCase{"mx_direct_weight_scale_transpose", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, false, true,
+                               true, SUCCESS, 0, 0, 0, true},
+                    FusionCase{"mx_bitcast_weight_transpose", DT_INT8, DT_FLOAT4_E2M1, DT_FLOAT8_E8M0, true, false,
+                               true, true, SUCCESS, 0, 0, 1, true},
+                    FusionCase{"mx_weight_scale_transpose", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, false, true, true,
+                               SUCCESS, 0, 0, 0, true},
+                    FusionCase{"unsupported_x_dtype", DT_FLOAT16, DT_INT8, DT_FLOAT8_E8M0, false, false, true, true,
+                               GRAPH_NOT_CHANGED, 2, 0, 0, false},
+                    FusionCase{"invalid_weight_perm", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, false, false, true,
+                               GRAPH_NOT_CHANGED, 2, 0, 0, false},
+                    FusionCase{"mx_missing_scale_transpose", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, false, true,
+                               false, GRAPH_NOT_CHANGED, 1, 0, 0, false},
+                    FusionCase{"non_mx_scale", DT_INT8, DT_INT8, DT_FLOAT, false, false, true, false, GRAPH_NOT_CHANGED,
+                               1, 0, 0, false},
+                    FusionCase{"static_fp4_single_group_packed_chain", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, false,
+                               true, true, SUCCESS, 0, 1, 1, true, false, true},
+                    FusionCase{"unit_axis_reshape", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, true, true, true, SUCCESS,
+                               0, 0, 0, true},
+                    FusionCase{"regular_reshape_without_unit_axis", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, true, true,
+                               true, SUCCESS, 0, 0, 0, true, true},
+                    FusionCase{"invalid_reshape", DT_INT8, DT_INT8, DT_FLOAT8_E8M0, false, true, false, true,
+                               GRAPH_NOT_CHANGED, 1, 1, 0, false}),
+    TestName);
 } // namespace

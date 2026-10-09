@@ -22,8 +22,10 @@
 #include <vector>
 
 #include "ge/fusion/pass/pattern_fusion_pass.h"
+#include "acl/acl_rt.h"
 #include "graph/utils/type_utils.h"
 #include "log/log.h"
+#include "securec.h"
 #include "register/register_custom_pass.h"
 #include "version/ge-compiler_version.h"
 
@@ -34,14 +36,22 @@ namespace ge {
 namespace fusion {
 class GraphFuseInspectorUtils {
 public:
-    static Status ReportFuse(const std::vector<GNode> &nodesBeforeFuse, const std::vector<GNode> &nodesAfterFuse,
-                             CustomPassContext &ctx) __attribute__((weak));
+    static Status ReportFuse(const std::vector<GNode>& nodesBeforeFuse, const std::vector<GNode>& nodesAfterFuse,
+                             CustomPassContext& ctx) __attribute__((weak));
 };
 } // namespace fusion
 } // namespace ge
 
 namespace ops {
 namespace {
+constexpr int32_t kCompatibleInheritedSupportVersion = 90100000;
+
+bool IsTargetVersion()
+{
+    int32_t version = 0;
+    return aclsysGetVersionNum("ge-compiler", &version) == ACL_SUCCESS && version >= kCompatibleInheritedSupportVersion;
+}
+
 constexpr char PASS_NAME[] = "GroupedMatmulSwigluQuantTransposeFusionPass";
 constexpr char OP_TYPE_GMMSWIGLU[] = "GroupedMatmulSwigluQuantV2";
 constexpr char OP_TYPE_TRANSPOSE[] = "Transpose";
@@ -75,7 +85,7 @@ struct TransposeChain {
     std::vector<GNodePtr> nodesToRemove;
 };
 
-bool IsType(const GNodePtr &node, const char *type)
+bool IsType(const GNodePtr& node, const char* type)
 {
     if (node == nullptr) {
         return false;
@@ -84,23 +94,23 @@ bool IsType(const GNodePtr &node, const char *type)
     return node->GetType(nodeType) == GRAPH_SUCCESS && nodeType == type;
 }
 
-bool IsType(const GNode &node, const char *type)
+bool IsType(const GNode& node, const char* type)
 {
     AscendString nodeType;
     return node.GetType(nodeType) == GRAPH_SUCCESS && nodeType == type;
 }
 
-bool IsTransposeType(const GNodePtr &node)
+bool IsTransposeType(const GNodePtr& node)
 {
     return IsType(node, OP_TYPE_TRANSPOSE) || IsType(node, OP_TYPE_TRANSPOSED);
 }
 
-bool IsTransposeLikeType(const GNodePtr &node)
+bool IsTransposeLikeType(const GNodePtr& node)
 {
     return IsTransposeType(node) || IsType(node, OP_TYPE_RESHAPE);
 }
 
-GNodePtr GetInputNode(const GNode &dstNode, int64_t dstInputPort, int64_t *srcOutputPort = nullptr)
+GNodePtr GetInputNode(const GNode& dstNode, int64_t dstInputPort, int64_t* srcOutputPort = nullptr)
 {
     auto [srcNode, resolvedSrcOutputPort] = dstNode.GetInDataNodesAndPortIndexs(dstInputPort);
     if (srcOutputPort != nullptr) {
@@ -109,7 +119,7 @@ GNodePtr GetInputNode(const GNode &dstNode, int64_t dstInputPort, int64_t *srcOu
     return srcNode;
 }
 
-std::size_t GetOutputConsumerNum(const GNodePtr &node)
+std::size_t GetOutputConsumerNum(const GNodePtr& node)
 {
     return node == nullptr ? 0 : node->GetOutDataNodesAndPortIndexs(0).size();
 }
@@ -127,7 +137,7 @@ bool IsSameOrUnknown(int64_t lhs, int64_t rhs)
     return lhs == rhs || IsUnknownDim(lhs) || IsUnknownDim(rhs);
 }
 
-bool GetTransposePerm(const GNodePtr &transposeNode, std::vector<int64_t> &perm)
+bool GetTransposePerm(const GNodePtr& transposeNode, std::vector<int64_t>& perm)
 {
     if (IsType(transposeNode, OP_TYPE_TRANSPOSED)) {
         return transposeNode->GetAttr("perm", perm) == GRAPH_SUCCESS;
@@ -141,18 +151,26 @@ bool GetTransposePerm(const GNodePtr &transposeNode, std::vector<int64_t> &perm)
         transposeNode->GetInputDesc(PERM_INPUT_INDEX, permDesc) != GRAPH_SUCCESS || permTensor.GetData() == nullptr) {
         return false;
     }
-    const auto *data = permTensor.GetData();
+    const auto* data = permTensor.GetData();
     if (permDesc.GetDataType() == DT_INT32) {
         const auto size = permTensor.GetSize() / sizeof(int32_t);
         for (std::size_t i = 0; i < size; ++i) {
-            perm.emplace_back(static_cast<int64_t>(reinterpret_cast<const int32_t *>(data)[i]));
+            int32_t value = 0;
+            if (memcpy_s(&value, sizeof(value), data + i * sizeof(value), sizeof(value)) != EOK) {
+                return false;
+            }
+            perm.emplace_back(value);
         }
         return true;
     }
     if (permDesc.GetDataType() == DT_INT64) {
         const auto size = permTensor.GetSize() / sizeof(int64_t);
         for (std::size_t i = 0; i < size; ++i) {
-            perm.emplace_back(reinterpret_cast<const int64_t *>(data)[i]);
+            int64_t value = 0;
+            if (memcpy_s(&value, sizeof(value), data + i * sizeof(value), sizeof(value)) != EOK) {
+                return false;
+            }
+            perm.emplace_back(value);
         }
         return true;
     }
@@ -167,14 +185,14 @@ std::vector<int64_t> GetExpectedPerm(int64_t inputIndex, bool reshapePattern)
     return reshapePattern ? PERM_WEIGHT_RESHAPE : PERM_WEIGHT;
 }
 
-bool CheckTransposeNode(const GNodePtr &transposeNode, int64_t inputIndex, bool reshapePattern)
+bool CheckTransposeNode(const GNodePtr& transposeNode, int64_t inputIndex, bool reshapePattern)
 {
     std::vector<int64_t> perm;
     return GetOutputConsumerNum(transposeNode) == 1 && GetTransposePerm(transposeNode, perm) &&
            perm == GetExpectedPerm(inputIndex, reshapePattern);
 }
 
-bool GetShapeDims(const GNodePtr &node, bool input, std::vector<int64_t> &dims)
+bool GetShapeDims(const GNodePtr& node, bool input, std::vector<int64_t>& dims)
 {
     TensorDesc desc;
     const auto status = input ? node->GetInputDesc(0, desc) : node->GetOutputDesc(0, desc);
@@ -185,7 +203,7 @@ bool GetShapeDims(const GNodePtr &node, bool input, std::vector<int64_t> &dims)
     return true;
 }
 
-bool IsExpectedSwap(const std::vector<int64_t> &inputDims, const std::vector<int64_t> &outputDims, int64_t inputIndex,
+bool IsExpectedSwap(const std::vector<int64_t>& inputDims, const std::vector<int64_t>& outputDims, int64_t inputIndex,
                     bool requireUnitAxis)
 {
     if (inputDims.size() < 3) {
@@ -222,7 +240,7 @@ bool IsExpectedSwap(const std::vector<int64_t> &inputDims, const std::vector<int
     return true;
 }
 
-bool CheckDirectReshape(const GNodePtr &reshapeNode, int64_t inputIndex)
+bool CheckDirectReshape(const GNodePtr& reshapeNode, int64_t inputIndex)
 {
     std::vector<int64_t> inputDims;
     std::vector<int64_t> outputDims;
@@ -230,12 +248,12 @@ bool CheckDirectReshape(const GNodePtr &reshapeNode, int64_t inputIndex)
            GetShapeDims(reshapeNode, false, outputDims) && IsExpectedSwap(inputDims, outputDims, inputIndex, true);
 }
 
-bool IsLegalDataType(DataType dtype, const std::vector<DataType> &legalDtypes)
+bool IsLegalDataType(DataType dtype, const std::vector<DataType>& legalDtypes)
 {
     return std::find(legalDtypes.begin(), legalDtypes.end(), dtype) != legalDtypes.end();
 }
 
-bool IsSpecialFp4Path(const GNodePtr &node, int64_t inputIndex)
+bool IsSpecialFp4Path(const GNodePtr& node, int64_t inputIndex)
 {
     if (inputIndex != WEIGHT_INDEX || !IsType(node, OP_TYPE_RESHAPE)) {
         return false;
@@ -248,12 +266,12 @@ bool IsSpecialFp4Path(const GNodePtr &node, int64_t inputIndex)
     return dtype == DT_FLOAT4_E2M1 || dtype == DT_HIFLOAT8;
 }
 
-bool CheckGroupedMatmulSwigluQuantV2(const GNode &nodeGmmSwiglu)
+bool CheckGroupedMatmulSwigluQuantV2(const GNode& nodeGmmSwiglu)
 {
     return IsType(nodeGmmSwiglu, OP_TYPE_GMMSWIGLU);
 }
 
-bool CheckNodeDtype(const GNode &nodeGmmSwiglu)
+bool CheckNodeDtype(const GNode& nodeGmmSwiglu)
 {
     static const std::vector<DataType> legalInputDtypes = {DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1, DT_INT8,
                                                            DT_HIFLOAT8};
@@ -287,7 +305,7 @@ bool CheckNodeDtype(const GNode &nodeGmmSwiglu)
     return true;
 }
 
-bool CheckNodeShape(const GNode &nodeGmmSwiglu)
+bool CheckNodeShape(const GNode& nodeGmmSwiglu)
 {
     TensorDesc xDesc;
     TensorDesc weightDesc;
@@ -304,14 +322,14 @@ bool CheckNodeShape(const GNode &nodeGmmSwiglu)
     return true;
 }
 
-bool IsMxWeightScale(const GNode &nodeGmmSwiglu)
+bool IsMxWeightScale(const GNode& nodeGmmSwiglu)
 {
     TensorDesc weightScaleDesc;
     return nodeGmmSwiglu.GetInputDesc(WEIGHT_SCALE_INDEX, weightScaleDesc) == GRAPH_SUCCESS &&
            weightScaleDesc.GetDataType() == DT_FLOAT8_E8M0;
 }
 
-bool FillChainFromSource(TransposeChain &chain, const GNodePtr &transLikeNode)
+bool FillChainFromSource(TransposeChain& chain, const GNodePtr& transLikeNode)
 {
     int64_t srcOutputPort = 0;
     auto sourceNode = GetInputNode(*transLikeNode, 0, &srcOutputPort);
@@ -325,7 +343,7 @@ bool FillChainFromSource(TransposeChain &chain, const GNodePtr &transLikeNode)
     return true;
 }
 
-bool TryResolveTwoReshapeChain(const GNode &nodeGmmSwiglu, int64_t inputIndex, TransposeChain &chain)
+bool TryResolveTwoReshapeChain(const GNode& nodeGmmSwiglu, int64_t inputIndex, TransposeChain& chain)
 {
     auto bottomNode = GetInputNode(nodeGmmSwiglu, inputIndex);
     if (bottomNode == nullptr) {
@@ -377,7 +395,7 @@ bool TryResolveTwoReshapeChain(const GNode &nodeGmmSwiglu, int64_t inputIndex, T
     return true;
 }
 
-bool TryResolveDirectChain(const GNode &nodeGmmSwiglu, int64_t inputIndex, TransposeChain &chain)
+bool TryResolveDirectChain(const GNode& nodeGmmSwiglu, int64_t inputIndex, TransposeChain& chain)
 {
     auto transLikeNode = GetInputNode(nodeGmmSwiglu, inputIndex);
     if (transLikeNode == nullptr) {
@@ -407,7 +425,7 @@ bool TryResolveDirectChain(const GNode &nodeGmmSwiglu, int64_t inputIndex, Trans
     return true;
 }
 
-bool ResolveTransposeChain(const GNode &nodeGmmSwiglu, int64_t inputIndex, TransposeChain &chain)
+bool ResolveTransposeChain(const GNode& nodeGmmSwiglu, int64_t inputIndex, TransposeChain& chain)
 {
     if (TryResolveTwoReshapeChain(nodeGmmSwiglu, inputIndex, chain)) {
         return true;
@@ -416,7 +434,7 @@ bool ResolveTransposeChain(const GNode &nodeGmmSwiglu, int64_t inputIndex, Trans
     return TryResolveDirectChain(nodeGmmSwiglu, inputIndex, chain);
 }
 
-bool RemoveNode(const GraphPtr &graph, const GNodePtr &dstNode)
+bool RemoveNode(const GraphPtr& graph, const GNodePtr& dstNode)
 {
     if (graph == nullptr || !graph->IsValid()) {
         OP_LOGW(PASS_NAME, "Graph is null or invalid when removing node.");
@@ -445,8 +463,8 @@ bool RemoveNode(const GraphPtr &graph, const GNodePtr &dstNode)
     return true;
 }
 
-bool UpdateSpecialFp4Desc(GNode &nodeGmmSwiglu, const TransposeChain &chain, int64_t inputIndex,
-                          const TensorDesc &sourceDesc)
+bool UpdateSpecialFp4Desc(GNode& nodeGmmSwiglu, const TransposeChain& chain, int64_t inputIndex,
+                          const TensorDesc& sourceDesc)
 {
     if (chain.bitcastNode == nullptr || chain.tailReshapeNode == nullptr) {
         OP_LOGW(PASS_NAME, "Special FP4 path misses Bitcast or tail Reshape node.");
@@ -488,8 +506,8 @@ bool UpdateSpecialFp4Desc(GNode &nodeGmmSwiglu, const TransposeChain &chain, int
     return true;
 }
 
-bool UpdateInputDesc(GNode &nodeGmmSwiglu, const TransposeChain &chain, int64_t inputIndex,
-                     const TensorDesc &sourceDesc)
+bool UpdateInputDesc(GNode& nodeGmmSwiglu, const TransposeChain& chain, int64_t inputIndex,
+                     const TensorDesc& sourceDesc)
 {
     if (!chain.relinkToBitcast) {
         if (nodeGmmSwiglu.UpdateInputDesc(inputIndex, sourceDesc) != GRAPH_SUCCESS) {
@@ -534,7 +552,7 @@ bool UpdateInputDesc(GNode &nodeGmmSwiglu, const TransposeChain &chain, int64_t 
     return true;
 }
 
-bool RelinkNode(const GraphPtr &graph, GNode &nodeGmmSwiglu, const TransposeChain &chain, int64_t inputIndex)
+bool RelinkNode(const GraphPtr& graph, GNode& nodeGmmSwiglu, const TransposeChain& chain, int64_t inputIndex)
 {
     if (chain.transLikeNode == nullptr || chain.sourceNode == nullptr) {
         OP_LOGW(PASS_NAME, "Transpose-like chain is invalid.");
@@ -546,7 +564,7 @@ bool RelinkNode(const GraphPtr &graph, GNode &nodeGmmSwiglu, const TransposeChai
         return false;
     }
 
-    auto &dstNode = chain.relinkToBitcast ? *chain.bitcastNode : nodeGmmSwiglu;
+    auto& dstNode = chain.relinkToBitcast ? *chain.bitcastNode : nodeGmmSwiglu;
     const int64_t dstInputPort = chain.relinkToBitcast ? 0 : inputIndex;
     if (graph->RemoveEdge(*chain.transLikeNode, 0, dstNode, dstInputPort) != GRAPH_SUCCESS) {
         OP_LOGW(PASS_NAME, "Failed to remove edge from transpose-like node.");
@@ -559,13 +577,13 @@ bool RelinkNode(const GraphPtr &graph, GNode &nodeGmmSwiglu, const TransposeChai
     return UpdateInputDesc(nodeGmmSwiglu, chain, inputIndex, sourceDesc);
 }
 
-void AddNodesToReport(const GNode &nodeGmmSwiglu, const std::vector<TransposeChain> &chains,
-                      std::vector<GNode> &nodesBeforeFuse, std::vector<GNodePtr> &nodesToRemove)
+void AddNodesToReport(const GNode& nodeGmmSwiglu, const std::vector<TransposeChain>& chains,
+                      std::vector<GNode>& nodesBeforeFuse, std::vector<GNodePtr>& nodesToRemove)
 {
     nodesBeforeFuse = {nodeGmmSwiglu};
     nodesToRemove.clear();
-    for (const auto &chain : chains) {
-        for (const auto &node : chain.nodesToRemove) {
+    for (const auto& chain : chains) {
+        for (const auto& node : chain.nodesToRemove) {
             if (node == nullptr || std::find(nodesToRemove.begin(), nodesToRemove.end(), node) != nodesToRemove.end()) {
                 continue;
             }
@@ -575,8 +593,8 @@ void AddNodesToReport(const GNode &nodeGmmSwiglu, const std::vector<TransposeCha
     }
 }
 
-void ReportTransposeFusion(const std::vector<GNode> &nodesBeforeFuse, const GNode &nodeGmmSwiglu,
-                           CustomPassContext &passContext)
+void ReportTransposeFusion(const std::vector<GNode>& nodesBeforeFuse, const GNode& nodeGmmSwiglu,
+                           CustomPassContext& passContext)
 {
     auto reportFuse = GraphFuseInspectorUtils::ReportFuse;
     if (reportFuse == nullptr) {
@@ -587,9 +605,9 @@ void ReportTransposeFusion(const std::vector<GNode> &nodesBeforeFuse, const GNod
     }
 }
 
-bool RemoveFusionNodes(const GraphPtr &graph, const std::vector<GNodePtr> &nodesToRemove)
+bool RemoveFusionNodes(const GraphPtr& graph, const std::vector<GNodePtr>& nodesToRemove)
 {
-    for (const auto &nodeToRemove : nodesToRemove) {
+    for (const auto& nodeToRemove : nodesToRemove) {
         if (!RemoveNode(graph, nodeToRemove)) {
             return false;
         }
@@ -597,7 +615,7 @@ bool RemoveFusionNodes(const GraphPtr &graph, const std::vector<GNodePtr> &nodes
     return true;
 }
 
-Status PrepareFusion(const GNode &nodeGmmSwiglu, std::vector<TransposeChain> &chains)
+Status PrepareFusion(const GNode& nodeGmmSwiglu, std::vector<TransposeChain>& chains)
 {
     if (!CheckGroupedMatmulSwigluQuantV2(nodeGmmSwiglu)) {
         return GRAPH_NOT_CHANGED;
@@ -626,8 +644,8 @@ Status PrepareFusion(const GNode &nodeGmmSwiglu, std::vector<TransposeChain> &ch
     return SUCCESS;
 }
 
-Status CommitFusion(const GraphPtr &graph, GNode &nodeGmmSwiglu, const std::vector<TransposeChain> &chains,
-                    CustomPassContext &passContext)
+Status CommitFusion(const GraphPtr& graph, GNode& nodeGmmSwiglu, const std::vector<TransposeChain>& chains,
+                    CustomPassContext& passContext)
 {
     std::vector<GNode> nodesBeforeFuse;
     std::vector<GNodePtr> nodesToRemove;
@@ -638,7 +656,7 @@ Status CommitFusion(const GraphPtr &graph, GNode &nodeGmmSwiglu, const std::vect
         OP_LOGW(PASS_NAME, "Failed to set transpose_weight attr.");
         return GRAPH_NOT_CHANGED;
     }
-    for (const auto &chain : chains) {
+    for (const auto& chain : chains) {
         if (!RelinkNode(graph, nodeGmmSwiglu, chain, chain.inputIndex)) {
             return GRAPH_FAILED;
         }
@@ -650,7 +668,7 @@ Status CommitFusion(const GraphPtr &graph, GNode &nodeGmmSwiglu, const std::vect
     return SUCCESS;
 }
 
-Status Fusion(const GraphPtr &graph, GNode &nodeGmmSwiglu, CustomPassContext &passContext)
+Status Fusion(const GraphPtr& graph, GNode& nodeGmmSwiglu, CustomPassContext& passContext)
 {
     std::vector<TransposeChain> chains;
     const auto status = PrepareFusion(nodeGmmSwiglu, chains);
@@ -660,17 +678,17 @@ Status Fusion(const GraphPtr &graph, GNode &nodeGmmSwiglu, CustomPassContext &pa
     return CommitFusion(graph, nodeGmmSwiglu, chains, passContext);
 }
 
-Status RunGroupedMatmulSwigluQuantTransposeFusion(const GraphPtr &graph, CustomPassContext &passContext)
+Status RunGroupedMatmulSwigluQuantTransposeFusion(const GraphPtr& graph, CustomPassContext& passContext)
 {
     OP_LOGD(PASS_NAME,
-        "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] Enter migrated GroupedMatmulSwigluQuantV2 transpose fusion pass.");
+            "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] Enter migrated GroupedMatmulSwigluQuantV2 transpose fusion pass.");
     if (graph == nullptr || !graph->IsValid()) {
         OP_LOGW(PASS_NAME, "Graph is null or invalid, skip fusion pass.");
         return GRAPH_NOT_CHANGED;
     }
 
     std::vector<GNode> nodeGmmSwigluList;
-    for (auto &node : graph->GetDirectNode()) {
+    for (auto& node : graph->GetDirectNode()) {
         if (CheckGroupedMatmulSwigluQuantV2(node)) {
             nodeGmmSwigluList.emplace_back(node);
         }
@@ -680,13 +698,11 @@ Status RunGroupedMatmulSwigluQuantTransposeFusion(const GraphPtr &graph, CustomP
         return GRAPH_NOT_CHANGED;
     }
 
-    passContext.SetPassName(PASS_NAME);
     bool changed = false;
-    for (auto &nodeGmmSwiglu : nodeGmmSwigluList) {
+    for (auto& nodeGmmSwiglu : nodeGmmSwigluList) {
         auto status = Fusion(graph, nodeGmmSwiglu, passContext);
         if (status == SUCCESS) {
-            OP_LOGD(PASS_NAME,
-                "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] GroupedMatmulSwigluQuantV2 fusion triggered.");
+            OP_LOGD(PASS_NAME, "[OPS_TRANSFORMER_GMM_TRANSPOSE_REBUILD] GroupedMatmulSwigluQuantV2 fusion triggered.");
             changed = true;
             continue;
         }
@@ -698,13 +714,17 @@ Status RunGroupedMatmulSwigluQuantTransposeFusion(const GraphPtr &graph, CustomP
 }
 } // namespace
 
-Status GroupedMatmulSwigluQuantTransposeFusionPass::Run(GraphPtr &graph, CustomPassContext &passContext)
+Status GroupedMatmulSwigluQuantTransposeFusionPass::Run(GraphPtr& graph, CustomPassContext& passContext)
 {
+    if (!IsTargetVersion()) {
+        return GRAPH_NOT_CHANGED;
+    }
     return RunGroupedMatmulSwigluQuantTransposeFusion(graph, passContext);
 }
 
 #if GE_COMPILER_VERSION_NUM >= 90100000
-REG_FUSION_PASS(GroupedMatmulSwigluQuantTransposeFusionPass).Stage(CustomPassStage::kCompatibleInherited);
+REG_FUSION_PASS(GroupedMatmulSwigluQuantTransposeFusionPass)
+    .Stage(IsTargetVersion() ? CustomPassStage::kCompatibleInherited : CustomPassStage::kAfterInferShape);
 #endif
 } // namespace ops
 #endif // CANN_VERSION_NUM
