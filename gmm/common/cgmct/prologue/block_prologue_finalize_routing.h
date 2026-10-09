@@ -156,7 +156,7 @@ __aicore__ inline void BlockPrologueFinalizeRouting<
     singleCount = CeilDiv(singleCount, static_cast<uint64_t>(ONE_CORE_ALIGN_LEN)) * ONE_CORE_ALIGN_LEN;
 
     uint64_t baseOffset = GetBlockIdx() * singleCount;
-    if (baseOffset > totalLen) {
+    if (baseOffset >= totalLen) {
         return;
     }
 
@@ -167,7 +167,8 @@ __aicore__ inline void BlockPrologueFinalizeRouting<
     if (!isDataBlockInitialized_) {
         Duplicate<DataTypeOut>(initWithZero_, 0, UB_INIT_REZO_LEN);
         isDataBlockInitialized_ = true;
-        AscendC::PipeBarrier<PIPE_ALL>();
+        AscendC::PipeBarrier<PIPE_MTE2>();
+        AscendC::PipeBarrier<PIPE_MTE3>();
     }
     // the baseOffset addr of cur vector core, copy out to GM
     baseOffset += outOffset;
