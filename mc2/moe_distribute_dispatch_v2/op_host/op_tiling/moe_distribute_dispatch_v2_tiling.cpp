@@ -1663,7 +1663,8 @@ static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
     uint32_t expertMaskBufSize = maskSizePerExpert * Ceil(moeExpertNum, moeUsedAivNum, nodeName) / moeUsedAivNum;
     UbForMoe = UbForMoe + expertMaskBufSize;                                        // expertMaskBuf
     UbForMoe = UbForMoe + Ceil(moeExpertNum * sizeof(int32_t), UB_ALIGN, nodeName); // tokenNumToExpertBuf
-    if (maxBs < A5_SERIAL_MODE_BS_THRESHOLD && rscvStatusNum <= A5_SERIAL_MODE_MAX_STATUS_NUM) {
+    if (maxBs < A5_SERIAL_MODE_BS_THRESHOLD && rscvStatusNum <= A5_SERIAL_MODE_MAX_STATUS_NUM &&
+        mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510) {
         // 串行模式下各核按rank分片统计专家count，statusBuf_只需容纳本核分片
         uint32_t countNumPerCore = Ceil(totalExpertNum, aivNum, nodeName) / aivNum;
         uint32_t rankNumPerCore = Ceil(epWorldSize, aivNum, nodeName) / aivNum;
