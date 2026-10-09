@@ -25,7 +25,7 @@
 
 ElasticBuffer类提供统一的分布式通信buffer管理能力：
 
-- Engram存储接口用于分布式Engram存储管理，支持将本rank的表注册为通信可达的存储（推理模式写入host pinned共享段，训练模式直接映射上层锁页表内存，零拷贝），以及通过RDMA从远端rank抓取Engram数据。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 配套使用。
+- Engram存储接口用于分布式Engram存储管理，支持将本rank的表注册为通信可达的存储（推理模式优先将 `storage` 的锁页主机内存原地注册为零拷贝窗口，注册失败时回退写入内部host pinned共享段；训练模式直接映射上层锁页表内存，零拷贝），并按 `fetch_mode` 从本地或远端rank抓取Engram数据（切片模式经RDMA跨卡抓取，本地模式为全表本地gather）。需与 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 配套使用。
 - Engram训练接口在推理接口的基础上，通过 `with_grad=True` 开启训练模式。前向 [engram_fetch](#engram_fetch) 在抓取数据的同时保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），反向 [engram_fetch_grad](#engram_fetch_grad) 根据这些元数据将梯度沿前向路径反向交换并按local entry稀疏累加，产出稀疏梯度用于优化器更新。
 - Dispatch/Combine接口用于MoE的Expert Parallelism（EP）并行部署，支持通过[dispatch](#dispatch)将token数据分发到对应专家卡，再通过[combine](#combine)将专家输出按原路由聚合回原始序列。所需的CCL通信buffer由ElasticBuffer内部按算子参数自动计算并申请，无需手动配置。
 
@@ -43,6 +43,7 @@ class ElasticBuffer:
         num_topk: Optional[int] = None,
         with_grad: bool = False,
         explicitly_destroy: bool = False,
+        fetch_mode: int = 0,
     )
 
     def engram_write(self, storage: torch.Tensor) -> None
@@ -124,43 +125,50 @@ class ElasticBuffer:
 
 - **group** (`torch.distributed.ProcessGroup`)：必选参数，分布式进程组，用于跨rank通信和同步。
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
-- **num_cpu_bytes** (`int`)：可选参数，CPU buffer大小（字节），用于host pinned存储区分配（仅推理模式生效；训练模式不分配内部存储区，该参数不生效）。默认值为0，且必须2MB对齐。
+- **num_cpu_bytes** (`int`)：可选参数，CPU buffer大小（字节），用于host pinned存储区分配（仅推理模式生效；训练模式不分配内部存储区，该参数不生效）。默认值为0，且必须2MB对齐。切片模式（`fetch_mode=0`）下仅需容纳本rank的表分片；本地模式（`fetch_mode=1`）下仅作为零拷贝注册失败时的回退拷贝窗口容量（窗口容量需容纳整表，可经 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 以全局行数计算，返回值已含逐行对齐的SF开销）。
 - **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大token数量上限。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `hidden`、`num_topk` 一起指定；使用 `with_grad=True` 训练模式时必须指定且大于0。
 - **hidden** (`int`)：可选参数，hidden size隐藏层大小。
 - **num_topk** (`int`)：可选参数，表示选取topK个专家。
 - **with_grad** (`bool`)：可选参数，是否开启训练。默认为 `False`（推理）。设为 `True` 时，前向 [engram_fetch](#engram_fetch) 会额外保存反向所需的通信元数据（封装为 [EngramFetchCtx](#engramfetchctx)），并可通过 [engram_fetch_grad](#engram_fetch_grad) 执行反向。
 - **explicitly_destroy** (`bool`)：可选参数，是否需要显式调用 [destroy](#destroy) 释放资源。默认为 `False`，实例被垃圾回收时会自动调用 `destroy` 释放资源；设为 `True` 时，调用方需要显式调用 `destroy` 释放资源。推荐设置为 `True` 并在使用结束后手动调用 `destroy` 释放资源，以确保资源释放时机确定。
+- **fetch_mode** (`int`)：可选参数，Engram fetch模式，默认为 `0`（`FETCH_MODE_SLICED`，切片跨卡模式）：全局表按rank切片，抓取经跨卡通信（推理RDMA one-sided read，训练a2a）；`1`（`FETCH_MODE_LOCAL`，本地全表模式，仅推理）：全表在每个rank上均可见，[engram_write](#engram_write) 将调用方 `storage` 的主机内存原地注册（各rank共享同一块host内存时，如fork继承同一份vocab映射，所有NPU映射的是同一份表，全流程仅一次host拷贝；host内存不可设备注册时回退为 `num_cpu_bytes` 容量的逐rank自建窗口并整表拷入），[engram_fetch](#engram_fetch) 为纯本地gather，无跨卡通信，返回的callable无需跨卡等待。`fetch_mode=1` 不支持与 `with_grad=True` 同时使用；同一通信域各rank必须使用相同的 `fetch_mode`。可用类属性 `ElasticBuffer.FETCH_MODE_SLICED`/`ElasticBuffer.FETCH_MODE_LOCAL` 引用。
 
 **输出**：无返回值，构造ElasticBuffer实例。
 
+### 成员属性
+
+- **engram_storage_zero_copy** (`bool`)：只读属性。最近一次 [engram_write](#engram_write) 的 `storage` 主机内存是否被原地注册为零拷贝Engram窗口：推理模式注册成功或训练模式为 `True`；推理注册失败回退自建拷贝窗口时为 `False`。本地模式（`fetch_mode=1`）下，共享同一块host内存的各rank该属性均为 `True` 且 [engram_host_buf_ptr](#成员属性) 值相同，即所有NPU映射的是同一份表。
+- **engram_host_buf_ptr** (`int`)：只读属性。Engram窗口的主机地址，`engram_write` 之前为0。零拷贝注册时即注册 `storage` 的 `data_ptr()`（共享同一块host内存的各rank该值相同）；回退路径为本rank私有自建窗口的地址。
+
 ### engram_write
 
-**功能**：将本rank的Engram表注册为通信可达的Engram storage，使其他rank可读取该数据。按构造时的 `with_grad` 区分两种行为：
+**功能**：将本rank的Engram表注册为通信可达的Engram storage，使其他rank可读取该数据。按构造时的 `with_grad` 与 `fetch_mode` 区分行为：
 
-- **推理**（`with_grad=False`）：将 `storage` 数据拷贝到内部host pinned共享内存段。
+- **切片推理**（`with_grad=False`，`fetch_mode=0`）：优先将 `storage` 的锁页主机内存原地注册为零拷贝Engram窗口（无数据搬运，`storage` 的原地更新对后续 [engram_fetch](#engram_fetch) 及其他rank的跨卡读取可见）；host内存不可设备注册或通信域注册失败时，回退为内部host pinned共享内存段并 `memcpy` 拷入。
+- **本地推理**（`with_grad=False`，`fetch_mode=1`）：将整张全局表 `storage` 原地注册（零拷贝语义同上，各rank共享同一块host内存时映射的是同一份表）；不可注册时回退为按 `num_cpu_bytes` 容量的自建窗口并 `memcpy` 拷入整表。
 - **训练**（`with_grad=True`）：将 `storage` 的锁页内存直接映射为Engram storage（零拷贝，无数据搬运），`storage` 的原地更新对后续 [engram_fetch](#engram_fetch) 可见。
 
-两种模式写入完成后，内部都会自动获取通信上下文tensor、本地storage地址、通信buffer大小和rank数等信息，供后续 [engram_fetch](#engram_fetch) 使用。
+各模式写入完成后，内部都会自动获取通信上下文tensor、本地storage地址、通信buffer大小和rank数等信息，供后续 [engram_fetch](#engram_fetch) 使用。零拷贝是否生效可经 [engram_storage_zero_copy](#成员属性) 属性查询。
 
-> **host pinned共享内存段**（推理模式）：指通过 `aclrtMallocHost` 分配的页锁定（pinned）主机内存，并经 `aclrtHostRegisterV2` 映射后获得设备可访问地址。该内存段既可被本卡NPU直接访问，也可被远端rank的NPU通过RDMA读取，从而实现跨rank的零拷贝数据共享。其大小由构造函数的 `num_cpu_bytes` 参数指定。
+> **host pinned共享内存段**（推理回退路径）：指通过 `aclrtMallocHost` 分配的页锁定（pinned）主机内存，并经 `aclrtHostRegisterV2` 映射后获得设备可访问地址。该内存段既可被本卡NPU直接访问，也可被远端rank的NPU通过RDMA读取，从而实现跨rank的零拷贝数据共享。其大小由构造函数的 `num_cpu_bytes` 参数指定。推理零拷贝路径注册的是调用方 `storage` 自身的锁页主机内存（同样经 `aclrtHostRegisterV2` 注册与 `aclrtHostGetDevicePointer` 映射），不额外分配该共享段。
 
 > **训练模式内存映射**：`storage` 的锁页主机内存经 `aclrtHostRegisterV2` 注册并映射到设备地址，再注册到HCCL通信域供远端rank访问。要求：`storage` 必须为锁页内存（如 `pin_memory()` 或 `torch.empty(..., pin_memory=True)` 分配）；普通（非锁页）CPU内存在当前驱动的主机注册路径下不受支持，会在首次调用时报 `aclrtHostGetDevicePointer` 失败；`storage` 在本ElasticBuffer生命周期内必须保持存活且地址不变。重复调用本接口须传入同一 `storage`（可作为表原地更新后的跨rank同步点），传入其他地址会报错。
 
 **计算公式**：
 
-推理模式通过`memcpy_s`将`storage`的数据按字节拷贝到host pinned共享内存段起始位置：
-
-$$HostPinnedBuf[0 : storage.nbytes()] \leftarrow storage.data()$$
-
-训练模式无拷贝，直接以 `storage` 作为本rank的Engram表：
+推理零拷贝路径（`storage` 主机内存注册成功）与训练模式均无数据搬运，直接以 `storage` 作为本rank的Engram表：
 
 $$EngramTable[rank\_id] \equiv storage$$
 
-两种模式写入前后均有两次 `Barrier`，保证所有rank写入完成且对彼此可见：
+推理回退路径（host内存不可设备注册，或切片模式通信域注册失败）通过 `memcpy` 将 `storage` 的数据按字节拷贝到内部host pinned共享内存段起始位置：
+
+$$HostPinnedBuf[0 : storage.nbytes()] \leftarrow storage.data()$$
+
+各模式写入前后均有两次 `Barrier`，保证所有rank写入完成且对彼此可见：
 
 $$Barrier \rightarrow write(storage) \rightarrow Barrier$$
 
-其中 `storage.nbytes() = num_entries × hidden × dtype_size`，须满足 `storage.nbytes() ≤ num_cpu_bytes`。
+其中 `storage.nbytes() = num_entries × hidden × dtype_size`。零拷贝路径不受 `storage.nbytes() ≤ num_cpu_bytes` 约束；推理回退路径须满足 `storage.nbytes() ≤ num_cpu_bytes`。本地模式（`fetch_mode=1`）下 `num_entries` 为全局表行数（`storage` 为整张全局表），切片/训练模式下为每rank分片行数。
 
 **函数原型**：
 
@@ -176,14 +184,15 @@ ElasticBuffer.engram_write(storage) -> None
 
 ### engram_fetch
 
-**功能**：根据输入的全局索引，从对应rank抓取Engram数据。推理和训练的行为由构造时的 `with_grad` 决定：
+**功能**：根据输入的全局索引，从对应rank抓取Engram数据。推理和训练的行为由构造时的 `with_grad` 与 `fetch_mode` 决定：
 
-- **推理**（`with_grad=False`）：通过RDMA one-sided read从远端rank的host pinned共享内存抓取数据。接口采用异步设计：调用后立即返回一个callable，执行该callable时阻塞等待RDMA传输完成并返回结果tensor。
+- **切片推理**（`with_grad=False`，`fetch_mode=0`）：通过RDMA one-sided read从远端rank的host pinned共享内存抓取数据。接口采用异步设计：调用后立即返回一个callable，执行该callable时阻塞等待RDMA传输完成并返回结果tensor。
+- **本地推理**（`with_grad=False`，`fetch_mode=1`）：全表在本rank可见，按索引做纯本地gather，无任何跨卡通信与RDMA依赖；返回的callable无需跨卡等待，执行时直接返回结果tensor。
 - **训练**（`with_grad=True`）：通过all-to-all通信从远端rank抓取数据（桶排序 → a2a交换indices → 本地gather → a2a交换data → 还原），返回一个callable，执行该callable时等待传输完成并返回 `(fetched, fetch_ctx)` 二元组，其中 `fetch_ctx` 为save-for-backward上下文 [EngramFetchCtx](#engramfetchctx)。
 
 **计算公式**：
 
-每个全局索引按如下方式映射到目标rank和本地条目索引：
+切片/训练模式下，每个全局索引按如下方式映射到目标rank和本地条目索引：
 
 $$rank\_id = \lfloor global\_idx / num\_entries \rfloor$$
 
@@ -191,15 +200,19 @@ $$local\_idx = global\_idx \bmod num\_entries$$
 
 $$fetched[i] = EngramTable[rank\_id][local\_idx]$$
 
+本地模式（`fetch_mode=1`）下全表在本rank可见，索引即全局行号：
+
+$$fetched[i] = EngramTable[global\_idx]$$
+
 其中各变量含义如下：
 
-- $global\_idx$：输入索引张量 `indices` 的元素值，取值范围 $[0, world\_size \times num\_entries)$。
-- $num\_entries$：[engram_write](#engram_write) 时各rank写入的条目数，即 `storage.size(0)`。
+- $global\_idx$：输入索引张量 `indices` 的元素值。切片/训练模式取值范围 $[0, world\_size \times num\_entries)$；本地模式取值范围 $[0, num\_entries)$（`num_entries` 为全局表行数）。
+- $num\_entries$：[engram_write](#engram_write) 时各rank写入的条目数，即 `storage.size(0)`。切片/训练模式为每rank分片行数（全局条目总数为 $world\_size \times num\_entries$）；本地模式为全局表行数（各rank持有同一张全表）。
 - $world\_size$：通信域中的rank总数。
 - $rank\_id$：$global\_idx$ 映射到的目标rank编号，取值范围 $[0, world\_size)$。当 $rank\_id$ 为本rank时，数据直接从本地host pinned内存读取；当 $rank\_id$ 为远端rank时，通过RDMA跨卡读取。
 - $local\_idx$：目标rank内的本地条目索引，取值范围 $[0, num\_entries)$。
-- $EngramTable[rank\_id]$：目标rank通过 [engram_write](#engram_write) 提供的Engram表数据（推理模式位于host pinned共享内存，训练模式为直接映射的上层表内存），shape为 `(num_entries, hidden)`，
-$EngramTable[rank\_id][local\_idx]$ 表示其中第 $local\_idx$ 个条目。
+- $EngramTable[rank\_id]$：目标rank通过 [engram_write](#engram_write) 提供的Engram表数据（切片推理位于该rank的零拷贝注册内存或host pinned共享内存，训练模式为直接映射的上层表内存），shape为 `(num_entries, hidden)`，
+$EngramTable[rank\_id][local\_idx]$ 表示其中第 $local\_idx$ 个条目。本地模式下 $EngramTable$ 即本rank的全表（零拷贝注册时与调用方 `storage` 为同一块内存），shape为 `(num_entries, hidden)`。
 - $fetched[i]$：输出张量中第 $i$ 个token对应的Engram数据，$i \in [0, num\_tokens)$，$num\_tokens$ 为 `indices` 的长度。
 
 **训练**（`with_grad=True`）的索引映射与推理一致（见上述 $rank\_id$、$local\_idx$ 公式），区别在于通过all-to-all通信完成跨rank数据抓取，并保存反向上下文 [EngramFetchCtx](#engramfetchctx)。前向过程为：
@@ -230,7 +243,7 @@ ElasticBuffer.engram_fetch(indices) -> Callable
 
 **输入参数**：
 
-- **indices** (`Tensor`)：必选参数，查询索引的NPU tensor，shape为 `(num_tokens,)`，表示要抓取的条目全局索引（训练场景各卡`len(indices)`保持一致， 推理场景可以不一致）。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0。
+- **indices** (`Tensor`)：必选参数，查询索引的NPU tensor，shape为 `(num_tokens,)`，表示要抓取的条目全局索引（训练场景各卡`len(indices)`保持一致， 推理场景可以不一致）。数据类型支持 `int32`，数据格式为 $ND$。切片/训练模式元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0；本地模式（`fetch_mode=1`）取值范围为 `[0, num_entries)`（`num_entries` 为全局表行数），越界索引对应行为未定义（行32字节对齐的小行走批量路径时读取第0行数据，其他形状该行不被写入，保持输出tensor的未初始化值）。
 
 **输出说明**：
 
@@ -238,7 +251,7 @@ ElasticBuffer.engram_fetch(indices) -> Callable
 
 **推理**调用 `wait_callable()` 返回：
 
-- **fetched** (`Tensor`)：NPU tensor，shape为 `(num_tokens, hidden)`，数据类型与 [engram_write](#engram_write) 的 `storage.dtype` 相同，数据格式为 $ND$。
+- **fetched** (`Tensor`)：NPU tensor，shape为 `(num_tokens, hidden)`，数据类型与 [engram_write](#engram_write) 的 `storage.dtype` 相同，数据格式为 $ND$。本地模式（`fetch_mode=1`）下callable执行时无跨卡等待，fetch kernel完成即数据就绪。
 
 **训练**调用 `wait_callable()` 返回：
 
@@ -514,9 +527,16 @@ ElasticBuffer.get_moe_ep_ccl_buffer_size(world_size, num_max_tokens_per_rank, hi
 - **Engram数值约束**：
   - `num_cpu_bytes`、`num_entries`必须非负。
   - `hidden` 必须大于0。
-  - `storage.nbytes()` 必须小于等于 `num_cpu_bytes`。`storage.nbytes()` 表示tensor实际占用的字节数，即 `num_entries × hidden × dtype_size`（其中
+  - 推理回退路径（零拷贝注册失败）下 `storage.nbytes()` 必须小于等于 `num_cpu_bytes`；零拷贝注册路径（推理注册成功或训练模式）不受该约束。`storage.nbytes()` 表示tensor实际占用的字节数，即 `num_entries × hidden × dtype_size`（其中
   `dtype_size` 为单个元素的字节大小，如 `bfloat16` 为2 字节、`float32` 为4 字节）。
-  - 全局条目总数 `world_size × num_entries` 必须小于2^31（int32 最大值），保证indices索引不溢出。
+  - 切片/训练模式：全局条目总数 `world_size × num_entries` 必须小于2^31（int32 最大值），保证indices索引不溢出。
+  - 本地模式（`fetch_mode=1`）：`num_entries`（全局表行数）必须小于2^31（int32 最大值）。
+
+- **Engram本地模式约束**：
+  - `fetch_mode` 仅支持 `0`（`FETCH_MODE_SLICED`）或 `1`（`FETCH_MODE_LOCAL`）。
+  - `fetch_mode=1` 仅支持推理，不允许与 `with_grad=True` 同时使用。
+  - 同一通信域的各rank必须以相同的 `fetch_mode` 创建ElasticBuffer（与 `with_grad` 同级要求），否则跨rank集合操作参与不一致会导致挂死。
+  - `fetch_mode=1` 下 `engram_write` 传入的 `storage` 为整张全局表，回退窗口容量 `num_cpu_bytes` 需容纳整表（可经 [get_engram_storage_size_hint](#get_engram_storage_size_hint静态方法) 以全局行数计算）。
 
 - **Dispatch/Combine配套约束**：
   - [dispatch](#dispatch) 和 [combine](#combine) 必须配套使用。
