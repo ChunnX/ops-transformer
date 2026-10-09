@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef OP_API_INC_GROUPED_MATMUL_V2_H
 #define OP_API_INC_GROUPED_MATMUL_V2_H
 #include "aclnn/aclnn_base.h"
@@ -48,12 +48,12 @@ __attribute__((
         "aclnnGroupedMatmulV2GetWorkspaceSize is scheduled to be deprecated in a post-December 2026 version update, "
         "and will be replaced by the aclnnGroupedMatmulV5GetWorkspaceSize. We apologize for any inconvenience caused "
         "and appreciate your timely migration to the new interface."))) aclnnStatus
-aclnnGroupedMatmulV2GetWorkspaceSize(const aclTensorList *x, const aclTensorList *weight,
-                                     const aclTensorList *biasOptional, const aclTensorList *scaleOptional,
-                                     const aclTensorList *offsetOptional, const aclTensorList *antiquantScaleOptional,
-                                     const aclTensorList *antiquantOffsetOptional, const aclIntArray *groupListOptional,
-                                     int64_t splitItem, int64_t groupType, const aclTensorList *y,
-                                     uint64_t *workspaceSize, aclOpExecutor **executor);
+aclnnGroupedMatmulV2GetWorkspaceSize(const aclTensorList* x, const aclTensorList* weight,
+                                     const aclTensorList* biasOptional, const aclTensorList* scaleOptional,
+                                     const aclTensorList* offsetOptional, const aclTensorList* antiquantScaleOptional,
+                                     const aclTensorList* antiquantOffsetOptional, const aclIntArray* groupListOptional,
+                                     int64_t splitItem, int64_t groupType, const aclTensorList* y,
+                                     uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnGroupedMatmulV2的第二段接口，用于执行计算。
@@ -67,7 +67,7 @@ __attribute__((visibility("default"),
                deprecated("aclnnGroupedMatmulV2 is scheduled to be deprecated in a post-December 2026 version update, "
                           "and will be replaced by the aclnnGroupedMatmulV5. We apologize for any inconvenience caused "
                           "and appreciate your timely migration to the new interface."))) aclnnStatus
-aclnnGroupedMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+aclnnGroupedMatmulV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

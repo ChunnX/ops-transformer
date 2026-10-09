@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_arch35_zero_output.h
@@ -31,24 +31,24 @@ template <typename T>
 class FiaZeroOutput {
 public:
     __aicore__ inline FiaZeroOutput(){};
-    __aicore__ inline void Init(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-                                const optiling::FlashAttentionScoreSimplifiedTilingData *__restrict tiling);
+    __aicore__ inline void Init(__gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
+                                const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tiling);
     __aicore__ inline void Process();
     static constexpr bool POST_QUANT = !IsSameType<T, half>::value;
 
 protected:
-    const optiling::FlashAttentionScoreSimplifiedTilingData *__restrict tilingData;
+    const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tilingData;
     GlobalTensor<half> attentionOutGm;
     GlobalTensor<float> softmaxLseGm;
 };
 
 template <typename T>
 __aicore__ inline void FiaZeroOutput<T>::Init(
-    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-    const optiling::FlashAttentionScoreSimplifiedTilingData *__restrict tiling)
+    __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
+    const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tiling)
 {
-    attentionOutGm.SetGlobalBuffer((__gm__ half *)attentionOut);
-    softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+    attentionOutGm.SetGlobalBuffer((__gm__ half*)attentionOut);
+    softmaxLseGm.SetGlobalBuffer((__gm__ float*)softmaxLse);
     tilingData = tiling;
 }
 
@@ -56,7 +56,7 @@ template <typename T>
 __aicore__ inline void FiaZeroOutput<T>::Process()
 {
     uint32_t tmp_block_idx = GetBlockIdx();
-    auto &initParams = tilingData->initOutputParams;
+    auto& initParams = tilingData->initOutputParams;
     uint32_t tailSize = initParams.totalOutputSize - tmp_block_idx * initParams.singleCoreSize;
     uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
     if (singleInitOutputSize > 0) {

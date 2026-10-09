@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
@@ -17,15 +17,16 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-aclnnStatus aclnnIncreFlashAttentionGetWorkspaceSize(const aclTensor *query, const aclTensorList *key,
-                                                     const aclTensorList *value, const aclTensor *pseShift,
-                                                     const aclTensor *attenMask, const aclIntArray *actualSeqLengths,
-                                                     int64_t numHeads, double scaleValue, char *inputLayout,
-                                                     int64_t numKeyValueHeads, const aclTensor *attentionOut,
-                                                     uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnIncreFlashAttentionGetWorkspaceSize(const aclTensor* query, const aclTensorList* key,
+                                                     const aclTensorList* value, const aclTensor* pseShift,
+                                                     const aclTensor* attenMask, const aclIntArray* actualSeqLengths,
+                                                     int64_t numHeads, double scaleValue, char* inputLayout,
+                                                     int64_t numKeyValueHeads, const aclTensor* attentionOut,
+                                                     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnIncreFlashAttention versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "Interface aclnnIncreFlashAttention versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;
@@ -35,7 +36,7 @@ aclnnStatus aclnnIncreFlashAttentionGetWorkspaceSize(const aclTensor *query, con
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
-    (void) pseShift;
+    (void)pseShift;
     aclnnStatus ret = aclnnInnerIncreFlashAttentionGetWorkspaceSize(
         query, key, value, nullptr, attenMask, actualSeqLengths, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, numHeads, scaleValue, inputLayout, numKeyValueHeads, 0, 1, attentionOut,
@@ -44,11 +45,12 @@ aclnnStatus aclnnIncreFlashAttentionGetWorkspaceSize(const aclTensor *query, con
     return ret;
 }
 
-aclnnStatus aclnnIncreFlashAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnIncreFlashAttention(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                      const aclrtStream stream)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnIncreFlashAttention versions V1 to V4 are no longer supported on Ascend950.");
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "Interface aclnnIncreFlashAttention versions V1 to V4 are no longer supported on Ascend950.");
         return ACLNN_ERR_RUNTIME_ERROR;
     }
     static bool isFirstCall = true;

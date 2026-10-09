@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mla_custom_matmul_policy_d192.h
@@ -28,7 +28,7 @@
 namespace AscendC {
 namespace Impl {
 namespace Detail {
-template <typename IMPL, class INPUT_TYPE, const auto &MM_CFG>
+template <typename IMPL, class INPUT_TYPE, const auto& MM_CFG>
 class MlaCopyCubeInMM1HeadDim192 {
     MATMUL_USE_MODULE(Context);
     MATMUL_USE_MODULE_ON(MatmulTensorInfo, INPUT_TYPE::TAG);
@@ -49,9 +49,9 @@ public:
 
     __aicore__ inline void Init() {}
 
-    __aicore__ inline void SetInput(const LocalTensor<SrcT> &localMatrix, bool isTranspose) {}
+    __aicore__ inline void SetInput(const LocalTensor<SrcT>& localMatrix, bool isTranspose) {}
 
-    __aicore__ inline void SetInput(const GlobalTensor<SrcT> &globalMatrix, bool isTranspose)
+    __aicore__ inline void SetInput(const GlobalTensor<SrcT>& globalMatrix, bool isTranspose)
     {
         MATMUL_MODULE(MatmulTensorInfo)->template SetGlobalTensor<false>(globalMatrix, isTranspose);
         srcGlobalAddr_ = globalMatrix.address_;
@@ -191,7 +191,7 @@ public:
         return CurrentTensor;
     }
 
-    __aicore__ inline void ClearLoadData(const LocalTensor<TransT> &tensor = LocalTensor<TransT>{}, int32_t curRow = 0,
+    __aicore__ inline void ClearLoadData(const LocalTensor<TransT>& tensor = LocalTensor<TransT>{}, int32_t curRow = 0,
                                          int32_t curCol = 0)
     {
         MATMUL_MODULE(CubeInBuffer)->FreeTensor();
@@ -205,7 +205,7 @@ public:
 
 private:
     int32_t baseBlockSize{0};
-    __gm__ SrcT *srcGlobalAddr_{nullptr};
+    __gm__ SrcT* srcGlobalAddr_{nullptr};
     int64_t singleHeight_{0};
     int64_t singleWidth_{0};
     int64_t offsetA[8] = {0};
@@ -213,7 +213,7 @@ private:
     int64_t cacheBaseBlockNum = 0;
 };
 
-template <const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
+template <const auto& MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
 class MlaMatmulPolicyMM1HeadDim192 : public MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE> {
 public:
     using Context = MlaContext<IMPL, MatmulInputAType<A_TYPE, typename A_TYPE::T>, MM_CFG>;

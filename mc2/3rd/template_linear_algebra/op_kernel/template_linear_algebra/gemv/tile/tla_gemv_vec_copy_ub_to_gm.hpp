@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_GEMV_TILE_VEC_COPY_UB_TO_GM_HPP
 #define CATLASS_GEMV_TILE_VEC_COPY_UB_TO_GM_HPP
@@ -35,7 +35,7 @@ struct VecCopyUBToGm<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<Element> dstTensor, AscendC::LocalTensor<Element> srcTensor,
-                    layout::VectorLayout const &layoutDst, layout::VectorLayout const &layoutSrc)
+                    layout::VectorLayout const& layoutDst, layout::VectorLayout const& layoutSrc)
     {
         AscendC::DataCopyExtParams params;
         params.blockCount = 1;
@@ -60,7 +60,7 @@ struct VecCopyUBToGm<Arch::AtlasA2, Gemm::GemmType<Element, layout::VectorLayout
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<Element> dstTensor, AscendC::LocalTensor<Element> srcTensor,
-                    layout::VectorLayout const &layoutDst, layout::VectorLayout const &layoutSrc)
+                    layout::VectorLayout const& layoutDst, layout::VectorLayout const& layoutSrc)
     {
         AscendC::SetAtomicAdd<Element>();
         AscendC::DataCopyExtParams params;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file common_add_rms_norm_tiling.h
@@ -31,7 +31,7 @@ struct AddRmsNormTilingInputFromMM {
     ge::DataType x1Dtype;
 };
 struct AddRMSNormTilingDepend {
-    AddRMSNormTilingDepend(const char *name, fe::PlatFormInfos &infos, ARNCtxInfo info, AddRmsNormTilingInputFromMM mm,
+    AddRMSNormTilingDepend(const char* name, fe::PlatFormInfos& infos, ARNCtxInfo info, AddRmsNormTilingInputFromMM mm,
                            bool b, bool half)
         : nodeName(name),
           platFormInfos(infos),
@@ -39,8 +39,8 @@ struct AddRMSNormTilingDepend {
           addRmsNormTilingInputFromMm(mm),
           useMmOutputAsX1Input(b),
           useHalfNumBlocks(half) {};
-    const char *nodeName;
-    fe::PlatFormInfos &platFormInfos;
+    const char* nodeName;
+    fe::PlatFormInfos& platFormInfos;
     ARNCtxInfo arnCtxInfo;
     AddRmsNormTilingInputFromMM addRmsNormTilingInputFromMm{};
     bool useMmOutputAsX1Input{false};
@@ -54,8 +54,8 @@ struct TilingOut {
     uint32_t numBlocks;
 };
 struct AddRMSNormTilingOutput {
-    Mc2Tiling::AddRMSNormTilingData &addRmsNormTilingData;
-    TilingOut &tilingOut;
+    Mc2Tiling::AddRMSNormTilingData& addRmsNormTilingData;
+    TilingOut& tilingOut;
 };
 
 namespace CommonAddResNormTiling {
@@ -66,12 +66,12 @@ enum ModeKey : uint32_t {
     K_SINGLE_N,
     K_MULTI_N,
 };
-ge::graphStatus Tiling4AddRmsNorm(const AddRMSNormTilingDepend &addRmsNormTilingDepend,
-                                  AddRMSNormTilingOutput &addRmsNormTilingOutput);
-ge::graphStatus CheckAddRmsNormInput(const gert::TilingContext *context, const ARNCtxInfo &arnCtxInfo);
-ge::graphStatus SetAddRmsNormTilingData(const AddRMSNormTilingDepend &addRmsNormTilingDepend, const uint32_t numRow,
+ge::graphStatus Tiling4AddRmsNorm(const AddRMSNormTilingDepend& addRmsNormTilingDepend,
+                                  AddRMSNormTilingOutput& addRmsNormTilingOutput);
+ge::graphStatus CheckAddRmsNormInput(const gert::TilingContext* context, const ARNCtxInfo& arnCtxInfo);
+ge::graphStatus SetAddRmsNormTilingData(const AddRMSNormTilingDepend& addRmsNormTilingDepend, const uint32_t numRow,
                                         const int64_t numCol, const uint32_t blockFactor,
-                                        AddRMSNormTilingOutput &addRmsNormTilingOutput);
+                                        AddRMSNormTilingOutput& addRmsNormTilingOutput);
 } // namespace CommonAddResNormTiling
 } // namespace optiling
 #endif // COMMON_ADD_RMS_NORM_H_

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file buffer_manager.h
@@ -32,7 +32,7 @@ class BufferManager {
     using TensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<uint8_t>, LocalTensor<uint8_t>>;
 
 public:
-    __aicore__ inline void Init(TPipe *pipe, uint32_t size)
+    __aicore__ inline void Init(TPipe* pipe, uint32_t size)
     {
         static_assert(bufferType != BufferType::GM, "GM should use workspace.");
         TBuf<BufferInfo<bufferType>::Position> tbuf;
@@ -47,10 +47,10 @@ public:
         mem_ = LocalTensor<uint8_t>(BufferInfo<bufferType>::Position, 0, size);
     }
 
-    __aicore__ inline void Init(__gm__ uint8_t *workspace)
+    __aicore__ inline void Init(__gm__ uint8_t* workspace)
     {
         static_assert(bufferType == BufferType::GM, "BufferType should be GM.");
-        mem_.SetGlobalBuffer((__gm__ uint8_t *)workspace);
+        mem_.SetGlobalBuffer((__gm__ uint8_t*)workspace);
     }
 
     template <SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
@@ -62,7 +62,7 @@ public:
     }
 
     template <SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
-    __aicore__ inline void FreeBuffer(Buffer<bufferType, syncType, syncMode> &buffer)
+    __aicore__ inline void FreeBuffer(Buffer<bufferType, syncType, syncMode>& buffer)
     {}
 
 private:
@@ -74,7 +74,7 @@ template <BufferType bufferType>
 class DualBankBufferManager {
 public:
     BufferManager<bufferType> bank[2];
-    __aicore__ inline void Init(TPipe *pipe, uint32_t size)
+    __aicore__ inline void Init(TPipe* pipe, uint32_t size)
     {
         bank[0].Init(pipe, size / 2);
         bank[1].Init(pipe, size / 2);

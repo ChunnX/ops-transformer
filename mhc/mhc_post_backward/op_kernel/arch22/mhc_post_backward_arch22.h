@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mhc_post_backward_arch22.h
@@ -29,17 +29,17 @@ public:
 
     __aicore__ inline void Init(GM_ADDR grad_y, GM_ADDR x, GM_ADDR h_res, GM_ADDR h_out, GM_ADDR h_post, GM_ADDR grad_x,
                                 GM_ADDR grad_h_res, GM_ADDR grad_h_out, GM_ADDR grad_h_post,
-                                const MhcPostBackwardTilingDataArch22 &tilingData, TPipe *pipe);
+                                const MhcPostBackwardTilingDataArch22& tilingData, TPipe* pipe);
     __aicore__ inline void Process();
 
 protected:
     static constexpr uint64_t BUFFER_NUM = 1;
 
-    __aicore__ inline void VecMatmulMknk(LocalTensor<float> &A, LocalTensor<float> &B, LocalTensor<float> &C,
-                                         LocalTensor<float> &broadcastBuffer, LocalTensor<float> &reduceBuffer,
+    __aicore__ inline void VecMatmulMknk(LocalTensor<float>& A, LocalTensor<float>& B, LocalTensor<float>& C,
+                                         LocalTensor<float>& broadcastBuffer, LocalTensor<float>& reduceBuffer,
                                          uint32_t m, uint32_t k, uint32_t n, uint32_t alignN);
-    __aicore__ inline void VecMatmulMkkn(LocalTensor<float> &A, LocalTensor<float> &B, LocalTensor<float> &C,
-                                         LocalTensor<float> &broadcastBuffer, uint32_t m, uint32_t k, uint32_t n);
+    __aicore__ inline void VecMatmulMkkn(LocalTensor<float>& A, LocalTensor<float>& B, LocalTensor<float>& C,
+                                         LocalTensor<float>& broadcastBuffer, uint32_t m, uint32_t k, uint32_t n);
 
     TBuf<TPosition::VECCALC> dFPostResCastBuf, FOutCastBuf, HLPostBuf, xLCastBuf, HLResBuf;
     TBuf<TPosition::VECCALC> dHLPostBuf, dFOutCastBuf, dHLResBuf, dxLCastBuf;
@@ -88,7 +88,7 @@ template <typename T>
 __aicore__ inline void KernelMhcPostBackward<T>::Init(GM_ADDR grad_y, GM_ADDR x, GM_ADDR h_res, GM_ADDR h_out,
                                                       GM_ADDR h_post, GM_ADDR grad_x, GM_ADDR grad_h_res,
                                                       GM_ADDR grad_h_out, GM_ADDR grad_h_post,
-                                                      const MhcPostBackwardTilingDataArch22 &tilingData, TPipe *pipe)
+                                                      const MhcPostBackwardTilingDataArch22& tilingData, TPipe* pipe)
 {
     this->coreUsed = tilingData.coreUsed;
     this->singleCoreBS = tilingData.singleCoreBS;
@@ -110,16 +110,16 @@ __aicore__ inline void KernelMhcPostBackward<T>::Init(GM_ADDR grad_y, GM_ADDR x,
     this->hOutSize = tilingData.hOutSize;
     this->hPostSize = tilingData.hPostSize;
 
-    this->dFPostResGm.SetGlobalBuffer((__gm__ T *)grad_y, this->dFPostResSize);
-    this->FOutGm.SetGlobalBuffer((__gm__ T *)h_out, this->hOutSize);
-    this->xLGm.SetGlobalBuffer((__gm__ T *)x, this->xSize);
-    this->HLResGm.SetGlobalBuffer((__gm__ float *)h_res, this->hResSize);
-    this->HLPostGm.SetGlobalBuffer((__gm__ float *)h_post, this->hPostSize);
+    this->dFPostResGm.SetGlobalBuffer((__gm__ T*)grad_y, this->dFPostResSize);
+    this->FOutGm.SetGlobalBuffer((__gm__ T*)h_out, this->hOutSize);
+    this->xLGm.SetGlobalBuffer((__gm__ T*)x, this->xSize);
+    this->HLResGm.SetGlobalBuffer((__gm__ float*)h_res, this->hResSize);
+    this->HLPostGm.SetGlobalBuffer((__gm__ float*)h_post, this->hPostSize);
 
-    this->dxLGm.SetGlobalBuffer((__gm__ T *)grad_x, this->xSize);
-    this->dFOutGm.SetGlobalBuffer((__gm__ T *)grad_h_out, this->hOutSize);
-    this->dHResGm.SetGlobalBuffer((__gm__ float *)grad_h_res, this->hResSize);
-    this->dHPostGm.SetGlobalBuffer((__gm__ float *)grad_h_post, this->hPostSize);
+    this->dxLGm.SetGlobalBuffer((__gm__ T*)grad_x, this->xSize);
+    this->dFOutGm.SetGlobalBuffer((__gm__ T*)grad_h_out, this->hOutSize);
+    this->dHResGm.SetGlobalBuffer((__gm__ float*)grad_h_res, this->hResSize);
+    this->dHPostGm.SetGlobalBuffer((__gm__ float*)grad_h_post, this->hPostSize);
 
     pipe->InitBuffer(this->dFPostResCastBuf, this->n * this->blockChannel * sizeof(T));
     pipe->InitBuffer(this->FOutCastBuf, this->blockChannel * sizeof(T));
@@ -356,10 +356,10 @@ __aicore__ inline void KernelMhcPostBackward<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void KernelMhcPostBackward<T>::VecMatmulMknk(LocalTensor<float> &A, LocalTensor<float> &B,
-                                                               LocalTensor<float> &C,
-                                                               LocalTensor<float> &broadcastBuffer,
-                                                               LocalTensor<float> &reduceBuffer, uint32_t m, uint32_t k,
+__aicore__ inline void KernelMhcPostBackward<T>::VecMatmulMknk(LocalTensor<float>& A, LocalTensor<float>& B,
+                                                               LocalTensor<float>& C,
+                                                               LocalTensor<float>& broadcastBuffer,
+                                                               LocalTensor<float>& reduceBuffer, uint32_t m, uint32_t k,
                                                                uint32_t n, uint32_t alignN)
 {
     // Compute matrix multiplication using vector instructions.
@@ -387,9 +387,9 @@ __aicore__ inline void KernelMhcPostBackward<T>::VecMatmulMknk(LocalTensor<float
 }
 
 template <typename T>
-__aicore__ inline void KernelMhcPostBackward<T>::VecMatmulMkkn(LocalTensor<float> &A, LocalTensor<float> &B,
-                                                               LocalTensor<float> &C,
-                                                               LocalTensor<float> &broadcastBuffer, uint32_t m,
+__aicore__ inline void KernelMhcPostBackward<T>::VecMatmulMkkn(LocalTensor<float>& A, LocalTensor<float>& B,
+                                                               LocalTensor<float>& C,
+                                                               LocalTensor<float>& broadcastBuffer, uint32_t m,
                                                                uint32_t k, uint32_t n)
 {
     uint32_t broadcastSrcShape[] = {m * k, 1};

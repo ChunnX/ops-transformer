@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file compressor_tiling.cpp
@@ -27,8 +27,8 @@ using namespace AscendC;
 namespace optiling {
 namespace {
 
-ge::graphStatus CompressorV2Tiling::ConvertRequiredParams(gert::TilingContext &context,
-                                                          CompressorV2Context &compressorContext)
+ge::graphStatus CompressorV2Tiling::ConvertRequiredParams(gert::TilingContext& context,
+                                                          CompressorV2Context& compressorContext)
 {
     compressorContext.x.desc = context.GetRequiredInputDesc(TOKEN_X_INPUT_INDEX);
     compressorContext.x.shape = context.GetRequiredInputShape(TOKEN_X_INPUT_INDEX);
@@ -62,7 +62,7 @@ ge::graphStatus CompressorV2Tiling::ConvertRequiredParams(gert::TilingContext &c
     return ge::GRAPH_SUCCESS;
 }
 
-void CompressorV2Tiling::ConvertOptionalParams(gert::TilingContext &context, CompressorV2Context &compressorContext)
+void CompressorV2Tiling::ConvertOptionalParams(gert::TilingContext& context, CompressorV2Context& compressorContext)
 {
     compressorContext.stateBlockTable.desc = context.GetOptionalInputDesc(STATE_BLOCK_TABLE_INPUT_INDEX);
     compressorContext.stateBlockTable.shape = context.GetOptionalInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
@@ -74,7 +74,7 @@ void CompressorV2Tiling::ConvertOptionalParams(gert::TilingContext &context, Com
     compressorContext.startPos.shape = context.GetOptionalInputShape(START_POS_INPUT_INDEX);
 }
 
-ge::graphStatus CompressorV2Tiling::ConvertContext(gert::TilingContext &context, CompressorV2Context &compressorContext)
+ge::graphStatus CompressorV2Tiling::ConvertContext(gert::TilingContext& context, CompressorV2Context& compressorContext)
 {
     if (context.GetNodeName() == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorV2", "opName", "got from TilingContext is nullptr");
@@ -297,7 +297,7 @@ ge::graphStatus CompressorV2Tiling::CheckEmptyTensor() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorV2Tiling::RunBigKernelTiling(CompressorV2TilingData *tilingData)
+ge::graphStatus CompressorV2Tiling::RunBigKernelTiling(CompressorV2TilingData* tilingData)
 {
     this->baseParams_ = &tilingData->baseParams;
     this->pageAttentionParams_ = &tilingData->pageAttentionParams;
@@ -317,7 +317,7 @@ ge::graphStatus CompressorV2Tiling::RunBigKernelTiling(CompressorV2TilingData *t
                                                     std::bind(&CompressorV2Tiling::SetInnerSplitInfo, this),
                                                     std::bind(&CompressorV2Tiling::SetWorkSpaceInfo, this),
                                                     std::bind(&CompressorV2Tiling::SetScenarioInfo, this)};
-    for (const auto &func : requiredTilingFuncs) {
+    for (const auto& func : requiredTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -334,7 +334,7 @@ ge::graphStatus CompressorV2Tiling::RunBigKernelTiling(CompressorV2TilingData *t
     }
     std::vector<StatusFunction> optionalTilingFuncs{std::bind(&CompressorV2Tiling::CalcWorkSpace, this),
                                                     std::bind(&CompressorV2Tiling::GenTilingKey, this)};
-    for (const auto &func : optionalTilingFuncs) {
+    for (const auto& func : optionalTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -389,9 +389,9 @@ ge::graphStatus CompressorV2Tiling::CheckSinglePara() const
 }
 
 template <typename T>
-ge::graphStatus CompressorV2Tiling::CheckFeatureValueSupport(const T *featureValue,
-                                                             const std::vector<T> &expectFeatureValList,
-                                                             const std::string &name) const
+ge::graphStatus CompressorV2Tiling::CheckFeatureValueSupport(const T* featureValue,
+                                                             const std::vector<T>& expectFeatureValList,
+                                                             const std::string& name) const
 {
     if (std::find(expectFeatureValList.begin(), expectFeatureValList.end(), *featureValue) ==
         expectFeatureValList.end()) {
@@ -402,8 +402,8 @@ ge::graphStatus CompressorV2Tiling::CheckFeatureValueSupport(const T *featureVal
 }
 
 template <typename T>
-ge::graphStatus CompressorV2Tiling::CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
-                                                          const std::string &name) const
+ge::graphStatus CompressorV2Tiling::CheckAttrValueSupport(const T* attrValue, const std::vector<T>& expectAttrValList,
+                                                          const std::string& name) const
 {
     if (attrValue == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -418,7 +418,7 @@ ge::graphStatus CompressorV2Tiling::CheckAttrValueSupport(const T *attrValue, co
 }
 
 template <typename T>
-std::string to_string(const T &value)
+std::string to_string(const T& value)
 {
     if (std::is_same_v<T, bool>) {
         return value ? "true" : "false";
@@ -428,8 +428,8 @@ std::string to_string(const T &value)
 }
 
 template <typename T>
-void CompressorV2Tiling::LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                               const std::string &name, const std::string subName) const
+void CompressorV2Tiling::LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                               const std::string& name, const std::string subName) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
@@ -455,11 +455,11 @@ static std::string LayoutTypeToStr(LayoutType layout)
     }
 }
 
-ge::graphStatus CompressorV2Tiling::CheckDimNumInLayoutSupport(const std::string &layout,
-                                                               const gert::StorageShape *shape,
-                                                               const std::string &name) const
+ge::graphStatus CompressorV2Tiling::CheckDimNumInLayoutSupport(const std::string& layout,
+                                                               const gert::StorageShape* shape,
+                                                               const std::string& name) const
 {
-    const auto &dimIt = LAYOUT_DIM_MAP.find(layout);
+    const auto& dimIt = LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(
         shape->GetStorageShape().GetDimNum() != dimIt->second,
         OP_LOGE_FOR_INVALID_SHAPEDIM(context_->opName, name, std::to_string(shape->GetStorageShape().GetDimNum()),
@@ -468,16 +468,16 @@ ge::graphStatus CompressorV2Tiling::CheckDimNumInLayoutSupport(const std::string
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorV2Tiling::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-                                                      const std::string &name) const
+ge::graphStatus CompressorV2Tiling::CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc,
+                                                      const std::string& name) const
 {
     if (desc != nullptr) {
-        const auto &it = DTYPE_SUPPORT_MAP.find(name);
+        const auto& it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         context_->opName, name, "datatype support list should be specify in DTYPE_SUPPORT_MAP"),
                     return ge::GRAPH_FAILED);
-        auto &expectDtypeList = it->second;
+        auto& expectDtypeList = it->second;
         OP_CHECK_IF(
             std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end(),
             LogErrorDtypeSupport(expectDtypeList, desc->GetDataType(), name), return ge::GRAPH_FAILED);
@@ -485,8 +485,8 @@ ge::graphStatus CompressorV2Tiling::CheckDtypeSupport(const gert::CompileTimeTen
     return ge::GRAPH_SUCCESS;
 }
 
-void CompressorV2Tiling::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-                                              const ge::DataType &actualDtype, const std::string &name) const
+void CompressorV2Tiling::LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList,
+                                              const ge::DataType& actualDtype, const std::string& name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -510,17 +510,17 @@ static std::string DataTypeToSerialString(ge::DataType type)
     }
 }
 
-ge::graphStatus CompressorV2Tiling::CheckDimNumSupport(const gert::StorageShape *shape, const std::string &name) const
+ge::graphStatus CompressorV2Tiling::CheckDimNumSupport(const gert::StorageShape* shape, const std::string& name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    const auto &it = DIM_NUM_MAP.find(name);
+    const auto& it = DIM_NUM_MAP.find(name);
     OP_CHECK_IF(it == DIM_NUM_MAP.end(),
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context_->opName, name,
                                                          "dim number support list should be specify in DIM_NUM_MAP"),
                 return ge::GRAPH_FAILED);
-    auto &expectDimNumList = it->second;
+    auto& expectDimNumList = it->second;
     OP_CHECK_IF(
         std::find(expectDimNumList.begin(), expectDimNumList.end(), shape->GetStorageShape().GetDimNum()) ==
             expectDimNumList.end(),
@@ -785,9 +785,9 @@ ge::graphStatus CompressorV2Tiling::CheckFeature() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorV2Tiling::LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
-                                                             const uint32_t &dimNum, const std::string &subName,
-                                                             const uint32_t &expectNum) const
+ge::graphStatus CompressorV2Tiling::LogErrorShapeConsistency(const std::string& name, const gert::StorageShape* shape,
+                                                             const uint32_t& dimNum, const std::string& subName,
+                                                             const uint32_t& expectNum) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -827,8 +827,8 @@ ge::graphStatus CompressorV2Tiling::CheckShapeConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorV2Tiling::CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc,
-                                                           const std::string &name) const
+ge::graphStatus CompressorV2Tiling::CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc* desc,
+                                                           const std::string& name) const
 {
     const auto actualDtype = desc->GetDataType();
     OP_CHECK_IF(actualDtype != context_->dtype,
@@ -883,7 +883,7 @@ ge::graphStatus CompressorV2Tiling::CheckMultiParaConsistency() const
 
 } // namespace
 
-CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext *context)
+CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorV2", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -897,7 +897,7 @@ CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext *context
         return ge::GRAPH_FAILED;
     }
     CompressorV2Tiling compressorTiling(&compressorContext);
-    CompressorV2TilingData *tilingData = context->GetTilingData<CompressorV2TilingData>();
+    CompressorV2TilingData* tilingData = context->GetTilingData<CompressorV2TilingData>();
     OP_CHECK_IF(tilingData == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(compressorContext.opName, "tilingData", "is nullptr"),
                 return ge::GRAPH_FAILED);

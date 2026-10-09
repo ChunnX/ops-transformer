@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file copy_b1_to_b2_with_layout.h
@@ -53,7 +53,7 @@ public:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void operator()(const DstTensor &l0B, const SrcTensor &l1B, const Coord &coord)
+    __aicore__ inline void operator()(const DstTensor& l0B, const SrcTensor& l1B, const Coord& coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
         if constexpr (BType::isTrans) {
@@ -80,7 +80,7 @@ private:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void TransposeLoadB2(const DstTensor &l0B, const SrcTensor &l1B, const Coord &coord)
+    __aicore__ inline void TransposeLoadB2(const DstTensor& l0B, const SrcTensor& l1B, const Coord& coord)
     {
         auto srcShape = l1B.GetTensorTrait().GetLayout().GetShape();
         auto srcStride = l1B.GetTensorTrait().GetLayout().GetStride();
@@ -148,7 +148,7 @@ private:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void NoneTransposeLoadB2(const DstTensor &l0B, const SrcTensor &l1B, const Coord &coord)
+    __aicore__ inline void NoneTransposeLoadB2(const DstTensor& l0B, const SrcTensor& l1B, const Coord& coord)
     {
         auto srcShape = l1B.GetTensorTrait().GetLayout().GetShape();
         auto srcStride = l1B.GetTensorTrait().GetLayout().GetStride();
@@ -223,7 +223,7 @@ public:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void operator()(const DstTensor &l0B, const SrcTensor &l1B, const Coord &coord)
+    __aicore__ inline void operator()(const DstTensor& l0B, const SrcTensor& l1B, const Coord& coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         if constexpr (BType::isTrans) {
@@ -252,7 +252,7 @@ private:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void TransposeLoadB2(const DstTensor &l0B, const SrcTensor &l1B, const Coord &coord)
+    __aicore__ inline void TransposeLoadB2(const DstTensor& l0B, const SrcTensor& l1B, const Coord& coord)
     {
         auto srcShape = l1B.GetTensorTrait().GetLayout().GetShape();
         auto dstShape = l0B.GetTensorTrait().GetLayout().GetShape();
@@ -289,7 +289,7 @@ private:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void NoneTransposeLoadB2(const DstTensor &l0B, const SrcTensor &l1B, const Coord &coord)
+    __aicore__ inline void NoneTransposeLoadB2(const DstTensor& l0B, const SrcTensor& l1B, const Coord& coord)
     {
         auto srcShape = l1B.GetTensorTrait().GetLayout().GetShape();
         auto dstShape = l0B.GetTensorTrait().GetLayout().GetShape();

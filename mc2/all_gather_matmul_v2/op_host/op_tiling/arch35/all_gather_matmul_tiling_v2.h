@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_tiling_v2.h
@@ -34,10 +34,10 @@ using namespace mc2_matmul_v3_advanced;
 
 class AllGatherMatmulTilingV2 : public AllGatherMatmulTilingBase {
 public:
-    explicit AllGatherMatmulTilingV2(gert::TilingContext *context);
+    explicit AllGatherMatmulTilingV2(gert::TilingContext* context);
     ~AllGatherMatmulTilingV2() override = default;
-    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
-                                     Mc2MatMulV3TilingData &tilingData);
+    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg, Mc2MMRegisterCfg& registerCfg,
+                                     Mc2MatMulV3TilingData& tilingData);
 
 protected:
     bool IsCapable() override;
@@ -48,37 +48,37 @@ protected:
 
     CutResult GetTilingResult() override;
 
-    Mc2Tiling::RCSTiling &MutableRCSTilingData()
+    Mc2Tiling::RCSTiling& MutableRCSTilingData()
     {
         return allGatherMatmulTilingDataV2_->param;
     }
 
-    Mc2MatMulV3TilingData &MutableMC2MatmulV3LocalTilingData()
+    Mc2MatMulV3TilingData& MutableMC2MatmulV3LocalTilingData()
     {
         return allGatherMatmulTilingDataV2_->mc2MmV3LocalTilingData;
     }
-    Mc2MatMulV3TilingData &MutableMC2MatmulV3TileTilingData()
+    Mc2MatMulV3TilingData& MutableMC2MatmulV3TileTilingData()
     {
         return allGatherMatmulTilingDataV2_->mc2MmV3TileTilingData;
     }
-    Mc2MatMulV3TilingData &MutableMC2MatmulV3TailTilingData()
+    Mc2MatMulV3TilingData& MutableMC2MatmulV3TailTilingData()
     {
         return allGatherMatmulTilingDataV2_->mc2MmV3TailTilingData;
     }
 
     void PrintAllTilingData();
     ge::graphStatus DoVersion2Tiling();
-    ge::graphStatus SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg);
+    ge::graphStatus SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCfg);
     ge::graphStatus SetRawTilingData();
     ge::graphStatus CheckInput() override;
 
 private:
     Mc2Tiling::AllGatherMatmulTilingDataV2 allGatherMatmulTilingDataV2Self_;
-    Mc2Tiling::AllGatherMatmulTilingDataV2 *allGatherMatmulTilingDataV2_;
+    Mc2Tiling::AllGatherMatmulTilingDataV2* allGatherMatmulTilingDataV2_;
     uint64_t myWorkSpaceSize_{0U};
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo compileInfo_;
 };
-ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context);
+ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext* context);
 } // namespace optiling
 #endif

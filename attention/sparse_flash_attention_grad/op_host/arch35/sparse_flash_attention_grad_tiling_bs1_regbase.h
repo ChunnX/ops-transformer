@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_attention_grad_tiling_bs1_regbase.h
@@ -67,13 +67,13 @@ struct AiCoreParams {
 
 class SparseFlashAttentionGradBs1Regbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseFlashAttentionGradBs1Regbase(gert::TilingContext *context)
+    explicit SparseFlashAttentionGradBs1Regbase(gert::TilingContext* context)
         : TilingBaseClass(context) {};
-    SparseFlashAttentionGradTilingDataRegbase *tilingData =
+    SparseFlashAttentionGradTilingDataRegbase* tilingData =
         context_->GetTilingData<SparseFlashAttentionGradTilingDataRegbase>();
-    SparseFlashAttentionGradBaseParamsRegbase *baseParams_ = &tilingData->baseParams;
-    PreParamsRegbase *preTilingData_ = &tilingData->preTilingData;
-    PostParamsRegbase *postTilingData_ = &tilingData->postTilingData;
+    SparseFlashAttentionGradBaseParamsRegbase* baseParams_ = &tilingData->baseParams;
+    PreParamsRegbase* preTilingData_ = &tilingData->preTilingData;
+    PostParamsRegbase* postTilingData_ = &tilingData->postTilingData;
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -86,15 +86,15 @@ protected:
     uint64_t GetTilingKey() const override;
 
 private:
-    ge::graphStatus CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
-                                      const gert::Shape &outputshape, const char *inputLayout);
+    ge::graphStatus CheckOutShapeInfo(const gert::Shape& inputshape, const char* inputName,
+                                      const gert::Shape& outputshape, const char* inputLayout);
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus DoSftTiling();
     ge::graphStatus DoBlockTiling();
     ge::graphStatus DoCastTiling();
     TempParams tmpData;
 
-    const char *opName;
+    const char* opName;
 };
 } // namespace sfag
 } // namespace optiling

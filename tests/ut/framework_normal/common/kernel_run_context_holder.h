@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef TRANSFORMER_TESTS_UT_COMMON_KERNEL_RUN_CONTEXT_HOLDER_H_
 #define TRANSFORMER_TESTS_UT_COMMON_KERNEL_RUN_CONTEXT_HOLDER_H_
@@ -23,7 +23,7 @@ public:
     KernelRunContextHolder() = default;
     ~KernelRunContextHolder() = default;
 
-    KernelRunContextHolder &operator=(KernelRunContextHolder &&holder)
+    KernelRunContextHolder& operator=(KernelRunContextHolder&& holder)
     {
         context_ = holder.context_;
         opType_ = std::move(holder.opType_);
@@ -41,25 +41,25 @@ public:
         inferDataTypeContextHolder_ = std::move(holder.inferDataTypeContextHolder_);
         return *this;
     }
-    KernelRunContextHolder(KernelRunContextHolder &&holder)
+    KernelRunContextHolder(KernelRunContextHolder&& holder)
     {
         KernelRunContextHolder::operator=(std::move(holder));
     }
 
-    void SetContext(void *context)
+    void SetContext(void* context)
     {
         context_ = context;
     }
 
     template <typename T>
-    T *GetContext()
+    T* GetContext()
     {
-        return static_cast<T *>(context_);
+        return static_cast<T*>(context_);
     }
 
 protected:
     // 需要在holder里存储部分数据，避免这些数据在Context析构前就被释放
-    void *context_ = nullptr;
+    void* context_ = nullptr;
     std::string opType_;
     std::vector<StorageShape> outputShapes_;
     std::vector<Tensor> inputTensors_;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file qkv_rms_norm_rope_cache_infershape.cpp
@@ -22,8 +22,8 @@ namespace ops {
 constexpr int64_t QKV_INDEX = 0;
 // In-place inputs
 constexpr int64_t Q_OUT_INDEX = 6;
-constexpr int64_t K_CACHE_INDEX = 7;  
-constexpr int64_t V_CACHE_INDEX = 8;    
+constexpr int64_t K_CACHE_INDEX = 7;
+constexpr int64_t V_CACHE_INDEX = 8;
 constexpr int64_t IS_OUTPUT_QKV_IDX = 4;
 
 constexpr size_t OUTPUT_IDX_Q_OUT = 0;
@@ -77,18 +77,18 @@ graphStatus InferShape4QkvRmsNormRopeCache(gert::InferShapeContext* context)
     OP_CHECK_NULL_WITH_CONTEXT(context, kCacheProtoShape);
     gert::Shape* vCacheProtoShape = context->GetOutputShape(OUTPUT_IDX_V_CACHE_PROTO);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheProtoShape);
-    
+
     int64_t qOutDimSize = qOutInputShape->GetDimNum();
     int64_t qkvDimSize = qkvInputShape->GetDimNum();
-    
+
     auto attrs = context->GetAttrs();
     const bool* isOutputQkv = attrs->GetBool(IS_OUTPUT_QKV_IDX);
     bool tmp = isOutputQkv == nullptr ? false : *isOutputQkv;
-    
+
     *qOutShape = *qOutInputShape;
     *kCacheShape = *kCacheInputShape;
     *vCacheShape = *vCacheInputShape;
-    if(!tmp){
+    if (!tmp) {
         return GRAPH_SUCCESS;
     }
     *qOutProtoShape = *qOutInputShape;
@@ -117,7 +117,7 @@ graphStatus InferShape4QkvRmsNormRopeCache(gert::InferShapeContext* context)
             return ge::GRAPH_FAILED;
         }
     }
-    
+
     if (!Ops::Base::IsUnknownRank(*kCacheInputShape)) {
         kCacheProtoShape->SetDim(DIM_ONE, kCacheInputShape->GetDim(DIM_ONE) * kCacheInputShape->GetDim(DIM_THREE));
     }

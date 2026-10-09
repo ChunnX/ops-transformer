@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_combine_v2_infershape.cpp
@@ -22,7 +22,7 @@ static constexpr size_t COMBINE_INPUT_EXPAND_X_INDEX = 1;
 static constexpr size_t COMBINE_INPUT_EXPERT_IDS_INDEX = 2;
 static constexpr size_t COMBINE_OUTPUT_X_INDEX = 0;
 
-static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -36,7 +36,7 @@ static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMoeDistributeCombineV3(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeMoeDistributeCombineV3(gert::InferDataTypeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMoeDistributeCombineV3.");
     Mc2InferShape::InferCombineOutputXDataType(context, COMBINE_INPUT_EXPAND_X_INDEX, COMBINE_OUTPUT_X_INDEX);

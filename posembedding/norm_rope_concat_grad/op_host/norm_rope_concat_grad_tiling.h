@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file norm_rope_concat_grad_tiling.h
@@ -72,8 +72,8 @@ enum class TensorType {
 };
 
 struct InputTensorInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
     TensorType type;
     size_t index;
     bool isRequired;
@@ -151,18 +151,18 @@ static int64_t CeilDiv(int64_t num1, int64_t num2)
 }
 
 struct NormRopeConcatGradContext {
-    const char *opName;
+    const char* opName;
 
     InputTensorInfo inputs[MAX_BACKWARD_INPUT_NUM];
 
     const size_t requiredInputNum{REQUIRED_BACKWARD_INPUT_NUM};
     const size_t maxInputNum{MAX_BACKWARD_INPUT_NUM};
 
-    const int64_t *normType;
-    const int64_t *normAddedType;
-    const int64_t *ropeType;
-    const int64_t *concatOrder;
-    const float *eps;
+    const int64_t* normType;
+    const int64_t* normAddedType;
+    const int64_t* ropeType;
+    const int64_t* concatOrder;
+    const float* eps;
 };
 
 class NormRopeConcatGradTiling {
@@ -170,20 +170,20 @@ public:
     NormRopeConcatGradTiling() = default;
     ~NormRopeConcatGradTiling() = default;
 
-    ge::graphStatus DoTiling(gert::TilingContext *ctx);
-    ge::graphStatus SetTiling(gert::TilingContext *ctx);
+    ge::graphStatus DoTiling(gert::TilingContext* ctx);
+    ge::graphStatus SetTiling(gert::TilingContext* ctx);
 
 private:
     ge::graphStatus GetShapeInfo();
     ge::graphStatus CheckInput();
-    ge::graphStatus CheckInput(const InputTensorInfo &x);
+    ge::graphStatus CheckInput(const InputTensorInfo& x);
     ge::graphStatus ComputeTilingKey();
     ge::graphStatus ComputeCoreTilingStrategy();
     ge::graphStatus ComputeUBTilingStrategy();
     ge::graphStatus ComputeWorkSpace();
     ge::graphStatus FillTilingData();
-    ge::graphStatus PrintTilingData(gert::TilingContext *ctx);
-    ge::graphStatus ConvertContextOne(gert::TilingContext *ctx, InputTensorInfo &x);
+    ge::graphStatus PrintTilingData(gert::TilingContext* ctx);
+    ge::graphStatus ConvertContextOne(gert::TilingContext* ctx, InputTensorInfo& x);
 
 private:
     uint64_t batchSize_{0};
@@ -211,7 +211,7 @@ private:
 
     uint64_t numBlocks_{0};
     int64_t tilingKey_{0};
-    size_t *workspace_{nullptr};
+    size_t* workspace_{nullptr};
     ge::DataType inputDtype_{ge::DT_FLOAT};
 
     NormRopeConcatGradContext context_;

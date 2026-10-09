@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_tiling_s1s2_bn2gs1s2_basic_det.h
@@ -47,7 +47,7 @@ struct BasicDetBaseInfoParams {
     int64_t preTockens;
     int64_t nextTockens;
     uint32_t sparseMode;
-    const char *inputLayout;
+    const char* inputLayout;
     uint32_t dqPostAbsorb;
     bool eaqualActSeqLen{true};
     bool pseEnable{false};
@@ -87,10 +87,10 @@ struct FlashAttentionGradBasicDetCompileInfo {
 
 class FlashAttentionScoreGraTilingBasicDet : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit FlashAttentionScoreGraTilingBasicDet(gert::TilingContext *context)
+    explicit FlashAttentionScoreGraTilingBasicDet(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
-    FlashAttentionGradBasicDetTilingData *tilingData = context_->GetTilingData<FlashAttentionGradBasicDetTilingData>();
+    FlashAttentionGradBasicDetTilingData* tilingData = context_->GetTilingData<FlashAttentionGradBasicDetTilingData>();
 
 protected:
     bool IsCapable() override;

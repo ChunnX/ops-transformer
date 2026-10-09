@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_dispatch_v2_tiling.h
@@ -68,36 +68,36 @@ using namespace Ops::Transformer::OpTiling;
 
 class MoeDistributeDispatchV2TilingFuncBase {
 public:
-    ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config);
-    ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
+    ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext* context, DispatchV2Config& config);
+    ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext* context, const char* nodeName,
                                                      const bool isActiveMask, const bool isScales,
                                                      const bool hasElasticInfo, const bool isPerformance,
                                                      const uint32_t quantMode, const bool isLayered,
-                                                     DispatchV2Config &config);
-    bool CheckCommomOtherInputTensorDataType(const gert::TilingContext *context, const char *nodeName,
+                                                     DispatchV2Config& config);
+    bool CheckCommomOtherInputTensorDataType(const gert::TilingContext* context, const char* nodeName,
                                              const bool isActiveMask, const bool hasElasticInfo,
-                                             const bool isPerformance, DispatchV2Config &config);
-    bool CheckCommomOutputTensorDataType(const gert::TilingContext *context, const char *nodeName);
-    ge::graphStatus CheckOtherAttrParams(const gert::TilingContext *context, const char *nodeName,
-                                         bool &isSetFullMeshV2, DispatchV2Config &config);
-    ge::graphStatus CheckCommAttrParams(const gert::TilingContext *context, const char *nodeName, std::string &groupTp,
-                                        bool &isSetFullMeshV2, bool &isLayered, DispatchV2Config &config);
-    ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext *context, const char *nodeName,
-                                            MoeDistributeDispatchV2TilingData &tilingData, std::string &groupEp,
-                                            std::string &groupTp, bool &isSetFullMeshV2, bool &isLayered,
-                                            DispatchV2Config &config);
+                                             const bool isPerformance, DispatchV2Config& config);
+    bool CheckCommomOutputTensorDataType(const gert::TilingContext* context, const char* nodeName);
+    ge::graphStatus CheckOtherAttrParams(const gert::TilingContext* context, const char* nodeName,
+                                         bool& isSetFullMeshV2, DispatchV2Config& config);
+    ge::graphStatus CheckCommAttrParams(const gert::TilingContext* context, const char* nodeName, std::string& groupTp,
+                                        bool& isSetFullMeshV2, bool& isLayered, DispatchV2Config& config);
+    ge::graphStatus GetAttrAndSetTilingData(const gert::TilingContext* context, const char* nodeName,
+                                            MoeDistributeDispatchV2TilingData& tilingData, std::string& groupEp,
+                                            std::string& groupTp, bool& isSetFullMeshV2, bool& isLayered,
+                                            DispatchV2Config& config);
 
-    virtual ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext *context) = 0;
-    virtual ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext *context) = 0;
-    virtual bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName, const bool isScales,
+    virtual ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context) = 0;
+    virtual ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext* context) = 0;
+    virtual bool CheckTensorDataType(const gert::TilingContext* context, const char* nodeName, const bool isScales,
                                      const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
-                                     const bool isPerformance, DispatchV2Config &config) = 0;
+                                     const bool isPerformance, DispatchV2Config& config) = 0;
     virtual uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, const bool isSetFullMeshV2,
                                   bool isLayered) = 0;
-    virtual ge::graphStatus CheckQuantModeMatchScales(gert::TilingContext *context, const char *nodeName, bool isScales,
-                                                      uint32_t quantMode, DispatchV2Config &config) = 0;
-    virtual ge::graphStatus CheckCommAlgPtr(const char *commAlgPtr, const char *nodeName) = 0;
-    virtual ge::graphStatus CheckQuantModePtr(const int64_t *quantModePtr, const char *nodeName) = 0;
+    virtual ge::graphStatus CheckQuantModeMatchScales(gert::TilingContext* context, const char* nodeName, bool isScales,
+                                                      uint32_t quantMode, DispatchV2Config& config) = 0;
+    virtual ge::graphStatus CheckCommAlgPtr(const char* commAlgPtr, const char* nodeName) = 0;
+    virtual ge::graphStatus CheckQuantModePtr(const int64_t* quantModePtr, const char* nodeName) = 0;
 };
 
 } // namespace optiling

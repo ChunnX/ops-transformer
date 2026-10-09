@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef GEMM_BLOCK_MMAD_QK_DECODE_HPP
 #define GEMM_BLOCK_MMAD_QK_DECODE_HPP
@@ -81,7 +81,7 @@ public:
 
     __aicore__ inline BlockMmad() {}
 
-    __aicore__ inline void init(Arch::Resource<ArchTag> &resource, uint32_t nDynamic, uint32_t kDynamic,
+    __aicore__ inline void init(Arch::Resource<ArchTag>& resource, uint32_t nDynamic, uint32_t kDynamic,
                                 uint32_t l1BufAddrStartQK = 0)
     {
         // Allocate L1 memory space
@@ -101,7 +101,7 @@ public:
     __aicore__ inline ~BlockMmad() {}
 
     __aicore__ inline void loadQGM(AscendC::GlobalTensor<ElementA> gA, LayoutA layoutA, uint32_t rowNum,
-                                   uint32_t &singleGroupHeads, uint32_t &qHeads, uint32_t kvNBlockSizeParam)
+                                   uint32_t& singleGroupHeads, uint32_t& qHeads, uint32_t kvNBlockSizeParam)
     {
         uint32_t embed = layoutA.shape(1);
         uint32_t rowNumRound = RoundUp(rowNum, L1AAlignHelper::M_ALIGNED);
@@ -119,7 +119,7 @@ public:
         l1AKvNBlockSize = kvNBlockSizeParam;
     }
 
-    __aicore__ inline void getBlockShape(GemmCoord &actShape, uint32_t nL1Index, uint32_t nL1Loop,
+    __aicore__ inline void getBlockShape(GemmCoord& actShape, uint32_t nL1Index, uint32_t nL1Loop,
                                          uint32_t stackSeqTile)
     {
         uint32_t nSplitSize = l1NDynamic;
@@ -129,7 +129,7 @@ public:
         actShape[COORD_DIM1] = nSplitSize;
     }
 
-    __aicore__ inline void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t nowNIdx,
+    __aicore__ inline void getKVOffset(AscendC::GlobalTensor<int32_t>& gBlockTable, uint64_t& kOffset, uint32_t nowNIdx,
                                        uint32_t nL1Idx, uint32_t strideKV, uint32_t blockSize, uint32_t embed,
                                        uint64_t keyBnStride)
     {

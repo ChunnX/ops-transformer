@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file cube4_sfmg_arch22.h
@@ -21,7 +21,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube4Process(c
                                                                                const int64_t queryGmOffset,
                                                                                const int32_t blkCntOffset,
                                                                                const int32_t mmPingPongIdx,
-                                                                               const RunInfo &runInfo)
+                                                                               const RunInfo& runInfo)
 {
     uint32_t dLoopTimes = (dimDTotal + 127) / N_SPLIT_SIZE;
     uint32_t perLoopDSize = N_SPLIT_SIZE;
@@ -47,7 +47,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube4Process(c
                 // cmp_kv
                 mm4ResOutBaseOffset = runInfo.roundDbIdx * MAX_CORE_NUM * selectedBlockCount * dimDTotal +
                                       cBlockIdx * selectedBlockCount * dimDTotal;
-                mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
+                mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + mm4ResAddr);
             } else {
                 // ori_kv
                 // [db][aic][singleN][Dk]，相对 blkCntOffset 从 0 起写
@@ -55,23 +55,23 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube4Process(c
                 int64_t perCore = singleN * dimDTotal * 2; // Dk+Dv
                 mm4ResOutBaseOffset =
                     dbIdx * usedCoreNum * perCore + cBlockIdx * perCore - blkCntOffset * selectedBlockSize * dimDTotal;
-                mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + deterKvAddr);
+                mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + deterKvAddr);
             }
         } else {
             int64_t dbIdx = runInfo.task & 1;
             int64_t perCore = singleN * dimDTotal * 2;
             mm4ResOutBaseOffset =
                 dbIdx * usedCoreNum * perCore + cBlockIdx * perCore - blkCntOffset * selectedBlockSize * dimDTotal;
-            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + deterKvAddr);
+            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + deterKvAddr);
         }
     } else if constexpr (MODE == SMLAG_SCFA_MODE) {
         if (!runInfo.isOri) {
             mm4ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDTotal +
                                   cBlockIdx * selectedBlockCount * dimDTotal;
-            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
+            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + mm4ResAddr);
         } else {
             mm4ResOutBaseOffset = runInfo.selectedKGmOffset - blkCntOffset * selectedBlockSize * dimDTotal;
-            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + usedWorkspaceLen / sizeof(float));
+            mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + usedWorkspaceLen / sizeof(float));
         }
     } else {
         mm4ResOutBaseOffset = runInfo.isOri ?

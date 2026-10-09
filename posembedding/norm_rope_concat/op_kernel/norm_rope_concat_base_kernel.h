@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file norm_rope_concat_base_kernel.h
@@ -103,7 +103,7 @@ __aicore__ inline void SToVSync()
 template <RopeType ropeType>
 class RopeOperation {
 public:
-    __aicore__ inline RopeOperation(TPipe *pipe, GM_ADDR sin, GM_ADDR cos, uint32_t actualSeq, uint32_t ropeDim,
+    __aicore__ inline RopeOperation(TPipe* pipe, GM_ADDR sin, GM_ADDR cos, uint32_t actualSeq, uint32_t ropeDim,
                                     uint32_t ropeNum, uint32_t alignedRopeDim)
         : ropeDim_(ropeDim),
           ropeNum_(ropeNum),
@@ -115,8 +115,8 @@ public:
             return;
         }
 
-        sinGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)sin);
-        cosGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN *)cos);
+        sinGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN*)sin);
+        cosGm_.SetGlobalBuffer((__gm__ DTYPE_ROPE_SIN*)cos);
         pipe->InitBuffer(ropeQueue_, SINGLE_BUFFER, totalRopeDim_ * NUM_TWO * sizeof(DTYPE_ROPE_SIN));
         pipe->InitBuffer(buf_, (totalRopeDim_ * sizeof(int32_t) + totalRopeDim_ * NUM_TWO * sizeof(float)));
         sin_ = buf_.GetWithOffset<float>(totalRopeDim_, 0);
@@ -195,12 +195,12 @@ public:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void Rotate(const LocalTensor<float> &x)
+    __aicore__ inline void Rotate(const LocalTensor<float>& x)
     {
         Gather(x[totalRopeDim_], x, mask_, 0, totalRopeDim_);
     }
 
-    __aicore__ inline void Collect(const LocalTensor<float> &x)
+    __aicore__ inline void Collect(const LocalTensor<float>& x)
     {
         Mul(x, x, cos_, totalRopeDim_);
         PipeBarrier<PIPE_V>();

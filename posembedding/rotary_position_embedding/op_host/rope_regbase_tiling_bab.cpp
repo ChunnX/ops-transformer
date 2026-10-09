@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file rope_regbase_tiling_bab.cc
@@ -26,11 +26,11 @@ constexpr int64_t TILING_KEY_BAB = 20020;
 
 class RopeRegBaseTilingClassBAB : public RopeRegBaseTilingClass {
 public:
-    explicit RopeRegBaseTilingClassBAB(gert::TilingContext *context_)
+    explicit RopeRegBaseTilingClassBAB(gert::TilingContext* context_)
         : RopeRegBaseTilingClass(context_)
     {}
     ~RopeRegBaseTilingClassBAB() override = default;
-    void Reset(gert::TilingContext *context_) override
+    void Reset(gert::TilingContext* context_) override
     {
         RopeRegBaseTilingClass::Reset(context_);
     }
@@ -213,7 +213,7 @@ ge::graphStatus RopeRegBaseTilingClassBAB::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     context_->SetBlockDim(usedCoreNum_);
     context_->SetTilingKey(tilingKey_);
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = WORK_SPACE_SIZE;
     PrintTilingData();
     return ge::GRAPH_SUCCESS;

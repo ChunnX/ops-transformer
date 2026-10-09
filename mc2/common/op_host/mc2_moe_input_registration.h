@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef MC2_MOE_INPUT_REGISTRATION_H
 #define MC2_MOE_INPUT_REGISTRATION_H
@@ -16,7 +16,7 @@
 namespace ops {
 namespace Mc2OpDef {
 
-inline void DefineCombineRequiredInputs(OpDef &op)
+inline void DefineCombineRequiredInputs(OpDef& op)
 {
     op.Input("expand_x")
         .ParamType(REQUIRED)
@@ -50,7 +50,7 @@ inline void DefineCombineRequiredInputs(OpDef &op)
         .AutoContiguous();
 }
 
-inline void DefineCombineOptionalInputs(OpDef &op)
+inline void DefineCombineOptionalInputs(OpDef& op)
 {
     op.Input("tp_send_counts")
         .ParamType(OPTIONAL)
@@ -132,7 +132,7 @@ inline void DefineCombineOptionalInputs(OpDef &op)
         .AutoContiguous();
 }
 
-inline void DefineDispatchOptionalInputs(OpDef &op)
+inline void DefineDispatchOptionalInputs(OpDef& op)
 {
     op.Input("x_active_mask")
         .ParamType(OPTIONAL)

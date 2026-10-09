@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_weight_nz_performance.h
@@ -165,15 +165,15 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2WeightNzKernel<xType, wType, b
                     uint64_t xIndex = indexX0 + indexX1 + indexX2 + indexX3;
                     uint64_t weightIndex = indexWeight0 + indexWeight1 + indexWeight2 + indexWeight3;
                     uint64_t yIndex = indexY0 + indexY1 + indexY2 + batchY3Index;
-                    this->xGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(this->xGM_ + offsetX * xIndex),
+                    this->xGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(this->xGM_ + offsetX * xIndex),
                                                    xSize);
                     this->wGlobal_.SetGlobalBuffer(
-                        reinterpret_cast<__gm__ wType *>(this->weightGM_ + offsetWeight * weightIndex), weightSize);
-                    this->yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ yType *>(this->yGM_ + offsetY * yIndex),
+                        reinterpret_cast<__gm__ wType*>(this->weightGM_ + offsetWeight * weightIndex), weightSize);
+                    this->yGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ yType*>(this->yGM_ + offsetY * yIndex),
                                                    ySize);
                     if (this->tiling_->biasWithBatch && this->biasFlag_) {
                         this->biasGlobal_.SetGlobalBuffer(
-                            reinterpret_cast<__gm__ biasType *>(this->biasGM_ + offsetBias * yIndex),
+                            reinterpret_cast<__gm__ biasType*>(this->biasGM_ + offsetBias * yIndex),
                             this->tiling_->nSize);
                     }
                     this->OneProcess();

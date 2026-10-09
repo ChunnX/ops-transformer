@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_common.h
@@ -133,12 +133,12 @@ __aicore__ inline uint64_t CalcShapeOffset(uint64_t shapeTypeSize, uint64_t shap
 
 #if __CCE_AICORE__ == 200
 using namespace matmul;
-__aicore__ __inline__ GM_ADDR GetTailA(GM_ADDR aGM, AscendC::tiling::TCubeTiling &tiling, uint32_t size)
+__aicore__ __inline__ GM_ADDR GetTailA(GM_ADDR aGM, AscendC::tiling::TCubeTiling& tiling, uint32_t size)
 {
     uint64_t offset = CalcShapeOffset(sizeof(A_DTYPE), tiling.M, tiling.Ka);
     return aGM + offset * size;
 }
-__aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, AscendC::tiling::TCubeTiling &tiling, uint32_t size)
+__aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, AscendC::tiling::TCubeTiling& tiling, uint32_t size)
 {
     uint64_t offset = CalcShapeOffset(sizeof(C_DTYPE), tiling.M, tiling.N);
     return cGM + offset * size;
@@ -252,7 +252,7 @@ struct MC2TilingHeader {
 };
 
 struct MC2TileInfo {
-    AscendC::tiling::TCubeTiling *mmTiling;
+    AscendC::tiling::TCubeTiling* mmTiling;
     AscendC::HcclHandle hcclHandleId;
     uint64_t aOffset;
     uint64_t aAddrOffset;
@@ -272,22 +272,22 @@ enum class Mc2CoreType {
 #endif
 
 // for oom check
-__aicore__ inline void OOMInit(__gm__ HcclCombinOpParam *context)
+__aicore__ inline void OOMInit(__gm__ HcclCombinOpParam* context)
 {
 #ifndef __CCE_KT_TEST__
-    AscendC::OOMCheckAddrRange((__gm__ uint8_t *)(context->WorkSpace), context->WorkSpaceSize);
-    AscendC::OOMCheckAddrRange((__gm__ uint8_t *)(context->windowsIn[context->rankId]), context->winSize);
+    AscendC::OOMCheckAddrRange((__gm__ uint8_t*)(context->WorkSpace), context->WorkSpaceSize);
+    AscendC::OOMCheckAddrRange((__gm__ uint8_t*)(context->windowsIn[context->rankId]), context->winSize);
 #endif
 }
 
 __aicore__ inline void CastBFtoFloatOnAiv0Impl(GM_ADDR dst, GM_ADDR src, uint32_t size,
-                                               TBuf<TPosition::VECCALC> &tmpBuf)
+                                               TBuf<TPosition::VECCALC>& tmpBuf)
 {
     // 1. 初始化global tensor
     GlobalTensor<bfloat16_t> gmSrc;
     GlobalTensor<float> gmDst;
-    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t *)(src), size);
-    gmDst.SetGlobalBuffer((__gm__ float *)(dst), size);
+    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
+    gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
 
     // 2. 初始化local tensor
     LocalTensor<bfloat16_t> fullBf16 = tmpBuf.Get<bfloat16_t>();
@@ -316,7 +316,7 @@ __aicore__ inline void CastBFtoFloatOnAiv0Impl(GM_ADDR dst, GM_ADDR src, uint32_
     DataCopyPad(gmDst, yLocal, cpOutParams);
 }
 
-__aicore__ inline void CastBFtoFloatOnAiv0(GM_ADDR dst, GM_ADDR src, uint32_t size, TBuf<TPosition::VECCALC> &tmpBuf)
+__aicore__ inline void CastBFtoFloatOnAiv0(GM_ADDR dst, GM_ADDR src, uint32_t size, TBuf<TPosition::VECCALC>& tmpBuf)
 {
     if (g_coreType == AIC || GetBlockIdx() != 0) {
         return;

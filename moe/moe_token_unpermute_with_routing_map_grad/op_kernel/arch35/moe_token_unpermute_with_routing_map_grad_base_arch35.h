@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_unpermute_with_routing_map_grad_base_arch35.h
@@ -34,7 +34,7 @@ public:
     __aicore__ inline void Init(GM_ADDR unpermuted_tokens_grad, GM_ADDR outIndex, GM_ADDR permuteTokenId,
                                 GM_ADDR routing_map, GM_ADDR permuted_tokens, GM_ADDR probs,
                                 GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad,
-                                const MoeTokenUnpermuteWithRoutingMapGradTilingData &tiling_data);
+                                const MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling_data);
     __aicore__ inline int32_t AlignUp(int32_t a, int32_t b);
     __aicore__ inline int32_t CeilDiv(int32_t a, int32_t b);
     __aicore__ inline int32_t SafeDiv(int32_t a, int32_t b);
@@ -217,7 +217,7 @@ template <typename PermutedTokenT, typename IdxT, typename ProbsT>
 __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::Init(
     GM_ADDR unpermuted_tokens_grad, GM_ADDR outIndex, GM_ADDR permuteTokenId, GM_ADDR routing_map,
     GM_ADDR permuted_tokens, GM_ADDR probs, GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad,
-    const MoeTokenUnpermuteWithRoutingMapGradTilingData &tiling_data)
+    const MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling_data)
 {
     tokensNum = tiling_data.tokensNum;
     topK = tiling_data.topK;
@@ -250,15 +250,15 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, I
     hiddensizeAlignFp32TailMask = this->hiddenSizeAlign % FP32_ONE_REPEAT;
     hiddensizeAlignFp32TailOffset = hiddensizeAlignFp32RepeatTimes * FP32_ONE_REPEAT;
 
-    unpermutedTokensGradGm.SetGlobalBuffer((__gm__ PermutedTokenT *)unpermuted_tokens_grad);
-    sortedTwiceIndexGm.SetGlobalBuffer((__gm__ IdxT *)outIndex);
-    sortedTwiceIndicesGm.SetGlobalBuffer((__gm__ IdxT *)permuteTokenId);
-    permutedTokensGm.SetGlobalBuffer((__gm__ PermutedTokenT *)permuted_tokens);
-    probGm.SetGlobalBuffer((__gm__ ProbsT *)probs);
-    routingMapGm.SetGlobalBuffer((__gm__ int8_t *)routing_map);
+    unpermutedTokensGradGm.SetGlobalBuffer((__gm__ PermutedTokenT*)unpermuted_tokens_grad);
+    sortedTwiceIndexGm.SetGlobalBuffer((__gm__ IdxT*)outIndex);
+    sortedTwiceIndicesGm.SetGlobalBuffer((__gm__ IdxT*)permuteTokenId);
+    permutedTokensGm.SetGlobalBuffer((__gm__ PermutedTokenT*)permuted_tokens);
+    probGm.SetGlobalBuffer((__gm__ ProbsT*)probs);
+    routingMapGm.SetGlobalBuffer((__gm__ int8_t*)routing_map);
 
-    permutedTokensGradGm.SetGlobalBuffer((__gm__ PermutedTokenT *)permuted_tokens_grad);
-    probGradGm.SetGlobalBuffer((__gm__ ProbsT *)probs_grad);
+    permutedTokensGradGm.SetGlobalBuffer((__gm__ PermutedTokenT*)permuted_tokens_grad);
+    probGradGm.SetGlobalBuffer((__gm__ ProbsT*)probs_grad);
 
     if (coreIndex < formerCoreNum) {
         rowIdMapStartOffset = coreIndex * rowIdMapEachCore;

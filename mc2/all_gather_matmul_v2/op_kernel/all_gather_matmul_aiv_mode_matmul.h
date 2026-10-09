@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 // Matrix multiplication dispatch implementation for AllGatherMatmulAIVMode.
 #pragma once
@@ -35,7 +35,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
 
 template <TemplateAGMMClass>
 template <typename LayoutB>
-__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::DispatchMatmul(const LayoutB &layoutB)
+__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::DispatchMatmul(const LayoutB& layoutB)
 {
     if (m0 == TILE_SHAPE_128) {
         LaunchMatmul<LayoutB, TILE_SHAPE_128, TILE_SHAPE_256>(layoutB);
@@ -46,7 +46,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::DispatchMatmul(
 
 template <TemplateAGMMClass>
 template <typename LayoutB, int32_t TileM, int32_t TileN>
-__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::LaunchMatmul(const LayoutB &layoutB)
+__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::LaunchMatmul(const LayoutB& layoutB)
 {
     int64_t peer_mem_m = static_cast<int64_t>(m0) * pValue * worldSize;
     bool need_fixpipe = quantFlag && std::is_same<YType, half>::value && isX2ScaleTypeInt64 &&

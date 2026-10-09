@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kv_rms_norm_rope_cache_regbase_recompute_tiling.cpp
@@ -62,8 +62,8 @@ int64_t KvRmsNormRopeCacheRegbaseRecomputeTiling::GetCacheBlockElemNum(const ge:
     return (cacheDtypeSize > 0) ? (BLOCK_SIZE / cacheDtypeSize) : 0;
 }
 
-bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(const gert::StorageShape *inShape, int64_t lastDim,
-                                                                     int64_t &brcFlag)
+bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim,
+                                                                     int64_t& brcFlag)
 {
     if (inShape == nullptr) {
         brcFlag = CONST_BRCFLAG_ZERO;
@@ -82,11 +82,11 @@ bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckScaleOffsetShape(const gert:
     return false;
 }
 
-bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckCacheIsQuant(ge::DataType &cacheDtype)
+bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckCacheIsQuant(ge::DataType& cacheDtype)
 {
     std::vector<ge::DataType> cacheQuantDtypesList = {ge::DataType::DT_INT8, ge::DataType::DT_HIFLOAT8,
                                                       ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2};
-    for (const auto &cacheQuantDtype : cacheQuantDtypesList) {
+    for (const auto& cacheQuantDtype : cacheQuantDtypesList) {
         if (cacheQuantDtype == cacheDtype) {
             return true;
         }
@@ -387,7 +387,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::PostTiling()
 {
     context_->SetTilingKey(GetTilingKey());
     context_->SetBlockDim(usedCoreNum_);
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = DEFAULT_WORKSPACE_SIZE;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

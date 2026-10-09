@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -24,36 +24,36 @@ namespace Mc2Kernel {
 template <typename ComputationContextType>
 struct AlltoAllKCQmmPipelineContext {
     // computation
-    ComputationContextType *computationContext;
+    ComputationContextType* computationContext;
     // communication
-    MC2KernelTemplate::MC2AlltoAllContext *communicationContext;
+    MC2KernelTemplate::MC2AlltoAllContext* communicationContext;
     // quantization
-    MC2KernelTemplate::MC2PertokenDQuantContext *quantizationContext;
+    MC2KernelTemplate::MC2PertokenDQuantContext* quantizationContext;
 };
 
 // 通信转置计算模板
 template <typename CommunicationType, typename TransposeAndQuantizeType, typename ComputationType, typename ContextType>
 class AlltoAllKCQuantMatmulPipeLine {
 public:
-    __aicore__ inline AlltoAllKCQuantMatmulPipeLine(CommunicationType *commStage,
-                                                    TransposeAndQuantizeType *transAndQuantStage,
-                                                    ComputationType *computeStage)
+    __aicore__ inline AlltoAllKCQuantMatmulPipeLine(CommunicationType* commStage,
+                                                    TransposeAndQuantizeType* transAndQuantStage,
+                                                    ComputationType* computeStage)
         : commStage_(commStage),
           transAndQuantStage_(transAndQuantStage),
           computeStage_(computeStage){};
 
     __aicore__ inline void Init();
 
-    __aicore__ inline void GetContext(ContextType *context);
+    __aicore__ inline void GetContext(ContextType* context);
 
     __aicore__ inline void Process(uint32_t taskCnt);
 
     __aicore__ inline void End();
 
 private:
-    CommunicationType *commStage_;                 // 通信节点
-    TransposeAndQuantizeType *transAndQuantStage_; // 进行动态量化的节点
-    ComputationType *computeStage_;                // 矩阵乘的计算节点
+    CommunicationType* commStage_;                 // 通信节点
+    TransposeAndQuantizeType* transAndQuantStage_; // 进行动态量化的节点
+    ComputationType* computeStage_;                // 矩阵乘的计算节点
 };
 
 template <typename CommunicationType, typename TransposeAndQuantizeType, typename ComputationType, typename ContextType>
@@ -66,7 +66,7 @@ AlltoAllKCQuantMatmulPipeLine<CommunicationType, TransposeAndQuantizeType, Compu
 
 template <typename CommunicationType, typename TransposeAndQuantizeType, typename ComputationType, typename ContextType>
 __aicore__ inline void AlltoAllKCQuantMatmulPipeLine<CommunicationType, TransposeAndQuantizeType, ComputationType,
-                                                     ContextType>::GetContext(ContextType *context)
+                                                     ContextType>::GetContext(ContextType* context)
 {
     context->communicationContext = commStage_->GetContextPtr();
     context->quantizationContext = transAndQuantStage_->GetContextPtr();

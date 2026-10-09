@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_grad_service_vector_post.h
@@ -30,14 +30,14 @@ public:
     __aicore__ inline LIGVectorPost()
         : tilingData(nullptr),
           pipe(nullptr){};
-    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace,
-                                const LIGTilingData *__restrict ordTilingData);
+    __aicore__ inline void Init(TPipe* pipe_in, __gm__ uint8_t* dk, __gm__ uint8_t* workspace,
+                                const LIGTilingData* __restrict ordTilingData);
     __aicore__ inline void Process();
 
     using dataType = typename LIGT::dataType;
     constexpr static uint32_t POST_BUFFER_NUM = 1;
 
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, POST_BUFFER_NUM> inQueue;
     TQue<QuePosition::VECOUT, POST_BUFFER_NUM> outQueue;
 
@@ -47,7 +47,7 @@ public:
     // output
     AscendC::GlobalTensor<dataType> dkGm;
 
-    const LIGTilingData *__restrict tilingData;
+    const LIGTilingData* __restrict tilingData;
 
     // key
     int64_t cBlockIdx;
@@ -59,8 +59,8 @@ public:
 };
 
 template <typename LIGT>
-__aicore__ inline void LIGVectorPost<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *dk, __gm__ uint8_t *workspace,
-                                                 const LIGTilingData *__restrict ordTilingData)
+__aicore__ inline void LIGVectorPost<LIGT>::Init(TPipe* pipe_in, __gm__ uint8_t* dk, __gm__ uint8_t* workspace,
+                                                 const LIGTilingData* __restrict ordTilingData)
 {
     tilingData = nullptr;
     pipe = nullptr;
@@ -75,9 +75,9 @@ __aicore__ inline void LIGVectorPost<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t 
     tilingData = ordTilingData;
     pipe = pipe_in;
 
-    dkGm.SetGlobalBuffer((__gm__ dataType *)dk);
+    dkGm.SetGlobalBuffer((__gm__ dataType*)dk);
 
-    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->dkWorkSpaceOffset / sizeof(float));
+    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace + tilingData->dkWorkSpaceOffset / sizeof(float));
 
     uint32_t coreNum = tilingData->usedCoreNum;
 

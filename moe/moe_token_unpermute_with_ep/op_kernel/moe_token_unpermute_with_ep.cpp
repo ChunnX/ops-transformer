@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_unpermute_with_ep.cpp
@@ -22,16 +22,16 @@
 #define DTYPE_PROBS DTYPE_PERMUTED_TOKENS
 #endif
 
-#define MOE_TOKEN_UNPERMUTE_WITH_EP_IMPL(T1, T2, T3, haveProbs, isUnpermute)                      \
-    do {                                                                                          \
-        KernelMoeTokenUnpermuteWithEp<T1, T2, T3, haveProbs, isUnpermute> op;                     \
+#define MOE_TOKEN_UNPERMUTE_WITH_EP_IMPL(T1, T2, T3, haveProbs, isUnpermute) \
+    do { \
+        KernelMoeTokenUnpermuteWithEp<T1, T2, T3, haveProbs, isUnpermute> op; \
         op.Init(permuted_tokens, sorted_indices, probs, unpermuted_tokens, tiling_data, &t_pipe); \
-        op.Process();                                                                             \
+        op.Process(); \
     } while (0)
 
-extern "C" __global__ __aicore__ void moe_token_unpermute_with_ep(
-    GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens, GM_ADDR workspace,
-    GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_token_unpermute_with_ep(GM_ADDR permuted_tokens, GM_ADDR sorted_indices,
+                                                                  GM_ADDR probs, GM_ADDR unpermuted_tokens,
+                                                                  GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tiling_data_in, tiling);
     const MoeTokenUnpermuteWithEpTilingData* __restrict tiling_data = &tiling_data_in;

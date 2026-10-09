@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file legacy_common_manager.cpp
@@ -50,14 +50,14 @@ LegacyCommonMgr::~LegacyCommonMgr()
     if (handle_ != nullptr) {
         int ret = dlclose(handle_);
         if (ret != 0) {
-            const char *err = dlerror();
+            const char* err = dlerror();
             OP_LOGE("LegacyCommonMgr", "Fail to dlclose handle, reason: %s.", err ? err : "unknown error");
         }
         handle_ = nullptr;
     }
 }
 
-bool LegacyCommonMgr::GetLegacyCommonSoPath(std::string &soPath) const
+bool LegacyCommonMgr::GetLegacyCommonSoPath(std::string& soPath) const
 {
     // 考虑自定义算子包场景，无法根据当前so所在路径取找，只能通过环境变量去找
     char oppParentPath[PATH_MAX] = {0};

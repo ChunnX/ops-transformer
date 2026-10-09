@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "aclnn_minimax_sparse_attention_split_kv.h"
 
@@ -41,11 +41,11 @@ static bool IsA2Platform()
     return socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93;
 }
 
-static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&key, const aclTensor *&value,
-                                  const aclTensor *&blockTable, const aclTensor *&k2qRowPtr,
-                                  const aclTensor *&k2qQIndices, const aclTensor *&k2qSlotIndices,
-                                  const aclTensor *&actualSeqLengths, const aclTensor *&actualSeqLengthsKv,
-                                  aclOpExecutor *executor)
+static aclnnStatus MakeContiguous(const aclTensor*& query, const aclTensor*& key, const aclTensor*& value,
+                                  const aclTensor*& blockTable, const aclTensor*& k2qRowPtr,
+                                  const aclTensor*& k2qQIndices, const aclTensor*& k2qSlotIndices,
+                                  const aclTensor*& actualSeqLengths, const aclTensor*& actualSeqLengthsKv,
+                                  aclOpExecutor* executor)
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -89,11 +89,11 @@ static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&key
 //   5. 通过 ViewCopy 将内部输出拷贝到用户提供的 attentionOut；
 //   6. 计算并返回 workspace 大小，同时输出 executor 供第二阶段使用。
 __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
-    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *blockTable,
-    const aclTensor *k2qRowPtr, const aclTensor *k2qQIndices, const aclTensor *k2qSlotIndices,
-    const aclTensor *actualSeqLengths, const aclTensor *actualSeqLengthsKv, int64_t numKeyValueHeads, double scaleValue,
-    int64_t blockSize, int64_t topK, int64_t innerPrecise, bool softmaxLseFlag, const char *inputLayout,
-    aclTensor *attentionOut, aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor* query, const aclTensor* key, const aclTensor* value, const aclTensor* blockTable,
+    const aclTensor* k2qRowPtr, const aclTensor* k2qQIndices, const aclTensor* k2qSlotIndices,
+    const aclTensor* actualSeqLengths, const aclTensor* actualSeqLengthsKv, int64_t numKeyValueHeads, double scaleValue,
+    int64_t blockSize, int64_t topK, int64_t innerPrecise, bool softmaxLseFlag, const char* inputLayout,
+    aclTensor* attentionOut, aclTensor* softmaxLse, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -144,7 +144,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
                 innerPrecise);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    const char *layout = (inputLayout == nullptr || inputLayout[0] == '\0') ? "TND" : inputLayout;
+    const char* layout = (inputLayout == nullptr || inputLayout[0] == '\0') ? "TND" : inputLayout;
     if (strcmp(layout, "TND") != 0 && strcmp(layout, "BNSD") != 0 && strcmp(layout, "BSND") != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "inputLayout must be TND, BNSD or BSND, got %s.", layout);
         return ACLNN_ERR_PARAM_INVALID;
@@ -158,7 +158,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto *executorImpl = uniqueExecutor.get();
+    auto* executorImpl = uniqueExecutor.get();
 
     aclnnStatus ret = MakeContiguous(query, key, value, blockTable, k2qRowPtr, k2qQIndices, k2qSlotIndices,
                                      actualSeqLengths, actualSeqLengthsKv, executorImpl);
@@ -171,9 +171,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     // queryTokenStride / keyBlockStride 等。CreateView 以零拷贝方式重建
     // 逻辑视图, 保留 ViewShape + ViewStrides。
     // A5 不读取 stride, 直接使用原 tensor 即可 (GetOriginShape 返回正确逻辑形状)。
-    const aclTensor *queryArg = query;
-    const aclTensor *keyArg = key;
-    const aclTensor *valueArg = value;
+    const aclTensor* queryArg = query;
+    const aclTensor* keyArg = key;
+    const aclTensor* valueArg = value;
     if (isA2) {
         queryArg = executorImpl->CreateView(query, query->GetViewShape(), query->GetStorageShape(),
                                             query->GetViewStrides(), query->GetViewOffset());
@@ -184,13 +184,13 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
         CHECK_RET(queryArg != nullptr && keyArg != nullptr && valueArg != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     }
 
-    const aclTensor *tempTensor = nullptr;
-    const aclTensor *lsePlaceHolder = nullptr;
+    const aclTensor* tempTensor = nullptr;
+    const aclTensor* lsePlaceHolder = nullptr;
     int64_t dummyLseAddr = 0xff;
     if (softmaxLseFlag == false) {
         std::vector<int64_t> shape = {0};
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void *>(&dummyLseAddr));
+                                     shape.data(), shape.size(), static_cast<void*>(&dummyLseAddr));
         lsePlaceHolder = tempTensor;
     } else {
         lsePlaceHolder = softmaxLse;
@@ -215,7 +215,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     auto output = std::get<0>(outputs);
     auto lseOut = std::get<1>(outputs);
     if (softmaxLseFlag == false) {
-        aclDestroyTensor(const_cast<aclTensor *>(tempTensor));
+        aclDestroyTensor(const_cast<aclTensor*>(tempTensor));
     }
     if (output == nullptr || lseOut == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MinimaxSparseAttentionSplitKv returned nullptr output.");
@@ -236,9 +236,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
 
 // aclnnMinimaxSparseAttentionSplitKv: aclnn 两阶段 API 的第二阶段（执行阶段）。
 // 功能：在指定的 aclrtStream 上启动算子执行，复用第一阶段生成的 executor 与 workspace。
-__attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKv(void *workspace,
+__attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKv(void* workspace,
                                                                                       uint64_t workspaceSize,
-                                                                                      aclOpExecutor *executor,
+                                                                                      aclOpExecutor* executor,
                                                                                       aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMinimaxSparseAttentionSplitKv);

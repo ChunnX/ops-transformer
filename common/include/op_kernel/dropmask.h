@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dropmask.h
@@ -56,7 +56,7 @@ struct DropMaskInfo {
 };
 
 template <bool hasDrop>
-__aicore__ inline int64_t ComputeDropOffset(DropMaskInfo &dropMaskInfo)
+__aicore__ inline int64_t ComputeDropOffset(DropMaskInfo& dropMaskInfo)
 {
     if constexpr (hasDrop == true) {
         // boidx * n2 * g* s1 * s2
@@ -78,8 +78,8 @@ __aicore__ inline int64_t ComputeDropOffset(DropMaskInfo &dropMaskInfo)
 }
 
 template <bool hasDrop>
-__aicore__ inline void CopyInDropMask(LocalTensor<uint8_t> &dstTensor, GlobalTensor<uint8_t> &srcBoolTensor,
-                                      GlobalTensor<uint8_t> &srcByteTensor, DropMaskInfo &dropMaskInfo,
+__aicore__ inline void CopyInDropMask(LocalTensor<uint8_t>& dstTensor, GlobalTensor<uint8_t>& srcBoolTensor,
+                                      GlobalTensor<uint8_t>& srcByteTensor, DropMaskInfo& dropMaskInfo,
                                       int64_t alignedSize = blockBytes)
 {
     if constexpr (hasDrop == true) {
@@ -96,9 +96,9 @@ __aicore__ inline void CopyInDropMask(LocalTensor<uint8_t> &dstTensor, GlobalTen
 }
 
 template <typename T, bool hasDrop>
-__aicore__ inline void ComputeDropMask(LocalTensor<T> &dstTensor, LocalTensor<T> &srcTensor,
-                                       LocalTensor<uint8_t> &dropoutBuffer, LocalTensor<uint8_t> &tmpDropBuffer,
-                                       DropMaskInfo &dropMaskInfo)
+__aicore__ inline void ComputeDropMask(LocalTensor<T>& dstTensor, LocalTensor<T>& srcTensor,
+                                       LocalTensor<uint8_t>& dropoutBuffer, LocalTensor<uint8_t>& tmpDropBuffer,
+                                       DropMaskInfo& dropMaskInfo)
 {
     if constexpr (hasDrop == true) {
         DropOutShapeInfo dropOutShapeInfo;

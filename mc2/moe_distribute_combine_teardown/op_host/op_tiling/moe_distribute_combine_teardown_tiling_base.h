@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_combine_teardown_tiling_base.h
@@ -25,7 +25,7 @@ namespace MC2Tiling {
 
 class MoeDistributeCombineTeardownTilingBase : public optiling::MoeTilingBase {
 public:
-    explicit MoeDistributeCombineTeardownTilingBase(gert::TilingContext *context)
+    explicit MoeDistributeCombineTeardownTilingBase(gert::TilingContext* context)
         : optiling::MoeTilingBase(context),
           nodeName_(context->GetNodeName()) {};
 
@@ -49,8 +49,8 @@ protected:
     ge::graphStatus CheckOptionalInputTensorDim();
     ge::graphStatus CheckOutputTensorDim();
     ge::graphStatus CheckTensorDim();
-    ge::graphStatus CheckTokenMessageAndOutputWidth(const gert::StorageShape *quantExpandXStorageShape,
-                                                    const gert::StorageShape *xOutStorageShape, int64_t H) const;
+    ge::graphStatus CheckTokenMessageAndOutputWidth(const gert::StorageShape* quantExpandXStorageShape,
+                                                    const gert::StorageShape* xOutStorageShape, int64_t H) const;
     ge::graphStatus CheckTensorShapeRelation();
     ge::graphStatus CheckTensorShapeRelationSecondPart();
     ge::graphStatus CheckSharedExpertInputShape(int64_t Bs, int64_t H) const;
@@ -71,9 +71,9 @@ protected:
     void SetPlatformInfo();
     void PrintTilingDataInfo() const;
 
-    const char *socTilingName_{nullptr};
-    const char *nodeName_{nullptr};
-    MoeDistributeCombineTeardownTilingData *tilingData_{nullptr};
+    const char* socTilingName_{nullptr};
+    const char* nodeName_{nullptr};
+    MoeDistributeCombineTeardownTilingData* tilingData_{nullptr};
     std::string groupEp_;
 
     uint64_t GetTilingKey() const override;

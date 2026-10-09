@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_INIT_ROUTING_V2_GRAD_H
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_INIT_ROUTING_V2_GRAD_H
 #include "log/log.h"
@@ -94,22 +94,22 @@ REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2Grad_400003, MoeInitRoutingV2GradRegb
 
 class MoeInitRoutingV2GradTilingBaseClass : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MoeInitRoutingV2GradTilingBaseClass(gert::TilingContext *context)
+    explicit MoeInitRoutingV2GradTilingBaseClass(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
 
-    void Reset(gert::TilingContext *context) override
+    void Reset(gert::TilingContext* context) override
     {
         TilingBaseClass::Reset(context);
     }
 
 private:
-    ge::graphStatus CheckParamsValidity(const gert::Shape &xShape, const gert::Shape &rowIdxShape,
-                                        const gert::Shape &gradXShape) const;
+    ge::graphStatus CheckParamsValidity(const gert::Shape& xShape, const gert::Shape& rowIdxShape,
+                                        const gert::Shape& gradXShape) const;
     ge::graphStatus CheckDtypeValidity();
-    ge::graphStatus CheckShapeAllPositive(const gert::Shape &shape, std::string name);
-    ge::graphStatus CheckShapeValidity(const gert::Shape &xShape, const gert::Shape &rowIdxShape,
-                                       const gert::Shape &gradXShape);
+    ge::graphStatus CheckShapeAllPositive(const gert::Shape& shape, std::string name);
+    ge::graphStatus CheckShapeValidity(const gert::Shape& xShape, const gert::Shape& rowIdxShape,
+                                       const gert::Shape& gradXShape);
 
 protected:
     ge::graphStatus GetPlatformInfo() override;
@@ -130,7 +130,7 @@ protected:
     int64_t E = 0;
     int64_t C = 0;
     ge::DataType inDtype = ge::DT_FLOAT;
-    const char *opName = "";
+    const char* opName = "";
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
 };
 

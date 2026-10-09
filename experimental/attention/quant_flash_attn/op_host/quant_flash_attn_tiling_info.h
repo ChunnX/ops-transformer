@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_flash_attn_tiling_info.h
@@ -41,17 +41,17 @@ constexpr uint32_t METADATA_INDEX = 14;
 
 // Attributes Index
 constexpr uint32_t ATTR_QUANT_MODE_INDEX = 0;
-constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 1;  // scaleValue
-constexpr uint32_t ATTR_MASK_MODE_INDEX = 2;      // mask_mode
-constexpr uint32_t ATTR_WIN_LEFT_INDEX = 3;       // win_left (preToken)
-constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 4;      // win_right (nextToken)
-constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 5;   // max_seqlen_q
-constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 6;  // max_seqlen_kv
-constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 7;       // layout_q
+constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 1;    // scaleValue
+constexpr uint32_t ATTR_MASK_MODE_INDEX = 2;        // mask_mode
+constexpr uint32_t ATTR_WIN_LEFT_INDEX = 3;         // win_left (preToken)
+constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 4;        // win_right (nextToken)
+constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 5;     // max_seqlen_q
+constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 6;    // max_seqlen_kv
+constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 7;         // layout_q
 constexpr uint32_t ATTR_LAYOUT_Q_DESCALE_INDEX = 8; // layout_q_descale
-constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;      // layout_kv
-constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 10;    // layout_out
-constexpr uint32_t ATTR_RETURN_LSE_INDEX = 11;    // return_softmax_lse
+constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;        // layout_kv
+constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 10;      // layout_out
+constexpr uint32_t ATTR_RETURN_LSE_INDEX = 11;      // return_softmax_lse
 
 // Output Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
@@ -145,13 +145,13 @@ struct QfaPlatFormInfo {
 };
 
 struct FARequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct FAOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 struct FAParaInfo {
@@ -172,18 +172,18 @@ struct FAParaInfo {
     FAOptionalParaInfo attnMask = {nullptr, nullptr};
     FAOptionalParaInfo metadata = {nullptr, nullptr};
 
-    const int64_t *quantMode = nullptr;
-    const float *softmaxScale = nullptr;
-    const int64_t *maskMode = nullptr;
-    const int64_t *winLeft = nullptr;
-    const int64_t *winRight = nullptr;
-    const int64_t *maxSeqlenQ = nullptr;
-    const int64_t *maxSeqlenKV = nullptr;
-    const char *layoutQ = nullptr;
-    const char *layoutQDescale = nullptr;
-    const char *layoutKV = nullptr;
-    const char *layoutOut = nullptr;
-    const bool *returnSoftMaxLse = nullptr;
+    const int64_t* quantMode = nullptr;
+    const float* softmaxScale = nullptr;
+    const int64_t* maskMode = nullptr;
+    const int64_t* winLeft = nullptr;
+    const int64_t* winRight = nullptr;
+    const int64_t* maxSeqlenQ = nullptr;
+    const int64_t* maxSeqlenKV = nullptr;
+    const char* layoutQ = nullptr;
+    const char* layoutQDescale = nullptr;
+    const char* layoutKV = nullptr;
+    const char* layoutOut = nullptr;
+    const bool* returnSoftMaxLse = nullptr;
 
     FARequiredParaInfo attnOut = {nullptr, nullptr};
     FARequiredParaInfo lseOut = {nullptr, nullptr};
@@ -191,8 +191,8 @@ struct FAParaInfo {
 
 class QuantFlashAttnTilingInfo : public TilingInfo {
 public:
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     FAParaInfo opParamInfo;
 
     // BaseParams

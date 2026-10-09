@@ -1,32 +1,30 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
- #include <array>
- #include <vector>
- #include <iostream>
- #include <string>
- #include <cstdint>
- #include "gtest/gtest.h"
- #include "tikicpulib.h"
- #include "data_utils.h"
- #include "tiling_case_executor.h"
- #include "swin_attention_ffn_tiling.h"
+#include <array>
+#include <vector>
+#include <iostream>
+#include <string>
+#include <cstdint>
+#include "gtest/gtest.h"
+#include "tikicpulib.h"
+#include "data_utils.h"
+#include "tiling_case_executor.h"
+#include "swin_attention_ffn_tiling.h"
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void swin_attention_ffn(
-    GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x3, GM_ADDR y, GM_ADDR workspace, 
-    GM_ADDR tiling);
+extern "C" __global__ __aicore__ void swin_attention_ffn(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR x3, GM_ADDR y,
+                                                         GM_ADDR workspace, GM_ADDR tiling);
 
-class swin_attention_ffn_test : public testing::Test
-{
+class swin_attention_ffn_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -59,8 +57,7 @@ TEST_F(swin_attention_ffn_test, test_case0)
     char* path_ = get_current_dir_name();
     string path(path_);
 
-    SwinAttentionFFNTilingData* tilingDatafromBin =
-        reinterpret_cast<SwinAttentionFFNTilingData*>(tiling);
+    SwinAttentionFFNTilingData* tilingDatafromBin = reinterpret_cast<SwinAttentionFFNTilingData*>(tiling);
 
     TCubeTiling bmmTilingData;
 
@@ -132,17 +129,13 @@ TEST_F(swin_attention_ffn_test, test_case0)
     tilingDatafromBin->bmmTilingData.BatchNum = 0;
     tilingDatafromBin->bmmTilingData.mxTypePara = 0;
 
-
     tilingDatafromBin->dataNumPerBatchA = 65536;
     tilingDatafromBin->dataNumPerBatchD = 65536;
     tilingDatafromBin->dataNumPerLoop = 16384;
     tilingDatafromBin->reserved = 0;
 
-
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(
-        swin_attention_ffn, blockDim, x1, x2, bias, x3, y, workspace,
-        (uint8_t*)(tilingDatafromBin));
+    ICPU_RUN_KF(swin_attention_ffn, blockDim, x1, x2, bias, x3, y, workspace, (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x1);
     AscendC::GmFree(x2);

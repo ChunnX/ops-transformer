@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file add_rms_norm_single_n.h
@@ -26,7 +26,7 @@ template <typename T>
 class KernelAddRmsNormSingleN {
 public:
     __aicore__ inline KernelAddRmsNormSingleN() {}
-    __aicore__ inline void Init(GM_ADDR gammaGM, Mc2Tiling::AddRMSNormTilingData &tiling, TPipe *pipe,
+    __aicore__ inline void Init(GM_ADDR gammaGM, Mc2Tiling::AddRMSNormTilingData& tiling, TPipe* pipe,
                                 uint32_t numBlocks)
     {
         ASSERT(numBlocks != 0 && "Block dim can not be zero!");
@@ -35,7 +35,7 @@ public:
         this->epsilon_ = tiling.epsilon;
         this->avgFactor_ = (numCol_ != 0) ? (float)1.0 / numCol_ : 0;
         // get start index for current core, core parallel
-        gamma_.SetGlobalBuffer((__gm__ T *)gammaGM, numCol_);
+        gamma_.SetGlobalBuffer((__gm__ T*)gammaGM, numCol_);
         pipe->InitBuffer(unitBuf_, SINGLE_N_BUFFER_SIZE);
     }
 
@@ -49,14 +49,14 @@ public:
     }
 
     __aicore__ inline void ComputeProcess(GM_ADDR normOutGM, GM_ADDR residualGM, GM_ADDR yGM,
-                                          Mc2Tiling::AddRMSNormTilingData &tilingData, uint32_t addRmsNormCount,
+                                          Mc2Tiling::AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
                                           uint32_t rcvCnt)
     {
         uint64_t cOffset = CalcShapeOffset(sizeof(T), tilingData.num_row, tilingData.num_col); // 偏移*size
         for (; addRmsNormCount <= rcvCnt; ++addRmsNormCount) {
-            normOut_.SetGlobalBuffer((__gm__ T *)normOutGM + GetBlockIdx() * numCol_, numCol_);
-            residual_.SetGlobalBuffer((__gm__ T *)residualGM + GetBlockIdx() * numCol_, numCol_);
-            y_.SetGlobalBuffer((__gm__ T *)yGM + GetBlockIdx() * numCol_, numCol_);
+            normOut_.SetGlobalBuffer((__gm__ T*)normOutGM + GetBlockIdx() * numCol_, numCol_);
+            residual_.SetGlobalBuffer((__gm__ T*)residualGM + GetBlockIdx() * numCol_, numCol_);
+            y_.SetGlobalBuffer((__gm__ T*)yGM + GetBlockIdx() * numCol_, numCol_);
             Process();
             normOutGM += cOffset;
             residualGM += cOffset;

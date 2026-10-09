@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_moe_utils.h
@@ -45,26 +45,26 @@ struct OutShapeInfo {
 // 当前 ep tp 仅支持 2 4 8 16
 bool EpTpSizeCheck(const int64_t epSize, const int64_t tpSize);
 
-bool DimNumCheck(const char *nodeName, const gert::Shape *xShape, const gert::Shape *weightShape);
+bool DimNumCheck(const char* nodeName, const gert::Shape* xShape, const gert::Shape* weightShape);
 
-bool GroupCheck(const char *nodeName, const char *groupEp, const char *groupTp);
+bool GroupCheck(const char* nodeName, const char* groupEp, const char* groupTp);
 
-void DynamicShapeCheck(const gert::Shape *xShape, const gert::Shape *weightShape, const size_t wDim,
-                       OutShapeInfo &outShapeInfo);
+void DynamicShapeCheck(const gert::Shape* xShape, const gert::Shape* weightShape, const size_t wDim,
+                       OutShapeInfo& outShapeInfo);
 
-void EmptyShapeCheck(const gert::Shape *xShape, const gert::Shape *weightShape, const size_t wDim,
-                     OutShapeInfo &outShapeInfo);
+void EmptyShapeCheck(const gert::Shape* xShape, const gert::Shape* weightShape, const size_t wDim,
+                     OutShapeInfo& outShapeInfo);
 
-bool CheckBiasDtype(const char *nodeName, const ge::DataType xType, const ge::DataType biasType);
+bool CheckBiasDtype(const char* nodeName, const ge::DataType xType, const ge::DataType biasType);
 
-bool CheckTensorDtype(const char *nodeName, const ge::DataType xType, const ge::DataType weightType,
+bool CheckTensorDtype(const char* nodeName, const ge::DataType xType, const ge::DataType weightType,
                       const ge::DataType biasType);
 
-void SetShape(gert::Shape *shape, const OutShapeInfo &outShapeInfo);
+void SetShape(gert::Shape* shape, const OutShapeInfo& outShapeInfo);
 
-void TransDimHMIdx(const bool isTransW, size_t &wDimH, size_t &wDimM);
+void TransDimHMIdx(const bool isTransW, size_t& wDimH, size_t& wDimM);
 
-void PrintTensorShape(const char *nodeName, const gert::Shape *shape, const char *shapeName);
+void PrintTensorShape(const char* nodeName, const gert::Shape* shape, const char* shapeName);
 
 } // namespace Mc2Moe
 

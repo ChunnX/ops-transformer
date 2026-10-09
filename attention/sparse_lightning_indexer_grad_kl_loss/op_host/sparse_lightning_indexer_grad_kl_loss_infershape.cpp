@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_lightning_indexer_grad_kl_loss_infershape.cpp
@@ -47,31 +47,31 @@ enum OutputIdx {
     lossEnum
 };
 
-ge::graphStatus InferShapeSparseLightningIndexerGradKLLoss(gert::InferShapeContext *context)
+ge::graphStatus InferShapeSparseLightningIndexerGradKLLoss(gert::InferShapeContext* context)
 {
     OP_LOGI(context, "Start enter ShapeSparseLightningIndexerGradKLLoss runtime infershape impl.");
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape *queryShape = context->GetInputShape(queryEnum);
+    const gert::Shape* queryShape = context->GetInputShape(queryEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
-    const gert::Shape *keyShape = context->GetInputShape(keyEnum);
+    const gert::Shape* keyShape = context->GetInputShape(keyEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
-    const gert::Shape *weightShape = context->GetInputShape(weightEnum);
+    const gert::Shape* weightShape = context->GetInputShape(weightEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightShape);
-    const gert::Shape *queryIndexShape = context->GetInputShape(queryIndexEnum);
+    const gert::Shape* queryIndexShape = context->GetInputShape(queryIndexEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryIndexShape);
-    const gert::Shape *keyIndexShape = context->GetInputShape(keyIndexEnum);
+    const gert::Shape* keyIndexShape = context->GetInputShape(keyIndexEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyIndexShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const char *inputLayout = attrs->GetAttrPointer<char>(INDEX_LAYOUT);
+    const char* inputLayout = attrs->GetAttrPointer<char>(INDEX_LAYOUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayout);
 
     std::string inputLayoutSlig = std::string(inputLayout);
-    for (auto &c : inputLayoutSlig) {
+    for (auto& c : inputLayoutSlig) {
         c = toupper(c);
     }
     if (inputLayoutSlig != "BSND" && inputLayoutSlig != "TND") {
@@ -80,13 +80,13 @@ ge::graphStatus InferShapeSparseLightningIndexerGradKLLoss(gert::InferShapeConte
         return GRAPH_FAILED;
     }
 
-    gert::Shape *lossShape = context->GetOutputShape(lossEnum);
+    gert::Shape* lossShape = context->GetOutputShape(lossEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, lossShape);
-    gert::Shape *dWeightShape = context->GetOutputShape(dWeightEnum);
+    gert::Shape* dWeightShape = context->GetOutputShape(dWeightEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, dWeightShape);
-    gert::Shape *dQIndexShape = context->GetOutputShape(dQueryIndexEnum);
+    gert::Shape* dQIndexShape = context->GetOutputShape(dQueryIndexEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, dQIndexShape);
-    gert::Shape *dKIndexShape = context->GetOutputShape(dKeyIndexEnum);
+    gert::Shape* dKIndexShape = context->GetOutputShape(dKeyIndexEnum);
     OP_CHECK_NULL_WITH_CONTEXT(context, dKIndexShape);
 
     lossShape->SetDimNum(SIZE_1);         // 设置维度为1
@@ -106,7 +106,7 @@ ge::graphStatus InferShapeSparseLightningIndexerGradKLLoss(gert::InferShapeConte
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeSparseLightningIndexerGradKLLoss(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeSparseLightningIndexerGradKLLoss(gert::InferDataTypeContext* context)
 {
     OP_LOGI(context, "Start enter ShapeSparseLightningIndexerGradKLLoss runtime infershape impl.");
     if (context == nullptr) {

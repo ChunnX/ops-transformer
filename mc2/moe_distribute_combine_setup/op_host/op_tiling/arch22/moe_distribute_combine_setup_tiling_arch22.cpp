@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_combine_setup_tiling_arch22.cpp
@@ -111,7 +111,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingA3::CheckTensorShapeSize(int64_t 
                                               (std::string("(0, ") + std::to_string(MAX_BS) + "]").c_str()),
                     return ge::GRAPH_FAILED);
 
-    uint32_t &moeExpertNum = tilingData_->moeDistributeCombineSetupInfo.moeExpertNum;
+    uint32_t& moeExpertNum = tilingData_->moeDistributeCombineSetupInfo.moeExpertNum;
     OP_TILING_CHECK(
         (k <= 0) || (k > MAX_K) || (k > static_cast<int64_t>(moeExpertNum)),
         OP_LOGE_FOR_INVALID_VALUE(
@@ -129,7 +129,7 @@ void MoeDistributeCombineSetupTilingA3::SetHcommCfg()
     std::string algConfigStr = "BatchWrite=level0:fullmesh";
     uint32_t reduceType = 0U;
 
-    uint32_t &aivNum = tilingData_->moeDistributeCombineSetupInfo.aivNum;
+    uint32_t& aivNum = tilingData_->moeDistributeCombineSetupInfo.aivNum;
     OP_LOGD(nodeName_, "QueueNum = %u, aivNum = %u", (LOCAL_STREAM_MAX_NUM / aivNum), aivNum);
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigStr, reduceType);
     mc2CcTilingConfig.SetQueueNum(LOCAL_STREAM_MAX_NUM / aivNum);

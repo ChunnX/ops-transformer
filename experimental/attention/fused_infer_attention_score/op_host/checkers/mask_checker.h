@@ -1,12 +1,12 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mask_checker.h
@@ -24,14 +24,15 @@
 namespace optiling {
 class MaskChecker : public BaseChecker {
 public:
-    MaskChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    MaskChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~MaskChecker() override = default;
 
-    ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckParaExistence(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckCrossFeature(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo) override;
+    ge::graphStatus CheckSinglePara(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckParaExistence(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckCrossFeature(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo& fiaInfo) override;
 
 private:
     // 公共校验函数
@@ -42,23 +43,24 @@ private:
         uint32_t attenMaskSize = 0;
         std::string strMaskShape;
     };
-    ge::graphStatus CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckSparseMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo);
-    ge::graphStatus CheckDimAndShape(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDtypeAndFormat(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckSparseMode(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckNoQuantIFAMLA(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckFullQuantIFAMLA(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckMXFP8FullQuant(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckQKVDDifferent(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckFeatureSparseMode(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckPretokenAndNexttoken(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckIFADimAndShape(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus GetMaskInfo(const FiaTilingInfo& fiaInfo, MaskInfo& maskInfo);
+    ge::graphStatus CheckDimAndShape(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckAntiquantSparseMode(const FiaTilingInfo& fiaInfo);
+
 private:
     bool enableIFAMLA = false;
     bool isIFAFlag = false;
     bool enableMXFP8 = false;
 };
 
-}  // namespace optiling
-#endif  // MASK_CHECKER_H
+} // namespace optiling
+#endif // MASK_CHECKER_H

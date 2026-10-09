@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file moe_token_unpermute_with_routing_map_pad.h
  * \brief
@@ -25,8 +25,8 @@ class KernelMoeTokenUnpermuteWithRoutingMapPad {
 public:
     __aicore__ inline KernelMoeTokenUnpermuteWithRoutingMapPad(){};
     __aicore__ inline void Init(GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
-                                const MoeTokenUnpermuteWithRoutingMapTilingData &tiling_data);
-    __aicore__ inline void InitData(const MoeTokenUnpermuteWithRoutingMapTilingData &tiling_data);
+                                const MoeTokenUnpermuteWithRoutingMapTilingData& tiling_data);
+    __aicore__ inline void InitData(const MoeTokenUnpermuteWithRoutingMapTilingData& tiling_data);
     __aicore__ inline void Process();
     __aicore__ inline void Compute(uint64_t index, uint64_t loopN);
 
@@ -67,7 +67,7 @@ protected:
 template <typename T>
 __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMapPad<T>::Init(
     GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens,
-    const MoeTokenUnpermuteWithRoutingMapTilingData &tilingData)
+    const MoeTokenUnpermuteWithRoutingMapTilingData& tilingData)
 {
     InitData(tilingData);
     if (this->blockIdx_ < this->front_core) {
@@ -77,9 +77,9 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMapPad<T>::Init(
                       (this->blockIdx_ - this->front_core) * this->num_tokens_each_tail_core;
     }
 
-    sortedIndicesGM.SetGlobalBuffer((__gm__ int32_t *)sorted_indices);
-    probsGM.SetGlobalBuffer((__gm__ T *)probs);
-    unpermutedTokensGM.SetGlobalBuffer((__gm__ T *)unpermuted_tokens + blockOffset);
+    sortedIndicesGM.SetGlobalBuffer((__gm__ int32_t*)sorted_indices);
+    probsGM.SetGlobalBuffer((__gm__ T*)probs);
+    unpermutedTokensGM.SetGlobalBuffer((__gm__ T*)unpermuted_tokens + blockOffset);
 
     uint64_t maxLoopTokens = (num_tokens_each_loop_current_core > num_tokens_last_loop_current_core) ?
                                  num_tokens_each_loop_current_core :
@@ -89,11 +89,11 @@ __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMapPad<T>::Init(
 
 template <typename T>
 __aicore__ inline void KernelMoeTokenUnpermuteWithRoutingMapPad<T>::InitData(
-    const MoeTokenUnpermuteWithRoutingMapTilingData &tilingData)
+    const MoeTokenUnpermuteWithRoutingMapTilingData& tilingData)
 {
     ASSERT(GetBlockNum() != 0 && "block dim can not be zero!");
     blockIdx_ = AscendC::GetBlockIdx();
-    const MoeTokenUnpermuteWithRoutingMapPadTilingData &padTiling =
+    const MoeTokenUnpermuteWithRoutingMapPadTilingData& padTiling =
         tilingData.moeTokenUnpermuteWithRoutingMapPadTilingData;
     core_num_use = padTiling.core_num_use;
     num_tokens = padTiling.num_tokens;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file cube_op.h
  * \brief
@@ -32,39 +32,39 @@ class CubeOp {
 public:
     __aicore__ inline CubeOp(){};
     __aicore__ inline void Init(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out_grad,
-                                GM_ADDR workspace, const TILING_CLASS *__restrict tilingData, TPipe *pipe);
+                                GM_ADDR workspace, const TILING_CLASS* __restrict tilingData, TPipe* pipe);
 
-    __aicore__ inline __attribute__((always_inline)) void cube12Process(const RunInfo &runInfo,
+    __aicore__ inline __attribute__((always_inline)) void cube12Process(const RunInfo& runInfo,
                                                                         const int32_t blkCntOffset,
                                                                         const int32_t mmPingPongIdx);
 
-    __aicore__ inline __attribute__((always_inline)) void cube345Process(const RunInfo &runInfo,
+    __aicore__ inline __attribute__((always_inline)) void cube345Process(const RunInfo& runInfo,
                                                                          const int32_t blkCntOffset,
                                                                          const int32_t mmPingPongIdx);
 
 private:
     __aicore__ inline __attribute__((always_inline)) void cube1Process(
         const int64_t queryGmOffset, const int64_t keyGmOffset, const int64_t outGmOffset, const int32_t blkCntOffset,
-        const int32_t mmPingPongIdx, const RunInfo &runInfo);
+        const int32_t mmPingPongIdx, const RunInfo& runInfo);
 
     __aicore__ inline __attribute__((always_inline)) void cube2Process(
         const int64_t dyGmOffset, const int64_t valueGmOffset, const int64_t outGmOffset, const int32_t blkCntOffset,
-        const int32_t mmPingPongIdx, const RunInfo &runInfo);
+        const int32_t mmPingPongIdx, const RunInfo& runInfo);
 
     __aicore__ inline __attribute__((always_inline)) void cube3Process(
         const int64_t keyGmOffset, const int64_t outGmOffset, const int32_t blkCntOffset, const int32_t mmPingPongIdx,
-        const int64_t lastBlockSize, const bool isLastBasicBlock, const RunInfo &runInfo);
+        const int64_t lastBlockSize, const bool isLastBasicBlock, const RunInfo& runInfo);
 
     __aicore__ inline __attribute__((always_inline)) void cube4Process(const int64_t dsGmOffset,
                                                                        const int64_t queryGmOffset,
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx,
-                                                                       const RunInfo &runInfo);
+                                                                       const RunInfo& runInfo);
 
     __aicore__ inline __attribute__((always_inline)) void cube5Process(const int64_t pGmOffset,
                                                                        const int32_t blkCntOffset,
                                                                        const int32_t mmPingPongIdx,
-                                                                       const RunInfo &runInfo);
+                                                                       const RunInfo& runInfo);
 
     __aicore__ inline void InitGMBuffer(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out_grad,
                                         GM_ADDR workspace);
@@ -180,7 +180,7 @@ private:
 
 template <typename SMLAGT>
 __aicore__ inline void CubeOp<SMLAGT>::Init(GM_ADDR query, GM_ADDR ori_kv, GM_ADDR cmp_kv, GM_ADDR attention_out_grad,
-                                            GM_ADDR workspace, const TILING_CLASS *__restrict tilingData, TPipe *pipe)
+                                            GM_ADDR workspace, const TILING_CLASS* __restrict tilingData, TPipe* pipe)
 {
     dimB = tilingData->opInfo.B;
     dimG = tilingData->opInfo.G;
@@ -224,7 +224,7 @@ __aicore__ inline void CubeOp<SMLAGT>::Init(GM_ADDR query, GM_ADDR ori_kv, GM_AD
 }
 
 template <typename SMLAGT>
-__aicore__ inline __attribute__((always_inline)) void CubeOp<SMLAGT>::cube12Process(const RunInfo &runInfo,
+__aicore__ inline __attribute__((always_inline)) void CubeOp<SMLAGT>::cube12Process(const RunInfo& runInfo,
                                                                                     const int32_t blkCntOffset,
                                                                                     const int32_t mmPingPongIdx)
 {
@@ -237,7 +237,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<SMLAGT>::cube12Proc
 }
 
 template <typename SMLAGT>
-__aicore__ inline __attribute__((always_inline)) void CubeOp<SMLAGT>::cube345Process(const RunInfo &runInfo,
+__aicore__ inline __attribute__((always_inline)) void CubeOp<SMLAGT>::cube345Process(const RunInfo& runInfo,
                                                                                      const int32_t blkCntOffset,
                                                                                      const int32_t mmPingPongIdx)
 {
@@ -257,14 +257,14 @@ __aicore__ inline void CubeOp<SMLAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR ori_k
                                                     GM_ADDR attention_out_grad, GM_ADDR workspace)
 {
     // 必选输入初始化
-    queryGm.SetGlobalBuffer((__gm__ T1 *)query);
-    attentionGradGm.SetGlobalBuffer((__gm__ T1 *)attention_out_grad);
+    queryGm.SetGlobalBuffer((__gm__ T1*)query);
+    attentionGradGm.SetGlobalBuffer((__gm__ T1*)attention_out_grad);
 
     if constexpr (MODE == SMLAG_SWA_MODE) {
-        oriKvGm.SetGlobalBuffer((__gm__ T1 *)ori_kv);
+        oriKvGm.SetGlobalBuffer((__gm__ T1*)ori_kv);
     } else if (MODE == SMLAG_CFA_MODE || MODE == SMLAG_SCFA_MODE) {
-        oriKvGm.SetGlobalBuffer((__gm__ T1 *)ori_kv);
-        cmpKvGm.SetGlobalBuffer((__gm__ T1 *)cmp_kv);
+        oriKvGm.SetGlobalBuffer((__gm__ T1*)ori_kv);
+        cmpKvGm.SetGlobalBuffer((__gm__ T1*)cmp_kv);
     }
 
     usedWorkspaceLen = 0;
@@ -301,18 +301,18 @@ __aicore__ inline void CubeOp<SMLAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR ori_k
         mm4ResAddr = usedWorkspaceLen / sizeof(float);
     }
 
-    mm1WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm1Addr);
-    mm2WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm2Addr);
-    pWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + pAddr);
-    dsWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + dsAddr);
-    dqWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dqAddr);
-    dkWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkAddr);
-    selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + selectedKAddr);
-    mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
-    mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
+    mm1WorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + mm1Addr);
+    mm2WorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + mm2Addr);
+    pWorkspaceGm.SetGlobalBuffer((__gm__ T1*)workspace + pAddr);
+    dsWorkspaceGm.SetGlobalBuffer((__gm__ T1*)workspace + dsAddr);
+    dqWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + dqAddr);
+    dkWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + dkAddr);
+    selectedKWorkspaceGm.SetGlobalBuffer((__gm__ T1*)workspace + selectedKAddr);
+    mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + mm4ResAddr);
+    mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + mm5ResAddr);
 
     if constexpr (IS_DETER) {
-        deterKvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + deterKvAddr);
+        deterKvWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + deterKvAddr);
     }
 
     this->workspace = workspace;

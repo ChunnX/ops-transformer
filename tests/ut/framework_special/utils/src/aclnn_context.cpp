@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_context.cpp
@@ -49,19 +49,19 @@ aclrtStream AclnnContext::GetAclRtStream() const
     return aclrtStream_;
 }
 
-aclOpExecutor *AclnnContext::GetAclOpExecutor() const
+aclOpExecutor* AclnnContext::GetAclOpExecutor() const
 {
     return aclOpExecutor_;
 }
 
-bool AclnnContext::RunTiling(std::string &caseName, bool withSocversion)
+bool AclnnContext::RunTiling(std::string& caseName, bool withSocversion)
 {
     if (withSocversion) {
         if (tilingRunCbf_ == nullptr) {
             LOG_ERR("[%s:%s] TilingCbf nil", opName_.c_str(), caseName.c_str());
             return false;
         }
-        auto *curCase = ops::adv::tests::utils::CaseWithSocversion::GetCurrentCase();
+        auto* curCase = ops::adv::tests::utils::CaseWithSocversion::GetCurrentCase();
         if (curCase == nullptr) {
             LOG_ERR("[%s:%s] Current case nil", opName_.c_str(), caseName.c_str());
             return false;
@@ -78,7 +78,7 @@ bool AclnnContext::RunTiling(std::string &caseName, bool withSocversion)
             LOG_ERR("[%s:%s] TilingCbf nil", opName_.c_str(), caseName.c_str());
             return false;
         }
-        auto *curCase = ops::adv::tests::utils::Case::GetCurrentCase();
+        auto* curCase = ops::adv::tests::utils::Case::GetCurrentCase();
         if (curCase == nullptr) {
             LOG_ERR("[%s:%s] Current case nil", opName_.c_str(), caseName.c_str());
             return false;
@@ -93,9 +93,9 @@ bool AclnnContext::RunTiling(std::string &caseName, bool withSocversion)
     }
 }
 
-bool AclnnContext::RunKernelProcess(std::string &caseName)
+bool AclnnContext::RunKernelProcess(std::string& caseName)
 {
-    auto *curCase = ops::adv::tests::utils::Case::GetCurrentCase();
+    auto* curCase = ops::adv::tests::utils::Case::GetCurrentCase();
     if (curCase == nullptr) {
         LOG_ERR("[%s:%s] Current case nil", opName_.c_str(), caseName.c_str());
         return false;
@@ -112,15 +112,15 @@ bool AclnnContext::RunKernelProcess(std::string &caseName)
     return true;
 }
 
-uint8_t *AclnnContext::AllocWorkspaceImpl(uint64_t size)
+uint8_t* AclnnContext::AllocWorkspaceImpl(uint64_t size)
 {
-    void *ptr = nullptr;
-    auto ret = aclrtMalloc((void **)&ptr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+    void* ptr = nullptr;
+    auto ret = aclrtMalloc((void**)&ptr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     LOG_IF(ret != ACL_SUCCESS, LOG_ERR("aclrtMalloc failed, ERROR: %d", ret));
-    return (uint8_t *)ptr;
+    return (uint8_t*)ptr;
 }
 
-void AclnnContext::FreeWorkspaceImpl(uint8_t *ptr)
+void AclnnContext::FreeWorkspaceImpl(uint8_t* ptr)
 {
     auto ret = aclrtFree(ptr);
     LOG_IF(ret != ACL_SUCCESS, LOG_ERR("aclrtFree failed, ERROR: %d", ret));

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_grad_tiling_data.h
@@ -28,13 +28,13 @@
 namespace optiling {
 // ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct TilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 enum class DataLayout : uint32_t {
@@ -56,7 +56,7 @@ struct LigParaInfo {
     TilingRequiredParaInfo dWeights = {nullptr, nullptr};
 
     int64_t headNum = 0;
-    const char *layout = nullptr;
+    const char* layout = nullptr;
     int64_t sparseMode = 0;
     int64_t preTokens = 0;
     int64_t nextTokens = 0;
@@ -108,7 +108,7 @@ struct LIGCompileInfo {};
 // ---------------算子Tiling类---------------
 class LightningIndexerGradTiling {
 public:
-    explicit LightningIndexerGradTiling(gert::TilingContext *context)
+    explicit LightningIndexerGradTiling(gert::TilingContext* context)
         : context_(context) {};
     ge::graphStatus DoTiling();
 
@@ -133,10 +133,10 @@ public:
     ge::DataType queryDataType = ge::DT_FLOAT16;
 
 private:
-    fe::PlatFormInfos *platformInfo_;
-    const char *opName_;
-    gert::TilingContext *context_ = nullptr;
-    LIGTilingData *tilingData_ = context_->GetTilingData<LIGTilingData>();
+    fe::PlatFormInfos* platformInfo_;
+    const char* opName_;
+    gert::TilingContext* context_ = nullptr;
+    LIGTilingData* tilingData_ = context_->GetTilingData<LIGTilingData>();
 
     LigParaInfo opParamInfo;
 };

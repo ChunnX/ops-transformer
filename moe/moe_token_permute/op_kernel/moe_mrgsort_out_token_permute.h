@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_mrgsort_out_token_permute.h
@@ -24,12 +24,12 @@ template <typename T, typename T2>
 class MoeMrgsortOut {
 public:
     __aicore__ inline MoeMrgsortOut(){};
-    __aicore__ inline void Init(MoeMrgsortParam *param, TPipe *tPipe);
+    __aicore__ inline void Init(MoeMrgsortParam* param, TPipe* tPipe);
     __aicore__ inline void Process();
-    __aicore__ inline void SetInput(GlobalTensor<float> &gmInput, LocalTensor<float> &ubInput);
-    __aicore__ inline void SetOutput(GlobalTensor<T> &gmOutput1, GlobalTensor<T2> &gmOutput2,
-                                     LocalTensor<float> &ubOutput1, LocalTensor<float> &ubOutput2);
-    __aicore__ inline void SetBuffer(LocalTensor<float> &tempBuffer);
+    __aicore__ inline void SetInput(GlobalTensor<float>& gmInput, LocalTensor<float>& ubInput);
+    __aicore__ inline void SetOutput(GlobalTensor<T>& gmOutput1, GlobalTensor<T2>& gmOutput2,
+                                     LocalTensor<float>& ubOutput1, LocalTensor<float>& ubOutput2);
+    __aicore__ inline void SetBuffer(LocalTensor<float>& tempBuffer);
 
 private:
     __aicore__ inline void CopyIn();
@@ -41,7 +41,7 @@ private:
     __aicore__ inline void ClearCache();
 
 private:
-    MoeMrgsortParam *param = nullptr;
+    MoeMrgsortParam* param = nullptr;
 
     GlobalTensor<float> gmInputs[4];
     GlobalTensor<T> gmOutput1;
@@ -87,7 +87,7 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::ClearCache()
 }
 
 template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::SetInput(GlobalTensor<float> &gmInput, LocalTensor<float> &ubInput)
+__aicore__ inline void MoeMrgsortOut<T, T2>::SetInput(GlobalTensor<float>& gmInput, LocalTensor<float>& ubInput)
 {
     this->gmInputs[listNum] = gmInput;
     this->ubInputs[listNum] = ubInput;
@@ -95,8 +95,8 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::SetInput(GlobalTensor<float> &gmInp
 }
 
 template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::SetOutput(GlobalTensor<T> &gmOutput1, GlobalTensor<T2> &gmOutput2,
-                                                       LocalTensor<float> &ubOutput1, LocalTensor<float> &ubOutput2)
+__aicore__ inline void MoeMrgsortOut<T, T2>::SetOutput(GlobalTensor<T>& gmOutput1, GlobalTensor<T2>& gmOutput2,
+                                                       LocalTensor<float>& ubOutput1, LocalTensor<float>& ubOutput2)
 {
     this->gmOutput1 = gmOutput1;
     this->ubOutput1 = ubOutput1;
@@ -108,7 +108,7 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::SetOutput(GlobalTensor<T> &gmOutput
 }
 
 template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::SetBuffer(LocalTensor<float> &tempBuffer)
+__aicore__ inline void MoeMrgsortOut<T, T2>::SetBuffer(LocalTensor<float>& tempBuffer)
 {
     this->tempBuffer = tempBuffer;
 }
@@ -214,7 +214,7 @@ __aicore__ inline void MoeMrgsortOut<T, T2>::CopyOut()
 }
 
 template <typename T, typename T2>
-__aicore__ inline void MoeMrgsortOut<T, T2>::Init(MoeMrgsortParam *param, TPipe *tPipe)
+__aicore__ inline void MoeMrgsortOut<T, T2>::Init(MoeMrgsortParam* param, TPipe* tPipe)
 {
     this->param = param;
     this->allRemainElements = 0;

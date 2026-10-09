@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_all_reduce_mte_one_shot.h
@@ -37,10 +37,10 @@ template <TemplateTypeClass>
 class QuantAllReduceMteOneShot {
 public:
     __aicore__ inline QuantAllReduceMteOneShot(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe *pipe,
-                                const QuantAllReduceTilingData *tilingData);
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output, TPipe* pipe,
+                                const QuantAllReduceTilingData* tilingData);
     __aicore__ inline void InitWithMc2Context(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR mc2Context,
-                                              GM_ADDR tilingGM, TPipe *pipe);
+                                              GM_ADDR tilingGM, TPipe* pipe);
     __aicore__ inline void Process();
 
 private:
@@ -54,7 +54,7 @@ private:
     uint64_t tailXNums_{0};
     uint32_t totalBlockNums_{0};
 
-    __gm__ QuantAllReduceTilingData *tilingDataOut;
+    __gm__ QuantAllReduceTilingData* tilingDataOut;
     MTECommunication<TemplateType> mteComm_; // MTE 通信相关实现
     VectorCompute<TemplateType> vecComp_;    // vector 计算相关实现
 
@@ -68,14 +68,14 @@ private:
 
 template <TemplateTypeClass>
 __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, GM_ADDR scales, GM_ADDR output,
-                                                                    TPipe *tPipe,
-                                                                    const QuantAllReduceTilingData *tilingData)
+                                                                    TPipe* tPipe,
+                                                                    const QuantAllReduceTilingData* tilingData)
 {
     // 初始化HcclContext
     mteComm_.InitHcclContext();
 
     /* quant_all_reduce自己的数据 */
-    auto &&tiliingDatainfo = tilingData->quantAllReduceTilingInfo;
+    auto&& tiliingDatainfo = tilingData->quantAllReduceTilingInfo;
     totalWinSize_ = tiliingDatainfo.totalWinSize;
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize; // 总的x数据个数， bs * h
     xSize_ = xNums_ * sizeof(XType);                          // 总的x数据量，B
@@ -108,14 +108,14 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
 template <TemplateTypeClass>
 __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::InitWithMc2Context(GM_ADDR x, GM_ADDR scales,
                                                                                   GM_ADDR output, GM_ADDR mc2Context,
-                                                                                  GM_ADDR tilingGM, TPipe *tPipe)
+                                                                                  GM_ADDR tilingGM, TPipe* tPipe)
 {
     // 初始化HcclContext
     mteComm_.InitHcclContextByAddr(mc2Context);
-    tilingDataOut = (__gm__ QuantAllReduceTilingData *)tilingGM;
+    tilingDataOut = (__gm__ QuantAllReduceTilingData*)tilingGM;
 
     /* quant_all_reduce自己的数据 */
-    auto &&tiliingDatainfo = tilingDataOut->quantAllReduceTilingInfo;
+    auto&& tiliingDatainfo = tilingDataOut->quantAllReduceTilingInfo;
     totalWinSize_ = tiliingDatainfo.totalWinSize;
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize; // 总的x数据个数， bs * h
     xSize_ = xNums_ * sizeof(XType);                          // 总的x数据量，B
@@ -191,8 +191,8 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
 
             // 获取对端Win区中数据区相关的地址
             GM_ADDR remoteDataSpaceGm = mteComm_.GetWinDataAddrGm(remoteRankId, mteComm_.winBufferFlags_);
-            remoteWinXTensor_.SetGlobalBuffer((__gm__ XType *)remoteDataSpaceGm);
-            remoteWinScaleTensor_.SetGlobalBuffer((__gm__ ScalesType *)(remoteDataSpaceGm + xSize_));
+            remoteWinXTensor_.SetGlobalBuffer((__gm__ XType*)remoteDataSpaceGm);
+            remoteWinScaleTensor_.SetGlobalBuffer((__gm__ ScalesType*)(remoteDataSpaceGm + xSize_));
 
             // 读取对端对应地址的 x 和 scale数据，进行反量化和求和
             ReadDataBlockReduceSum(curXOffset, curScaleOffset); // AllReduce过程，allgather直接搬运

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_attention_grad_arch35_common.h
@@ -25,7 +25,7 @@ using AscendC::RoundMode;
 
 namespace SfagBaseApi {
 template <typename IndexTensor>
-__aicore__ inline int64_t FindSfagPartialBlock(IndexTensor &indices, int64_t baseOffset, int64_t count,
+__aicore__ inline int64_t FindSfagPartialBlock(IndexTensor& indices, int64_t baseOffset, int64_t count,
                                                int64_t blockSize, int64_t validTokens)
 {
     if (count <= 0 || validTokens <= 0 || validTokens % blockSize == 0) {
@@ -180,8 +180,8 @@ struct FagConstInfo {
     int64_t gS1oS2o;
     int64_t s1oS2o;
 
-    __gm__ uint8_t *seqS1_addr;
-    __gm__ uint8_t *seqS2_addr;
+    __gm__ uint8_t* seqS1_addr;
+    __gm__ uint8_t* seqS2_addr;
 
     int64_t s1Token;
     int64_t s2Token;

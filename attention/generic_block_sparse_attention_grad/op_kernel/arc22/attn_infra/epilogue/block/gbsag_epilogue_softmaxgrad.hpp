@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file gbsag_epilogue_softmaxgrad.hpp
@@ -41,7 +41,7 @@ public:
     static constexpr uint64_t CAST_BUFFER_LEN = PacketSoftmaxUbLayout::CAST_BUFFER_BYTES;
     static constexpr uint64_t OUTPUT_BUFFER_LEN = PacketSoftmaxUbLayout::D_BYTES;
 
-    __aicore__ inline explicit SoftmaxGrad(NpuArch::Arch::Resource<ArchTag> &resource_)
+    __aicore__ inline explicit SoftmaxGrad(NpuArch::Arch::Resource<ArchTag>& resource_)
         : resource(resource_)
     {
         // prepD 整体迁入 [PREPD_BASE, 192K) 私有区，与
@@ -135,7 +135,7 @@ public:
     }
 
 private:
-    NpuArch::Arch::Resource<ArchTag> &resource;
+    NpuArch::Arch::Resource<ArchTag>& resource;
     LocalTensor<InputDType> doutTensor[STAGES];
     LocalTensor<InputDType> outTensor[STAGES];
     LocalTensor<float> doutFp32Tensor[STAGES];

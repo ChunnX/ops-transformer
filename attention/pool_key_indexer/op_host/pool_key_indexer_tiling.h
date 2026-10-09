@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef POOL_KEY_INDEXER_TILING_H
 #define POOL_KEY_INDEXER_TILING_H
@@ -142,8 +142,8 @@ struct PoolKeyIndexerCompileInfo {
 
 // ------------------ TilingInfo ------------------
 struct PoolKeyIndexerTilingInfo {
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
@@ -177,24 +177,24 @@ struct PoolKeyIndexerTilingInfo {
 // ------------------ Tiling Class ------------------
 class PoolKeyIndexerTiling {
 public:
-    explicit PoolKeyIndexerTiling(gert::TilingContext *context)
+    explicit PoolKeyIndexerTiling(gert::TilingContext* context)
         : context_(context)
     {}
-    ge::graphStatus DoTiling(PoolKeyIndexerTilingInfo *tilingInfo);
+    ge::graphStatus DoTiling(PoolKeyIndexerTilingInfo* tilingInfo);
 
 private:
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     PoolKeyIndexerTilingData tilingData_;
     std::vector<uint32_t> keyStridesVec_;
     // k_descale 运行时 stride(PA 0 轴非连续支持, 与 keyStridesVec_ 同源时机捕获)
     std::vector<uint32_t> keyDequantScaleStridesVec_;
 
-    ge::graphStatus ParseAndCheckParams(PoolKeyIndexerTilingInfo &info);
-    ge::graphStatus CalcTilingParams(PoolKeyIndexerTilingInfo &info);
-    ge::graphStatus CalcWorkspaceSize(PoolKeyIndexerTilingInfo &info, uint64_t &workspaceSize);
-    ge::graphStatus CheckKeyContiguous(const PoolKeyIndexerTilingInfo &info) const;
+    ge::graphStatus ParseAndCheckParams(PoolKeyIndexerTilingInfo& info);
+    ge::graphStatus CalcTilingParams(PoolKeyIndexerTilingInfo& info);
+    ge::graphStatus CalcWorkspaceSize(PoolKeyIndexerTilingInfo& info, uint64_t& workspaceSize);
+    ge::graphStatus CheckKeyContiguous(const PoolKeyIndexerTilingInfo& info) const;
     uint32_t GetTrunkLen(uint32_t sparseCount);
-    void SetTilingData(PoolKeyIndexerTilingInfo &info);
+    void SetTilingData(PoolKeyIndexerTilingInfo& info);
 };
 
 } // namespace optiling

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file vf_flashupdate_new_scfa.h
@@ -25,8 +25,8 @@ constexpr uint16_t REDUCE_SIZE = 1;
  * FlashUpdate, fp32
  * ************************************************************************************************* */
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize>
-__simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
-                                           __ubuf__ float *expMaxUb, const uint16_t m, const float vDescale)
+__simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float* dstUb, __ubuf__ float* curUb, __ubuf__ float* preUb,
+                                           __ubuf__ float* expMaxUb, const uint16_t m, const float vDescale)
 {
     constexpr uint16_t dLoops = srcD / floatRepSize;
     AscendC::Reg::RegTensor<float> vreg_exp_max;
@@ -47,7 +47,7 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float
 
             AscendC::Reg::MulDstAdd(vreg_input_pre, vreg_exp_max, vreg_input_cur, preg_all);
             AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)dstUb + i * srcD + j * floatRepSize, vreg_input_pre, preg_all);
+                (__ubuf__ T*&)dstUb + i * srcD + j * floatRepSize, vreg_input_pre, preg_all);
         }
     }
 }
@@ -63,22 +63,22 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float
  * @param [in] srcD, input colums, should be 32 bytes aligned
  */
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void FlashUpdateNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
-                                      const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
+__aicore__ inline void FlashUpdateNew(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
+                                      const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
                                       const uint16_t m, const float vDescale)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdate, T must be float");
 
-    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
-    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
-    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
-    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
+    __ubuf__ float* curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
+    __ubuf__ float* preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
+    __ubuf__ float* expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
     FlashUpdateBasicVF<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE>(dstUb, curUb, preUb, expMaxUb, m, vDescale);
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize>
-__simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
-                                               __ubuf__ float *expMaxUb, __ubuf__ float *expSumUb, const uint16_t m,
+__simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float* dstUb, __ubuf__ float* curUb, __ubuf__ float* preUb,
+                                               __ubuf__ float* expMaxUb, __ubuf__ float* expSumUb, const uint16_t m,
                                                const float vDescale)
 {
     constexpr uint16_t dLoops = srcD / floatRepSize;
@@ -106,7 +106,7 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
                 AscendC::Reg::Muls(vreg_div, vreg_div, vDescale, preg_all); // Muls(scale)
             }
             AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)dstUb + i * srcD + j * floatRepSize, vreg_div, preg_all);
+                (__ubuf__ T*&)dstUb + i * srcD + j * floatRepSize, vreg_div, preg_all);
         }
     }
 }
@@ -123,23 +123,23 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
  * @param [in] srcD, input colums, 32 bytes align
  */
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void FlashUpdateLastNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
-                                          const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
-                                          const LocalTensor<T> &expSumTensor, uint16_t m, float vDescale)
+__aicore__ inline void FlashUpdateLastNew(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
+                                          const LocalTensor<T>& preTensor, const LocalTensor<T>& expMaxTensor,
+                                          const LocalTensor<T>& expSumTensor, uint16_t m, float vDescale)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdateLast, T must be float");
-    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
-    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
-    __ubuf__ float *preUb = (__ubuf__ T *)preTensor.GetPhyAddr();
-    __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ float* dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
+    __ubuf__ float* curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
+    __ubuf__ float* preUb = (__ubuf__ T*)preTensor.GetPhyAddr();
+    __ubuf__ float* expMaxUb = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
 
     FlashUpdateLastBasicVF<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE>(dstUb, curUb, preUb, expMaxUb, expSumUb, m,
                                                                     vDescale);
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD>
-__simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *expSumUb,
+__simd_vf__ inline void LastDivNewVF(__ubuf__ float* dstUb, __ubuf__ float* curUb, __ubuf__ float* expSumUb,
                                      const uint16_t m, const float vDescale)
 {
     const uint16_t dLoops = srcD >> 6;
@@ -159,19 +159,19 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
                 AscendC::Reg::Muls(vreg_div, vreg_div, vDescale, preg_all); // Muls(scale)
             }
             AscendC::Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ T *&)dstUb + i * srcD + j * floatRepSize, vreg_div, preg_update);
+                (__ubuf__ T*&)dstUb + i * srcD + j * floatRepSize, vreg_div, preg_update);
         }
     }
 }
 
 // dstTensor = curTensor / expSumTensor, curTensor: [64,128], expSumTensor: [64,8]
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD>
-__aicore__ inline void LastDivNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
-                                  const LocalTensor<T> &expSumTensor, const uint16_t m, const float vDeScale)
+__aicore__ inline void LastDivNew(const LocalTensor<T>& dstTensor, const LocalTensor<T>& curTensor,
+                                  const LocalTensor<T>& expSumTensor, const uint16_t m, const float vDeScale)
 {
-    __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
-    __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
-    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ float* dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
+    __ubuf__ float* curUb = (__ubuf__ T*)curTensor.GetPhyAddr();
+    __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
 
     LastDivNewVF<T, INPUT_T, OUTPUT_T, srcD>(dstUb, curUb, expSumUb, m, vDeScale);
 }

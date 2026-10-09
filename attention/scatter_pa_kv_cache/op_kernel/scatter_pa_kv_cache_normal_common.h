@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file scatter_pa_kv_cache_normal_common.h
  * \brief
@@ -22,15 +22,15 @@ using namespace AscendC;
 
 class ScatterPaKvCacheNormalCommon {
 public:
-    __aicore__ inline ScatterPaKvCacheNormalCommon(TPipe *pipe,
-                                                   const ScatterPaKvCacheTilingData *__restrict__ tilingData)
+    __aicore__ inline ScatterPaKvCacheNormalCommon(TPipe* pipe,
+                                                   const ScatterPaKvCacheTilingData* __restrict__ tilingData)
         : pipe_(pipe),
           tilingData_(tilingData)
     {}
 
     template <typename T>
     __aicore__ inline void CopyToCache(uint64_t offsetIn, uint64_t offsetOut, int64_t ubLoop, int64_t ubTail,
-                                       GlobalTensor<T> &inGm, GlobalTensor<T> &outGm)
+                                       GlobalTensor<T>& inGm, GlobalTensor<T>& outGm)
     {
         DataCopyExtParams copyParam = {1, static_cast<uint32_t>(usedUbSize_), 0, 0, 0};
         DataCopyPadExtParams<T> padParams = {false, 0, 0, 0};
@@ -56,11 +56,11 @@ public:
     }
 
 protected:
-    TPipe *pipe_;
+    TPipe* pipe_;
     int64_t startTaskId_;
     int64_t curBlockFactor_;
     int64_t usedUbSize_;
-    const ScatterPaKvCacheTilingData *tilingData_;
+    const ScatterPaKvCacheTilingData* tilingData_;
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, BUFFER_NUM> queBind_;
 };

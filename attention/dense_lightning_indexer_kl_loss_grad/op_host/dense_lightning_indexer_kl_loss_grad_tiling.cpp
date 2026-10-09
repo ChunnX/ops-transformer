@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file dense_lightning_indexer_kl_loss_grad_tiling.cpp
@@ -39,14 +39,14 @@ static const std::string QUERY_NAME = "query";
 static const std::string KEY_NAME = "key";
 static const std::string VALUE_NAME = "value";
 
-ge::graphStatus TilingDenseLightningIndexerKLLossGrad(gert::TilingContext *context)
+ge::graphStatus TilingDenseLightningIndexerKLLossGrad(gert::TilingContext* context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
     auto dlikgPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
-ge::graphStatus TilingPrepareForDenseLightningIndexerKLLossGrad(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForDenseLightningIndexerKLLossGrad(gert::TilingParseContext* context)
 {
     OP_LOGW(context, "Start registering tiling.");
     auto compileInfoPtr = context->GetCompiledInfo<DenseLightningIndexerKLLossGradCompileInfo>();

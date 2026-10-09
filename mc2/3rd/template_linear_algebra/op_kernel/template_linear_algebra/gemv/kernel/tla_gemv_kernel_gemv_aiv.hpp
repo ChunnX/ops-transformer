@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_GEMV_KERNLE_GEMV_AIV_HPP
 #define CATLASS_GEMV_KERNLE_GEMV_AIV_HPP
@@ -52,7 +52,7 @@ public:
         Params() {}
 
         CATLASS_HOST_DEVICE
-        Params(GemvCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrX_, LayoutX layoutX_,
+        Params(GemvCoord const& problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrX_, LayoutX layoutX_,
                GM_ADDR ptrY_, LayoutY layoutY_, GM_ADDR ptrY_read_, float alpha_, float beta_, uint32_t split_)
             : problemShape(problemShape_),
               ptrA(ptrA_),
@@ -73,15 +73,15 @@ public:
     KernelGemvAiv() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE void operator()(Params const &params) {};
+    CATLASS_DEVICE void operator()(Params const& params) {};
 
     /// Executes one Matmul
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const& params)
     {}
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const& params)
     {
         AscendC::SetAtomicNone();
         Arch::Resource<ArchTag> resource;
@@ -108,13 +108,13 @@ public:
 
         // Represent the full gm
         AscendC::GlobalTensor<ElementA> gmA;
-        gmA.SetGlobalBuffer((__gm__ ElementA *)params.ptrA);
+        gmA.SetGlobalBuffer((__gm__ ElementA*)params.ptrA);
         AscendC::GlobalTensor<ElementX> gmX;
-        gmX.SetGlobalBuffer((__gm__ ElementX *)params.ptrX);
+        gmX.SetGlobalBuffer((__gm__ ElementX*)params.ptrX);
         AscendC::GlobalTensor<ElementY> gmY;
-        gmY.SetGlobalBuffer((__gm__ ElementY *)params.ptrY);
+        gmY.SetGlobalBuffer((__gm__ ElementY*)params.ptrY);
         AscendC::GlobalTensor<ElementY> gmYCopy;
-        gmYCopy.SetGlobalBuffer((__gm__ ElementY *)params.ptrY_read);
+        gmYCopy.SetGlobalBuffer((__gm__ ElementY*)params.ptrY_read);
         uint32_t aiv_num = AscendC::GetBlockNum() * AscendC::GetTaskRation();
         for (uint32_t loop_id = 0; loop_id < loopnum; loop_id++) {
             uint32_t aiv_id = AscendC::GetBlockIdx();

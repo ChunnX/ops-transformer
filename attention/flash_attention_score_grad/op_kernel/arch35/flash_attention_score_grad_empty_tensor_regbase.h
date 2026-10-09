@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_empty_tensor_regbase.h
@@ -29,31 +29,31 @@ template <typename T>
 class FlashAttentionScoreGradEmptyTensorRegbase {
 public:
     __aicore__ inline FlashAttentionScoreGradEmptyTensorRegbase(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse,
-                                __gm__ uint8_t *dqRope, __gm__ uint8_t *dkRope,
-                                const FlashAttentionScoreGradEmptyTensorTilingDataRegbase *__restrict tilingData);
+    __aicore__ inline void Init(__gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* dpse,
+                                __gm__ uint8_t* dqRope, __gm__ uint8_t* dkRope,
+                                const FlashAttentionScoreGradEmptyTensorTilingDataRegbase* __restrict tilingData);
     __aicore__ inline void Process();
 
 protected:
     uint64_t m_blockIdx;
     AscendC::GlobalTensor<T> m_dqGm, m_dkGm, m_dvGm, m_dpseGm, m_dqRopeGm, m_dkRopeGm;
-    const FlashAttentionScoreGradEmptyTensorTilingDataRegbase *__restrict m_tilingData;
+    const FlashAttentionScoreGradEmptyTensorTilingDataRegbase* __restrict m_tilingData;
 };
 
 template <typename T>
 __aicore__ inline void FlashAttentionScoreGradEmptyTensorRegbase<T>::Init(
-    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dpse, __gm__ uint8_t *dqRope,
-    __gm__ uint8_t *dkRope, const FlashAttentionScoreGradEmptyTensorTilingDataRegbase *__restrict tilingData)
+    __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* dpse, __gm__ uint8_t* dqRope,
+    __gm__ uint8_t* dkRope, const FlashAttentionScoreGradEmptyTensorTilingDataRegbase* __restrict tilingData)
 {
     m_blockIdx = AscendC::GetBlockIdx();
     m_tilingData = tilingData;
-    m_dqGm.SetGlobalBuffer((__gm__ T *)dq);
-    m_dkGm.SetGlobalBuffer((__gm__ T *)dk);
-    m_dvGm.SetGlobalBuffer((__gm__ T *)dv);
-    m_dpseGm.SetGlobalBuffer((__gm__ T *)dpse);
+    m_dqGm.SetGlobalBuffer((__gm__ T*)dq);
+    m_dkGm.SetGlobalBuffer((__gm__ T*)dk);
+    m_dvGm.SetGlobalBuffer((__gm__ T*)dv);
+    m_dpseGm.SetGlobalBuffer((__gm__ T*)dpse);
     if (m_tilingData->isRope) {
-        m_dqRopeGm.SetGlobalBuffer((__gm__ T *)dqRope);
-        m_dkRopeGm.SetGlobalBuffer((__gm__ T *)dkRope);
+        m_dqRopeGm.SetGlobalBuffer((__gm__ T*)dqRope);
+        m_dkRopeGm.SetGlobalBuffer((__gm__ T*)dkRope);
     }
 }
 

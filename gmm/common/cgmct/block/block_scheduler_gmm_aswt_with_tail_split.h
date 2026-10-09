@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file block_scheduler_gmm_aswt_with_tail_split.h
@@ -75,7 +75,7 @@ public:
           baseK_(baseK)
     {}
 
-    __aicore__ inline void UpdateNextProblem(const TupleShape &problemShape)
+    __aicore__ inline void UpdateNextProblem(const TupleShape& problemShape)
     {
         k_ = Get<MNK_K>(problemShape);
         if (m_ != Get<MNK_M>(problemShape) || n_ != Get<MNK_N>(problemShape)) {
@@ -178,7 +178,7 @@ public:
         UpdateTailTile(mTile, nTile);
     }
 
-    __aicore__ inline bool GetTileIdx(BlockCoord &blockCoord)
+    __aicore__ inline bool GetTileIdx(BlockCoord& blockCoord)
     {
         if (round_ == 0 || roundIdx_ > round_ - 1) {
             return false;
@@ -216,7 +216,7 @@ public:
 
     // Row-major (行优先) variant: within each WINDOW_LEN M-tile window,
     // N changes first, then M advances. Zigzag N-direction reversal between windows.
-    __aicore__ inline bool GetTileIdxRowMajor(BlockCoord &blockCoord)
+    __aicore__ inline bool GetTileIdxRowMajor(BlockCoord& blockCoord)
     {
         if (round_ == 0 || roundIdx_ > round_ - 1) {
             return false;
@@ -252,7 +252,7 @@ public:
         return true;
     }
 
-    __aicore__ inline BlockShape GetBlockShape(const BlockCoord &blockCoord)
+    __aicore__ inline BlockShape GetBlockShape(const BlockCoord& blockCoord)
     {
         int64_t singleCoreM = Get<MNK_M>(blockCoord) != (mCnt_ - 1) ? baseM_ : mBaseTail_;
         int64_t singleCoreN = Get<MNK_N>(blockCoord) != (nCnt_ - 1) ? baseN_ : nBaseTail_;

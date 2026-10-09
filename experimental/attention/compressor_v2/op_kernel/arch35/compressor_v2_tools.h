@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file compressor_tools.h
@@ -32,7 +32,7 @@ class CompressorV2Tools {
 public:
     __aicore__ inline CompressorV2Tools() {}
 
-    __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed, __gm__ uint8_t *cuSeqlens);
+    __aicore__ inline void Init(__gm__ uint8_t* startPos, __gm__ uint8_t* seqUsed, __gm__ uint8_t* cuSeqlens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
     __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
@@ -51,21 +51,21 @@ private:
 };
 
 template <typename COMP>
-__aicore__ inline void CompressorV2Tools<COMP>::Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
-                                                     __gm__ uint8_t *cuSeqlens)
+__aicore__ inline void CompressorV2Tools<COMP>::Init(__gm__ uint8_t* startPos, __gm__ uint8_t* seqUsed,
+                                                     __gm__ uint8_t* cuSeqlens)
 {
     isExistStartPos_ = (startPos != nullptr);
     if (isExistStartPos_) {
-        startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
+        startPosGm_.SetGlobalBuffer((__gm__ int32_t*)startPos);
     }
 
     isExistSeqUsed_ = (seqUsed != nullptr);
     if (isExistSeqUsed_) {
-        sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
+        sequsedGm_.SetGlobalBuffer((__gm__ int32_t*)seqUsed);
     }
 
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t*)cuSeqlens);
     }
 }
 
@@ -137,7 +137,7 @@ struct SliceInfo {
 template <typename COMP>
 class CompressorSliceIterator {
 public:
-    __aicore__ inline CompressorSliceIterator(CompressorV2Tools<COMP> &tools)
+    __aicore__ inline CompressorSliceIterator(CompressorV2Tools<COMP>& tools)
         : tools_(tools)
     {}
 
@@ -146,14 +146,14 @@ public:
     __aicore__ inline void SetMaxDealSeqCnt(uint32_t maxDealSeqCnt);
     __aicore__ inline bool IsEnd();
     __aicore__ inline void IteratorSlice();
-    __aicore__ inline SliceInfo &GetSlice();
-    __aicore__ inline SliceInfo &GetSliceByCmp();
+    __aicore__ inline SliceInfo& GetSlice();
+    __aicore__ inline SliceInfo& GetSliceByCmp();
 
     bool isFirst_ = true;
     SliceInfo sliceInfo_{};
 
 private:
-    CompressorV2Tools<COMP> &tools_;
+    CompressorV2Tools<COMP>& tools_;
 
     // iterator
     uint32_t maxDealSeqCnt_ = 0;
@@ -222,7 +222,7 @@ __aicore__ inline void CompressorSliceIterator<COMP>::IteratorSlice()
 }
 
 template <typename COMP>
-__aicore__ inline SliceInfo &CompressorSliceIterator<COMP>::GetSliceByCmp()
+__aicore__ inline SliceInfo& CompressorSliceIterator<COMP>::GetSliceByCmp()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (isFirst_) {
@@ -267,7 +267,7 @@ __aicore__ inline SliceInfo &CompressorSliceIterator<COMP>::GetSliceByCmp()
 }
 
 template <typename COMP>
-__aicore__ inline SliceInfo &CompressorSliceIterator<COMP>::GetSlice()
+__aicore__ inline SliceInfo& CompressorSliceIterator<COMP>::GetSlice()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (isFirst_) {
@@ -311,7 +311,7 @@ struct SplitCoreSliceInfo : public SliceInfo {
 template <typename COMP>
 class CompressorV2SplitCoreSliceIterator {
 public:
-    __aicore__ inline CompressorV2SplitCoreSliceIterator(CompressorV2Tools<COMP> &tools)
+    __aicore__ inline CompressorV2SplitCoreSliceIterator(CompressorV2Tools<COMP>& tools)
         : tools_(tools)
     {}
 
@@ -320,11 +320,11 @@ public:
     __aicore__ inline void SetMaxDealSeqCnt(uint32_t maxDealSeqCnt);
     __aicore__ inline bool IsEnd();
     __aicore__ inline void IteratorSlice();
-    __aicore__ inline SplitCoreSliceInfo &GetSlice();
-    __aicore__ inline SplitCoreSliceInfo &GetSliceByCmp();
+    __aicore__ inline SplitCoreSliceInfo& GetSlice();
+    __aicore__ inline SplitCoreSliceInfo& GetSliceByCmp();
     __aicore__ inline uint32_t GetBIdx();
-    __aicore__ inline SplitCoreSliceInfo &GetLeftNextCmpSeqCnt();
-    __aicore__ inline SplitCoreSliceInfo &GetRightNextCmpSeqCnt();
+    __aicore__ inline SplitCoreSliceInfo& GetLeftNextCmpSeqCnt();
+    __aicore__ inline SplitCoreSliceInfo& GetRightNextCmpSeqCnt();
 
     bool isFirst_ = true;
     bool isLeftFirstBath = false;
@@ -333,7 +333,7 @@ public:
     SplitCoreSliceInfo sliceInfo_{};
 
 private:
-    CompressorV2Tools<COMP> &tools_;
+    CompressorV2Tools<COMP>& tools_;
 
     // iterator
     uint32_t maxDealSeqCnt_ = 0;
@@ -417,7 +417,7 @@ __aicore__ inline void CompressorV2SplitCoreSliceIterator<COMP>::IteratorSlice()
 }
 
 template <typename COMP>
-__aicore__ inline SplitCoreSliceInfo &CompressorV2SplitCoreSliceIterator<COMP>::GetLeftNextCmpSeqCnt()
+__aicore__ inline SplitCoreSliceInfo& CompressorV2SplitCoreSliceIterator<COMP>::GetLeftNextCmpSeqCnt()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (isFirst_) {
@@ -479,7 +479,7 @@ __aicore__ inline SplitCoreSliceInfo &CompressorV2SplitCoreSliceIterator<COMP>::
 }
 
 template <typename COMP>
-__aicore__ inline SplitCoreSliceInfo &CompressorV2SplitCoreSliceIterator<COMP>::GetRightNextCmpSeqCnt()
+__aicore__ inline SplitCoreSliceInfo& CompressorV2SplitCoreSliceIterator<COMP>::GetRightNextCmpSeqCnt()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (isFirst_) {
@@ -554,7 +554,7 @@ struct StatisticInfo {
 template <typename COMP>
 class CompressorV2Vec1SliceIterator {
 public:
-    __aicore__ inline CompressorV2Vec1SliceIterator(CompressorV2Tools<COMP> &tools)
+    __aicore__ inline CompressorV2Vec1SliceIterator(CompressorV2Tools<COMP>& tools)
         : tools_(tools)
     {}
 
@@ -570,12 +570,12 @@ public:
     __aicore__ inline bool IsEnd();
     template <bool IS_STATISTIC = false>
     __aicore__ inline void IteratorSlice();
-    __aicore__ inline Vec1SliceInfo &GetSlice();
+    __aicore__ inline Vec1SliceInfo& GetSlice();
     template <bool IS_STATISTIC = false>
-    __aicore__ inline StatisticInfo &FullIteratorSlice();
+    __aicore__ inline StatisticInfo& FullIteratorSlice();
 
 private:
-    CompressorV2Tools<COMP> &tools_;
+    CompressorV2Tools<COMP>& tools_;
 
     bool isFirst_ = true;
     Vec1SliceInfo sliceInfo_{};
@@ -762,7 +762,7 @@ __aicore__ inline bool CompressorV2Vec1SliceIterator<COMP>::IsEnd()
 }
 
 template <typename COMP>
-__aicore__ inline Vec1SliceInfo &CompressorV2Vec1SliceIterator<COMP>::GetSlice()
+__aicore__ inline Vec1SliceInfo& CompressorV2Vec1SliceIterator<COMP>::GetSlice()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (sliceInfo_.bSeqUsed <= sliceInfo_.sIdx) {
@@ -803,7 +803,7 @@ __aicore__ inline Vec1SliceInfo &CompressorV2Vec1SliceIterator<COMP>::GetSlice()
 
 template <typename COMP>
 template <bool IS_STATISTIC>
-__aicore__ inline StatisticInfo &CompressorV2Vec1SliceIterator<COMP>::FullIteratorSlice()
+__aicore__ inline StatisticInfo& CompressorV2Vec1SliceIterator<COMP>::FullIteratorSlice()
 {
     if constexpr (IS_STATISTIC) {
         statisticInfo_ = {0U, 0U, 0U};

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_v2_infershape.cpp
@@ -28,32 +28,32 @@ constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
 constexpr uint32_t ATTR_CANDIDATE_TOPK_BLOCKS_INDEX = 7;
 constexpr int64_t CANDIDATE_TOPK_BLOCKS_OFF = -1;
 
-static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexerV2", "InferShapeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
-    const gert::Shape *keyShape = context->GetInputShape(KEY_INDEX);
+    const gert::Shape* keyShape = context->GetInputShape(KEY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
 
-    gert::Shape *sparseIndicesShape = context->GetOutputShape(0);
+    gert::Shape* sparseIndicesShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseIndicesShape);
-    gert::Shape *sparseValuesShape = context->GetOutputShape(1);
+    gert::Shape* sparseValuesShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseValuesShape);
     // candidate (two-level topk)：source 输出 + 预留 block_length（恒空）
-    gert::Shape *candidateTopkIndicesShape = context->GetOutputShape(2);
+    gert::Shape* candidateTopkIndicesShape = context->GetOutputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context, candidateTopkIndicesShape);
-    gert::Shape *candidateBlockLengthShape = context->GetOutputShape(3);
+    gert::Shape* candidateBlockLengthShape = context->GetOutputShape(3);
     OP_CHECK_NULL_WITH_CONTEXT(context, candidateBlockLengthShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const char *inputLayoutQueryPtr = attrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
+    const char* inputLayoutQueryPtr = attrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
-    const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
+    const char* inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
-    const int64_t *seleced_count = attrs->GetInt(ATTR_TOPK_INDEX);
+    const int64_t* seleced_count = attrs->GetInt(ATTR_TOPK_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, seleced_count);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
@@ -86,7 +86,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
     }
 
     // 【R15 修复 2026-09-23】GE Int 属性按 int64_t 读取（仓惯例），小端 bool* type-punning 移除
-    const int64_t *return_value = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_VALUE_INDEX);
+    const int64_t* return_value = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_VALUE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, return_value);
     bool returnValueFlag = (return_value != nullptr) ? (*return_value != 0) : false;
     if (returnValueFlag) {
@@ -98,7 +98,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
 
     // candidate_topk_indices: candidate_topk_blocks != -1(source) 时输出，复制 sparse_indices shape、
     // 末维改 candidate_topk_blocks（BSND 4 维 / TND 3 维双布局）；off 时输出 (0,)
-    const int64_t *candidate_topk_blocks = attrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
+    const int64_t* candidate_topk_blocks = attrs->GetAttrPointer<int64_t>(ATTR_CANDIDATE_TOPK_BLOCKS_INDEX);
     int64_t candBlocks = (candidate_topk_blocks != nullptr) ? *candidate_topk_blocks : CANDIDATE_TOPK_BLOCKS_OFF;
     if (candBlocks > 0) {
         *candidateTopkIndicesShape = *sparseIndicesShape;
@@ -115,7 +115,7 @@ static ge::graphStatus InferShapeLightningIndexerV2(gert::InferShapeContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeLightningIndexerV2(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexerV2", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);

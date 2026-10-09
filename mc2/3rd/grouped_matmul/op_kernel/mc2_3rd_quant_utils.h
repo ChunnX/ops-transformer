@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file mc2_3rd_quant_utils.h
@@ -134,9 +134,9 @@ __aicore__ inline constexpr uint32_t GetTaskRation()
 #endif
 }
 
-__aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t &preOffset, int32_t groupType,
+__aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t& preOffset, int32_t groupType,
                                                      uint32_t groupListType,
-                                                     const AscendC::GlobalTensor<int64_t> &groupListGm)
+                                                     const AscendC::GlobalTensor<int64_t>& groupListGm)
 {
     int32_t splitValue = 0;
     if (likely(groupType != -1)) { // -1: no  need to split
@@ -153,8 +153,8 @@ __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, int32_t 
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ >= 310
 template <typename T>
-__aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, AscendC::LocalTensor<T> &initLocal,
-                                          uint64_t ySize, int32_t usedCoreNum, bool &isKZeroInit)
+__aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, AscendC::LocalTensor<T>& initLocal,
+                                          uint64_t ySize, int32_t usedCoreNum, bool& isKZeroInit)
 {
     if ASCEND_IS_AIC {
         return;

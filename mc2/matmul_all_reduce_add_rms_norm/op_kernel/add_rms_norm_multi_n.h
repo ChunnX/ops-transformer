@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file add_rms_norm_multi_n.h
@@ -21,7 +21,7 @@ template <typename T>
 class KernelAddRmsNormMultiN {
 public:
     __aicore__ inline KernelAddRmsNormMultiN() {}
-    __aicore__ inline void Init(GM_ADDR gamma, Mc2Tiling::AddRMSNormTilingData &tilingData, TPipe *Ppipe,
+    __aicore__ inline void Init(GM_ADDR gamma, Mc2Tiling::AddRMSNormTilingData& tilingData, TPipe* Ppipe,
                                 uint32_t numBlocks)
     {
         ASSERT(numBlocks != 0 && "Block dim can not be zero!");
@@ -44,7 +44,7 @@ public:
         }
 
         // get start index for current core, core parallel
-        gammaGm.SetGlobalBuffer((__gm__ T *)gamma, numCol);
+        gammaGm.SetGlobalBuffer((__gm__ T*)gamma, numCol);
 
         // pipe alloc memory to queue, the unit is Bytes
         Ppipe->InitBuffer(inQueueX, DOUBLE_BUFFER_NUM, ubFactor * sizeof(T));
@@ -65,13 +65,13 @@ public:
         } else if (GetBlockIdx() == numBlocks - 1) {
             this->rowWork = numRow - (numBlocks - 1) * blockFactor;
         }
-        normOutGm.SetGlobalBuffer((__gm__ T *)normOut + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
-        residualGm.SetGlobalBuffer((__gm__ T *)residual + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
-        yGm.SetGlobalBuffer((__gm__ T *)y + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
+        normOutGm.SetGlobalBuffer((__gm__ T*)normOut + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
+        residualGm.SetGlobalBuffer((__gm__ T*)residual + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
+        yGm.SetGlobalBuffer((__gm__ T*)y + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
     }
 
     __aicore__ inline void ComputeProcess(GM_ADDR normOut, GM_ADDR residual, GM_ADDR y,
-                                          Mc2Tiling::AddRMSNormTilingData &tilingData, uint32_t addRmsNormCount,
+                                          Mc2Tiling::AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
                                           uint32_t rcvCnt)
     {
         auto x1Addr = normOut;
@@ -106,7 +106,7 @@ public:
         inQueueGamma.FreeTensor(gammaLocal);
     }
 
-    __aicore__ inline void SubProcess(uint32_t i_o, uint32_t calc_row_num, LocalTensor<T> &gammaLocal)
+    __aicore__ inline void SubProcess(uint32_t i_o, uint32_t calc_row_num, LocalTensor<T>& gammaLocal)
     {
         uint32_t gm_bias = i_o * rowFactor * numCol;
         CopyInX(gm_bias, calc_row_num);

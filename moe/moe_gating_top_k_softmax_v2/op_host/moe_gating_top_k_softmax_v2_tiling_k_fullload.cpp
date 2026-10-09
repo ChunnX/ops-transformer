@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_softmax_v2_tiling_k_fullload.cpp
@@ -31,10 +31,9 @@ static const int32_t MAX_COL_IN_UB = 8160; // ubSize/minTypeSize
 
 class MoeGatingTopKSoftmaxV2KFullLoadTiling : public MoeGatingTopKSoftmaxV2BaseTiling {
 public:
-    explicit MoeGatingTopKSoftmaxV2KFullLoadTiling(gert::TilingContext *context)
+    explicit MoeGatingTopKSoftmaxV2KFullLoadTiling(gert::TilingContext* context)
         : MoeGatingTopKSoftmaxV2BaseTiling(context)
-    {
-    }
+    {}
 
 protected:
     uint64_t GetTilingKey() const override;
@@ -134,7 +133,7 @@ ge::graphStatus MoeGatingTopKSoftmaxV2KFullLoadTiling::DoOpTiling()
     if (!CalculateParamInUb()) {
         std::string kStr = std::to_string(k);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k", kStr.c_str(),
-            "AutoTiling failed, the attr k is too large for non-renorm tiling");
+                                              "AutoTiling failed, the attr k is too large for non-renorm tiling");
         return ge::GRAPH_FAILED;
     }
     tilingData.set_ubLoop(ubLoop);
@@ -202,7 +201,7 @@ ge::graphStatus MoeGatingTopKSoftmaxV2KFullLoadTiling::PostTiling()
     tilingData.set_softmaxFlag(softmaxFlag);
     context_->SetTilingKey(GetTilingKey());
     context_->SetBlockDim(tilingData.get_blockNum());
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
     tilingData.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());

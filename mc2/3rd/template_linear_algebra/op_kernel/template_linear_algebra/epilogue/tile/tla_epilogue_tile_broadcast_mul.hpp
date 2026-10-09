@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_MUL_HPP
 #define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_MUL_HPP
@@ -34,9 +34,9 @@ struct TileRowBroadcastMul {
     TileRowBroadcastMul() {}
 
     CATLASS_DEVICE
-    void operator()(AscendC::LocalTensor<ElementCompute> const &ubOut,
-                    AscendC::LocalTensor<ElementCompute> const &ubIn0,
-                    AscendC::LocalTensor<ElementCompute> const &ubIn1)
+    void operator()(AscendC::LocalTensor<ElementCompute> const& ubOut,
+                    AscendC::LocalTensor<ElementCompute> const& ubIn0,
+                    AscendC::LocalTensor<ElementCompute> const& ubIn1)
     {
         constexpr uint32_t maxRepeatTimes = 255;
         constexpr uint32_t eleNumPerBlk = BYTE_PER_BLK / sizeof(ElementCompute);
@@ -81,9 +81,9 @@ struct TileOneBlkColumnBroadcastMul {
     TileOneBlkColumnBroadcastMul() {}
 
     CATLASS_DEVICE
-    void operator()(AscendC::LocalTensor<ElementCompute> const &ubOut,
-                    AscendC::LocalTensor<ElementCompute> const &ubIn0,
-                    AscendC::LocalTensor<ElementCompute> const &ubIn1)
+    void operator()(AscendC::LocalTensor<ElementCompute> const& ubOut,
+                    AscendC::LocalTensor<ElementCompute> const& ubIn0,
+                    AscendC::LocalTensor<ElementCompute> const& ubIn1)
     {
         constexpr uint32_t maxRepeatNum = 255;
         constexpr uint32_t eleNumPerBlk = BYTE_PER_BLK / sizeof(ElementCompute);

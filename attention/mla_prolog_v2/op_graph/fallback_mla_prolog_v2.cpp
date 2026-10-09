@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "fallback_mla_prolog_v2.h"
 
@@ -18,14 +18,14 @@ namespace fallback {
 using namespace ge;
 using namespace gert;
 
-graphStatus GetMlaPrologV2InputTensor(const OpExecuteContext *ctx, MlaPrologV2FallBackParam &param)
+graphStatus GetMlaPrologV2InputTensor(const OpExecuteContext* ctx, MlaPrologV2FallBackParam& param)
 {
     auto ret = GetMlaPrologInputTensor(ctx, param);
     OP_CHECK_IF(ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "GetInputTensor failed"), return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
-graphStatus GetMlaPrologV2OutputTensor(const OpExecuteContext *ctx, MlaPrologV2FallBackParam &param)
+graphStatus GetMlaPrologV2OutputTensor(const OpExecuteContext* ctx, MlaPrologV2FallBackParam& param)
 {
     auto ret = GetMlaPrologOutputTensor(ctx, param);
     OP_CHECK_IF(ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "GetOutputTensor failed"), return GRAPH_FAILED);
@@ -37,14 +37,14 @@ graphStatus GetMlaPrologV2OutputTensor(const OpExecuteContext *ctx, MlaPrologV2F
     return GRAPH_SUCCESS;
 }
 
-graphStatus GetMlaPrologV2Attr(const OpExecuteContext *ctx, MlaPrologV2FallBackParam &param)
+graphStatus GetMlaPrologV2Attr(const OpExecuteContext* ctx, MlaPrologV2FallBackParam& param)
 {
     auto ret = GetMlaPrologAttr(ctx, param);
     OP_CHECK_IF(ret != GRAPH_SUCCESS, OP_LOGE("aclnnfallback", "GetAttr failed"), return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
-graphStatus MlaV2HostExecuteFunc(OpExecuteContext *host_api_ctx)
+graphStatus MlaV2HostExecuteFunc(OpExecuteContext* host_api_ctx)
 {
     OP_CHECK_IF(host_api_ctx == nullptr, OP_LOGE("aclnnfallback", "host_api_ctx is null"), return GRAPH_FAILED);
 

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file dense_lightning_indexer_kl_loss_grad_post.h
@@ -22,15 +22,15 @@ TEMPLATES_DEF
 class DenseLightningIndexerKLLossGradPost {
 public:
     __aicore__ inline DenseLightningIndexerKLLossGradPost(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dk, __gm__ uint8_t *workspace,
-                                const optiling::DenseLightningIndexerGradRegBaseTilingData *__restrict tiling,
-                                TPipe *pipe_in);
+    __aicore__ inline void Init(__gm__ uint8_t* dk, __gm__ uint8_t* workspace,
+                                const optiling::DenseLightningIndexerGradRegBaseTilingData* __restrict tiling,
+                                TPipe* pipe_in);
     __aicore__ inline void Process();
 
     uint32_t REGBASE_POST_BASE = 128 * 128;
     uint32_t VALUE_DIM = 128;
-    TPipe *pipe;
-    const optiling::DenseLightningIndexerGradRegBaseTilingData *tilingData;
+    TPipe* pipe;
+    const optiling::DenseLightningIndexerGradRegBaseTilingData* tilingData;
     TQue<QuePosition::VECIN, 1> inQueuePing;
     TQue<QuePosition::VECOUT, 1> outQueuePing;
     TQue<QuePosition::VECIN, 1> inQueuePong;
@@ -45,21 +45,21 @@ public:
 };
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLightningIndexerKLLossGradPost<TEMPLATE_ARGS>::Init(
-    __gm__ uint8_t *dk, __gm__ uint8_t *workspace,
-    const optiling::DenseLightningIndexerGradRegBaseTilingData *__restrict tiling, TPipe *pipe_in)
+    __gm__ uint8_t* dk, __gm__ uint8_t* workspace,
+    const optiling::DenseLightningIndexerGradRegBaseTilingData* __restrict tiling, TPipe* pipe_in)
 {
     vBlockIdx = GetBlockIdx();
     tilingData = tiling;
     pipe = pipe_in;
 
-    dkGm.SetGlobalBuffer((__gm__ OUT_T *)dk);
+    dkGm.SetGlobalBuffer((__gm__ OUT_T*)dk);
 
     kPostBlockFactor = tilingData->multiCoreParams.kPostBlockFactor;
     kPostBlockTotal = tilingData->multiCoreParams.kPostBlockTotal;
     kPostBlockTail = tilingData->multiCoreParams.kPostBlockTail;
     blockSize = (vBlockIdx == kPostBlockTotal - 1 ? kPostBlockTail : kPostBlockFactor) * VALUE_DIM;
 
-    dkWorkspace.SetGlobalBuffer((__gm__ float *)workspace + tilingData->baseParams.mm3ResWorkSpaceOffset / sizeof(T));
+    dkWorkspace.SetGlobalBuffer((__gm__ float*)workspace + tilingData->baseParams.mm3ResWorkSpaceOffset / sizeof(T));
 
     pipe->InitBuffer(inQueuePing, 1, REGBASE_POST_BASE * sizeof(T));
     pipe->InitBuffer(outQueuePing, 1, REGBASE_POST_BASE * sizeof(OUT_T));

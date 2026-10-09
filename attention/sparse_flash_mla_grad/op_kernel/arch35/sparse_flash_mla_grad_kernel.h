@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_mla_grad_kernel.h
@@ -31,32 +31,32 @@ public:
     ARGS_TRAITS;
     using BaseClass = SparseFlashMlaGradKernelBase<SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>, CubeBlockType,
                                                    VecBlockType>;
-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
+    __aicore__ inline void SetUniqueRunInfo(FagRunInfo& runInfo);
+    __aicore__ inline void SetUniqueConstInfo(FagConstInfo& constInfo);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessDeter();
     __aicore__ inline void ProcessUnDeter();
 
 private:
-    __aicore__ inline void ProcessPreload(FagRunInfo &runInfo, int64_t taskId, bool &isFirstBlock);
-    __aicore__ inline void ProcessNotFirst(FagRunInfo &runInfo);
-    __aicore__ inline void ScatterAddUnDeter(FagRunInfo &runInfo);
-    __aicore__ inline void CopyLse(FagRunInfo &runInfo);
+    __aicore__ inline void ProcessPreload(FagRunInfo& runInfo, int64_t taskId, bool& isFirstBlock);
+    __aicore__ inline void ProcessNotFirst(FagRunInfo& runInfo);
+    __aicore__ inline void ScatterAddUnDeter(FagRunInfo& runInfo);
+    __aicore__ inline void CopyLse(FagRunInfo& runInfo);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo& runInfo)
 {}
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(
-    FagConstInfo &constInfo)
+    FagConstInfo& constInfo)
 {}
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo &runInfo,
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessPreload(FagRunInfo& runInfo,
                                                                                              int64_t taskId,
-                                                                                             bool &isFirstBlock)
+                                                                                             bool& isFirstBlock)
 {
     if ASCEND_IS_AIV {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(SYNC_C3_TO_V0_FLAG[runInfo.commonRunInfo.taskIdMod2]);
@@ -97,7 +97,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo &runInfo)
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ProcessNotFirst(FagRunInfo& runInfo)
 {
     if (runInfo.taskStep != TASK_C1C2) {
         return;
@@ -192,7 +192,7 @@ __aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::Pr
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ScatterAddUnDeter(FagRunInfo &runInfo)
+__aicore__ inline void SparseFlashMlaGradKernel<CubeBlockType, VecBlockType>::ScatterAddUnDeter(FagRunInfo& runInfo)
 {
     if constexpr (!IsDETER) {
         int8_t mode2 = (runInfo.commonRunInfo.taskIdMod2 + 1) % 2;

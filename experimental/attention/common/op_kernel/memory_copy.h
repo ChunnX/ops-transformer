@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file memory_copy.h
@@ -20,7 +20,8 @@
 #include "fia_public_define.h"
 
 constexpr uint32_t HALF_SIZE_DIVISOR = 2;
-constexpr uint32_t ND_MATRIX_STRIDE_LIMIT = 65536; // Mutil ND2NZ搬运时，Nd2NzParams支持的srcNdMatrixStride的取值范围为[0, 65536]，单位为元素
+constexpr uint32_t ND_MATRIX_STRIDE_LIMIT =
+    65536; // Mutil ND2NZ搬运时，Nd2NzParams支持的srcNdMatrixStride的取值范围为[0, 65536]，单位为元素
 // ----------------------------------------------GmLayout--------------------------------
 enum class GmFormat {
     BSNGD = 0,
@@ -36,8 +37,7 @@ enum class GmFormat {
 };
 
 template <GmFormat FORMAT>
-struct GmLayout {
-};
+struct GmLayout {};
 
 template <>
 struct GmLayout<GmFormat::BSNGD> {
@@ -45,7 +45,8 @@ struct GmLayout<GmFormat::BSNGD> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t g, uint32_t s, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t g, uint32_t s, uint32_t d)
+    {
         shape = AscendC::MakeShape(b, n, g, s, d);
         uint64_t dStride = 1;
         uint64_t gStride = dStride * d;
@@ -62,7 +63,8 @@ struct GmLayout<GmFormat::BNGSD> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t g, uint32_t s, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t g, uint32_t s, uint32_t d)
+    {
         shape = AscendC::MakeShape(b, n, g, s, d);
         uint64_t dStride = 1;
         uint64_t sStride = dStride * d;
@@ -79,7 +81,8 @@ struct GmLayout<GmFormat::BSND> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t s, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t s, uint32_t d)
+    {
         shape = AscendC::MakeShape(b, n, s, d);
         uint64_t dStride = 1;
         uint64_t nStride = dStride * d;
@@ -95,7 +98,8 @@ struct GmLayout<GmFormat::BNSD> {
     AscendC::Stride<uint64_t, uint64_t, uint64_t, uint64_t> stride;
 
     __aicore__ inline GmLayout() = default;
-    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t s, uint32_t d) {
+    __aicore__ inline void MakeLayout(uint32_t b, uint32_t n, uint32_t s, uint32_t d)
+    {
         shape = AscendC::MakeShape(b, n, s, d);
         uint64_t dStride = 1;
         uint64_t sStride = dStride * d;
@@ -106,14 +110,14 @@ struct GmLayout<GmFormat::BNSD> {
 };
 
 // ----------------------------------------------ActualSeqLensParser--------------------------------
-enum class ActualSeqLensMode
-{
+enum class ActualSeqLensMode {
     BY_BATCH = 0,
     ACCUM = 1,
 };
 
 template <FIA_LAYOUT LAYOUT_T>
-__aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode() {
+__aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode()
+{
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
         return ActualSeqLensMode::ACCUM;
     } else {
@@ -121,7 +125,8 @@ __aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode() {
     }
 }
 template <FIA_LAYOUT LAYOUT_T, const bool PAGE_ATTENTION>
-__aicore__ inline constexpr ActualSeqLensMode GetKvActSeqMode() {
+__aicore__ inline constexpr ActualSeqLensMode GetKvActSeqMode()
+{
     if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
         return ActualSeqLensMode::ACCUM;
     } else {
@@ -129,17 +134,16 @@ __aicore__ inline constexpr ActualSeqLensMode GetKvActSeqMode() {
     }
 }
 
-
 template <ActualSeqLensMode MODE>
-class ActualSeqLensParser {
-};
+class ActualSeqLensParser {};
 
 template <>
 class ActualSeqLensParser<ActualSeqLensMode::ACCUM> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
-    __aicore__ inline void Init(GlobalTensor<uint64_t> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal = 0)
+    __aicore__ inline void Init(GlobalTensor<uint64_t> actualSeqLengthsGm, uint32_t actualLenDims,
+                                uint64_t defaultVal = 0)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
         this->actualLenDims = actualLenDims;
@@ -165,6 +169,7 @@ public:
     {
         return actualSeqLengthsGm.GetValue(actualLenDims - 1);
     }
+
 private:
     GlobalTensor<uint64_t> actualSeqLengthsGm;
     uint32_t actualLenDims;
@@ -193,10 +198,11 @@ public:
         return actualSeqLengthsGm.GetValue(bIdx);
     }
 
-    __aicore__ inline uint32_t GetActualLenDims() const 
+    __aicore__ inline uint32_t GetActualLenDims() const
     {
         return actualLenDims;
     }
+
 private:
     GlobalTensor<uint64_t> actualSeqLengthsGm;
     uint32_t actualLenDims;
@@ -204,8 +210,7 @@ private:
 };
 
 // ----------------------------------------------GmLayoutParams--------------------------------
-enum class FormatCategory
-{
+enum class FormatCategory {
     GM_Q_OUT_BNGSD = 0,
     GM_Q_OUT_TND = 1,
     GM_KV_BNSD = 2,
@@ -254,7 +259,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_Q_OUT_BNGSD> {
     {
         this->isQPaddingFlag = isQPaddingFlag;
         this->qPaddingSize = qPaddingSize;
-        if(actualLenQDims != 0) {
+        if (actualLenQDims != 0) {
             actualSeqLensQParser.Init(actualSeqLengthsGmQ, actualLenQDims, 0);
         }
         gmLayout.MakeLayout(b, n2, g, s1, d);
@@ -337,12 +342,13 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD> {
         gmLayout.MakeLayout(b, n2, s2, d);
     }
 
-    __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d, GlobalTensor<uint64_t> actualSeqLengthsGm,
-                                uint32_t actualLenKvDims, bool isKvPaddingFlag = false, uint64_t kvPaddingSize = 0)
+    __aicore__ inline void Init(uint32_t b, uint32_t n2, uint32_t s2, uint32_t d,
+                                GlobalTensor<uint64_t> actualSeqLengthsGm, uint32_t actualLenKvDims,
+                                bool isKvPaddingFlag = false, uint64_t kvPaddingSize = 0)
     {
         this->isKvPaddingFlag = isKvPaddingFlag;
         this->kvPaddingSize = kvPaddingSize;
-        if(actualLenKvDims != 0) {
+        if (actualLenKvDims != 0) {
             actualSeqLensKVParser.Init(actualSeqLengthsGm, actualLenKvDims, 0);
         }
         gmLayout.MakeLayout(b, n2, s2, d);
@@ -353,7 +359,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD> {
         if (isKvPaddingFlag) {
             s2Idx += GetDimS2() - kvPaddingSize - actualSeqLensKVParser.GetActualSeqLength(bIdx);
         }
-        
+
         uint64_t offset = bIdx * GetStrideB() + n2Idx * GetStrideN2() + s2Idx * GetStrideS2() + dIdx * GetStrideD();
         return offset;
     }
@@ -402,8 +408,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_KV_BNSD> {
 };
 
 template <GmFormat FORMAT>
-struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY> {
-};
+struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY> {};
 
 // ----------------------------------------------CopyQueryGmToL1--------------------------------
 template <typename Q_T, GmFormat FORMAT>
@@ -412,8 +417,7 @@ struct FaGmTensor {
     OffsetCalculator<FORMAT> offsetCalculator;
 };
 
-enum class L1Format
-{
+enum class L1Format {
     NZ = 0
 };
 
@@ -433,14 +437,14 @@ struct GmCoord {
 };
 
 template <typename T>
-__aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor,
-    uint32_t nValue, uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
+__aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,
+                                              uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
-    nd2nzPara.nValue = nValue; //nd矩阵的行数
-    nd2nzPara.dValue = dValue; //nd矩阵的列数
-    nd2nzPara.srcDValue = srcDValue; //同一nd矩阵相邻行起始地址间的偏移
+    nd2nzPara.nValue = nValue;       // nd矩阵的行数
+    nd2nzPara.dValue = dValue;       // nd矩阵的列数
+    nd2nzPara.srcDValue = srcDValue; // 同一nd矩阵相邻行起始地址间的偏移
     nd2nzPara.dstNzC0Stride = dstNzC0Stride;
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
@@ -450,7 +454,9 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
 
 template <typename T>
 __aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor,
-    uint32_t srcNdMatrixNum, uint32_t srcNdMatrixStride, uint32_t dstNzMatrixStride, uint32_t nValue, uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
+                                             uint32_t srcNdMatrixNum, uint32_t srcNdMatrixStride,
+                                             uint32_t dstNzMatrixStride, uint32_t nValue, uint32_t dValue,
+                                             uint32_t srcDValue, uint32_t dstNzC0Stride)
 {
     if (unlikely(srcNdMatrixStride > ND_MATRIX_STRIDE_LIMIT)) {
         uint64_t l1Offset = 0;
@@ -463,13 +469,13 @@ __aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glob
     } else {
         Nd2NzParams nd2nzPara;
         nd2nzPara.ndNum = srcNdMatrixNum;
-        nd2nzPara.nValue = nValue; //nd矩阵的行数
+        nd2nzPara.nValue = nValue; // nd矩阵的行数
         if constexpr (IsSameType<T, int4b_t>::value) {
             nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
             nd2nzPara.srcDValue = srcDValue / HALF_SIZE_DIVISOR;
         } else {
-            nd2nzPara.dValue = dValue; //nd矩阵的列数
-            nd2nzPara.srcDValue = srcDValue; //同一nd矩阵相邻行起始地址间的偏移
+            nd2nzPara.dValue = dValue;       // nd矩阵的列数
+            nd2nzPara.srcDValue = srcDValue; // 同一nd矩阵相邻行起始地址间的偏移
         }
         nd2nzPara.dstNzC0Stride = dstNzC0Stride;
         nd2nzPara.dstNzNStride = 1;
@@ -482,15 +488,14 @@ __aicore__ inline void CopyMultiMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glob
 template <typename Q_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
 class CopyQueryGmToL1 {
 public:
-    __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor,
-                                      FaGmTensor<Q_T, GM_FORMAT> &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT>& dstTensor, FaGmTensor<Q_T, GM_FORMAT>& srcTensor,
+                                      GmCoord& gmCoord)
     {
         if constexpr ((GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
-            if( offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0 ) {
+            OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
+            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 ProcessGS1(dstTensor, srcTensor, gmCoord);
             } else {
                 ProcessContinuous(dstTensor, srcTensor, gmCoord);
@@ -501,10 +506,10 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessS1G(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensor<Q_T, GM_FORMAT> &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void ProcessS1G(FaL1Tensor<Q_T, L1_FORMAT>& dstTensor, FaGmTensor<Q_T, GM_FORMAT>& srcTensor,
+                                      GmCoord& gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
         uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
@@ -514,8 +519,8 @@ private:
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
 
         if (offsetCalculator.GetDimG() == 1) {
-            CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset], s1IdxEnd - s1IdxStart, gmCoord.dDealSize,
-                                    offsetCalculator.GetStrideS1(), dstTensor.rowCount);
+            CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset], s1IdxEnd - s1IdxStart,
+                                   gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);
             return;
         }
 
@@ -537,9 +542,9 @@ private:
             uint64_t l1Offset = headSize * 16U;
             if (s1IdxEnd - s1IdxStart > 1) {
                 CopyMultiMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset],
-                        s1IdxEnd - s1IdxStart - 1, offsetCalculator.GetStrideS1(), offsetCalculator.GetDimG() * 16U,
-                        offsetCalculator.GetDimG(), gmCoord.dDealSize,
-                        offsetCalculator.GetStrideG(), dstTensor.rowCount);
+                                      s1IdxEnd - s1IdxStart - 1, offsetCalculator.GetStrideS1(),
+                                      offsetCalculator.GetDimG() * 16U, offsetCalculator.GetDimG(), gmCoord.dDealSize,
+                                      offsetCalculator.GetStrideG(), dstTensor.rowCount);
                 gmOffset += (s1IdxEnd - s1IdxStart - 1) * offsetCalculator.GetStrideS1();
                 l1Offset += (s1IdxEnd - s1IdxStart - 1) * offsetCalculator.GetDimG() * 16U;
             }
@@ -552,30 +557,29 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor,
-                                             FaGmTensor<Q_T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT>& dstTensor,
+                                             FaGmTensor<Q_T, GM_FORMAT>& srcTensor, GmCoord& gmCoord)
     {
         // B*N2*GS1*D
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t gIdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimS1();
         uint32_t s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
 
-        uint64_t offset =
-            offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart, gmCoord.dIdx);
+        uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, s1IdxStart, gmCoord.dIdx);
         CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.gS1DealSize, gmCoord.dDealSize,
                                offsetCalculator.GetDimD(), dstTensor.rowCount);
     }
 
-    __aicore__ inline void ProcessGS1(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensor<Q_T, GM_FORMAT> &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void ProcessGS1(FaL1Tensor<Q_T, L1_FORMAT>& dstTensor, FaGmTensor<Q_T, GM_FORMAT>& srcTensor,
+                                      GmCoord& gmCoord)
     {
         // N2*G*T(BS1)*D
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
         } else {
-            if( offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0 ) {
+            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
             } else {
                 s1Size = offsetCalculator.GetDimS1();
@@ -608,9 +612,9 @@ private:
             uint64_t l1Offset = headSize * 16U;
 
             if (gIdxEnd - gIdxStart > 1) {
-                CopyMultiMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset],
-                        gIdxEnd - gIdxStart - 1, offsetCalculator.GetStrideG(), s1Size * 16U,
-                        s1Size, gmCoord.dDealSize, offsetCalculator.GetStrideS1(), dstTensor.rowCount);
+                CopyMultiMatrixNDToNZ(dstTensor.tensor[l1Offset], srcTensor.gmTensor[gmOffset], gIdxEnd - gIdxStart - 1,
+                                      offsetCalculator.GetStrideG(), s1Size * 16U, s1Size, gmCoord.dDealSize,
+                                      offsetCalculator.GetStrideS1(), dstTensor.rowCount);
                 gmOffset += (gIdxEnd - gIdxStart - 1) * offsetCalculator.GetStrideG();
                 l1Offset += (gIdxEnd - gIdxStart - 1) * s1Size * 16U;
             }
@@ -625,8 +629,7 @@ private:
 };
 
 // ----------------------------------------------CopyAttenOutUbToGm--------------------------------
-enum class UbFormat
-{
+enum class UbFormat {
     GS1 = 0,
     S1G = 1
 };
@@ -639,11 +642,11 @@ struct FaUbTensor {
 };
 
 template <typename OUT_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
-class CopyAttenOutUbToGm
-{
+class CopyAttenOutUbToGm {
 public:
     __aicore__ inline void SafeStrideCopy(GlobalTensor<OUT_T> gmTensor, const LocalTensor<OUT_T> ubTensor,
-                                            uint32_t blockCount, uint32_t blockLen, uint32_t srcStride, uint64_t dstStride)
+                                          uint32_t blockCount, uint32_t blockLen, uint32_t srcStride,
+                                          uint64_t dstStride)
     {
         DataCopyExtParams dataCopyParams;
         // B*S过大时，跳写参数dataCopyParams.dstStride(uint32_t)计算结果将溢出，使用for循环拷贝代替
@@ -666,17 +669,16 @@ public:
             DataCopyPad(gmTensor, ubTensor, dataCopyParams);
         }
     }
-    __aicore__ inline void operator()(FaGmTensor<OUT_T, GM_FORMAT> &dstTensor,
-                                      FaUbTensor<OUT_T> &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void operator()(FaGmTensor<OUT_T, GM_FORMAT>& dstTensor, FaUbTensor<OUT_T>& srcTensor,
+                                      GmCoord& gmCoord)
     {
         if constexpr (UB_FORMAT == UbFormat::GS1) {
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = dstTensor.offsetCalculator;
+            OffsetCalculator<GM_FORMAT>& offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1Size = 0;
             if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
             } else {
-                if( offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0 ) {
+                if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                     s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
                 } else {
                     s1Size = offsetCalculator.GetDimS1();
@@ -700,10 +702,11 @@ public:
             uint64_t ubOffset = 0;
             uint32_t blockCount = headS1;
             uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
-            uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (fa_base_vector::BYTE_BLOCK / sizeof(OUT_T));
+            uint32_t srcStride =
+                (srcTensor.colCount - gmCoord.dDealSize) / (fa_base_vector::BYTE_BLOCK / sizeof(OUT_T));
             uint64_t dstStride = (offsetCalculator.GetStrideS1() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
             SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
-                            dstStride);
+                           dstStride);
 
             if (gIdxEnd - gIdxStart >= 1) {
                 // 处理中间块
@@ -712,7 +715,7 @@ public:
                 for (uint32_t i = gIdxStart + 1; i < gIdxEnd; i++) {
                     blockCount = s1Size;
                     SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                    srcStride, dstStride);
+                                   srcStride, dstStride);
                     gmOffset += offsetCalculator.GetStrideG();
                     ubOffset += s1Size * srcTensor.colCount;
                 }
@@ -721,11 +724,11 @@ public:
                 if (s1IdxEnd > 0) {
                     blockCount = s1IdxEnd;
                     SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                    srcStride, dstStride);
+                                   srcStride, dstStride);
                 }
             }
         } else if constexpr (UB_FORMAT == UbFormat::S1G) {
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = dstTensor.offsetCalculator;
+            OffsetCalculator<GM_FORMAT>& offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
             uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
             uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
@@ -744,10 +747,11 @@ public:
             uint64_t ubOffset = 0;
             uint32_t blockCount = headSize;
             uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
-            uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (fa_base_vector::BYTE_BLOCK / sizeof(OUT_T));
+            uint32_t srcStride =
+                (srcTensor.colCount - gmCoord.dDealSize) / (fa_base_vector::BYTE_BLOCK / sizeof(OUT_T));
             uint64_t dstStride = (offsetCalculator.GetStrideG() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
             SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
-                            dstStride);
+                           dstStride);
 
             if (s1IdxEnd - s1IdxStart >= 1) {
                 // 处理中间块
@@ -756,7 +760,7 @@ public:
                 for (uint32_t i = s1IdxStart + 1; i < s1IdxEnd; i++) {
                     blockCount = offsetCalculator.GetDimG();
                     SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                    srcStride, dstStride);
+                                   srcStride, dstStride);
                     gmOffset += offsetCalculator.GetStrideS1();
                     ubOffset += offsetCalculator.GetDimG() * srcTensor.colCount;
                 }
@@ -765,7 +769,7 @@ public:
                 if (gIdxEnd > 0) {
                     blockCount = gIdxEnd;
                     SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                    srcStride, dstStride);
+                                   srcStride, dstStride);
                 }
             }
         }
@@ -783,26 +787,23 @@ struct GmKvCoord {
 };
 
 template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
-class CopyKvGmToL1
-{
+class CopyKvGmToL1 {
 public:
-    __aicore__ inline void operator()(FaL1Tensor<KV_T, L1_FORMAT> &dstTensor,
-                                      FaGmTensor<KV_T, GM_FORMAT> &srcTensor,
-                                      GmKvCoord &gmCoord)
+    __aicore__ inline void operator()(FaL1Tensor<KV_T, L1_FORMAT>& dstTensor, FaGmTensor<KV_T, GM_FORMAT>& srcTensor,
+                                      GmKvCoord& gmCoord)
     {
-        if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND ||
-                      GM_FORMAT == GmFormat::NTD || GM_FORMAT == GmFormat::TND) {
+        if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND || GM_FORMAT == GmFormat::NTD ||
+                      GM_FORMAT == GmFormat::TND) {
             ProcessContinuousOrTensorlist(dstTensor, srcTensor, gmCoord);
         }
     }
 
 private:
-    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<KV_T, L1_FORMAT> &dstTensor,
-                                                         FaGmTensor<KV_T, GM_FORMAT> &srcTensor,
-                                                         GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<KV_T, L1_FORMAT>& dstTensor,
+                                                         FaGmTensor<KV_T, GM_FORMAT>& srcTensor, GmKvCoord& gmCoord)
     {
         // B*N2*GS1*D
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
         CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize, gmCoord.dDealSize,
                                offsetCalculator.GetStrideS2(), dstTensor.rowCount);
@@ -810,11 +811,10 @@ private:
 };
 
 template <FIA_LAYOUT LAYOUT_T>
-__aicore__ inline constexpr GmFormat GetQueryGmFormat() {
-    static_assert((LAYOUT_T == FIA_LAYOUT::BSH) ||
-                  (LAYOUT_T == FIA_LAYOUT::BNSD) ||
-                  (LAYOUT_T == FIA_LAYOUT::TND) ||
-                  (LAYOUT_T == FIA_LAYOUT::NTD),
+__aicore__ inline constexpr GmFormat GetQueryGmFormat()
+{
+    static_assert((LAYOUT_T == FIA_LAYOUT::BSH) || (LAYOUT_T == FIA_LAYOUT::BNSD) || (LAYOUT_T == FIA_LAYOUT::TND) ||
+                      (LAYOUT_T == FIA_LAYOUT::NTD),
                   "Get Query GmFormat fail, LAYOUT_T is incorrect");
     if constexpr (LAYOUT_T == FIA_LAYOUT::BSH) {
         return GmFormat::BSNGD;
@@ -824,12 +824,11 @@ __aicore__ inline constexpr GmFormat GetQueryGmFormat() {
 }
 
 template <FIA_LAYOUT KV_LAYOUT_T, const bool PAGE_ATTENTION>
-__aicore__ inline constexpr GmFormat GetKVFormat() {
-    static_assert((KV_LAYOUT_T == FIA_LAYOUT::BSH) ||
-                    (KV_LAYOUT_T == FIA_LAYOUT::BNSD) ||
-                    (KV_LAYOUT_T == FIA_LAYOUT::TND) ||
-                    (KV_LAYOUT_T == FIA_LAYOUT::NTD),
-                    "Get Key or Value GmFormat fail, KV_LAYOUT_T is incorrect when KV Continuous or TensorList");
+__aicore__ inline constexpr GmFormat GetKVFormat()
+{
+    static_assert((KV_LAYOUT_T == FIA_LAYOUT::BSH) || (KV_LAYOUT_T == FIA_LAYOUT::BNSD) ||
+                      (KV_LAYOUT_T == FIA_LAYOUT::TND) || (KV_LAYOUT_T == FIA_LAYOUT::NTD),
+                  "Get Key or Value GmFormat fail, KV_LAYOUT_T is incorrect when KV Continuous or TensorList");
     if constexpr (KV_LAYOUT_T == FIA_LAYOUT::BSH) {
         return GmFormat::BSND;
     } else if constexpr (KV_LAYOUT_T == FIA_LAYOUT::BNSD) {
@@ -838,11 +837,10 @@ __aicore__ inline constexpr GmFormat GetKVFormat() {
 }
 
 template <FIA_LAYOUT LAYOUT_T>
-__aicore__ inline constexpr UbFormat GetOutUbFormat() {
-    static_assert((LAYOUT_T == FIA_LAYOUT::BSH) ||
-                  (LAYOUT_T == FIA_LAYOUT::BNSD) ||
-                  (LAYOUT_T == FIA_LAYOUT::TND) ||
-                  (LAYOUT_T == FIA_LAYOUT::NTD),
+__aicore__ inline constexpr UbFormat GetOutUbFormat()
+{
+    static_assert((LAYOUT_T == FIA_LAYOUT::BSH) || (LAYOUT_T == FIA_LAYOUT::BNSD) || (LAYOUT_T == FIA_LAYOUT::TND) ||
+                      (LAYOUT_T == FIA_LAYOUT::NTD),
                   "Get OutAttention UB GmFormat fail, LAYOUT_T is incorrect");
     if constexpr (LAYOUT_T == FIA_LAYOUT::BSH || LAYOUT_T == FIA_LAYOUT::TND) {
         return UbFormat::S1G;
@@ -854,9 +852,9 @@ __aicore__ inline constexpr UbFormat GetOutUbFormat() {
 // ----------------------------------------------Copy LSE UB To Gm--------------------------------
 template <typename T, ActualSeqLensMode Q_MODE>
 __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
-                                                 const ConstInfo &constInfo,
-                                                 ActualSeqLensParser<Q_MODE> qActSeqLensParser, uint64_t bIdx)
+                                              uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                              const ConstInfo& constInfo, ActualSeqLensParser<Q_MODE> qActSeqLensParser,
+                                              uint64_t bIdx)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;
@@ -867,15 +865,15 @@ __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, 
     uint32_t curDealRowCount = 0;
     uint64_t s1LeftPaddingSize = 0;
     if (constInfo.isQHasLeftPadding) {
-        s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
+        s1LeftPaddingSize =
+            constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
     }
 
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
         outOffset = bN2Offset + startGIdx * constInfo.qSeqSize + s1Idx + s1LeftPaddingSize;
         if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.gSize - startGIdx;
-        }
-        else {
+            curDealRowCount = constInfo.gSize - startGIdx;
+        } else {
             curDealRowCount = endGIdx + 1 - startGIdx;
         }
         DataCopyExtParams dataCopyParams;
@@ -891,15 +889,16 @@ __aicore__ inline void DataCopySoftmaxLseBSND(GlobalTensor<float> softmaxLseGm, 
 
 template <typename T, ActualSeqLensMode Q_MODE>
 __aicore__ inline void DataCopySoftmaxLseBNSD(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                            uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                            const ConstInfo &constInfo,
-                                            ActualSeqLensParser<Q_MODE> qActSeqLensParser, uint64_t bIdx)
+                                              uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                              const ConstInfo& constInfo, ActualSeqLensParser<Q_MODE> qActSeqLensParser,
+                                              uint64_t bIdx)
 {
     uint64_t gOffset = mOffset / qActSeqLensParser.GetActualSeqLength(bIdx) * constInfo.qSeqSize;
     uint64_t seqOffset = mOffset % qActSeqLensParser.GetActualSeqLength(bIdx);
     uint64_t s1LeftPaddingSize = 0;
     if (constInfo.isQHasLeftPadding) {
-        s1LeftPaddingSize = constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
+        s1LeftPaddingSize =
+            constInfo.qSeqSize - constInfo.qLeftPaddingSize - qActSeqLensParser.GetActualSeqLength(bIdx);
     }
     uint64_t outOffset = bN2Offset + gOffset + seqOffset + s1LeftPaddingSize;
     uint64_t ubOffset = 0;
@@ -950,18 +949,18 @@ __aicore__ inline void DataCopySoftmaxLseBNSD(GlobalTensor<float> softmaxLseGm, 
 
 // ---------------------------------------Set attention Gm To Zero--------------------------------
 template <GmFormat FORMAT, typename OUT_T>
-__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalculator<FORMAT> &offsetCalculator,
+__aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, OffsetCalculator<FORMAT>& offsetCalculator,
                                            GlobalTensor<OUT_T>& attentionOutGm)
-{  
+{
     if constexpr (FORMAT == GmFormat::BNGSD) {
-        uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, 0, 0); 
+        uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, 0, 0);
         matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideN2(), 0);
-    }  else if constexpr (FORMAT == GmFormat::BSNGD) {
+    } else if constexpr (FORMAT == GmFormat::BSNGD) {
         uint32_t s1Size = offsetCalculator.GetDimS1();
         for (int s1Idx = 0; s1Idx < s1Size; s1Idx++) {
-            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, s1Idx, 0);  
+            uint64_t attenOutOffset = offsetCalculator.GetOffset(bIdx, n2Idx, 0, s1Idx, 0);
             matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], offsetCalculator.GetStrideN2(), 0);
         }
-    } 
+    }
 }
 #endif

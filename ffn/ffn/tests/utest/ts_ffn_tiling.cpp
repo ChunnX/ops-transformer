@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file ts_ffn_tiling.cpp
@@ -277,13 +277,13 @@ const auto Tc_FFN_Tiling_Case = ::testing::Values(
         OpInfo(ControlInfo(true, false),
                ExpectInfo(true, 2,
                           ExpectInfo::kFullTilingBlockDim)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
-        Param({GenTensor("x", {2048, 640}, ge::DataType::DT_FLOAT16),
-               GenTensor("weight1", {640, 5120}, ge::DataType::DT_FLOAT16),
-               GenTensor("weight2", {2560, 640}, ge::DataType::DT_FLOAT16),
-               GenTensor("bias1", {5120}, ge::DataType::DT_FLOAT16),
-               GenTensor("bias2", {640}, ge::DataType::DT_FLOAT16),
-               GenTensor("y", {2048, 640}, ge::DataType::DT_FLOAT16)},
-              {}, "geglu", 1, -1),
+        Param(
+            {GenTensor("x", {2048, 640}, ge::DataType::DT_FLOAT16),
+             GenTensor("weight1", {640, 5120}, ge::DataType::DT_FLOAT16),
+             GenTensor("weight2", {2560, 640}, ge::DataType::DT_FLOAT16),
+             GenTensor("bias1", {5120}, ge::DataType::DT_FLOAT16), GenTensor("bias2", {640}, ge::DataType::DT_FLOAT16),
+             GenTensor("y", {2048, 640}, ge::DataType::DT_FLOAT16)},
+            {}, "geglu", 1, -1),
         0));
 
 // INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend310P3, Tc_FFN_Tiling310P_Case);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef FUSED_EPILOGUE_DISPATCH_POLICY_HPP
 #define FUSED_EPILOGUE_DISPATCH_POLICY_HPP
@@ -14,11 +14,16 @@
 #include "../../attn_infra/fused_base_defs.hpp"
 #include "../../attn_infra/arch/fused_arch.hpp"
 
-namespace NpuArch::Epilogue 
-{
+namespace NpuArch::Epilogue {
 
-enum class LseMode {NONE = 0, OUT_ONLY = 1};
-enum class SinkMode {DISABLE = 0, ENABLE = 1};
+enum class LseMode {
+    NONE = 0,
+    OUT_ONLY = 1
+};
+enum class SinkMode {
+    DISABLE = 0,
+    ENABLE = 1
+};
 enum class MaskMode {
     NO_MASK = 0,
     MASK_CAUSAL = 1,
@@ -50,7 +55,6 @@ struct EpilogueAtlasA2InitOutWhenZero {
     static constexpr LseMode LSE_MODE = LSE_MODE_;
 };
 
+} // namespace NpuArch::Epilogue
 
-}  // namespace NpuArch::Epilogue
-
-#endif  // EPILOGUE_DISPATCH_POLICY_HPP
+#endif // EPILOGUE_DISPATCH_POLICY_HPP

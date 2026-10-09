@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_base_full_load.h
@@ -25,7 +25,7 @@ class MoeV3FullLoadBase {
 public:
     __aicore__ inline MoeV3FullLoadBase(){};
     __aicore__ inline void Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
-                                GM_ADDR workspace, const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe);
+                                GM_ADDR workspace, const MoeInitRoutingV3TilingData* tilingData, TPipe* tPipe);
 
 protected:
     __aicore__ inline void CopyIn();
@@ -40,7 +40,7 @@ protected:
 
 protected:
     int64_t sortNum_;
-    const MoeV3GatherOutComputeTilingData *gatherOutTilingData_;
+    const MoeV3GatherOutComputeTilingData* gatherOutTilingData_;
     int64_t blockIdx_;
     int64_t needCoreNum_;
     int64_t coreIndicesElements_;
@@ -88,13 +88,13 @@ protected:
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int64_t> expertTokensCountOrCumsumGm_;
 
-    TPipe *pipe_;
+    TPipe* pipe_;
 };
 
 template <typename T>
 __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR expandedRowIdx,
                                                   GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace,
-                                                  const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+                                                  const MoeInitRoutingV3TilingData* tilingData, TPipe* tPipe)
 {
     this->gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     this->blockIdx_ = GetBlockIdx();
@@ -128,10 +128,10 @@ __aicore__ inline void MoeV3FullLoadBase<T>::Init(GM_ADDR expertIdx, GM_ADDR exp
     this->actualExpertNum_ = tilingData->actualExpertNum;
     this->pipe_ = tPipe;
 
-    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength_);
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength_);
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expertIdx, this->tileLength_);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx, this->tileLength_);
     if (this->expertTokensNumFlag_ > 0) {
-        expertTokensCountOrCumsumGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum);
+        expertTokensCountOrCumsumGm_.SetGlobalBuffer((__gm__ int64_t*)expertTokensCountOrCumsum);
     }
 
     if (expertTokensNumType_ == EXERPT_TOKENS_KEY_VALUE) {

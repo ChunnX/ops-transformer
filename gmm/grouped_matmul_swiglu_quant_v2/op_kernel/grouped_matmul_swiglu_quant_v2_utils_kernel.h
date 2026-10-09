@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_swiglu_quant_v2_utils_kernel.h
@@ -73,7 +73,7 @@ __aicore__ inline void GmmsqSetWaitFlag()
     WaitFlag<event>(eventId);
 }
 
-template <class AT_, class BT_, class CT_, class BiasT_, const MatmulConfig &MMCFG_>
+template <class AT_, class BT_, class CT_, class BiasT_, const MatmulConfig& MMCFG_>
 struct MMImplType {
     using AT = AT_;
     using BT = BT_;
@@ -215,8 +215,8 @@ __aicore__ inline uint32_t AlignUp<32, uint32_t>(uint32_t a)
     return (a + 31) & ~31; // & ~31: set last five bits of (a+31) to be zero}
 }
 
-__aicore__ inline void ReduceMaxSmall(const LocalTensor<float> &dstLocal, const LocalTensor<float> &workLocal,
-                                      const LocalTensor<float> &srcLocal, uint32_t count)
+__aicore__ inline void ReduceMaxSmall(const LocalTensor<float>& dstLocal, const LocalTensor<float>& workLocal,
+                                      const LocalTensor<float>& srcLocal, uint32_t count)
 {
     /**
      * @brief ReduceMaxSmall 此函数仅支持入参count小于4096。
@@ -237,8 +237,8 @@ __aicore__ inline void ReduceMaxSmall(const LocalTensor<float> &dstLocal, const 
     WholeReduceMax(dstLocal, workLocal, repeat, 1, 1, 1, VEC_LEN_ONCE_REPEAT_BLOCK, ReduceOrder::ORDER_ONLY_VALUE);
 }
 
-__aicore__ inline void ReduceMaxTemplate(const LocalTensor<float> &dstLocal, const LocalTensor<float> &workLocal,
-                                         const LocalTensor<float> &srcLocal, const LocalTensor<float> &resTmpLocal,
+__aicore__ inline void ReduceMaxTemplate(const LocalTensor<float>& dstLocal, const LocalTensor<float>& workLocal,
+                                         const LocalTensor<float>& srcLocal, const LocalTensor<float>& resTmpLocal,
                                          uint32_t count)
 {
     /**
@@ -267,8 +267,8 @@ __aicore__ inline void ReduceMaxTemplate(const LocalTensor<float> &dstLocal, con
     }
 }
 
-__aicore__ inline void CastFp32ToInt8Template(LocalTensor<int8_t> &dstLocal, LocalTensor<float> &srcLocal,
-                                              LocalTensor<int8_t> &oneBlockWorkspace, int32_t dstOffset,
+__aicore__ inline void CastFp32ToInt8Template(LocalTensor<int8_t>& dstLocal, LocalTensor<float>& srcLocal,
+                                              LocalTensor<int8_t>& oneBlockWorkspace, int32_t dstOffset,
                                               int32_t srcOffset, int32_t count)
 {
     Cast(srcLocal[srcOffset].ReinterpretCast<half>(), srcLocal[srcOffset], RoundMode::CAST_RINT, count);
@@ -290,13 +290,13 @@ __aicore__ inline void CastFp32ToInt8Template(LocalTensor<int8_t> &dstLocal, Loc
 }
 
 template <typename T>
-__aicore__ inline __gm__ T *GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
+__aicore__ inline __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 {
-    __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorPtr);
+    __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(tensorPtr);
     uint64_t tensorPtrOffset = *dataAddr;
 
-    __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
-    return reinterpret_cast<__gm__ T *>(*(retPtr + index));
+    __gm__ uint64_t* retPtr = dataAddr + (tensorPtrOffset >> 3);
+    return reinterpret_cast<__gm__ T*>(*(retPtr + index));
 }
 } // namespace GroupedMatmulDequantSwigluQuant
 

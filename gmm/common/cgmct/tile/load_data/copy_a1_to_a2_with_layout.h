@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file copy_a1_to_a2_with_layout.h
@@ -45,7 +45,7 @@ public:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void operator()(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
+    __aicore__ inline void operator()(const DstTensor& l0A, const SrcTensor& l1A, const Coord& coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
         ASCENDC_ASSERT((AscendC::Std::is_same_v<typename DstTrait::LiteType, typename SrcTrait::LiteType>),
@@ -78,7 +78,7 @@ private:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void TransposeLoadA2Int8(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
+    __aicore__ inline void TransposeLoadA2Int8(const DstTensor& l0A, const SrcTensor& l1A, const Coord& coord)
     {
         // K_axis is m direction, and M_axis is k direction in load3d intrin
         auto srcShape = l1A.GetTensorTrait().GetLayout().GetShape();
@@ -123,7 +123,7 @@ private:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void TransposeLoadA2(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
+    __aicore__ inline void TransposeLoadA2(const DstTensor& l0A, const SrcTensor& l1A, const Coord& coord)
     {
         // K_axis is m direction, and M_axis is k direction in load3d intrin
         auto srcShape = l1A.GetTensorTrait().GetLayout().GetShape();
@@ -159,7 +159,7 @@ private:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void NoneTransposeLoadA2(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
+    __aicore__ inline void NoneTransposeLoadA2(const DstTensor& l0A, const SrcTensor& l1A, const Coord& coord)
     {
         auto srcShape = l1A.GetTensorTrait().GetLayout().GetShape();
         auto dstShape = l0A.GetTensorTrait().GetLayout().GetShape();
@@ -224,7 +224,7 @@ public:
      * @param [in] coord: the coordinate
      */
     template <class Coord>
-    __aicore__ inline void operator()(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
+    __aicore__ inline void operator()(const DstTensor& l0A, const SrcTensor& l1A, const Coord& coord)
     {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
         ASCENDC_ASSERT((AscendC::Std::is_same_v<typename DstTrait::LiteType, typename SrcTrait::LiteType>),
@@ -252,7 +252,7 @@ private:
      * @note This function is used to load data from global memory to local memory with transposition
      */
     template <class Coord>
-    __aicore__ inline void TransposeLoadA2(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
+    __aicore__ inline void TransposeLoadA2(const DstTensor& l0A, const SrcTensor& l1A, const Coord& coord)
     {
         // K_axis is m direction, and M_axis is k direction in load3d intrin
         auto srcShape = l1A.GetTensorTrait().GetLayout().GetShape();
@@ -291,7 +291,7 @@ private:
      * @note This function is used to load data from global memory to local memory without transposition
      */
     template <class Coord>
-    __aicore__ inline void NoneTransposeLoadA2(const DstTensor &l0A, const SrcTensor &l1A, const Coord &coord)
+    __aicore__ inline void NoneTransposeLoadA2(const DstTensor& l0A, const SrcTensor& l1A, const Coord& coord)
     {
         auto srcShape = l1A.GetTensorTrait().GetLayout().GetShape();
         auto dstShape = l0A.GetTensorTrait().GetLayout().GetShape();

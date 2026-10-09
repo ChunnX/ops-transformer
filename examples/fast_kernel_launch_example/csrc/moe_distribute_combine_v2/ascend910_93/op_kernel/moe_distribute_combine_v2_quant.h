@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_v2_quant.h
@@ -42,8 +42,8 @@ public:
         axisH_ = axisH;
     }
 
-    __aicore__ inline void InitInt8Quant(uint32_t &scaleNum_, uint32_t &hExpandXAlign32Size_,
-                                         uint32_t &hFloatAlign256Size_, uint32_t &tokenScaleCnt_)
+    __aicore__ inline void InitInt8Quant(uint32_t& scaleNum_, uint32_t& hExpandXAlign32Size_,
+                                         uint32_t& hFloatAlign256Size_, uint32_t& tokenScaleCnt_)
     {
         hAlign32Size_ = Ceil(axisH_, UB_ALIGN) * UB_ALIGN;
         scaleValFloat_ = static_cast<float>(1.0f / SCALE_PARAM);
@@ -56,10 +56,10 @@ public:
         tokenScaleCnt_ = hAlign32Size_ / sizeof(ExpandXType) + quantScaleNum_; // int8_align + scale有效个数
     }
 
-    __aicore__ inline void Int8QuantProcess(LocalTensor<ExpandXType> &sendLocalTensor_,
-                                            LocalTensor<float> &winTpSendCountFloatTensor_,
-                                            LocalTensor<ExpandXType> &gmTpSendCountTensor_,
-                                            LocalTensor<half> &fp16CastTensor_, LocalTensor<float> &absFloatTensor_,
+    __aicore__ inline void Int8QuantProcess(LocalTensor<ExpandXType>& sendLocalTensor_,
+                                            LocalTensor<float>& winTpSendCountFloatTensor_,
+                                            LocalTensor<ExpandXType>& gmTpSendCountTensor_,
+                                            LocalTensor<half>& fp16CastTensor_, LocalTensor<float>& absFloatTensor_,
                                             LocalTensor<float> reduceMaxFloatTensor_,
                                             LocalTensor<float> scaleDupLocalTensor_)
     {
@@ -88,8 +88,8 @@ public:
         SyncFunc<AscendC::HardEvent::V_MTE3>();
     }
 
-    __aicore__ inline void Int8DequantProcess(LocalTensor<ExpandXType> &src, LocalTensor<float> scaleDivFloatTensor_,
-                                              LocalTensor<half> &fp16CastTensor_, LocalTensor<float> &absFloatTensor_,
+    __aicore__ inline void Int8DequantProcess(LocalTensor<ExpandXType>& src, LocalTensor<float> scaleDivFloatTensor_,
+                                              LocalTensor<half>& fp16CastTensor_, LocalTensor<float>& absFloatTensor_,
                                               LocalTensor<float> scaleDupLocalTensor_)
     {
         SyncFunc<AscendC::HardEvent::MTE2_V>();

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_lightning_indexer_grad_kl_loss_vector2.h
@@ -48,18 +48,18 @@ public:
 
     __aicore__ inline SLIKLLossVector2Service(){};
     __aicore__ inline void InitParams(
-        const struct SLIGradKLLossConstInfo &vecConstInfo,
-        const optiling::SparseLightningIndexerGradKLLossTilingData *__restrict tilingData);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
+        const struct SLIGradKLLossConstInfo& vecConstInfo,
+        const optiling::SparseLightningIndexerGradKLLossTilingData* __restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
     // =============== vector 2 functions ==============
-    __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T> &scatterAddRes,
-                                         const GlobalTensor<int32_t> &topK, const GlobalTensor<OUT_T> &dKeyIndexGm,
-                                         GlobalTensor<int64_t> &actualSeqLengthsQ,
-                                         GlobalTensor<int64_t> &actualSeqLengthsKV, const GlobalTensor<T> &lossRes,
-                                         GlobalTensor<T> &lossGm, scatterAddGmType &scatterAddResGmPong);
+    __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T>& scatterAddRes,
+                                         const GlobalTensor<int32_t>& topK, const GlobalTensor<OUT_T>& dKeyIndexGm,
+                                         GlobalTensor<int64_t>& actualSeqLengthsQ,
+                                         GlobalTensor<int64_t>& actualSeqLengthsKV, const GlobalTensor<T>& lossRes,
+                                         GlobalTensor<T>& lossGm, scatterAddGmType& scatterAddResGmPong);
     __aicore__ inline void ProcessVector2();
 
 private:
@@ -67,7 +67,7 @@ private:
 
     // =============== vector2 variable ==============
     SLIGradKLLossConstInfo constInfo;
-    const optiling::SparseLightningIndexerGradKLLossTilingData *__restrict tilingData;
+    const optiling::SparseLightningIndexerGradKLLossTilingData* __restrict tilingData;
 
     // global tensor
     GlobalTensor<MM3_OUT_T> scatterAddResGm;
@@ -105,8 +105,8 @@ private:
 
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitParams(
-    const struct SLIGradKLLossConstInfo &vecConstInfo,
-    const optiling::SparseLightningIndexerGradKLLossTilingData *__restrict tilingData)
+    const struct SLIGradKLLossConstInfo& vecConstInfo,
+    const optiling::SparseLightningIndexerGradKLLossTilingData* __restrict tilingData)
 {
     this->constInfo = vecConstInfo;
     this->tilingData = tilingData;
@@ -114,10 +114,10 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitParams(
 
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitVector2GM(
-    const GlobalTensor<MM3_OUT_T> &scatterAddRes, const GlobalTensor<int32_t> &topK,
-    const GlobalTensor<OUT_T> &dKeyIndexGm, GlobalTensor<int64_t> &actualSeqLengthsQ,
-    GlobalTensor<int64_t> &actualSeqLengthsKV, const GlobalTensor<T> &lossRes, GlobalTensor<T> &lossGm,
-    scatterAddGmType &scatterAddResGmPong)
+    const GlobalTensor<MM3_OUT_T>& scatterAddRes, const GlobalTensor<int32_t>& topK,
+    const GlobalTensor<OUT_T>& dKeyIndexGm, GlobalTensor<int64_t>& actualSeqLengthsQ,
+    GlobalTensor<int64_t>& actualSeqLengthsKV, const GlobalTensor<T>& lossRes, GlobalTensor<T>& lossGm,
+    scatterAddGmType& scatterAddResGmPong)
 {
     this->scatterAddResGm = scatterAddRes;
     this->topKGm = topK;
@@ -130,7 +130,7 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitVector2GM(
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVector2Service<SLIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void SLIKLLossVector2Service<SLIT>::InitBuffers(TPipe* pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(mm3TBuf, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K * 2);     // 2:pingpong

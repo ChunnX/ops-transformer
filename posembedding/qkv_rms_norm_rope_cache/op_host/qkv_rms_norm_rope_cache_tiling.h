@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file qkv_rms_norm_rope_cache_tiling.h
@@ -178,7 +178,7 @@ static constexpr int64_t UB_RESERVED_BYTES = 1 * BYTES_PER_KILO_BYTE; // 多留1
 
 class QkvRmsNormRopeCacheTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit QkvRmsNormRopeCacheTilingBase(gert::TilingContext *tillingContext)
+    explicit QkvRmsNormRopeCacheTilingBase(gert::TilingContext* tillingContext)
         : TilingBaseClass(tillingContext)
     {}
     ~QkvRmsNormRopeCacheTilingBase() override {}
@@ -250,14 +250,14 @@ protected:
     void DumpTilingInfo() override {}
 
 protected:
-    std::tuple<int64_t, int64_t, int64_t, int64_t> GetShapeTuple(const gert::TilingContext *context,
+    std::tuple<int64_t, int64_t, int64_t, int64_t> GetShapeTuple(const gert::TilingContext* context,
                                                                  const int64_t index = 0);
-    std::tuple<int64_t, int64_t> GetShapeTupleOfTH(const gert::TilingContext *context, const int64_t index = 0);
+    std::tuple<int64_t, int64_t> GetShapeTupleOfTH(const gert::TilingContext* context, const int64_t index = 0);
 };
 
 class QkvRmsNormRopeCacheTilingDs : virtual public QkvRmsNormRopeCacheTilingBase {
 public:
-    explicit QkvRmsNormRopeCacheTilingDs(gert::TilingContext *tillingContext)
+    explicit QkvRmsNormRopeCacheTilingDs(gert::TilingContext* tillingContext)
         : QkvRmsNormRopeCacheTilingBase(tillingContext)
     {}
     ~QkvRmsNormRopeCacheTilingDs() {}
@@ -293,7 +293,7 @@ private:
 class QkvRmsNormRopeCacheTilingRegbase : public QkvRmsNormRopeCacheTilingDs {
 public:
     // 基类是虚继承,最派生类必须显式初始化虚基类
-    explicit QkvRmsNormRopeCacheTilingRegbase(gert::TilingContext *tillingContext)
+    explicit QkvRmsNormRopeCacheTilingRegbase(gert::TilingContext* tillingContext)
         : QkvRmsNormRopeCacheTilingBase(tillingContext),
           QkvRmsNormRopeCacheTilingDs(tillingContext)
     {}

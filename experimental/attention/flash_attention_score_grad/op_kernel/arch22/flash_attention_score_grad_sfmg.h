@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_sfmg.h
@@ -22,13 +22,13 @@ template <typename T1, typename T2, typename TILING_TYPE, const uint32_t INPUT_L
 class FlashAttentionScoreGradSfmg {
 public:
     __aicore__ inline FlashAttentionScoreGradSfmg(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dy, __gm__ uint8_t *attenIn, __gm__ uint8_t *actual_seq_qlen,
-                                __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *drop_mask,
-                                __gm__ uint8_t *workspace, const TILING_TYPE *ordTilingData, TPipe *pipe_in);
+    __aicore__ inline void Init(__gm__ uint8_t* dy, __gm__ uint8_t* attenIn, __gm__ uint8_t* actual_seq_qlen,
+                                __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* drop_mask,
+                                __gm__ uint8_t* workspace, const TILING_TYPE* ordTilingData, TPipe* pipe_in);
     __aicore__ inline void Process();
     __aicore__ inline void SyncALLCores();
-    __aicore__ inline void InitIndex(int64_t startIdx, int64_t &curS, GM_ADDR seqS);
-    __aicore__ inline void CopyInSfmg(int64_t leftNburst, int64_t &curS, GM_ADDR seqS);
+    __aicore__ inline void InitIndex(int64_t startIdx, int64_t& curS, GM_ADDR seqS);
+    __aicore__ inline void CopyInSfmg(int64_t leftNburst, int64_t& curS, GM_ADDR seqS);
     __aicore__ inline void DoCopyIn(int64_t curS, int64_t curNBurst, int64_t dstOffset, GM_ADDR seqS);
 
 protected:
@@ -41,10 +41,10 @@ protected:
     constexpr static int64_t SFMG_HIGH_PERF_N_FACTOR = 8;
     constexpr static int64_t SFMG_HIGH_PERF_D_FACTOR = 64;
 
-    TPipe *pipe;
+    TPipe* pipe;
     uint32_t cBlockIdx;
 
-    const TILING_TYPE *TilingData;
+    const TILING_TYPE* TilingData;
 
     GlobalTensor<T2> sfmgWorkspaceGm;
     GlobalTensor<T1> dyGm;
@@ -74,23 +74,23 @@ protected:
 };
 
 template <typename T1, typename T2, typename TILING_TYPE, const uint32_t INPUT_LAYOUT>
-__aicore__ inline void
-FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::Init(
-    __gm__ uint8_t *dy, __gm__ uint8_t *attenIn, __gm__ uint8_t *actual_seq_qlen,
-    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *drop_mask, __gm__ uint8_t *workspace,
-    const TILING_TYPE *orgTilingData, TPipe *pipe_in)
+__aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::Init(
+    __gm__ uint8_t* dy, __gm__ uint8_t* attenIn, __gm__ uint8_t* actual_seq_qlen, __gm__ uint8_t* dq,
+    __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* drop_mask, __gm__ uint8_t* workspace,
+    const TILING_TYPE* orgTilingData, TPipe* pipe_in)
 {
     cBlockIdx = GetBlockIdx();
     TilingData = orgTilingData;
     pipe = pipe_in;
-    dyGm.SetGlobalBuffer((__gm__ T1 *)dy);
-    attenInGm.SetGlobalBuffer((__gm__ T1 *)attenIn);
-    sfmgWorkspaceGm.SetGlobalBuffer((__gm__ T2 *)workspace + TilingData->preSfmgTilingData.sfmgPreBeginAddr / sizeof(T2));
+    dyGm.SetGlobalBuffer((__gm__ T1*)dy);
+    attenInGm.SetGlobalBuffer((__gm__ T1*)attenIn);
+    sfmgWorkspaceGm.SetGlobalBuffer((__gm__ T2*)workspace +
+                                    TilingData->preSfmgTilingData.sfmgPreBeginAddr / sizeof(T2));
 
     pipe->InitBuffer(input1Que, 1, TilingData->preSfmgTilingData.inputBufferLen); // 24K
     pipe->InitBuffer(input2Que, 1, TilingData->preSfmgTilingData.inputBufferLen); // 24K
-    pipe->InitBuffer(cast1Buf, TilingData->preSfmgTilingData.castBufferLen); // 48K
-    pipe->InitBuffer(cast2Buf, TilingData->preSfmgTilingData.castBufferLen); // 48K
+    pipe->InitBuffer(cast1Buf, TilingData->preSfmgTilingData.castBufferLen);      // 48K
+    pipe->InitBuffer(cast2Buf, TilingData->preSfmgTilingData.castBufferLen);      // 48K
     pipe->InitBuffer(out1Que, 1, TilingData->preSfmgTilingData.outputBufferLen);
     pipe->InitBuffer(tmpBuf, TilingData->preSfmgTilingData.tempBufferLen); // 40K - outputBufferLen
 
@@ -102,29 +102,30 @@ FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::Init(
     dAlign = (d + blockNums - 1) / blockNums * blockNums;
     actual_seq_qlen_addr = actual_seq_qlen;
 
-    if constexpr(INPUT_LAYOUT == TND) {
+    if constexpr (INPUT_LAYOUT == TND) {
         transpse_stride = (n1 * d - d) * sizeof(T1);
-    } else if constexpr(INPUT_LAYOUT == BNGSD){
+    } else if constexpr (INPUT_LAYOUT == BNGSD) {
         transpse_stride = 0;
-    } else if constexpr(INPUT_LAYOUT == BSNGD){
+    } else if constexpr (INPUT_LAYOUT == BSNGD) {
         transpse_stride = (n1 * d - d) * sizeof(T1);
-    } else if constexpr(INPUT_LAYOUT == SBNGD){
+    } else if constexpr (INPUT_LAYOUT == SBNGD) {
         transpse_stride = (b * n1 * d - d) * sizeof(T1);
     }
 }
 
 template <typename T1, typename T2, typename TILING_TYPE, const uint32_t INPUT_LAYOUT>
-__aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::InitIndex(
-    int64_t startIdx, int64_t& curS, GM_ADDR seqS)
+__aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::InitIndex(int64_t startIdx,
+                                                                                                 int64_t& curS,
+                                                                                                 GM_ADDR seqS)
 {
     if constexpr (INPUT_LAYOUT == TND) {
         int64_t totalLen = 0;
         for (int64_t bDimIdx = bIdx; bDimIdx < b; bDimIdx++) {
-            totalLen = n1 * ((__gm__ int64_t *)seqS)[bDimIdx] * d;
+            totalLen = n1 * ((__gm__ int64_t*)seqS)[bDimIdx] * d;
             if (totalLen > startIdx) {
                 bIdx = bDimIdx;
-                curS = (bIdx == 0) ? ((__gm__ int64_t *)seqS)[bIdx] :
-                                     (((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1]);
+                curS = (bIdx == 0) ? ((__gm__ int64_t*)seqS)[bIdx] :
+                                     (((__gm__ int64_t*)seqS)[bIdx] - ((__gm__ int64_t*)seqS)[bIdx - 1]);
                 int64_t bTail = startIdx - (totalLen - n1 * curS * d);
                 nIdx = bTail / (curS * d);
                 int64_t nTail = bTail % (curS * d);
@@ -142,16 +143,18 @@ __aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LA
 }
 
 template <typename T1, typename T2, typename TILING_TYPE, const uint32_t INPUT_LAYOUT>
-__aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::DoCopyIn(
-    int64_t curS, int64_t curNBurst, int64_t dstOffset, GM_ADDR seqS)
+__aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::DoCopyIn(int64_t curS,
+                                                                                                int64_t curNBurst,
+                                                                                                int64_t dstOffset,
+                                                                                                GM_ADDR seqS)
 {
     int64_t srcOffset = 0;
     if constexpr (INPUT_LAYOUT == TND) {
-        int64_t bOffset = bIdx == 0 ? 0 : n1 * ((__gm__ int64_t *)seqS)[bIdx - 1] * d;
+        int64_t bOffset = bIdx == 0 ? 0 : n1 * ((__gm__ int64_t*)seqS)[bIdx - 1] * d;
         srcOffset = bOffset + (sIdx * n1 + nIdx) * d;
     } else {
         if constexpr (INPUT_LAYOUT == BNGSD) {
-            srcOffset = bIdx * ( n1 * s1 * d) + nIdx * (s1 * d) + sIdx * d;
+            srcOffset = bIdx * (n1 * s1 * d) + nIdx * (s1 * d) + sIdx * d;
         } else if constexpr (INPUT_LAYOUT == BSNGD) {
             srcOffset = bIdx * (s1 * n1 * d) + sIdx * (n1 * d) + nIdx * d;
         } else if constexpr (INPUT_LAYOUT == SBNGD) {
@@ -161,17 +164,18 @@ __aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LA
 
     DataCopyPad(input1Buf[dstOffset], dyGm[srcOffset],
                 {static_cast<uint16_t>(curNBurst), static_cast<uint32_t>(d * sizeof(T1)),
-                static_cast<uint32_t>(transpse_stride), 0, 0},
+                 static_cast<uint32_t>(transpse_stride), 0, 0},
                 {true, 0, static_cast<uint8_t>((dAlign - d)), 0});
     DataCopyPad(input2Buf[dstOffset], attenInGm[srcOffset],
                 {static_cast<uint16_t>(curNBurst), static_cast<uint32_t>(d * sizeof(T1)),
-                static_cast<uint32_t>(transpse_stride), 0, 0},
+                 static_cast<uint32_t>(transpse_stride), 0, 0},
                 {true, 0, static_cast<uint8_t>((dAlign - d)), 0});
 }
 
 template <typename T1, typename T2, typename TILING_TYPE, const uint32_t INPUT_LAYOUT>
-__aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::CopyInSfmg(
-    int64_t leftNburst, int64_t &curS, GM_ADDR seqS)
+__aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LAYOUT>::CopyInSfmg(int64_t leftNburst,
+                                                                                                  int64_t& curS,
+                                                                                                  GM_ADDR seqS)
 {
     int64_t dstOffset = 0;
     while (leftNburst > 0) {
@@ -188,7 +192,7 @@ __aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LA
                 if (bIdx < b - 1) { // 需要借B
                     bIdx += 1;
                     if constexpr (INPUT_LAYOUT == TND) {
-                        curS = ((__gm__ int64_t *)seqS)[bIdx] - ((__gm__ int64_t *)seqS)[bIdx - 1];
+                        curS = ((__gm__ int64_t*)seqS)[bIdx] - ((__gm__ int64_t*)seqS)[bIdx - 1];
                     } else {
                         curS = s1;
                     }
@@ -196,7 +200,7 @@ __aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LA
                     leftNburst = 0;
                 }
             }
-        } else {  // 当前S够用
+        } else { // 当前S够用
             curNburst = leftNburst;
             DoCopyIn(curS, curNburst, dstOffset, seqS);
             sIdx = sIdx + leftNburst;
@@ -218,7 +222,8 @@ __aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LA
         LocalTensor<T2> sfmgClc2 = cast2Buf.Get<T2>();
 
         int64_t singleCoreLoopTimes = TilingData->preSfmgTilingData.normalCoreLoopTimes;
-        int64_t singleCoreLastLoopNBurstNum = TilingData->preSfmgTilingData.normalCoreLastLoopNBurstNum; // 普通单核最后一次loop处理多少个D
+        int64_t singleCoreLastLoopNBurstNum =
+            TilingData->preSfmgTilingData.normalCoreLastLoopNBurstNum; // 普通单核最后一次loop处理多少个D
         if (cBlockIdx == usedCoreNums - 1) {
             singleCoreLoopTimes = TilingData->preSfmgTilingData.tailCoreLoopTimes;
             singleCoreLastLoopNBurstNum = TilingData->preSfmgTilingData.tailCoreLastLoopNBurstNum;
@@ -237,8 +242,8 @@ __aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LA
             if (i == 0) {
                 input1Buf = input1Que.AllocTensor<T1>();
                 input2Buf = input2Que.AllocTensor<T1>();
-                InitIndex((startIdx + i * TilingData->preSfmgTilingData.singleLoopNBurstNum) * d,
-                           curS, actual_seq_qlen_addr);
+                InitIndex((startIdx + i * TilingData->preSfmgTilingData.singleLoopNBurstNum) * d, curS,
+                          actual_seq_qlen_addr);
                 CopyInSfmg(nBurst, curS, actual_seq_qlen_addr);
             }
 
@@ -262,8 +267,8 @@ __aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LA
                 int64_t nextNBurst = i == singleCoreLoopTimes - 2 ? singleCoreLastLoopNBurstNum : nBurst;
                 input1Buf = input1Que.AllocTensor<T1>();
                 input2Buf = input2Que.AllocTensor<T1>();
-                InitIndex((startIdx + (i + 1) * TilingData->preSfmgTilingData.singleLoopNBurstNum) * d,
-                           curS, actual_seq_qlen_addr);
+                InitIndex((startIdx + (i + 1) * TilingData->preSfmgTilingData.singleLoopNBurstNum) * d, curS,
+                          actual_seq_qlen_addr);
                 CopyInSfmg(nextNBurst, curS, actual_seq_qlen_addr);
             }
 
@@ -280,9 +285,11 @@ __aicore__ inline void FlashAttentionScoreGradSfmg<T1, T2, TILING_TYPE, INPUT_LA
 
             bool isBasicBlock = (nBurst % SFMG_HIGH_PERF_N_FACTOR == 0) && (dAlign % SFMG_HIGH_PERF_D_FACTOR == 0);
             if (likely(isBasicBlock)) {
-                SoftmaxGradFront<float, true>(outputBuf, sfmgClc1, sfmgClc2, tempBuf, TilingData->softmaxGradTilingData);
+                SoftmaxGradFront<float, true>(outputBuf, sfmgClc1, sfmgClc2, tempBuf,
+                                              TilingData->softmaxGradTilingData);
             } else {
-                SoftmaxGradFront<float, false>(outputBuf, sfmgClc1, sfmgClc2, tempBuf, TilingData->softmaxGradTilingData);
+                SoftmaxGradFront<float, false>(outputBuf, sfmgClc1, sfmgClc2, tempBuf,
+                                               TilingData->softmaxGradTilingData);
             }
             AscendC::PipeBarrier<PIPE_V>();
 

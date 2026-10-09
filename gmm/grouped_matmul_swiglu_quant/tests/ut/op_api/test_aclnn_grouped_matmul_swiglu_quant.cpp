@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <float.h>
 #include <thread>
@@ -23,8 +23,7 @@
 using namespace std;
 using namespace op;
 
-class aclnnGroupedMatmulSwigluQuant_test : public testing::Test
-{
+class aclnnGroupedMatmulSwigluQuant_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -49,16 +48,17 @@ TEST_F(aclnnGroupedMatmulSwigluQuant_test, ascend910B2_test_opapi_w8a8_normal_ca
 
     TensorDesc x = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
     TensorDesc weight =
-        TensorDesc({e, n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+        TensorDesc({e, n / 32, k / 16, 16, 32}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32})
+            .ValueRange(-1, 1);
     TensorDesc weightScale = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorDesc xScale = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
     TensorDesc groupList = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(bs, bs);
     TensorDesc out1 = TensorDesc({m, n}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
     TensorDesc out2 = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnGroupedMatmulSwigluQuant,
-                        INPUT(x, weight, nullptr, nullptr, weightScale, xScale, groupList),
-                        OUTPUT(out1, out2, nullptr));
+    auto ut =
+        OP_API_UT(aclnnGroupedMatmulSwigluQuant, INPUT(x, weight, nullptr, nullptr, weightScale, xScale, groupList),
+                  OUTPUT(out1, out2, nullptr));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
 }

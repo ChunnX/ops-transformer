@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mm_allreduce.h
@@ -28,11 +28,11 @@ template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2C
           bool IS_PER_TENSOR = false, bool WeightQuant = false, AntiQuantType antiQuantType = AntiQuantType::NONE,
           bool hasAntiQuantOffset = false>
 __aicore__ inline void MatMulKernel_AllReduce_WeightQuant(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
-                                                          GM_ADDR dequantGM, AscendC::tiling::TCubeTiling &tiling,
-                                                          Mc2Tiling::RCSTiling &cfg,
-                                                          Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling,
-                                                          HcclServer *hcclServer, uint32_t tileCnt, bool isTail,
-                                                          const LocalTensor<uint8_t> &mmFormatUb,
+                                                          GM_ADDR dequantGM, AscendC::tiling::TCubeTiling& tiling,
+                                                          Mc2Tiling::RCSTiling& cfg,
+                                                          Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
+                                                          HcclServer* hcclServer, uint32_t tileCnt, bool isTail,
+                                                          const LocalTensor<uint8_t>& mmFormatUb,
                                                           GM_ADDR antiquantScale, GM_ADDR antiquantOffset)
 {
     using A_T = typename A_TYPE::T;
@@ -73,10 +73,10 @@ template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2C
           bool IS_PER_TENSOR = false, bool WeightQuant = false, AntiQuantType antiQuantType = AntiQuantType::NONE,
           bool hasAntiQuantOffset = false>
 __aicore__ inline void MatMulKernel_AllReduce(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR dequantGM,
-                                              AscendC::tiling::TCubeTiling &tiling, Mc2Tiling::RCSTiling &cfg,
-                                              Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling, HcclServer *hcclServer,
+                                              AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg,
+                                              Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling, HcclServer* hcclServer,
                                               uint32_t tileCnt, bool isLast, bool isTail,
-                                              const LocalTensor<uint8_t> &mmFormatUb, GM_ADDR antiquantScale,
+                                              const LocalTensor<uint8_t>& mmFormatUb, GM_ADDR antiquantScale,
                                               GM_ADDR antiquantOffset)
 {
     if (g_coreType == AIV) {

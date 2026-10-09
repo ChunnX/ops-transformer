@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file mat_mul_multi_core_splitk_kernel.h
  * \brief
@@ -19,7 +19,7 @@
 namespace Mc2MatmulV3 {
 
 template <class C_T>
-__aicore__ inline void ClearOutput(GlobalTensor<C_T> &cGlobal, const TCubeTiling &tiling, TPipe &pipe)
+__aicore__ inline void ClearOutput(GlobalTensor<C_T>& cGlobal, const TCubeTiling& tiling, TPipe& pipe)
 {
     // Init output
     uint64_t c0Size = 32 / sizeof(C_T); // 清零数据32B对齐
@@ -47,7 +47,7 @@ __aicore__ inline void ClearOutput(GlobalTensor<C_T> &cGlobal, const TCubeTiling
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
 __aicore__ inline void Mc2MatMulBlockMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
-                                                     const TCubeTiling &tiling)
+                                                     const TCubeTiling& tiling)
 {
     using A_T = typename A_TYPE::T;
     using B_T = typename B_TYPE::T;
@@ -55,9 +55,9 @@ __aicore__ inline void Mc2MatMulBlockMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, G
     GlobalTensor<A_T> aGlobal;
     GlobalTensor<B_T> bGlobal;
     GlobalTensor<C_T> cGlobal;
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(aGM), tiling.M * tiling.Ka);
-    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ B_T *>(bGM), tiling.Kb * tiling.N);
-    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(cGM), tiling.M * tiling.N);
+    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T*>(aGM), tiling.M * tiling.Ka);
+    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ B_T*>(bGM), tiling.Kb * tiling.N);
+    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T*>(cGM), tiling.M * tiling.N);
     TPipe pipe;
     ClearOutput<C_T>(cGlobal, tiling, pipe);
 
@@ -104,12 +104,12 @@ __aicore__ inline void Mc2MatMulBlockMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, G
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void Mc2MatMulMultiCoreSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM,
-                                                const Mc2MatmulV3TilingData &matmulTilingData, GM_ADDR workspaceGM)
+                                                const Mc2MatmulV3TilingData& matmulTilingData, GM_ADDR workspaceGM)
 {
     if ASCEND_IS_AIV {
         return;
     }
-    const TCubeTiling &tiling = matmulTilingData.matmulTiling;
+    const TCubeTiling& tiling = matmulTilingData.matmulTiling;
     if ASCEND_IS_AIC {
         Mc2MatMulBlockMultiCoreSplitK<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>(aGM, bGM, cGM, biasGM, tiling);
         return;

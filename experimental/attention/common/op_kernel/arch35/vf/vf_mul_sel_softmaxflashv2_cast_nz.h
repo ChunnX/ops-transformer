@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file vf_mul_sel_softmaxflashv2_cast_nz.h
@@ -52,13 +52,13 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1NoUpdate(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<float> &expSumTensor,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<float> &expMaxTensor,
-    const LocalTensor<float> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const uint32_t pseStride,
+    const LocalTensor<T2>& dstTensor, TBuf<>* vselrIndexesBuf, const LocalTensor<float>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<float>& expMaxTensor,
+    const LocalTensor<float>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
+    const LocalTensor<pseShiftType>& pseTensor, const LocalTensor<uint8_t>& dropTensor,
+    const LocalTensor<uint8_t>& sharedTmpBuffer, const uint16_t m, const uint32_t originN, const uint32_t pseStride,
     const float slopes, const float posShift, const T scale, const float dScaleQK, const T minValue, float keepProb,
-    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f,
+    const LocalTensor<T>& queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f,
     float sinkValue = 0.0f)
 {
     if constexpr (useNz) {
@@ -77,9 +77,9 @@ __aicore__ inline void ProcessVec1NoUpdate(
 }
 
 template <typename T, bool useNz = false>
-__simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T *maxUb, __ubuf__ T *inMaxUb, __ubuf__ float *expMaxUb,
-                                                    __ubuf__ float *expSumUb, __ubuf__ float *inExpSumUb,
-                                                    __ubuf__ float *tmpExpSumUb, __ubuf__ T *tmpMaxUb, const uint32_t m)
+__simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T* maxUb, __ubuf__ T* inMaxUb, __ubuf__ float* expMaxUb,
+                                                    __ubuf__ float* expSumUb, __ubuf__ float* inExpSumUb,
+                                                    __ubuf__ float* tmpExpSumUb, __ubuf__ T* tmpMaxUb, const uint32_t m)
 {
     if constexpr (useNz) {
         RegTensor<half> vreg_max;
@@ -102,15 +102,15 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T *maxUb, __ubuf__ 
         ExpSub<float, half, RegLayout::ZERO>(vreg_exp_max_even_fp32, vreg_in_max, vreg_max, preg_all);
         ExpSub<float, half, RegLayout::ONE>(vreg_exp_max_odd_fp32, vreg_in_max, vreg_max, preg_all);
         Interleave(vreg_exp_max, vreg_exp_max_tmp, vreg_exp_max_even_fp32, vreg_exp_max_odd_fp32);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expMaxUb, vreg_exp_max, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)maxUb, vreg_max, preg_all);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float*&)expMaxUb, vreg_exp_max, preg_all);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)maxUb, vreg_max, preg_all);
 
         // x_sum = exp_max * insum + x_sum
-        LoadAlign(vreg_in_exp_sum, (__ubuf__ float *&)inExpSumUb);
-        LoadAlign(vreg_exp_sum_brc, (__ubuf__ float *&)tmpExpSumUb);
+        LoadAlign(vreg_in_exp_sum, (__ubuf__ float*&)inExpSumUb);
+        LoadAlign(vreg_exp_sum_brc, (__ubuf__ float*&)tmpExpSumUb);
         Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
         Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float *&)expSumUb, vreg_exp_sum_update, preg_all);
+        StoreAlign<float, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ float*&)expSumUb, vreg_exp_sum_update, preg_all);
     } else {
         RegTensor<float> vreg_max;
         RegTensor<float> vreg_in_max;
@@ -124,48 +124,48 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxImplVF(__ubuf__ T *maxUb, __ubuf__ 
         LoadAlign(vreg_max, tmpMaxUb);
         LoadAlign(vreg_in_max, inMaxUb);
         ExpSub(vreg_exp_max, vreg_in_max, vreg_max, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expMaxUb, vreg_exp_max, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)maxUb, vreg_max, preg_all);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)expMaxUb, vreg_exp_max, preg_all);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)maxUb, vreg_max, preg_all);
 
         // x_sum = exp_max * insum + x_sum
         LoadAlign(vreg_in_exp_sum, inExpSumUb);
         LoadAlign(vreg_exp_sum_brc, tmpExpSumUb);
         Mul(vreg_exp_sum_update, vreg_exp_max, vreg_in_exp_sum, preg_all);
         Add(vreg_exp_sum_update, vreg_exp_sum_update, vreg_exp_sum_brc, preg_all);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_sum_update, preg_all);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)expSumUb, vreg_exp_sum_update, preg_all);
     }
 }
 
 template <typename T, bool useNz = false>
-__aicore__ inline void UpdateExpSumAndExpMaxImpl(const LocalTensor<float> &expSumTensor,
-                                                 const LocalTensor<T> &maxTensor,
-                                                 const LocalTensor<float> &expMaxTensor,
-                                                 const LocalTensor<float> &inExpSumTensor,
-                                                 const LocalTensor<T> &inMaxTensor,
-                                                 const LocalTensor<uint8_t> &sharedTmpBuffer, const uint32_t m)
+__aicore__ inline void UpdateExpSumAndExpMaxImpl(const LocalTensor<float>& expSumTensor,
+                                                 const LocalTensor<T>& maxTensor,
+                                                 const LocalTensor<float>& expMaxTensor,
+                                                 const LocalTensor<float>& inExpSumTensor,
+                                                 const LocalTensor<T>& inMaxTensor,
+                                                 const LocalTensor<uint8_t>& sharedTmpBuffer, const uint32_t m)
 {
-    __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ T *inMaxUb = (__ubuf__ T *)inMaxTensor.GetPhyAddr();
+    __ubuf__ T* maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ T* inMaxUb = (__ubuf__ T*)inMaxTensor.GetPhyAddr();
 
-    __ubuf__ float *expMaxUb = (__ubuf__ float *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *expSumUb = (__ubuf__ float *)expSumTensor.GetPhyAddr();
-    __ubuf__ float *inExpSumUb = (__ubuf__ float *)inExpSumTensor.GetPhyAddr();
+    __ubuf__ float* expMaxUb = (__ubuf__ float*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* expSumUb = (__ubuf__ float*)expSumTensor.GetPhyAddr();
+    __ubuf__ float* inExpSumUb = (__ubuf__ float*)inExpSumTensor.GetPhyAddr();
 
-    __ubuf__ float *tmpExpSumUb = (__ubuf__ float *)sharedTmpBuffer.GetPhyAddr();
+    __ubuf__ float* tmpExpSumUb = (__ubuf__ float*)sharedTmpBuffer.GetPhyAddr();
     uint32_t repSize = floatRepSize;
     if constexpr (useNz) {
         repSize = halfRepSize;
     }
-    __ubuf__ T *tmpMaxUb = (__ubuf__ T *)sharedTmpBuffer.GetPhyAddr() + repSize;
+    __ubuf__ T* tmpMaxUb = (__ubuf__ T*)sharedTmpBuffer.GetPhyAddr() + repSize;
     UpdateExpSumAndExpMaxImplVF<T, useNz>(maxUb, inMaxUb, expMaxUb, expSumUb, inExpSumUb, tmpExpSumUb, tmpMaxUb, m);
 }
 
 template <typename T, bool useNz = false>
-__aicore__ inline void UpdateExpSumAndExpMax(const LocalTensor<float> &expSumTensor, const LocalTensor<T> &maxTensor,
-                                             const LocalTensor<float> &expMaxTensor,
-                                             const LocalTensor<float> &inExpSumTensor,
-                                             const LocalTensor<T> &inMaxTensor,
-                                             const LocalTensor<uint8_t> &sharedTmpBuffer, const uint32_t m)
+__aicore__ inline void UpdateExpSumAndExpMax(const LocalTensor<float>& expSumTensor, const LocalTensor<T>& maxTensor,
+                                             const LocalTensor<float>& expMaxTensor,
+                                             const LocalTensor<float>& inExpSumTensor,
+                                             const LocalTensor<T>& inMaxTensor,
+                                             const LocalTensor<uint8_t>& sharedTmpBuffer, const uint32_t m)
 {
     UpdateExpSumAndExpMaxImpl<T, useNz>(expSumTensor, maxTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
                                         sharedTmpBuffer, m);
@@ -175,13 +175,13 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1Update(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<float> &expSumTensor,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<float> &expMaxTensor,
-    const LocalTensor<float> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<uint8_t> &sharedTmpBuffer, const LocalTensor<T> &pScaleTensor, const uint16_t m,
+    const LocalTensor<T2>& dstTensor, TBuf<>* vselrIndexesBuf, const LocalTensor<float>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<float>& expMaxTensor,
+    const LocalTensor<float>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
+    const LocalTensor<pseShiftType>& pseTensor, const LocalTensor<uint8_t>& dropTensor,
+    const LocalTensor<uint8_t>& sharedTmpBuffer, const LocalTensor<T>& pScaleTensor, const uint16_t m,
     const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
-    const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
+    const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
     const float deSCaleKValue = 1.0f, const float pScale = 1.0f, float sinkValue = 0.0f)
 {
     if constexpr (useNz) {
@@ -225,13 +225,13 @@ template <typename T, typename T2, typename pseShiftType, bool isUpdate = false,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1Vf(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<float> &expSumTensor,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<float> &expMaxTensor,
-    const LocalTensor<float> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<uint8_t> &sharedTmpBuffer, const LocalTensor<T> &pScaleTensor, const uint16_t m,
+    const LocalTensor<T2>& dstTensor, TBuf<>* vselrIndexesBuf, const LocalTensor<float>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<float>& expMaxTensor,
+    const LocalTensor<float>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
+    const LocalTensor<pseShiftType>& pseTensor, const LocalTensor<uint8_t>& dropTensor,
+    const LocalTensor<uint8_t>& sharedTmpBuffer, const LocalTensor<T>& pScaleTensor, const uint16_t m,
     const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift, const T scale,
-    const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
+    const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
     const float deSCaleKValue = 1.0f, const float pScale = 1.0f, float sinkValue = 0.0f)
 {
     if constexpr (useNz) {
@@ -265,14 +265,14 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1NoUpdateMxfp8(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer, uint32_t subLoop,
+    const LocalTensor<T2>& dstTensor, TBuf<>* vselrIndexesBuf, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor,
+    const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
+    const LocalTensor<pseShiftType>& pseTensor, const LocalTensor<uint8_t>& dropTensor,
+    const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor, const LocalTensor<uint8_t>& sharedTmpBuffer, uint32_t subLoop,
     const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift,
     const T scale, const float dScaleQK, const T minValue, float keepProb,
-    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f,
+    const LocalTensor<T>& queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f,
     float sinkValue = 0.0f)
 {
     if constexpr (oriNRange == GT_128_AND_LTE_256) {
@@ -332,15 +332,15 @@ template <typename T, typename T2, typename pseShiftType, uint32_t s1BaseSize = 
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1UpdateMxfp8(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
-    const LocalTensor<float> &preLoopMaxTensor, const LocalTensor<float> &preLoopSumTensor,
-    const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop, const uint16_t m, const uint32_t originN,
+    const LocalTensor<T2>& dstTensor, TBuf<>* vselrIndexesBuf, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor,
+    const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
+    const LocalTensor<pseShiftType>& pseTensor, const LocalTensor<uint8_t>& dropTensor,
+    const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor, const LocalTensor<uint8_t>& sharedTmpBuffer,
+    const LocalTensor<float>& preLoopMaxTensor, const LocalTensor<float>& preLoopSumTensor,
+    const LocalTensor<float>& firstLoopSumTensor, uint32_t subLoop, const uint16_t m, const uint32_t originN,
     const uint32_t pseStride, const float slopes, const float posShift, const T scale, const float dScaleQK,
-    const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
+    const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
     const float deSCaleKValue = 1.0f, const float pScale = 1.0f, float sinkValue = 0.0f)
 {
     if constexpr (oriNRange == GT_128_AND_LTE_256) {
@@ -404,16 +404,16 @@ template <typename T, typename T2, typename pseShiftType, bool isUpdate = false,
           PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE, bool hasDrop = 0, bool isMlaSgd = false,
           bool isMlaFullQuant = false, bool useNz = false, bool hasSink = false>
 __aicore__ inline void ProcessVec1VfMxfp8(
-    const LocalTensor<T2> &dstTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<T> &expSumTensor,
-    const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
-    const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
-    const LocalTensor<pseShiftType> &pseTensor, const LocalTensor<uint8_t> &dropTensor,
-    const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const LocalTensor<uint8_t> &sharedTmpBuffer,
-    const LocalTensor<T> &pScaleTensor, const LocalTensor<float> &preLoopMaxTensor,
-    const LocalTensor<float> &preLoopSumTensor, const LocalTensor<float> &firstLoopSumTensor, uint32_t subLoop,
+    const LocalTensor<T2>& dstTensor, TBuf<>* vselrIndexesBuf, const LocalTensor<T>& expSumTensor,
+    const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor,
+    const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
+    const LocalTensor<pseShiftType>& pseTensor, const LocalTensor<uint8_t>& dropTensor,
+    const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor, const LocalTensor<uint8_t>& sharedTmpBuffer,
+    const LocalTensor<T>& pScaleTensor, const LocalTensor<float>& preLoopMaxTensor,
+    const LocalTensor<float>& preLoopSumTensor, const LocalTensor<float>& firstLoopSumTensor, uint32_t subLoop,
     const uint16_t m, const uint32_t originN, const uint32_t pseStride, const float slopes, const float posShift,
     const T scale, const float dScaleQK, const T minValue, float keepProb,
-    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f,
+    const LocalTensor<T>& queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f,
     float sinkValue = 0.0f)
 {
     static_assert(IsSameType<T, float>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be float");
@@ -440,7 +440,7 @@ __aicore__ inline void ProcessVec1VfMxfp8(
 }
 
 template <typename T>
-__simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T *sumUb, __ubuf__ T *maxUb, const uint32_t m, const T minValue,
+__simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T* sumUb, __ubuf__ T* maxUb, const uint32_t m, const T minValue,
                                            const T maxValue)
 {
     RegTensor<float> vreg_max_value;
@@ -457,15 +457,15 @@ __simd_vf__ inline void SoftmaxSumUpdateVF(__ubuf__ T *sumUb, __ubuf__ T *maxUb,
     LoadAlign(vreg_sum, sumUb);
     Compares<T, CMPMODE::EQ>(preg_compare, vreg_max, minValue, preg_all);
     Select(vreg_sum_new, vreg_max_value, vreg_sum, preg_compare);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)sumUb, vreg_sum_new, preg_all);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)sumUb, vreg_sum_new, preg_all);
 }
 
 template <typename T>
-__aicore__ inline void SoftmaxSumUpdate(const LocalTensor<T> &sumTensor, const LocalTensor<T> &maxTensor,
+__aicore__ inline void SoftmaxSumUpdate(const LocalTensor<T>& sumTensor, const LocalTensor<T>& maxTensor,
                                         const uint32_t m, const T minValue, const T maxValue)
 {
-    __ubuf__ T *sumUb = (__ubuf__ T *)sumTensor.GetPhyAddr();
-    __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
+    __ubuf__ T* sumUb = (__ubuf__ T*)sumTensor.GetPhyAddr();
+    __ubuf__ T* maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
 
     SoftmaxSumUpdateVF<T>(sumUb, maxUb, m, minValue, maxValue);
 }

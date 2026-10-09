@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file batch_mat_mul_v3_base_tiling.h
@@ -94,12 +94,12 @@ struct Mc2TilingEnable {
 class Mc2BatchMatmulV3BaseTiling : public mc2_matmul_v3::Mc2MatmulV3BaseTiling {
 public:
 public:
-    explicit Mc2BatchMatmulV3BaseTiling(gert::TilingContext *context)
+    explicit Mc2BatchMatmulV3BaseTiling(gert::TilingContext* context)
         : Mc2MatmulV3BaseTiling(context, &bmmTilingDataSelf_.matmulTiling),
           bmmTilingData_(bmmTilingDataSelf_)
     {}
 
-    Mc2BatchMatmulV3BaseTiling(gert::TilingContext *context, Mc2BatchMatmulTilingData &bmmTilingData,
+    Mc2BatchMatmulV3BaseTiling(gert::TilingContext* context, Mc2BatchMatmulTilingData& bmmTilingData,
                                Mc2TilingCalcSelect tilingSelect = Mc2TilingCalcSelect::COMMON)
         : Mc2MatmulV3BaseTiling(context, &bmmTilingData.matmulTiling),
           bmmTilingData_(bmmTilingData)
@@ -142,7 +142,7 @@ protected:
 
 protected:
     Mc2BatchShapeInfo batchInfo_;
-    Mc2BatchMatmulTilingData &bmmTilingData_;
+    Mc2BatchMatmulTilingData& bmmTilingData_;
     Mc2TilingCalcSelect tilingSelect_ = Mc2TilingCalcSelect::ALL;
 
 private:

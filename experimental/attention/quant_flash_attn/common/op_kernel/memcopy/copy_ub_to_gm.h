@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file copy_ub_to_gm.h
@@ -50,14 +50,14 @@ public:
         }
     }
     template <typename FaGmTensorType, bool ROW_PAD = true>
-    __aicore__ inline void operator()(FaGmTensorType &dstTensor, FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void operator()(FaGmTensorType& dstTensor, FaUbTensor<OUT_T, ROW_PAD>& srcTensor,
+                                      GmCoord& gmCoord)
     {
         static_assert(std::is_same_v<OUT_T, typename FaGmTensorType::dataType>, "DataType of FaGmTensorType mismatch");
         static_assert(GM_FORMAT == FaGmTensorType::gmFormat, "GmFormat of FaGmTensorType mismatch");
 
         if constexpr (UB_FORMAT == UbFormat::GS1) {
-            auto &offsetCalculator = dstTensor.offsetCalculator;
+            auto& offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1Size = 0;
             if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
@@ -112,7 +112,7 @@ public:
                 }
             }
         } else if constexpr (UB_FORMAT == UbFormat::S1G) {
-            auto &offsetCalculator = dstTensor.offsetCalculator;
+            auto& offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
             uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
             uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();

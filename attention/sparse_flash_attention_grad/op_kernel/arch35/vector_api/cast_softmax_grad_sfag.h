@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file cast_softmax_grad_sfag.h
@@ -20,10 +20,10 @@ using namespace commondef;
 
 template <typename T1, typename T2, typename OUTDTYPE, const uint32_t VECTOR_BASEM = 64,
           const uint32_t HEAD_DIM_ALIGN = 128, const bool IS_D_NO_EQUAL = false>
-__aicore__ inline void CopyInSoftmaxGrad(FagConstInfo &constInfo, FagRunInfo &runInfo, int32_t loopIdx,
-                                         int32_t curLoopSize, int32_t loopSize, TQue<QuePosition::VECIN, 1> &yInQue,
-                                         TQue<QuePosition::VECIN, 1> &dxInQue, GlobalTensor<T1> &dxGm,
-                                         GlobalTensor<OUTDTYPE> &yGm)
+__aicore__ inline void CopyInSoftmaxGrad(FagConstInfo& constInfo, FagRunInfo& runInfo, int32_t loopIdx,
+                                         int32_t curLoopSize, int32_t loopSize, TQue<QuePosition::VECIN, 1>& yInQue,
+                                         TQue<QuePosition::VECIN, 1>& dxInQue, GlobalTensor<T1>& dxGm,
+                                         GlobalTensor<OUTDTYPE>& yGm)
 {
     constexpr static bool IS_FP8_INPUT = IsSameType<T1, fp8_e5m2_t>::value || IsSameType<T1, fp8_e4m3fn_t>::value;
     int64_t srcGmOffset = 0;
@@ -61,9 +61,9 @@ __aicore__ inline void CopyInSoftmaxGrad(FagConstInfo &constInfo, FagRunInfo &ru
 
 template <typename T1, typename T2, typename OUTDTYPE, const uint32_t VECTOR_BASEM = 64,
           const uint32_t HEAD_DIM_ALIGN = 128>
-__aicore__ inline void CalculateCastSoftmaxGrad(FagConstInfo &constInfo, int32_t curLoopSize,
-                                                TQue<QuePosition::VECIN, 1> &yInQue,
-                                                TQue<QuePosition::VECIN, 1> &dxInQue, const LocalTensor<T2> &dstTensor,
+__aicore__ inline void CalculateCastSoftmaxGrad(FagConstInfo& constInfo, int32_t curLoopSize,
+                                                TQue<QuePosition::VECIN, 1>& yInQue,
+                                                TQue<QuePosition::VECIN, 1>& dxInQue, const LocalTensor<T2>& dstTensor,
                                                 float deqScaleDyValue = 1.0)
 {
     LocalTensor<OUTDTYPE> yTensor = yInQue.DeQue<OUTDTYPE>();

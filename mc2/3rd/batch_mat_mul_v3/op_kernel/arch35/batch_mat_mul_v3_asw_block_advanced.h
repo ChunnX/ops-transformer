@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file batch_mat_mul_v3_asw_block_advanced.h
@@ -83,7 +83,7 @@ class Mc2BatchMatMulAswBlock {
 public:
     __aicore__ inline Mc2BatchMatMulAswBlock() {}
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-    __aicore__ inline void Init(const void *tilingData);
+    __aicore__ inline void Init(const void* tilingData);
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx, uint64_t newBlockIdx);
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void UpdateBlockParams(uint64_t roundIdx);
@@ -93,13 +93,13 @@ public:
 public:
     Mc2BmmAswBlockOffset offset_;
     Mc2BmmAswBlockArgs params_;
-    const BatchMatMulV3TilingData *batchMatmulTilingData_;
+    const BatchMatMulV3TilingData* batchMatmulTilingData_;
 };
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-__aicore__ inline void Mc2BatchMatMulAswBlock::Init(const void *tilingData)
+__aicore__ inline void Mc2BatchMatMulAswBlock::Init(const void* tilingData)
 {
-    batchMatmulTilingData_ = static_cast<const BatchMatMulV3TilingData *>(tilingData);
+    batchMatmulTilingData_ = static_cast<const BatchMatMulV3TilingData*>(tilingData);
 
     params_.batchA1 = batchMatmulTilingData_->aBatchDim0;
     params_.batchA2 = batchMatmulTilingData_->aBatchDim1;

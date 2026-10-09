@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file vf_cast_transdata.h
@@ -68,15 +68,15 @@ __simd_vf__ inline void CastTransdataDeconflictVFhalf(const uint32_t fullExeSize
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         LoadAlign<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
-            vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
+            vregSrcEven, vregSrcOdd, ((__ubuf__ T*&)srcLocalInt), fullExeSize);
         Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, pregFullExe);
         Cast<T1, T, castTraitFp322Fp16Odd>(vregCastOdd, vregSrcOdd, pregFullExe);
         // 0101: b16 0001: b32 1111: b8
-        Or((RegTensor<uint16_t> &)vregCastRes, (RegTensor<uint16_t> &)vregCastEven, (RegTensor<uint16_t> &)vregCastOdd,
+        Or((RegTensor<uint16_t>&)vregCastRes, (RegTensor<uint16_t>&)vregCastEven, (RegTensor<uint16_t>&)vregCastOdd,
            pregFullExe);
         // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
         StoreAlign<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, pregFullExe);
+            ((__ubuf__ T1*&)dstLocalInt), vregCastRes, blockStride, repeatStride, pregFullExe);
     }
 }
 
@@ -96,15 +96,15 @@ __simd_vf__ inline void CastTransdataDeconflictVFbf16(const uint32_t fullExeSize
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         LoadAlign<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
-            vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
+            vregSrcEven, vregSrcOdd, ((__ubuf__ T*&)srcLocalInt), fullExeSize);
         Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, pregFullExe);
         Cast<T1, T, castTraitFp322Fp16Odd>(vregCastOdd, vregSrcOdd, pregFullExe);
         // 0101: b16 0001: b32 1111: b8
-        Or((RegTensor<uint16_t> &)vregCastRes, (RegTensor<uint16_t> &)vregCastEven, (RegTensor<uint16_t> &)vregCastOdd,
+        Or((RegTensor<uint16_t>&)vregCastRes, (RegTensor<uint16_t>&)vregCastEven, (RegTensor<uint16_t>&)vregCastOdd,
            pregFullExe);
         // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
         StoreAlign<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, pregFullExe);
+            ((__ubuf__ T1*&)dstLocalInt), vregCastRes, blockStride, repeatStride, pregFullExe);
     }
 }
 
@@ -118,13 +118,13 @@ __simd_vf__ inline void CastTransdataDeconflictVFT(const uint32_t fullExeSize, u
     MaskReg pregFullExe = CreateMask<T, MaskPattern::ALL>();
     // [m,n] -> [n1,m1,16,16] -> [n1,m1*16,16] -> [n1,m1*16+1,16]
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
-        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1 *&)srcLocalInt), 64);
-        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1 *&)srcLocalInt), 64);
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ T1*&)srcLocalInt), 64);
+        LoadAlign<T1, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ T1*&)srcLocalInt), 64);
         // high 16bits represents stride with each 8 blocks（256B) low 16bits represent repeat stride
         StoreAlign<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T *&)dstLocalInt), vregSrc, blockStride, repeatStride, pregFullExe);
+            ((__ubuf__ T*&)dstLocalInt), vregSrc, blockStride, repeatStride, pregFullExe);
         StoreAlign<T, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T *&)dstLocalIntTail), vregSrcTail, blockStride, repeatStride, pregFullExe);
+            ((__ubuf__ T*&)dstLocalIntTail), vregSrcTail, blockStride, repeatStride, pregFullExe);
     }
 }
 
@@ -146,23 +146,23 @@ __simd_vf__ inline void CastTransdataDeconflictVFfp8(const uint32_t fullExeSize,
 
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
         LoadAlign<T, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_DINTLV_B32>(
-            vregSrcEven, vregSrcOdd, ((__ubuf__ T *&)srcLocalInt), fullExeSize);
+            vregSrcEven, vregSrcOdd, ((__ubuf__ T*&)srcLocalInt), fullExeSize);
         Cast<T1, T, castTraitFp322Fp16Even>(vregCastEven, vregSrcEven, preg_all);
         Cast<T1, T, castTraitFp322Fp8Two>(vregCastOdd, vregSrcOdd, preg_all);
-        Or((RegTensor<uint8_t> &)vregCastResTmp, (RegTensor<uint8_t> &)vregCastEven, (RegTensor<uint8_t> &)vregCastOdd,
+        Or((RegTensor<uint8_t>&)vregCastResTmp, (RegTensor<uint8_t>&)vregCastEven, (RegTensor<uint8_t>&)vregCastOdd,
            preg_all_b8);
-        LoadAlign<uint8_t, Reg::LoadDist::DIST_NORM>((RegTensor<uint8_t> &)vregIndexes,
-                                                     ((__ubuf__ uint8_t *&)selrIndexesInt));
-        Gather<uint8_t>((RegTensor<uint8_t> &)vregCastRes, (RegTensor<uint8_t> &)vregCastResTmp,
-                        (RegTensor<uint8_t> &)vregIndexes);
+        LoadAlign<uint8_t, Reg::LoadDist::DIST_NORM>((RegTensor<uint8_t>&)vregIndexes,
+                                                     ((__ubuf__ uint8_t*&)selrIndexesInt));
+        Gather<uint8_t>((RegTensor<uint8_t>&)vregCastRes, (RegTensor<uint8_t>&)vregCastResTmp,
+                        (RegTensor<uint8_t>&)vregIndexes);
         StoreAlign<T1, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T1 *&)dstLocalInt), vregCastRes, blockStride, repeatStride, preg_all_b8);
+            ((__ubuf__ T1*&)dstLocalInt), vregCastRes, blockStride, repeatStride, preg_all_b8);
     }
 }
 
 template <typename T1, typename T, uint32_t srcN>
-__aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor, const LocalTensor<T> &srcTensor,
-                                               const LocalTensor<uint8_t> &selrIndexesTensor, uint32_t srcM)
+__aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1>& dstTensor, const LocalTensor<T>& srcTensor,
+                                               const LocalTensor<uint8_t>& selrIndexesTensor, uint32_t srcM)
 {
     const uint32_t blockSize = 32;
     const uint32_t blockN = blockSize / sizeof(T1);
@@ -188,8 +188,8 @@ __aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor,
 }
 #else
 template <typename T1, typename T, uint32_t srcN>
-__aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1> &dstTensor, const LocalTensor<T> &srcTensor,
-                                               const LocalTensor<uint8_t> &selrIndexesTensor, uint32_t srcM)
+__aicore__ inline void CastTransdataDeconflict(const LocalTensor<T1>& dstTensor, const LocalTensor<T>& srcTensor,
+                                               const LocalTensor<uint8_t>& selrIndexesTensor, uint32_t srcM)
 {}
 #endif
 } // namespace AscendC

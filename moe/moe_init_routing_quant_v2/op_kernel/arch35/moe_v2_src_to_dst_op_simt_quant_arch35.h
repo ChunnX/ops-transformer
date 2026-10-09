@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_src_to_dst_op_simt.h
@@ -25,16 +25,16 @@ class MoeV2SrcToDstOpSimt {
 public:
     __aicore__ inline MoeV2SrcToDstOpSimt(){};
     template <typename TilingData>
-    __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expandDstToSrcRow, const TilingData *tilingData);
+    __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expandDstToSrcRow, const TilingData* tilingData);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void SyncAll();
 
 private:
-    __gm__ int32_t *expandDstToSrcRowGm_;
-    __gm__ int32_t *expandedRowIdxGm_;
-    const InnerMoeV2GatherOutComputeTilingData *srcToDstTilingData_;
+    __gm__ int32_t* expandDstToSrcRowGm_;
+    __gm__ int32_t* expandedRowIdxGm_;
+    const InnerMoeV2GatherOutComputeTilingData* srcToDstTilingData_;
 
     int64_t coreNum_;
     int64_t blockIdx_;
@@ -55,7 +55,7 @@ __aicore__ inline void MoeV2SrcToDstOpSimt::SyncAll()
 
 template <typename TilingData>
 __aicore__ inline void MoeV2SrcToDstOpSimt::Init(GM_ADDR expandedRowIdx, GM_ADDR expandDstToSrcRow,
-                                                 const TilingData *tilingData)
+                                                 const TilingData* tilingData)
 {
     this->blockIdx_ = GetBlockIdx();
     this->coreNum_ = tilingData->coreNum;
@@ -70,13 +70,13 @@ __aicore__ inline void MoeV2SrcToDstOpSimt::Init(GM_ADDR expandedRowIdx, GM_ADDR
     startIndex_ = this->blockIdx_ * this->perCoreRows_;
     this->threadNum_ = THREAD_NUM < this->coreRows_ ? THREAD_NUM : this->coreRows_;
 
-    expandedRowIdxGm_ = (__gm__ int32_t *)expandedRowIdx;
-    expandDstToSrcRowGm_ = (__gm__ int32_t *)expandDstToSrcRow + Align(this->totalLength_, sizeof(int32_t));
+    expandedRowIdxGm_ = (__gm__ int32_t*)expandedRowIdx;
+    expandDstToSrcRowGm_ = (__gm__ int32_t*)expandDstToSrcRow + Align(this->totalLength_, sizeof(int32_t));
 }
 
 __simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void ComputeSimt(int64_t coreRows, int64_t startIndex,
-                                                                        __gm__ int32_t *expandDstToSrcRowGm,
-                                                                        __gm__ int32_t *expandedRowIdxGm)
+                                                                        __gm__ int32_t* expandDstToSrcRowGm,
+                                                                        __gm__ int32_t* expandedRowIdxGm)
 {
     for (int32_t index = static_cast<int32_t>(threadIdx.x); index < static_cast<int32_t>(coreRows);
          index += static_cast<int32_t>(blockDim.x)) {

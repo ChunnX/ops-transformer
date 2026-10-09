@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_s1s2_bn2.h
@@ -105,10 +105,10 @@ struct PostIndices {
     int64_t gIndex = 0;
 };
 
-__aicore__ inline void DataCopyOutLocal(const __gm__ void *gm, const LocalTensor<int8_t> &co1Local,
-                                        const void *dataCopyOutParams, const uint64_t tilingPtr, const uint64_t dataPtr)
+__aicore__ inline void DataCopyOutLocal(const __gm__ void* gm, const LocalTensor<int8_t>& co1Local,
+                                        const void* dataCopyOutParams, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
-    const DataCopyOutParams *param = reinterpret_cast<const DataCopyOutParams *>(dataCopyOutParams);
+    const DataCopyOutParams* param = reinterpret_cast<const DataCopyOutParams*>(dataCopyOutParams);
     uint64_t dstStride = tilingPtr * 16 / 8 - param->burstLen;
     FixpipeParams<float> fixpipeParams(param->cBurstNum, param->burstLen, param->srcStride,
                                        static_cast<uint32_t>(dstStride));
@@ -118,11 +118,11 @@ __aicore__ inline void DataCopyOutLocal(const __gm__ void *gm, const LocalTensor
     }
     LocalTensor<float> tmpLocal = co1Local.template ReinterpretCast<float>();
     GlobalTensor<float> tmpGm;
-    tmpGm.SetGlobalBuffer((__gm__ float *)(gm));
+    tmpGm.SetGlobalBuffer((__gm__ float*)(gm));
     Fixpipe(tmpGm, tmpLocal, fixpipeParams);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT = 2,
           const CubeFormat MM2_OUT_FORMAT = CubeFormat::ND, const bool POST = false, const bool L1CUSTOM = false>
 class FlashAttentionScoreGradS1s2Bn2 {
@@ -133,8 +133,8 @@ public:
                                 GM_ADDR softmax_sum, GM_ADDR prefixN, GM_ADDR softmax_in, GM_ADDR actual_seq_qlen,
                                 GM_ADDR actual_seq_kvlen, GM_ADDR attention_in, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
                                 GM_ADDR dpse, GM_ADDR workspace,
-                                const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict ordTilingData,
-                                TPipe *pipe_in);
+                                const FlashAttentionScoreGradTilingDataS1s2Bn2* __restrict ordTilingData,
+                                TPipe* pipe_in);
     __aicore__ inline void Process();
 
     using aType = MatmulType<TPosition::GM, CubeFormat::ND, T1>;
@@ -176,15 +176,15 @@ public:
 
 protected:
     // init
-    __aicore__ inline void InitParams(const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict ordTilingData,
+    __aicore__ inline void InitParams(const FlashAttentionScoreGradTilingDataS1s2Bn2* __restrict ordTilingData,
                                       GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen, GM_ADDR prefixN);
-    __aicore__ inline void InitUB(TPipe *pipe_in);
+    __aicore__ inline void InitUB(TPipe* pipe_in);
     __aicore__ inline void InitBmmWorkspace(GM_ADDR workspace);
     __aicore__ inline void InitCastWorkspace(GM_ADDR workspace);
     __aicore__ inline void InitDropWorkspace(GM_ADDR workspace);
     __aicore__ inline void AtomicClean();
     __aicore__ inline void EODClean();
-    __aicore__ inline void DumpGmZero(GlobalTensor<float> &gm, int64_t num, int64_t offset = 0);
+    __aicore__ inline void DumpGmZero(GlobalTensor<float>& gm, int64_t num, int64_t offset = 0);
 
     // process
     __aicore__ inline void SendMatmulQK(const int64_t m, const int64_t n, const int64_t a_addr, const int64_t b_addr,
@@ -200,37 +200,37 @@ protected:
     __aicore__ inline void SendMatmulDK(const uint32_t real_n, const uint32_t align_n, const uint32_t real_m,
                                         const int64_t a_in_addr, const int64_t b_in_addr, const int64_t out_addr,
                                         const bool is_sync, const uint8_t kvAtomic);
-    __aicore__ inline void MTE2_ATMask(LocalTensor<uint8_t> &attenMaskTensor, int64_t &attenMaskOffset,
-                                       PingPongEmitInsn &insn);
-    __aicore__ inline void MTE2_SFT(LocalTensor<T2> &sumTensor, LocalTensor<T2> &maxTensor, int64_t &sumMaxOffset,
-                                    PingPongEmitInsn &insn);
-    __aicore__ inline void MTE2_STFGrad(GlobalTensor<T1> &gmTensor, int64_t addr, LocalTensor<T1> &localTensor,
+    __aicore__ inline void MTE2_ATMask(LocalTensor<uint8_t>& attenMaskTensor, int64_t& attenMaskOffset,
+                                       PingPongEmitInsn& insn);
+    __aicore__ inline void MTE2_SFT(LocalTensor<T2>& sumTensor, LocalTensor<T2>& maxTensor, int64_t& sumMaxOffset,
+                                    PingPongEmitInsn& insn);
+    __aicore__ inline void MTE2_STFGrad(GlobalTensor<T1>& gmTensor, int64_t addr, LocalTensor<T1>& localTensor,
                                         int64_t num, int64_t count);
-    __aicore__ inline void DoMaskU8(LocalTensor<T2> &dstTensor, LocalTensor<uint8_t> &attenMaskTensor,
-                                    LocalTensor<uint8_t> &helpTensor, PingPongEmitInsn &insn,
+    __aicore__ inline void DoMaskU8(LocalTensor<T2>& dstTensor, LocalTensor<uint8_t>& attenMaskTensor,
+                                    LocalTensor<uint8_t>& helpTensor, PingPongEmitInsn& insn,
                                     const uint8_t maskType = 0);
-    __aicore__ inline void DoSimpleSoftMax(LocalTensor<T2> &dstTensor, LocalTensor<float> &sumTensor,
-                                           LocalTensor<float> &maxTensor, LocalTensor<uint8_t> &helpTensor,
-                                           PingPongEmitInsn &insn);
-    __aicore__ inline void DoSoftmaxGrad(LocalTensor<T2> &dstTensor);
-    __aicore__ inline void DoSub(LocalTensor<T2> &dstTensor, LocalTensor<T2> &srcTensor, PingPongEmitInsn &insn);
-    __aicore__ inline void MMOffsetTensorA(const int64_t s1_idx, int64_t &a_addr);
-    __aicore__ inline void MMOffsetTensorB(const int64_t s2_idx, int64_t &b_addr);
-    __aicore__ inline void MMOffsetNzOut(const int64_t s1_idx, const int64_t s2_idx, int64_t &a_addr, int64_t &b_addr);
-    __aicore__ inline void CalcCausalAttenMaskOffset(int64_t &attenMaskOffset, const int64_t delta, bool isPingMode);
-    __aicore__ inline void CalcBandAttenMaskOffset(int64_t &attenMaskOffsetPre, int64_t &attenMaskOffset,
+    __aicore__ inline void DoSimpleSoftMax(LocalTensor<T2>& dstTensor, LocalTensor<float>& sumTensor,
+                                           LocalTensor<float>& maxTensor, LocalTensor<uint8_t>& helpTensor,
+                                           PingPongEmitInsn& insn);
+    __aicore__ inline void DoSoftmaxGrad(LocalTensor<T2>& dstTensor);
+    __aicore__ inline void DoSub(LocalTensor<T2>& dstTensor, LocalTensor<T2>& srcTensor, PingPongEmitInsn& insn);
+    __aicore__ inline void MMOffsetTensorA(const int64_t s1_idx, int64_t& a_addr);
+    __aicore__ inline void MMOffsetTensorB(const int64_t s2_idx, int64_t& b_addr);
+    __aicore__ inline void MMOffsetNzOut(const int64_t s1_idx, const int64_t s2_idx, int64_t& a_addr, int64_t& b_addr);
+    __aicore__ inline void CalcCausalAttenMaskOffset(int64_t& attenMaskOffset, const int64_t delta, bool isPingMode);
+    __aicore__ inline void CalcBandAttenMaskOffset(int64_t& attenMaskOffsetPre, int64_t& attenMaskOffset,
                                                    const int64_t delta, bool isPingMode);
-    __aicore__ inline void CalcPrefixCompressAttenMaskOffset(int64_t &attenMaskOffsetPre, int64_t &attenMaskOffset,
+    __aicore__ inline void CalcPrefixCompressAttenMaskOffset(int64_t& attenMaskOffsetPre, int64_t& attenMaskOffset,
                                                              const int64_t delta, int64_t s2Idx, bool isPingMode);
     __aicore__ inline void CopyInOffsetForSimpleSoftmax(int64_t s1Idx, bool isPingMode);
     __aicore__ inline void CopyInOffset(int64_t s1Idx, int64_t s2Idx, bool isPingMode);
-    __aicore__ inline void CastTo32(LocalTensor<T2> &dstTensor, LocalTensor<T1> &srcTensor, uint32_t count);
-    __aicore__ inline void CastTo16(LocalTensor<T1> &dstTensor, LocalTensor<T2> &srcTensor, uint32_t count);
-    __aicore__ inline void DoMulsScale(LocalTensor<T2> &dstTensor, PingPongEmitInsn &insn);
+    __aicore__ inline void CastTo32(LocalTensor<T2>& dstTensor, LocalTensor<T1>& srcTensor, uint32_t count);
+    __aicore__ inline void CastTo16(LocalTensor<T1>& dstTensor, LocalTensor<T2>& srcTensor, uint32_t count);
+    __aicore__ inline void DoMulsScale(LocalTensor<T2>& dstTensor, PingPongEmitInsn& insn);
     __aicore__ inline void CalcSparseIdx(const int64_t bIndex, const int64_t s1Idx, const int64_t s1Size,
-                                         int64_t &s2_start_idx, int64_t &s2_end_idx);
-    __aicore__ inline void CopyoutWorkspace(const GlobalTensor<T1> &dstGm, const LocalTensor<T1> &srcTensor,
-                                            PingPongEmitInsn &insn);
+                                         int64_t& s2_start_idx, int64_t& s2_end_idx);
+    __aicore__ inline void CopyoutWorkspace(const GlobalTensor<T1>& dstGm, const LocalTensor<T1>& srcTensor,
+                                            PingPongEmitInsn& insn);
     __aicore__ inline void AssureUsefulDataBySingleN();
 
     __aicore__ inline void S2Ratio(const int64_t gIdx);
@@ -240,30 +240,30 @@ protected:
     __aicore__ inline void VectorByS1S2(int64_t mm1Addr, int64_t mm2Addr, int64_t mm3Addr, int64_t mm4Addr,
                                         int64_t processM);
     __aicore__ inline void InnerT2Process(int64_t processM);
-    __aicore__ inline void CopyInMMQK(LocalTensor<T2> &mm2TensorCurr, int64_t &mm2Offset, PingPongEmitInsn &insn);
-    __aicore__ inline void CopyInMMDYV(LocalTensor<T2> &mm1TensorCurr, int64_t &mm1Offset, PingPongEmitInsn &insn);
-    __aicore__ inline void NZ2ND(LocalTensor<T2> &ndTensor, LocalTensor<T2> &nzTensor, PingPongEmitInsn &insn);
-    __aicore__ inline void ND2NZ(LocalTensor<T1> &nzTensor, LocalTensor<T1> &ndTensor, PingPongEmitInsn &insn);
-    __aicore__ inline void NZCopyIn(int64_t mmAddr, GlobalTensor<T2> &mmWspGm, LocalTensor<T2> &mmTensorCurr,
-                                    PingPongEmitInsn &insn, int64_t processM);
+    __aicore__ inline void CopyInMMQK(LocalTensor<T2>& mm2TensorCurr, int64_t& mm2Offset, PingPongEmitInsn& insn);
+    __aicore__ inline void CopyInMMDYV(LocalTensor<T2>& mm1TensorCurr, int64_t& mm1Offset, PingPongEmitInsn& insn);
+    __aicore__ inline void NZ2ND(LocalTensor<T2>& ndTensor, LocalTensor<T2>& nzTensor, PingPongEmitInsn& insn);
+    __aicore__ inline void ND2NZ(LocalTensor<T1>& nzTensor, LocalTensor<T1>& ndTensor, PingPongEmitInsn& insn);
+    __aicore__ inline void NZCopyIn(int64_t mmAddr, GlobalTensor<T2>& mmWspGm, LocalTensor<T2>& mmTensorCurr,
+                                    PingPongEmitInsn& insn, int64_t processM);
     __aicore__ inline void UpdateLoopParams(int64_t i);
     __aicore__ inline void MallocNodes();
     __aicore__ inline void PingClcParams(int64_t mm1Addr, int64_t mm2Addr, int64_t mm3Addr, int64_t mm4Addr,
                                          int64_t processM);
     __aicore__ inline void PongClcParams(int64_t mm1Addr, int64_t mm2Addr, int64_t mm3Addr, int64_t mm4Addr,
                                          int64_t processM);
-    __aicore__ inline void DropOutCopy(LocalTensor<uint8_t> &dropmaskTensor, PingPongEmitInsn &insn);
+    __aicore__ inline void DropOutCopy(LocalTensor<uint8_t>& dropmaskTensor, PingPongEmitInsn& insn);
     __aicore__ inline void SavePostBNIdx();
     __aicore__ inline void LauchPostProcess(bool is_last);
     __aicore__ inline void PostProcess(bool isLast);
-    __aicore__ inline void PostProcessND(GlobalTensor<float> &workspaceGm, GlobalTensor<T1> &outGm,
-                                         const int64_t &type);
-    __aicore__ inline void PostCalND(GlobalTensor<float> &workspaceGm, GlobalTensor<T1> &outGm, const uint16_t &procS,
-                                     const int64_t &gmOffset, const int64_t &type);
-    __aicore__ inline void PostProcessNZ(GlobalTensor<float> &workspaceGm, GlobalTensor<T1> &outGm,
-                                         const uint32_t &type);
-    __aicore__ inline void PostCalNZ(GlobalTensor<float> &workspaceGm, GlobalTensor<T1> &outGm, const uint64_t &procS,
-                                     const uint64_t &SIdx, const uint32_t &type);
+    __aicore__ inline void PostProcessND(GlobalTensor<float>& workspaceGm, GlobalTensor<T1>& outGm,
+                                         const int64_t& type);
+    __aicore__ inline void PostCalND(GlobalTensor<float>& workspaceGm, GlobalTensor<T1>& outGm, const uint16_t& procS,
+                                     const int64_t& gmOffset, const int64_t& type);
+    __aicore__ inline void PostProcessNZ(GlobalTensor<float>& workspaceGm, GlobalTensor<T1>& outGm,
+                                         const uint32_t& type);
+    __aicore__ inline void PostCalNZ(GlobalTensor<float>& workspaceGm, GlobalTensor<T1>& outGm, const uint64_t& procS,
+                                     const uint64_t& SIdx, const uint32_t& type);
     __aicore__ inline void L1ReUseCal();
 
 protected:
@@ -310,16 +310,16 @@ protected:
     GlobalTensor<int32_t> syncCastGlobal;
 
     GlobalTensor<half> pseAlibiGm;
-    __gm__ uint8_t *pseSlope;
+    __gm__ uint8_t* pseSlope;
 
     PseInfo pseInfo = {0};
 
-    TPipe *pipe;
+    TPipe* pipe;
     int64_t blockIdx;
     int64_t cubeBlockIdx;
     int64_t vecBlockIdx;
     int64_t subBlockIdx;
-    const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict tilingData;
+    const FlashAttentionScoreGradTilingDataS1s2Bn2* __restrict tilingData;
 
     TBuf<> vecQue;                        // 176K + 5K
     TBuf<> softmaxGradOutQue;             // 8K
@@ -636,7 +636,7 @@ protected:
     FAG_BN2::CubeOp<T1, MM_OUT_FORMAT == CubeFormat::NZ, MM2_OUT_FORMAT == CubeFormat::NZ, LAYOUT> cubeOp;
 };
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
@@ -645,27 +645,27 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
                     GM_ADDR padding_mask, GM_ADDR atten_mask, GM_ADDR softmax_max, GM_ADDR softmax_sum, GM_ADDR prefixN,
                     GM_ADDR softmax_in, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen, GM_ADDR attention_in,
                     GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dpse, GM_ADDR workspace,
-                    const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict ordTilingData, TPipe *pipe_in)
+                    const FlashAttentionScoreGradTilingDataS1s2Bn2* __restrict ordTilingData, TPipe* pipe_in)
 {
     // 必选输入初始化
-    queryGm.SetGlobalBuffer((__gm__ T1 *)query);
-    keyGm.SetGlobalBuffer((__gm__ T1 *)key);
-    valueGm.SetGlobalBuffer((__gm__ T1 *)value);
-    dyGm.SetGlobalBuffer((__gm__ T1 *)dy);
+    queryGm.SetGlobalBuffer((__gm__ T1*)query);
+    keyGm.SetGlobalBuffer((__gm__ T1*)key);
+    valueGm.SetGlobalBuffer((__gm__ T1*)value);
+    dyGm.SetGlobalBuffer((__gm__ T1*)dy);
     // 可选输入初始化
     pseSlope = pse_shift;
-    pseShiftGm.SetGlobalBuffer((__gm__ T1 *)pse_shift);
-    dropMaskGm.SetGlobalBuffer((__gm__ uint8_t *)drop_mask);
-    paddingMaskGm.SetGlobalBuffer((__gm__ T1 *)padding_mask);
-    attenMaskGm.SetGlobalBuffer((__gm__ T1 *)atten_mask);
-    attenMaskU8Gm.SetGlobalBuffer((__gm__ uint8_t *)atten_mask);
-    softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmax_max);
-    softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmax_sum);
-    attentionInGm.SetGlobalBuffer((__gm__ T1 *)attention_in);
+    pseShiftGm.SetGlobalBuffer((__gm__ T1*)pse_shift);
+    dropMaskGm.SetGlobalBuffer((__gm__ uint8_t*)drop_mask);
+    paddingMaskGm.SetGlobalBuffer((__gm__ T1*)padding_mask);
+    attenMaskGm.SetGlobalBuffer((__gm__ T1*)atten_mask);
+    attenMaskU8Gm.SetGlobalBuffer((__gm__ uint8_t*)atten_mask);
+    softmaxMaxGm.SetGlobalBuffer((__gm__ float*)softmax_max);
+    softmaxSumGm.SetGlobalBuffer((__gm__ float*)softmax_sum);
+    attentionInGm.SetGlobalBuffer((__gm__ T1*)attention_in);
     // 输出初始化
-    dqGm.SetGlobalBuffer((__gm__ T1 *)dq);
-    dkGm.SetGlobalBuffer((__gm__ T1 *)dk);
-    dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
+    dqGm.SetGlobalBuffer((__gm__ T1*)dq);
+    dkGm.SetGlobalBuffer((__gm__ T1*)dk);
+    dvGm.SetGlobalBuffer((__gm__ T1*)dv);
 
     InitParams(ordTilingData, actual_seq_qlen, actual_seq_kvlen, prefixN);
 
@@ -729,13 +729,12 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
     MallocNodes();
 }
 
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
     T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT, MM2_OUT_FORMAT, POST,
-    L1CUSTOM>::InitParams(const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict ordTilingData,
+    L1CUSTOM>::InitParams(const FlashAttentionScoreGradTilingDataS1s2Bn2* __restrict ordTilingData,
                           GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen, GM_ADDR prefixN)
 {
     // op_info
@@ -869,11 +868,11 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
             int64_t seqS1Len = 0;
             int64_t seqS2Len = 0;
             if (unlikely(i == 0)) {
-                seqS1Len = ((__gm__ int64_t *)actual_seq_qlen)[i];
-                seqS2Len = ((__gm__ int64_t *)actual_seq_kvlen)[i];
+                seqS1Len = ((__gm__ int64_t*)actual_seq_qlen)[i];
+                seqS2Len = ((__gm__ int64_t*)actual_seq_kvlen)[i];
             } else {
-                seqS1Len = ((__gm__ int64_t *)actual_seq_qlen)[i] - ((__gm__ int64_t *)actual_seq_qlen)[i - 1];
-                seqS2Len = ((__gm__ int64_t *)actual_seq_kvlen)[i] - ((__gm__ int64_t *)actual_seq_kvlen)[i - 1];
+                seqS1Len = ((__gm__ int64_t*)actual_seq_qlen)[i] - ((__gm__ int64_t*)actual_seq_qlen)[i - 1];
+                seqS2Len = ((__gm__ int64_t*)actual_seq_kvlen)[i] - ((__gm__ int64_t*)actual_seq_kvlen)[i - 1];
             }
             dropBitMode = (dropBitMode && ((int64_t)seqS2Len % vec.baseN == 0));
             dimT_q += (int64_t)seqS1Len;
@@ -899,12 +898,12 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::InitUB(TPipe *pipe_in)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::InitUB(TPipe* pipe_in)
 {
     pipe = pipe_in;
     pipe->InitBuffer(vecQue, 183 * 1024);
@@ -929,12 +928,13 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DumpGmZero(GlobalTensor<float> &gm, int64_t num, int64_t offset)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DumpGmZero(GlobalTensor<float>& gm, int64_t num,
+                                                                           int64_t offset)
 {
     // dump 0 to gm by blockIdx
     int64_t perSize = (num + tilingData->opInfo.castUsedCoreNum - 1) / tilingData->opInfo.castUsedCoreNum;
@@ -951,7 +951,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -985,12 +985,11 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     DumpGmZero(dkWorkspaceGm, dkvSize);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::EODClean()
+__aicore__ inline void FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG,
+                                                      DROPOUT_CFG, LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::EODClean()
 {
     int64_t realDimT_q = tilingData->postTilingData.t1;
     int64_t realDimT_kv = tilingData->postTilingData.t2;
@@ -1014,7 +1013,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -1027,12 +1026,12 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 
     // dropout op
     auto dropoutAddr = usedWorkspaceLen / sizeof(uint8_t);
-    dropoutWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + dropoutAddr);
+    dropoutWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t*)workspace + dropoutAddr);
 
     usedWorkspaceLen += dropoutWorkspaceLen;
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -1053,8 +1052,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
                   blockIdx * mm2WorkspaceLen / sizeof(T2);
     }
 
-    mm1WorkspaceGm.SetGlobalBuffer((__gm__ T2 *)workspace + mm1Addr);
-    mm2WorkspaceGm.SetGlobalBuffer((__gm__ T2 *)workspace + mm2Addr);
+    mm1WorkspaceGm.SetGlobalBuffer((__gm__ T2*)workspace + mm1Addr);
+    mm2WorkspaceGm.SetGlobalBuffer((__gm__ T2*)workspace + mm2Addr);
 
     int64_t mm4Addr = 0;
     int64_t mm3Addr = 0;
@@ -1074,11 +1073,11 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
         usedWorkspaceLen += mm3InputWorkspaceLen * usedCoreNum;
     }
 
-    mm4InputWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + mm4Addr);
-    mm3InputWorkspaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + mm3Addr);
+    mm4InputWorkspaceGm.SetGlobalBuffer((__gm__ T1*)workspace + mm4Addr);
+    mm3InputWorkspaceGm.SetGlobalBuffer((__gm__ T1*)workspace + mm3Addr);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -1088,9 +1087,9 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     auto dqAddr = usedWorkspaceLen / sizeof(float);
     auto dkAddr = dqAddr + dqWorkspaceLen / sizeof(float);
     auto dvAddr = dkAddr + dkWorkspaceLen / sizeof(float);
-    dqWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dqAddr);
-    dkWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dkAddr);
-    dvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + dvAddr);
+    dqWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + dqAddr);
+    dkWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + dkAddr);
+    dvWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace + dvAddr);
 
     usedWorkspaceLen += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
@@ -1100,18 +1099,18 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 
     uint64_t pseAlibiAddr = dvAddr + dvWorkspaceLen / sizeof(float);
 
-    this->pseAlibiGm.SetGlobalBuffer((__gm__ half *)workspace + pseAlibiAddr * 2 +
+    this->pseAlibiGm.SetGlobalBuffer((__gm__ half*)workspace + pseAlibiAddr * 2 +
                                      blockIdx * pseAlibiOffset / sizeof(half));
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CopyoutWorkspace(const GlobalTensor<T1> &dstGm,
-                                                                                 const LocalTensor<T1> &srcTensor,
-                                                                                 PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CopyoutWorkspace(const GlobalTensor<T1>& dstGm,
+                                                                                 const LocalTensor<T1>& srcTensor,
+                                                                                 PingPongEmitInsn& insn)
 {
     // send data to workspace which used as bmm's input
     // send shape is [rp.vS1Inner, rp.vS2Inner]
@@ -1138,7 +1137,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     DataCopyPad(dstGm, srcTensor, intriParams);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG,
@@ -1180,7 +1179,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FOR
     dk_reuse_idx = qPingPongIdx;
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -1213,7 +1212,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -1245,18 +1244,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmulDV(const uint32_t real_n,
-                                                                             const uint32_t align_n,
-                                                                             const uint32_t real_m,
-                                                                             const int64_t a_in_addr,
-                                                                             const int64_t b_in_addr,
-                                                                             const int64_t out_addr, const bool is_sync,
-                                                                             const uint8_t kvAtomic)
+__aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
+    T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT, MM2_OUT_FORMAT, POST,
+    L1CUSTOM>::SendMatmulDV(const uint32_t real_n, const uint32_t align_n, const uint32_t real_m,
+                            const int64_t a_in_addr, const int64_t b_in_addr, const int64_t out_addr,
+                            const bool is_sync, const uint8_t kvAtomic)
 {
     /*
     BNGSD:
@@ -1343,19 +1338,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     mm_dkv.End();
 }
 
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmulDK(const uint32_t real_n,
-                                                                             const uint32_t align_n,
-                                                                             const uint32_t real_m,
-                                                                             const int64_t a_in_addr,
-                                                                             const int64_t b_in_addr,
-                                                                             const int64_t out_addr, const bool is_sync,
-                                                                             const uint8_t kvAtomic)
+__aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
+    T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT, MM2_OUT_FORMAT, POST,
+    L1CUSTOM>::SendMatmulDK(const uint32_t real_n, const uint32_t align_n, const uint32_t real_m,
+                            const int64_t a_in_addr, const int64_t b_in_addr, const int64_t out_addr,
+                            const bool is_sync, const uint8_t kvAtomic)
 {
     if constexpr (L1CUSTOM) {
         if ASCEND_IS_AIC {
@@ -1383,18 +1373,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     mm_dkv.End();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmulDQ(const uint32_t real_n,
-                                                                             const uint32_t align_n,
-                                                                             const uint32_t real_m,
-                                                                             const int64_t a_in_addr,
-                                                                             const int64_t b_in_addr,
-                                                                             const int64_t out_addr, const bool is_sync,
-                                                                             const uint8_t qAtomic)
+__aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
+    T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT, MM2_OUT_FORMAT, POST,
+    L1CUSTOM>::SendMatmulDQ(const uint32_t real_n, const uint32_t align_n, const uint32_t real_m,
+                            const int64_t a_in_addr, const int64_t b_in_addr, const int64_t out_addr,
+                            const bool is_sync, const uint8_t qAtomic)
 {
     /*
     BSH:
@@ -1465,14 +1451,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     mm_dq.End();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MTE2_ATMask(LocalTensor<uint8_t> &attenMaskTensor,
-                                                                            int64_t &attenMaskOffset,
-                                                                            PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MTE2_ATMask(LocalTensor<uint8_t>& attenMaskTensor,
+                                                                            int64_t& attenMaskOffset,
+                                                                            PingPongEmitInsn& insn)
 {
     /*
     Func: move atten_mask to UB
@@ -1488,14 +1474,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     DataCopyPad(attenMaskTensor, attenMaskU8Gm[attenMaskOffset], params, {false, 0, 0, 0});
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MTE2_SFT(LocalTensor<T2> &sumTensor,
-                                                                         LocalTensor<T2> &maxTensor,
-                                                                         int64_t &sumMaxOffset, PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MTE2_SFT(LocalTensor<T2>& sumTensor,
+                                                                         LocalTensor<T2>& maxTensor,
+                                                                         int64_t& sumMaxOffset, PingPongEmitInsn& insn)
 {
     /*
     Func: move softmax_sum(fp32) to UB
@@ -1513,13 +1499,13 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     DataCopyPad(maxTensor, softmaxMaxGm[sumMaxOffset], intriParams, {false, 0, 0, 0});
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MTE2_STFGrad(GlobalTensor<T1> &gmTensor, int64_t addr,
-                                                                             LocalTensor<T1> &localTensor, int64_t num,
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MTE2_STFGrad(GlobalTensor<T1>& gmTensor, int64_t addr,
+                                                                             LocalTensor<T1>& localTensor, int64_t num,
                                                                              int64_t count)
 {
     // dy and attentionIn had same address
@@ -1557,41 +1543,41 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     DataCopyPad(localTensor, gmTensor[addr], intriParams, padParams);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CastTo32(LocalTensor<T2> &dstTensor,
-                                                                         LocalTensor<T1> &srcTensor, uint32_t count)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CastTo32(LocalTensor<T2>& dstTensor,
+                                                                         LocalTensor<T1>& srcTensor, uint32_t count)
 {
     AscendC::PipeBarrier<PIPE_V>();
     Cast(dstTensor, srcTensor, RoundMode::CAST_NONE, count); // 以前是s1_inner * rp.vS2InnerAlign
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CastTo16(LocalTensor<T1> &dstTensor,
-                                                                         LocalTensor<T2> &srcTensor, uint32_t count)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CastTo16(LocalTensor<T1>& dstTensor,
+                                                                         LocalTensor<T2>& srcTensor, uint32_t count)
 {
     AscendC::PipeBarrier<PIPE_V>();
     Cast(dstTensor, srcTensor, RoundMode::CAST_ROUND, count); // 以前是s1_inner * rp.vS2InnerAlign
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoMaskU8(LocalTensor<T2> &dstTensor,
-                                                                         LocalTensor<uint8_t> &attenMaskTensor,
-                                                                         LocalTensor<uint8_t> &helpTensor,
-                                                                         PingPongEmitInsn &insn, const uint8_t maskType)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoMaskU8(LocalTensor<T2>& dstTensor,
+                                                                         LocalTensor<uint8_t>& attenMaskTensor,
+                                                                         LocalTensor<uint8_t>& helpTensor,
+                                                                         PingPongEmitInsn& insn, const uint8_t maskType)
 {
     /*
     Func:
@@ -1604,10 +1590,10 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     T2 scalar;
     if constexpr (IsSameType<T2, float>::value) {
         uint32_t tmp = 0xFF7FFFFF;
-        scalar = *((float *)&tmp);
+        scalar = *((float*)&tmp);
     } else {
         uint16_t tmp = 0xFBFF;
-        scalar = *((half *)&tmp);
+        scalar = *((half*)&tmp);
     }
 
     SelectWithBytesMaskShapeInfo info;
@@ -1624,16 +1610,16 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoSimpleSoftMax(LocalTensor<T2> &dstTensor,
-                                                                                LocalTensor<float> &sumTensor,
-                                                                                LocalTensor<float> &maxTensor,
-                                                                                LocalTensor<uint8_t> &helpTensor,
-                                                                                PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoSimpleSoftMax(LocalTensor<T2>& dstTensor,
+                                                                                LocalTensor<float>& sumTensor,
+                                                                                LocalTensor<float>& maxTensor,
+                                                                                LocalTensor<uint8_t>& helpTensor,
+                                                                                PingPongEmitInsn& insn)
 {
     /*
     Func:
@@ -1662,12 +1648,12 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoSoftmaxGrad(LocalTensor<T2> &dstTensor)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoSoftmaxGrad(LocalTensor<T2>& dstTensor)
 {
     // 1. D通道不切分场景
     // 2. FP16/BFP16 cast 为FP32计算
@@ -1775,15 +1761,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(vWaitMte2Pong);
 }
 
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoSub(LocalTensor<T2> &dstTensor,
-                                                                      LocalTensor<T2> &srcTensor,
-                                                                      PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoSub(LocalTensor<T2>& dstTensor,
+                                                                      LocalTensor<T2>& srcTensor,
+                                                                      PingPongEmitInsn& insn)
 {
     /*
     需要支持：非对齐，bf16/fp16数据类型
@@ -1807,28 +1792,28 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoMulsScale(LocalTensor<T2> &dstTensor,
-                                                                            PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DoMulsScale(LocalTensor<T2>& dstTensor,
+                                                                            PingPongEmitInsn& insn)
 {
     AscendC::PipeBarrier<PIPE_V>();
     Muls(dstTensor, dstTensor, scaleValue, insn.s1Inner * insn.s2InnerAlign);
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
                                MM2_OUT_FORMAT, POST, L1CUSTOM>::CalcSparseIdx(const int64_t bIndex, const int64_t s1Idx,
                                                                               const int64_t s1Size,
-                                                                              int64_t &s2_start_idx,
-                                                                              int64_t &s2_end_idx)
+                                                                              int64_t& s2_start_idx,
+                                                                              int64_t& s2_end_idx)
 {
     /*
              s2
@@ -1865,7 +1850,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
             s2EndLen = 0;
         }
         if (tilingData->opInfo.sparseMode == 5 || tilingData->opInfo.sparseMode == 6) {
-            int64_t prefix_n = ((__gm__ int64_t *)prefixN_addr)[bIndex];
+            int64_t prefix_n = ((__gm__ int64_t*)prefixN_addr)[bIndex];
             int64_t alignPrefixN = (prefix_n + cube.baseN - 1) / cube.baseN * cube.baseN;
             s2EndLen = s2EndLen >= alignPrefixN ? s2EndLen : alignPrefixN;
         }
@@ -1883,12 +1868,12 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MMOffsetTensorA(const int64_t s1_idx, int64_t &a_addr)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MMOffsetTensorA(const int64_t s1_idx, int64_t& a_addr)
 {
     /*
     BNGSD = 0, // A: B N2 G S1 D
@@ -1917,12 +1902,12 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MMOffsetTensorB(const int64_t s2_idx, int64_t &b_addr)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::MMOffsetTensorB(const int64_t s2_idx, int64_t& b_addr)
 {
     /*
     BNGSD = 0, // B: B N2 1 S2 D
@@ -1948,26 +1933,26 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
                                MM2_OUT_FORMAT, POST, L1CUSTOM>::MMOffsetNzOut(const int64_t s1_idx,
-                                                                              const int64_t s2_idx, int64_t &a_addr,
-                                                                              int64_t &b_addr)
+                                                                              const int64_t s2_idx, int64_t& a_addr,
+                                                                              int64_t& b_addr)
 {
     a_addr = bIndex * (dimN2 * dimG * dimS1 * dimDAlign) + n2Index * (dimG * dimS1 * dimDAlign) +
              gIndex * (dimS1 * dimDAlign) + s1_idx * C0_SIZE;
     b_addr = bIndex * (dimN2 * dimS2 * dimDAlign) + n2Index * (dimS2 * dimDAlign) + s2_idx * C0_SIZE;
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CalcCausalAttenMaskOffset(int64_t &attenMaskOffset,
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CalcCausalAttenMaskOffset(int64_t& attenMaskOffset,
                                                                                           const int64_t delta,
                                                                                           bool isPingMode)
 {
@@ -1990,13 +1975,13 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CalcBandAttenMaskOffset(int64_t &attenMaskOffsetPre,
-                                                                                        int64_t &attenMaskOffset,
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CalcBandAttenMaskOffset(int64_t& attenMaskOffsetPre,
+                                                                                        int64_t& attenMaskOffset,
                                                                                         const int64_t delta,
                                                                                         bool isPingMode)
 {
@@ -2006,20 +1991,20 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     CalcCausalAttenMaskOffset(attenMaskOffset, final_delta, isPingMode);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
     T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT, MM2_OUT_FORMAT, POST,
-    L1CUSTOM>::CalcPrefixCompressAttenMaskOffset(int64_t &attenMaskOffsetPre, int64_t &attenMaskOffset,
+    L1CUSTOM>::CalcPrefixCompressAttenMaskOffset(int64_t& attenMaskOffsetPre, int64_t& attenMaskOffset,
                                                  const int64_t delta, int64_t s2Idx, bool isPingMode)
 {
-    bool &prefixCompressCanSimplify =
+    bool& prefixCompressCanSimplify =
         isPingMode ? rp.vPingPrefixCompressCanSimplify : rp.vPongPrefixCompressCanSimplify;
     prefixCompressCanSimplify = false;
     uint32_t s1VSize = isPingMode ? rp.vPingS1Inner : rp.vPongS1Inner;
     uint32_t s2VSize = isPingMode ? rp.vPingS2Inner : rp.vPongS2Inner;
-    int64_t N = ((__gm__ int64_t *)prefixN_addr)[bIndex];
+    int64_t N = ((__gm__ int64_t*)prefixN_addr)[bIndex];
     int64_t S1 = (LAYOUT == TND) ? seqS1Current : (int64_t)dimS1;
     int64_t S2 = (LAYOUT == TND) ? seqS2Current : (int64_t)dimS2;
 
@@ -2055,7 +2040,7 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<
     attenMaskOffsetPre = (delta2 > 0) ? (offsetStartPos - delta2 + 1) : offsetStartPos;
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -2064,7 +2049,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
                                                                                              bool isPingMode)
 {
     int64_t softmax_max_sum_in_block_num = BLOCK / sizeof(float);
-    int64_t &sumMaxAddr = isPingMode ? softmaxMaxSumPingAddress : softmaxMaxSumPongAddress;
+    int64_t& sumMaxAddr = isPingMode ? softmaxMaxSumPingAddress : softmaxMaxSumPongAddress;
     sumMaxAddr = bIndex * (dimN2 * dimG * dimS1 * softmax_max_sum_in_block_num) +
                  n2Index * (dimG * dimS1 * softmax_max_sum_in_block_num) +
                  gIndex * (dimS1 * softmax_max_sum_in_block_num) + s1Idx * softmax_max_sum_in_block_num;
@@ -2075,8 +2060,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -2114,10 +2098,10 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
         realS2 = seqS2Current;
     }
 
-    int64_t &attenmaskAddress = isPingMode ? attenmaskPingAddress : attenmaskPongAddress;
-    int64_t &dropmaskAddress = isPingMode ? dropmaskPingAddress : dropmaskPongAddress;
-    int64_t &attenmaskPreAddress = isPingMode ? attenmaskPingPreAddress : attenmaskPongPreAddress;
-    AttenMaskCompress &AttenBandMode = isPingMode ? AttenBandPingMode : AttenBandPongMode;
+    int64_t& attenmaskAddress = isPingMode ? attenmaskPingAddress : attenmaskPongAddress;
+    int64_t& dropmaskAddress = isPingMode ? dropmaskPingAddress : dropmaskPongAddress;
+    int64_t& attenmaskPreAddress = isPingMode ? attenmaskPingPreAddress : attenmaskPongPreAddress;
+    AttenMaskCompress& AttenBandMode = isPingMode ? AttenBandPingMode : AttenBandPongMode;
 
     int64_t causal_delta = (int64_t)s1Idx - (int64_t)s2Idx;
     if constexpr (!L1CUSTOM) {
@@ -2182,13 +2166,13 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CopyInMMQK(LocalTensor<T2> &mm2TensorCurr,
-                                                                           int64_t &mm2Offset, PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CopyInMMQK(LocalTensor<T2>& mm2TensorCurr,
+                                                                           int64_t& mm2Offset, PingPongEmitInsn& insn)
 {
     DataCopyParams intriParams;
     if (b32AlignProcessN == insn.s2InnerAlign) {
@@ -2210,13 +2194,13 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CopyInMMDYV(LocalTensor<T2> &mm1TensorCurr,
-                                                                            int64_t &mm1Offset, PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::CopyInMMDYV(LocalTensor<T2>& mm1TensorCurr,
+                                                                            int64_t& mm1Offset, PingPongEmitInsn& insn)
 {
     DataCopyParams intriParams;
     if (b32AlignProcessN == insn.s2InnerAlign) {
@@ -2238,14 +2222,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::NZCopyIn(int64_t mmAddr, GlobalTensor<T2> &mmWspGm,
-                                                                         LocalTensor<T2> &mmTensorCurr,
-                                                                         PingPongEmitInsn &insn, int64_t processM)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::NZCopyIn(int64_t mmAddr, GlobalTensor<T2>& mmWspGm,
+                                                                         LocalTensor<T2>& mmTensorCurr,
+                                                                         PingPongEmitInsn& insn, int64_t processM)
 {
     /*
     Func:
@@ -2263,13 +2247,13 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     DataCopy(mmTensorCurr, mmWspGm[mmAddr], intriParams);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::NZ2ND(LocalTensor<T2> &ndTensor,
-                                                                      LocalTensor<T2> &nzTensor, PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::NZ2ND(LocalTensor<T2>& ndTensor,
+                                                                      LocalTensor<T2>& nzTensor, PingPongEmitInsn& insn)
 {
     /*
     Func:
@@ -2305,13 +2289,13 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::ND2NZ(LocalTensor<T1> &nzTensor,
-                                                                      LocalTensor<T1> &ndTensor, PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::ND2NZ(LocalTensor<T1>& nzTensor,
+                                                                      LocalTensor<T1>& ndTensor, PingPongEmitInsn& insn)
 {
     /*
     Func:
@@ -2342,8 +2326,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -2400,13 +2383,13 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     helpTensor = vecQue.GetWithOffset<uint8_t>(64 * 1024, 96 * 1024);                // 96K~160K
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DropOutCopy(LocalTensor<uint8_t> &dropmaskTensor,
-                                                                            PingPongEmitInsn &insn)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::DropOutCopy(LocalTensor<uint8_t>& dropmaskTensor,
+                                                                            PingPongEmitInsn& insn)
 {
     if constexpr (DROPOUT_CFG != 0) {
         int64_t bSSOffset = bIndex * dimS1 * dimS2;
@@ -2435,7 +2418,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -2670,8 +2653,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
                 if (prefixCompressCanSimplify == false) {
                     uint32_t s2InnerAlign =
                         (emitInsn.s2Inner + 31) / 32 * 32; // attenmask做pad时会32对齐，故加31/32做ceil
-                        int64_t maskNum = static_cast<int64_t>(emitInsn.s1Inner) *
-                            static_cast<int64_t>(s2InnerAlign) / 2; // 除2数据量按照uint16类型折半
+                    int64_t maskNum = static_cast<int64_t>(emitInsn.s1Inner) * static_cast<int64_t>(s2InnerAlign) /
+                                      2; // 除2数据量按照uint16类型折半
 
                     AscendC::SetFlag<HardEvent::V_MTE2>(static_cast<int32_t>(eventIdMte2WaitV));
                     AscendC::WaitFlag<HardEvent::V_MTE2>(static_cast<int32_t>(eventIdMte2WaitV));
@@ -2942,7 +2925,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(mte3WaitVPong);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3032,7 +3015,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3076,7 +3059,6 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
             }
         }
     }
-
 
     isPongFirst = pongLoop == 1;
     isPongLast = isEven ? pongLoop == totalLoops - 1 : pongLoop == totalLoops - 2;
@@ -3123,7 +3105,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3203,7 +3185,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3237,7 +3219,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3271,7 +3253,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     usedSingleNEnd = num == 0 ? begin : begin + num - 1;
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline bool
@@ -3311,7 +3293,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     return true;
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3335,8 +3317,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     isLastWorkSpaceFinished = false;
 }
 
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3361,7 +3342,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3451,14 +3432,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(mte3WaitV);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::PostProcessNZ(GlobalTensor<float> &workspaceGm,
-                                                                              GlobalTensor<T1> &outGm,
-                                                                              const uint32_t &type)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::PostProcessNZ(GlobalTensor<float>& workspaceGm,
+                                                                              GlobalTensor<T1>& outGm,
+                                                                              const uint32_t& type)
 {
     uint64_t S = type == TYPE_Q ? dimS1 : dimS2;
     uint64_t halfS = 0;
@@ -3466,7 +3447,6 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
         halfS = type == TYPE_Q ? dimS1 / 2 : dimS2 / 2;
         S = subBlockIdx == 0 ? halfS : S - halfS;
     }
-
 
     // tiling S
     uint64_t procS = postUbBaseSize / dimDAlign;
@@ -3496,15 +3476,15 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::PostCalNZ(GlobalTensor<float> &workspaceGm,
-                                                                          GlobalTensor<T1> &outGm,
-                                                                          const uint64_t &procS, const uint64_t &SIdx,
-                                                                          const uint32_t &type)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::PostCalNZ(GlobalTensor<float>& workspaceGm,
+                                                                          GlobalTensor<T1>& outGm,
+                                                                          const uint64_t& procS, const uint64_t& SIdx,
+                                                                          const uint32_t& type)
 {
     uint64_t calBIndex = calIndices.bIndex;
     uint64_t calN2Index = calIndices.n2Index;
@@ -3583,14 +3563,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     DataCopyPad(outGm[outGmOffset], postOutBuf, outExt);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::PostProcessND(GlobalTensor<float> &workspaceGm,
-                                                                              GlobalTensor<T1> &outGm,
-                                                                              const int64_t &type)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::PostProcessND(GlobalTensor<float>& workspaceGm,
+                                                                              GlobalTensor<T1>& outGm,
+                                                                              const int64_t& type)
 {
     uint64_t S = type == TYPE_Q ? dimS1 : dimS2;
     uint64_t G = type == TYPE_Q ? dimG : 1;
@@ -3633,15 +3613,15 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-                               MM2_OUT_FORMAT, POST, L1CUSTOM>::PostCalND(GlobalTensor<float> &workspaceGm,
-                                                                          GlobalTensor<T1> &outGm,
-                                                                          const uint16_t &procS,
-                                                                          const int64_t &gmOffset, const int64_t &type)
+                               MM2_OUT_FORMAT, POST, L1CUSTOM>::PostCalND(GlobalTensor<float>& workspaceGm,
+                                                                          GlobalTensor<T1>& outGm,
+                                                                          const uint16_t& procS,
+                                                                          const int64_t& gmOffset, const int64_t& type)
 {
     uint64_t G = type == TYPE_Q ? dimG : 1;
     bool needMuls = type == TYPE_V ? false : true;
@@ -3704,7 +3684,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     DataCopyPad(outGm[gmOffset], postOutBuf, outExtParams);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3908,7 +3888,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3931,7 +3911,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
@@ -3947,26 +3927,25 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     seqS1CurrentOffset = 0;
     seqS2CurrentOffset = 0;
     if (unlikely(bIndex == 0)) {
-        seqS1Current = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex];
-        seqS2Current = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex];
+        seqS1Current = ((__gm__ int64_t*)actual_seq_qlen_addr)[bIndex];
+        seqS2Current = ((__gm__ int64_t*)actual_seq_kvlen_addr)[bIndex];
     } else {
         seqS1Current =
-            ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex] - ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex - 1];
+            ((__gm__ int64_t*)actual_seq_qlen_addr)[bIndex] - ((__gm__ int64_t*)actual_seq_qlen_addr)[bIndex - 1];
         seqS2Current =
-            ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex] - ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex - 1];
-        seqS1CurrentOffset = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex - 1];
-        seqS2CurrentOffset = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex - 1];
+            ((__gm__ int64_t*)actual_seq_kvlen_addr)[bIndex] - ((__gm__ int64_t*)actual_seq_kvlen_addr)[bIndex - 1];
+        seqS1CurrentOffset = ((__gm__ int64_t*)actual_seq_qlen_addr)[bIndex - 1];
+        seqS2CurrentOffset = ((__gm__ int64_t*)actual_seq_kvlen_addr)[bIndex - 1];
         for (int64_t i = 0; i < bIndex; i++) {
             int64_t seqS1Len = 0;
             int64_t seqS2Len = 0;
             if (unlikely(i == 0)) {
-                seqS1Len = ((__gm__ int64_t *)actual_seq_qlen_addr)[i];
-                seqS2Len = ((__gm__ int64_t *)actual_seq_kvlen_addr)[i];
+                seqS1Len = ((__gm__ int64_t*)actual_seq_qlen_addr)[i];
+                seqS2Len = ((__gm__ int64_t*)actual_seq_kvlen_addr)[i];
             } else {
-                seqS1Len =
-                    ((__gm__ int64_t *)actual_seq_qlen_addr)[i] - ((__gm__ int64_t *)actual_seq_qlen_addr)[i - 1];
+                seqS1Len = ((__gm__ int64_t*)actual_seq_qlen_addr)[i] - ((__gm__ int64_t*)actual_seq_qlen_addr)[i - 1];
                 seqS2Len =
-                    ((__gm__ int64_t *)actual_seq_kvlen_addr)[i] - ((__gm__ int64_t *)actual_seq_kvlen_addr)[i - 1];
+                    ((__gm__ int64_t*)actual_seq_kvlen_addr)[i] - ((__gm__ int64_t*)actual_seq_kvlen_addr)[i - 1];
             }
             seqS1S2ProductSum += seqS1Len * seqS2Len;
         }
@@ -3982,7 +3961,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     vec.s1OuterOuterNum = (seqS1Current + vec.singleM - 1) / vec.singleM;
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
           const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG,

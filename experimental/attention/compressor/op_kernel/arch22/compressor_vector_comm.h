@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file compressor_vector_comm.h
@@ -18,7 +18,6 @@
 
 #include "compressor_comm.h"
 namespace Compressor {
-
 
 struct MatRpeatParam {
     uint32_t row;
@@ -44,8 +43,8 @@ struct RmsNormParam {
  * @param row 行数
  * @param col 列数
  */
-__aicore__ inline void ColumnSum(const LocalTensor<float> &dstLocal, const LocalTensor<float> &srcLocal,
-                                     const LocalTensor<float> &shareTmpUb, uint32_t row, uint32_t col)
+__aicore__ inline void ColumnSum(const LocalTensor<float>& dstLocal, const LocalTensor<float>& srcLocal,
+                                 const LocalTensor<float>& shareTmpUb, uint32_t row, uint32_t col)
 {
     // 行数为1时，直接将srcLocal复制到dstLocal
     if (unlikely(row == 1)) {
@@ -94,8 +93,8 @@ __aicore__ inline void ColumnSum(const LocalTensor<float> &dstLocal, const Local
  * @param row 行数
  * @param col 列数
  */
-__aicore__ inline void ColumnMax(const LocalTensor<float> &dstLocal, const LocalTensor<float> &srcLocal,
-                                     const LocalTensor<float> &shareTmpUb, uint32_t row, uint32_t col)
+__aicore__ inline void ColumnMax(const LocalTensor<float>& dstLocal, const LocalTensor<float>& srcLocal,
+                                 const LocalTensor<float>& shareTmpUb, uint32_t row, uint32_t col)
 {
     // 行数为1时，直接将srcLocal复制到dstLocal
     if (unlikely(row == 1)) {
@@ -136,7 +135,6 @@ __aicore__ inline void ColumnMax(const LocalTensor<float> &dstLocal, const Local
     }
 }
 
-
 /**
  * @brief MatSubVec 矩阵逐行减向量
  * @param dstLocal 输出tensor [row, col]
@@ -150,8 +148,8 @@ __aicore__ inline void ColumnMax(const LocalTensor<float> &dstLocal, const Local
             colRemain 剩余列数
             repeatStride 循环步长（内存中实际列长度）
  */
-__aicore__ inline void MatSubVec(const LocalTensor<float> &dstLocal, const LocalTensor<float> &src0Local,
-                                 const LocalTensor<float> &src1Local, const MatRpeatParam &repeatParam)
+__aicore__ inline void MatSubVec(const LocalTensor<float>& dstLocal, const LocalTensor<float>& src0Local,
+                                 const LocalTensor<float>& src1Local, const MatRpeatParam& repeatParam)
 {
     for (uint32_t row = 0; row < repeatParam.row; row += REPEAT_MAX_NUM) {
         uint32_t repeatRowTimes = Std::min(repeatParam.row - row, REPEAT_MAX_NUM);
@@ -183,8 +181,8 @@ __aicore__ inline void MatSubVec(const LocalTensor<float> &dstLocal, const Local
             colRemain 剩余列数
             repeatStride 循环步长（内存中实际列长度）
  */
-__aicore__ inline void MatDivVec(const LocalTensor<float> &dstLocal, const LocalTensor<float> &src0Local,
-                                 const LocalTensor<float> &src1Local, const MatRpeatParam &repeatParam)
+__aicore__ inline void MatDivVec(const LocalTensor<float>& dstLocal, const LocalTensor<float>& src0Local,
+                                 const LocalTensor<float>& src1Local, const MatRpeatParam& repeatParam)
 {
     for (uint32_t row = 0; row < repeatParam.row; row += REPEAT_MAX_NUM) {
         uint32_t repeatRowTimes = Std::min(repeatParam.row - row, REPEAT_MAX_NUM);
@@ -216,8 +214,8 @@ __aicore__ inline void MatDivVec(const LocalTensor<float> &dstLocal, const Local
             colRemain 剩余列数
             repeatStride 循环步长（内存中实际列长度）
  */
-__aicore__ inline void MatMulVec(const LocalTensor<float> &dstLocal, const LocalTensor<float> &src0Local,
-                                 const LocalTensor<float> &src1Local, const MatRpeatParam &repeatParam)
+__aicore__ inline void MatMulVec(const LocalTensor<float>& dstLocal, const LocalTensor<float>& src0Local,
+                                 const LocalTensor<float>& src1Local, const MatRpeatParam& repeatParam)
 {
     for (uint32_t row = 0; row < repeatParam.row; row += REPEAT_MAX_NUM) {
         uint32_t repeatRowTimes = Std::min(repeatParam.row - row, REPEAT_MAX_NUM);
@@ -249,13 +247,12 @@ __aicore__ inline void MatMulVec(const LocalTensor<float> &dstLocal, const Local
             colRemain 剩余列数
             repeatStride 循环步长（内存中实际列长度）
  */
-__aicore__ inline void RowSum(const LocalTensor<float> &dstLocal, const LocalTensor<float> &srcLocal,
-                              const LocalTensor<float> &shareTmpUb, const MatRpeatParam &repeatParam)
+__aicore__ inline void RowSum(const LocalTensor<float>& dstLocal, const LocalTensor<float>& srcLocal,
+                              const LocalTensor<float>& shareTmpUb, const MatRpeatParam& repeatParam)
 {
     uint32_t blockCount = repeatParam.loopTimes;
     if (blockCount > 0 && repeatParam.colRemain > 0) {
-        Add(shareTmpUb, srcLocal, srcLocal[blockCount * repeatParam.dtypeMask], repeatParam.colRemain,
-            repeatParam.row,
+        Add(shareTmpUb, srcLocal, srcLocal[blockCount * repeatParam.dtypeMask], repeatParam.colRemain, repeatParam.row,
             {1, 1, 1, repeatParam.repeatStride, repeatParam.repeatStride, repeatParam.repeatStride});
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -271,9 +268,8 @@ __aicore__ inline void RowSum(const LocalTensor<float> &dstLocal, const LocalTen
     }
 
     WholeReduceSum(dstLocal, shareTmpUb,
-                   (repeatParam.col < repeatParam.dtypeMask) ? repeatParam.col :
-                                                                             repeatParam.dtypeMask,
-                   repeatParam.row, 1, 1, repeatParam.repeatStride);
+                   (repeatParam.col < repeatParam.dtypeMask) ? repeatParam.col : repeatParam.dtypeMask, repeatParam.row,
+                   1, 1, repeatParam.repeatStride);
 }
 
 /**
@@ -289,8 +285,8 @@ __aicore__ inline void RowSum(const LocalTensor<float> &dstLocal, const LocalTen
             colRemain 剩余列数
             repeatStride 循环步长（内存中实际列长度）
  */
-__aicore__ inline void RowDivs(const LocalTensor<float> &dstLocal, const LocalTensor<float> &src0Local,
-                               const LocalTensor<float> &src1Local, const MatRpeatParam &repeatParam)
+__aicore__ inline void RowDivs(const LocalTensor<float>& dstLocal, const LocalTensor<float>& src0Local,
+                               const LocalTensor<float>& src1Local, const MatRpeatParam& repeatParam)
 {
     for (uint32_t row = 0; row < repeatParam.row; row += REPEAT_MAX_NUM) {
         uint32_t repeatRowTimes = Std::min(repeatParam.row - row, REPEAT_MAX_NUM);
@@ -309,7 +305,6 @@ __aicore__ inline void RowDivs(const LocalTensor<float> &dstLocal, const LocalTe
     }
 }
 
-
 /**
  * @brief RowMuls 矩阵每行乘以相同元素
  * @param dstLocal 输出tensor [row, col]
@@ -323,8 +318,8 @@ __aicore__ inline void RowDivs(const LocalTensor<float> &dstLocal, const LocalTe
             colRemain 剩余列数
             repeatStride 循环步长（内存中实际列长度）
  */
-__aicore__ inline void RowMuls(const LocalTensor<float> &dstLocal, const LocalTensor<float> &src0Local,
-                               const LocalTensor<float> &src1Local, const MatRpeatParam &repeatParam)
+__aicore__ inline void RowMuls(const LocalTensor<float>& dstLocal, const LocalTensor<float>& src0Local,
+                               const LocalTensor<float>& src1Local, const MatRpeatParam& repeatParam)
 {
     for (uint32_t row = 0; row < repeatParam.row; row += REPEAT_MAX_NUM) {
         uint32_t repeatRowTimes = Std::min(repeatParam.row - row, REPEAT_MAX_NUM);

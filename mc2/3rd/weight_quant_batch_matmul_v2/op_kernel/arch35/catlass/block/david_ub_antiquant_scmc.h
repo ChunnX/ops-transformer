@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef ARCH35_CATLASS_BLOCK_DAVID_UB_ANTIQUANT_SCMC_H
 #define ARCH35_CATLASS_BLOCK_DAVID_UB_ANTIQUANT_SCMC_H
 
@@ -48,16 +48,16 @@ public:
     static constexpr bool isTransB =
         isWeightNz ? false : AscendC::Std::is_same_v<typename AscendC::Std::tuple_element<1, StrideB>::type, _1>;
     struct Arguments {
-        __gm__ DtypeA *aGmAddr = nullptr;
+        __gm__ DtypeA* aGmAddr = nullptr;
         StrideA strideA{};
-        __gm__ DtypeB *bGmAddr = nullptr;
+        __gm__ DtypeB* bGmAddr = nullptr;
         StrideB strideB{};
-        __gm__ DtypeA *antiquantScaleGmAddr = nullptr;
+        __gm__ DtypeA* antiquantScaleGmAddr = nullptr;
         StrideAntiquantScale strideAntiquantScale{};
-        __gm__ DtypeA *antiquantOffsetGmAddr = nullptr;
-        __gm__ DtypeBias *biasGmAddr = nullptr;
+        __gm__ DtypeA* antiquantOffsetGmAddr = nullptr;
+        __gm__ DtypeBias* biasGmAddr = nullptr;
         NonVoidStrideBias strideBias{};
-        __gm__ DtypeC *cGmAddr = nullptr;
+        __gm__ DtypeC* cGmAddr = nullptr;
         StrideC strideC{};
         uint64_t groupSize;
     };

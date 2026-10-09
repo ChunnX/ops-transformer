@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_moe_token_unpermute_grad.cpp
@@ -32,9 +32,9 @@ static const std::initializer_list<op::DataType> MOE_GRAD_DTYPE_SUPPORT_LIST_X =
     DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> MOE_GRAD_DTYPE_SUPPORT_LIST_ROW_IDX = {DataType::DT_INT32};
 
-static inline bool CheckNotNull(const aclTensor *unpermutedTokensGrad, const aclTensor *sortedIndices,
-                                const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut,
-                                const aclTensor *permuteTokens)
+static inline bool CheckNotNull(const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
+                                const aclTensor* permutedTokensGradOut, const aclTensor* probsGradOut,
+                                const aclTensor* permuteTokens)
 {
     OP_CHECK_NULL(permuteTokens, return false);
     OP_CHECK_NULL(unpermutedTokensGrad, return false);
@@ -44,9 +44,9 @@ static inline bool CheckNotNull(const aclTensor *unpermutedTokensGrad, const acl
     return true;
 }
 
-static inline bool CheckDtypeValid(const aclTensor *unpermutedTokensGrad, const aclTensor *sortedIndices,
-                                   const aclTensor *permuteTokens, const aclTensor *probsOptional,
-                                   const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut)
+static inline bool CheckDtypeValid(const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
+                                   const aclTensor* permuteTokens, const aclTensor* probsOptional,
+                                   const aclTensor* permutedTokensGradOut, const aclTensor* probsGradOut)
 {
     if (unpermutedTokensGrad != nullptr && unpermutedTokensGrad->GetViewShape().GetShapeSize() != 0) {
         OP_CHECK_DTYPE_NOT_SUPPORT(unpermutedTokensGrad, MOE_GRAD_DTYPE_SUPPORT_LIST_X, return false);
@@ -71,9 +71,9 @@ static inline bool CheckDtypeValid(const aclTensor *unpermutedTokensGrad, const 
     return true;
 }
 
-static aclnnStatus CheckParams(const aclTensor *unpermutedTokensGrad, const aclTensor *sortedIndices,
-                               const aclTensor *permuteTokens, const aclTensor *probsOptional,
-                               const aclTensor *permutedTokensGradOut, const aclTensor *probsGradOut)
+static aclnnStatus CheckParams(const aclTensor* unpermutedTokensGrad, const aclTensor* sortedIndices,
+                               const aclTensor* permuteTokens, const aclTensor* probsOptional,
+                               const aclTensor* permutedTokensGradOut, const aclTensor* probsGradOut)
 {
     CHECK_RET(CheckNotNull(unpermutedTokensGrad, sortedIndices, permutedTokensGradOut, probsGradOut, permuteTokens),
               ACLNN_ERR_PARAM_NULLPTR);
@@ -89,12 +89,12 @@ static aclnnStatus CheckParams(const aclTensor *unpermutedTokensGrad, const aclT
 extern "C" {
 #endif
 
-aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(const aclTensor *permuteTokensOptional,
-                                                       const aclTensor *unpermutedTokensGrad,
-                                                       const aclTensor *sortedIndices, const aclTensor *probsOptional,
-                                                       bool paddedMode, const aclIntArray *restoreShapeOptional,
-                                                       aclTensor *permutedTokensGradOut, aclTensor *probsGradOut,
-                                                       uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(const aclTensor* permuteTokensOptional,
+                                                       const aclTensor* unpermutedTokensGrad,
+                                                       const aclTensor* sortedIndices, const aclTensor* probsOptional,
+                                                       bool paddedMode, const aclIntArray* restoreShapeOptional,
+                                                       aclTensor* permutedTokensGradOut, aclTensor* probsGradOut,
+                                                       uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeTokenUnpermuteGrad,
@@ -127,10 +127,10 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(const aclTensor *permuteT
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
     CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    const aclTensor *permuteTokensContiguous = l0op::Contiguous(permuteTokensOptional, uniqueExecutor.get());
+    const aclTensor* permuteTokensContiguous = l0op::Contiguous(permuteTokensOptional, uniqueExecutor.get());
     CHECK_RET(permuteTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    const aclTensor *probsContiguous = nullptr;
+    const aclTensor* probsContiguous = nullptr;
     if (probsOptional != nullptr) {
         probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());
         CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -162,7 +162,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(const aclTensor *permuteT
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnMoeTokenUnpermuteGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnMoeTokenUnpermuteGrad(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                        aclrtStream stream)
 {
     static bool useMoeFinalizeRoutingV2Grad = Ops::Transformer::AclnnUtil::IsRegbase();

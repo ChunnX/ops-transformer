@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef GMM_GEMM_TILE_CAST_INT8_TO_FP16_HPP
 #define GMM_GEMM_TILE_CAST_INT8_TO_FP16_HPP
@@ -57,7 +57,7 @@ struct TileCastInt8ToFp16Dequant {
 
     /// Construct
     CATLASS_DEVICE
-    TileCastInt8ToFp16Dequant(Arch::Resource<ArchTag> const &resource, Params const &params_)
+    TileCastInt8ToFp16Dequant(Arch::Resource<ArchTag> const& resource, Params const& params_)
         : params(params_)
     {
         if constexpr (g_coreType == AscendC::AIV) {
@@ -91,8 +91,8 @@ struct TileCastInt8ToFp16Dequant {
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementDst> const &gmDst, LayoutDst const &layoutDst,
-                    AscendC::GlobalTensor<ElementSrc> const &gmSrc, LayoutSrc const &layoutSrc)
+    void operator()(AscendC::GlobalTensor<ElementDst> const& gmDst, LayoutDst const& layoutDst,
+                    AscendC::GlobalTensor<ElementSrc> const& gmSrc, LayoutSrc const& layoutSrc)
     {
         uint32_t tilesNum = layoutSrc.shape(0);
         uint32_t tileLen = layoutSrc.shape(1);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file reduce_sum_cast_fp32.h
@@ -32,14 +32,14 @@ class ReduceSumForAlltoAll {
 public:
     __aicore__ inline ReduceSumForAlltoAll(){};
     __aicore__ inline void Init(uint64_t outputSize, uint64_t stride, uint64_t rankDim, uint64_t aivNum,
-                                GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe *tPipe);
+                                GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe* tPipe);
     __aicore__ inline void ExecuteReduceSum();
 
 private:
     __aicore__ inline void InitParams(uint64_t outputSize, uint64_t stride, uint64_t rankDim, uint64_t aivNum);
-    __aicore__ inline void InitBuffers(GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe *tPipe);
+    __aicore__ inline void InitBuffers(GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe* tPipe);
     __aicore__ inline void ReadDataBlockReduceSum(uint64_t curOffset, uint64_t count);
-    __aicore__ inline void CopyResultToOutput(uint64_t outOffsetGM, LocalTensor<float> &localResultTensor,
+    __aicore__ inline void CopyResultToOutput(uint64_t outOffsetGM, LocalTensor<float>& localResultTensor,
                                               uint64_t count, bool isTail);
     __aicore__ inline void ComputeTailAivId();
 
@@ -85,7 +85,7 @@ private:
 template <typename DataType>
 __aicore__ inline void ReduceSumForAlltoAll<DataType>::Init(uint64_t outputSize, uint64_t stride, uint64_t rankDim,
                                                             uint64_t aivNum, GM_ADDR srcAddr, GM_ADDR dstAddr,
-                                                            TPipe *tPipe)
+                                                            TPipe* tPipe)
 {
     // 初始化计算参数 (分片大小、块数、核分配策略等)
     InitParams(outputSize, stride, rankDim, aivNum);
@@ -149,10 +149,10 @@ __aicore__ inline void ReduceSumForAlltoAll<DataType>::InitParams(uint64_t outpu
  *
  */
 template <typename DataType>
-__aicore__ inline void ReduceSumForAlltoAll<DataType>::InitBuffers(GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe *tPipe)
+__aicore__ inline void ReduceSumForAlltoAll<DataType>::InitBuffers(GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe* tPipe)
 {
-    srcGm_.SetGlobalBuffer((__gm__ DataType *)srcAddr);
-    dstGm_.SetGlobalBuffer((__gm__ DataType *)dstAddr);
+    srcGm_.SetGlobalBuffer((__gm__ DataType*)srcAddr);
+    dstGm_.SetGlobalBuffer((__gm__ DataType*)dstAddr);
 
     tPipe->InitBuffer(vecInQueue_, BUFFER_NUM, perBlockNum_ * sizeof(DataType));  // srcBuf_ -> UB 拷贝队列
     tPipe->InitBuffer(vecOutQueue_, BUFFER_NUM, perBlockNum_ * sizeof(DataType)); // UB -> dstBuf_ 拷贝队列
@@ -242,7 +242,7 @@ __aicore__ inline void ReduceSumForAlltoAll<DataType>::ExecuteReduceSum()
  */
 template <typename DataType>
 __aicore__ inline void ReduceSumForAlltoAll<DataType>::CopyResultToOutput(uint64_t outOffsetGM,
-                                                                          LocalTensor<float> &localResultTensor,
+                                                                          LocalTensor<float>& localResultTensor,
                                                                           uint64_t count, bool isTail)
 {
     LocalTensor<DataType> outTensor = vecOutQueue_.AllocTensor<DataType>();

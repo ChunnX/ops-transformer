@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file grouped_matmul_finalize_routing_base_tiling.cc
@@ -75,7 +75,7 @@ constexpr uint32_t A8W4_L1OPT_BIGM_BASE_M = 128;
 constexpr uint32_t A8W4_L1OPT_BIGM_BASE_N = 128;
 constexpr uint32_t A8W4_L1OPT_BASE_K = 512;
 
-static ge::graphStatus GetInputDims(const gert::Shape &storageShape, ge::Format format, int64_t (&dims)[TWO_BATCH_DIM])
+static ge::graphStatus GetInputDims(const gert::Shape& storageShape, ge::Format format, int64_t (&dims)[TWO_BATCH_DIM])
 {
     const size_t dimNum = storageShape.GetDimNum();
     if (format == ge::FORMAT_ND) {
@@ -182,7 +182,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::ParseAttr()
     if (context_->GetDeterministic() == 0) { // 非确定性场景进一步判断tuningConfig
         const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_TUNINGCONFIG_INDEX);
         if (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) {
-            tuningConfig_ = (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0];
+            tuningConfig_ = (reinterpret_cast<const int64_t*>(tuningConfigPtr->GetData()))[0];
             tuningConfig_ = (tuningConfig_ > 0) ? tuningConfig_ : 0;
             useL1OptKernel_ = (tuningConfigPtr->GetSize() > 1 && k_ <= A8W4_L1OPT_MAX_K) ? true : false;
         } else {
@@ -577,7 +577,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     context_->SetBlockDim(tilingData_.get_coreNum());
     context_->SetScheduleMode(1);
-    size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
+    size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
     OP_CHECK_IF(workspaces == nullptr, OPS_REPORT_CUBE_INNER_ERR(context_->GetNodeName(), "workspaces is null"),
                 return ge::GRAPH_FAILED);
     workspaces[0] = workspaceSize_;

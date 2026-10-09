@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file tile_copy.h
@@ -56,10 +56,10 @@ template <class ArchTag>
 struct TileCopy<ArchTag, CopyWithParams> {
     using CopyPolicy = CopyWithParams;
 
-    template <class InputType, const auto &COPY_CFG>
+    template <class InputType, const auto& COPY_CFG>
     using CopyGmToA1 = Copy<ArchTag, CopyPolicy, void, void, InputType, void, COPY_CFG>;
 
-    template <class InputType, const auto &COPY_CFG>
+    template <class InputType, const auto& COPY_CFG>
     using CopyGmToB1 = Copy<ArchTag, CopyPolicy, void, void, InputType, void, COPY_CFG>;
 
     template <class InputType, class OutputType, typename T = void>
@@ -157,10 +157,10 @@ struct TileCopy<Arch::DAV3510, CopyInAndCopyOutSplitMWithParams> {
     using ArchTag = Arch::DAV3510;
     using CopyPolicy = CopyWithParams;
 
-    template <class InputType, const auto &COPY_CFG>
+    template <class InputType, const auto& COPY_CFG>
     using CopyGmToA1 = Copy<ArchTag, CopyPolicy, void, void, InputType, void, COPY_CFG>;
 
-    template <class InputType, const auto &COPY_CFG>
+    template <class InputType, const auto& COPY_CFG>
     using CopyGmToB1 = Copy<ArchTag, CopyPolicy, void, void, InputType, void, COPY_CFG>;
 
     template <class InputType, class OutputType, typename T = void>

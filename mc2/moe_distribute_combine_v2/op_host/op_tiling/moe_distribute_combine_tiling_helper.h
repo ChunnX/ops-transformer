@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_combine_tiling_helper.h
@@ -91,21 +91,21 @@ struct CombineV2Config {
 
 class MoeDistributeCombineTilingHelper {
 public:
-    static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *context, const char *nodeName);
-    static ge::graphStatus TilingCheckMoeDistributeCombineA5(gert::TilingContext *context, const char *nodeName,
+    static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext* context, const char* nodeName);
+    static ge::graphStatus TilingCheckMoeDistributeCombineA5(gert::TilingContext* context, const char* nodeName,
                                                              const bool isTokenMask);
 
 protected:
-    static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName);
-    static bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName);
-    static bool CheckTensorFormat(const gert::TilingContext *context, const char *nodeName);
+    static bool CheckTensorDim(gert::TilingContext* context, const char* nodeName);
+    static bool CheckTensorDataType(const gert::TilingContext* context, const char* nodeName);
+    static bool CheckTensorFormat(const gert::TilingContext* context, const char* nodeName);
 
 private:
-    inline static bool CheckInputTensorDim(const gert::TilingContext *context, const char *nodeName);
-    inline static bool CheckInputSendCountsTensorDim(const gert::TilingContext *context, const char *nodeName);
-    inline static bool CheckInputExpertScalesTensorDim(const gert::TilingContext *context, const char *nodeName);
-    inline static bool CheckOutputTensorDim(const gert::TilingContext *context, const char *nodeName);
-    inline static bool CheckActiveMask(const gert::TilingContext *context, const char *nodeName);
+    inline static bool CheckInputTensorDim(const gert::TilingContext* context, const char* nodeName);
+    inline static bool CheckInputSendCountsTensorDim(const gert::TilingContext* context, const char* nodeName);
+    inline static bool CheckInputExpertScalesTensorDim(const gert::TilingContext* context, const char* nodeName);
+    inline static bool CheckOutputTensorDim(const gert::TilingContext* context, const char* nodeName);
+    inline static bool CheckActiveMask(const gert::TilingContext* context, const char* nodeName);
 };
 } // namespace optiling
 #endif // MOE_DISTRIBUTE_COMBINE_TILING_HELPER_H

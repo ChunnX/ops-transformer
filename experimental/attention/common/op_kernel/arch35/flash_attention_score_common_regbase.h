@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file flash_attention_score_common_regbase.h
  * \brief
@@ -58,8 +58,8 @@ constexpr uint32_t L0C_SHARED_SIZE_64K = 64 * 1024;
 constexpr uint32_t L0C_SHARED_SIZE_128K = 128 * 1024;
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
-constexpr uint64_t MM2_RES_INTRA_EVENT[2] = {7, 8}; // mm2ResIntraEvent
-constexpr uint64_t MM1_RES_INTRA_EVENT[2] = {9, 10}; //mm1ResIntraEvent
+constexpr uint64_t MM2_RES_INTRA_EVENT[2] = {7, 8};  // mm2ResIntraEvent
+constexpr uint64_t MM1_RES_INTRA_EVENT[2] = {9, 10}; // mm1ResIntraEvent
 constexpr uint64_t KB_TO_BYTES = 1024;
 constexpr uint64_t L0A_SIZE = 64;
 constexpr uint64_t L0B_SIZE = 64;
@@ -104,14 +104,15 @@ struct CubeCoordInfo {
 
 static constexpr uint32_t FA_BYTE_BLOCK = 32;
 
-__aicore__ constexpr uint16_t Align64Func(uint16_t data) {
+__aicore__ constexpr uint16_t Align64Func(uint16_t data)
+{
     return (data + ADD_NUM_63) >> SHIFT_NUM_6 << SHIFT_NUM_6;
 }
 
 template <typename INPUT_T>
-__aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
-                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
+__aicore__ constexpr bool IsFp8WithRope(bool hasRope)
+{
+    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value && !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
                   !IsSameType<INPUT_T, hifloat8_t>::value) {
         return false;
     }
@@ -122,7 +123,8 @@ __aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
 }
 
 template <typename INPUT_T>
-__aicore__ constexpr bool IsInt8WithRope(bool hasRope) {
+__aicore__ constexpr bool IsInt8WithRope(bool hasRope)
+{
     if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
         return false;
     }
@@ -133,10 +135,9 @@ __aicore__ constexpr bool IsInt8WithRope(bool hasRope) {
 }
 
 template <typename INPUT_T>
-__aicore__ constexpr bool IsFp8OnlyWithAttenMask(
-    regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
-                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
+__aicore__ constexpr bool IsFp8OnlyWithAttenMask(regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop)
+{
+    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value && !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
                   !IsSameType<INPUT_T, hifloat8_t>::value) {
         return false;
     }
@@ -147,8 +148,8 @@ __aicore__ constexpr bool IsFp8OnlyWithAttenMask(
 }
 
 template <typename INPUT_T>
-__aicore__ constexpr bool IsInt8OnlyWithAttenMask(
-    regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
+__aicore__ constexpr bool IsInt8OnlyWithAttenMask(regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop)
+{
     if constexpr (!IsSameType<INPUT_T, int8_t>::value) {
         return false;
     }
@@ -158,8 +159,8 @@ __aicore__ constexpr bool IsInt8OnlyWithAttenMask(
     return false;
 }
 
-__aicore__ constexpr bool ContainOptionalInput(
-    regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop) {
+__aicore__ constexpr bool ContainOptionalInput(regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop)
+{
     if (pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE && !hasAtten && !hasDrop) {
         return false;
     } else {
@@ -167,9 +168,10 @@ __aicore__ constexpr bool ContainOptionalInput(
     }
 }
 
-__aicore__ constexpr bool IsDn(
-    bool isFp32, bool isValidFp8, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool isS1Base64,
-    regbaseutil::DTemplateType dTemplateType, bool hasRope, bool enableKVPrefix, bool isInfer, bool isHiFp8) {
+__aicore__ constexpr bool IsDn(bool isFp32, bool isValidFp8, regbaseutil::PseTypeEnum pseMode, bool hasAtten,
+                               bool hasDrop, bool isS1Base64, regbaseutil::DTemplateType dTemplateType, bool hasRope,
+                               bool enableKVPrefix, bool isInfer, bool isHiFp8)
+{
     if (enableKVPrefix) {
         return false;
     }
@@ -177,20 +179,22 @@ __aicore__ constexpr bool IsDn(
         return false;
     }
     if (((!isFp32 && !ContainOptionalInput(pseMode, hasAtten, hasDrop)) ||
-        (isValidFp8 && !hasDrop && pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE)) && !isS1Base64 &&
-        (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned256 && !hasRope) {
+         (isValidFp8 && !hasDrop && pseMode == regbaseutil::PseTypeEnum::PSE_NONE_TYPE)) &&
+        !isS1Base64 && (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned256 && !hasRope) {
         return true;
     }
     return false;
 }
 
 template <typename INPUT_T>
-__aicore__ constexpr bool UbOutCondition(
-    bool isFp32, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop, bool hasRope, bool isS2Base64) {
+__aicore__ constexpr bool UbOutCondition(bool isFp32, regbaseutil::PseTypeEnum pseMode, bool hasAtten, bool hasDrop,
+                                         bool hasRope, bool isS2Base64)
+{
     if (IsFp8WithRope<INPUT_T>(hasRope) || IsInt8WithRope<INPUT_T>(hasRope)) {
         return true;
     }
-    if (IsFp8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop) || IsInt8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop)) {
+    if (IsFp8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop) ||
+        IsInt8OnlyWithAttenMask<INPUT_T>(pseMode, hasAtten, hasDrop)) {
         return true;
     }
     if (!ContainOptionalInput(pseMode, hasAtten, hasDrop)) {
@@ -201,9 +205,8 @@ __aicore__ constexpr bool UbOutCondition(
     return false;
 }
 
-__aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplateType,
-                                             bool ubOutCondition, bool isNdS2Size256,
-                                             bool isMlaFullQuant, bool isMlaNoQuant = false,
+__aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplateType, bool ubOutCondition,
+                                             bool isNdS2Size256, bool isMlaFullQuant, bool isMlaNoQuant = false,
                                              bool optionalDn = false)
 {
     if (optionalDn) {
@@ -214,12 +217,11 @@ __aicore__ constexpr TPosition GetC2Position(regbaseutil::DTemplateType dTemplat
     }
     if ((uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned128 ||
         (ubOutCondition && (uint16_t)dTemplateType <= (uint16_t)regbaseutil::DTemplateType::Aligned192) ||
-        (ubOutCondition && isMlaFullQuant) ||
-        isNdS2Size256) {
+        (ubOutCondition && isMlaFullQuant) || isNdS2Size256) {
         return TPosition::VECCALC;
     } else {
         return TPosition::GM;
     }
 }
-}
+} // namespace BaseApi
 #endif // FLASH_ATTENTION_SCORE_COMMON_REGBASE_H

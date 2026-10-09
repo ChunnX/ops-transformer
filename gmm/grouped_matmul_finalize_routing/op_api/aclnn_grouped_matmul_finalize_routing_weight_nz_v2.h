@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef OP_API_INC_GROUPED_MATMUL_FINALIZE_ROUTING_WEIGHT_NZ_V2
 #define OP_API_INC_GROUPED_MATMUL_FINALIZE_ROUTING_WEIGHT_NZ_V2
@@ -60,12 +60,12 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
-    const aclTensor *x1, const aclTensor *x2, const aclTensor *scale, const aclTensor *bias,
-    const aclTensor *offsetOptional, const aclTensor *antiquantScaleOptional, const aclTensor *antiquantOffsetOptional,
-    const aclTensor *pertokenScaleOptional, const aclTensor *groupList, const aclTensor *sharedInput,
-    const aclTensor *logit, const aclTensor *rowIndex, int64_t dtype, float sharedInputWeight,
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* scale, const aclTensor* bias,
+    const aclTensor* offsetOptional, const aclTensor* antiquantScaleOptional, const aclTensor* antiquantOffsetOptional,
+    const aclTensor* pertokenScaleOptional, const aclTensor* groupList, const aclTensor* sharedInput,
+    const aclTensor* logit, const aclTensor* rowIndex, int64_t dtype, float sharedInputWeight,
     int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
-    const aclIntArray *tuningConfigOptional, aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclIntArray* tuningConfigOptional, aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor);
 /**
  * @brief aclnnGroupedMatmulFinalizeRoutingWeightNzV2的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
@@ -75,8 +75,8 @@ ACLNN_API aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSiz
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(void *workspace, uint64_t workspaceSize,
-                                                                  aclOpExecutor *executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(void* workspace, uint64_t workspaceSize,
+                                                                  aclOpExecutor* executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

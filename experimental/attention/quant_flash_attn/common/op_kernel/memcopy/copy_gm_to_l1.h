@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file copy_gm_to_l1.h
@@ -121,8 +121,8 @@ template <typename Q_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
 class CopyQueryGmToL1 {
 public:
     template <typename FaGmTensorType>
-    __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void operator()(FaL1Tensor<Q_T, L1_FORMAT>& dstTensor, FaGmTensorType& srcTensor,
+                                      GmCoord& gmCoord)
     {
         static_assert(std::is_same_v<Q_T, typename FaGmTensorType::dataType>, "DataType of FaGmTensorType mismatch");
         static_assert(GM_FORMAT == FaGmTensorType::gmFormat, "GmFormat of FaGmTensorType mismatch");
@@ -130,7 +130,7 @@ public:
         if constexpr ((GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
-            auto &offsetCalculator = srcTensor.offsetCalculator;
+            auto& offsetCalculator = srcTensor.offsetCalculator;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 ProcessGS1(dstTensor, srcTensor, gmCoord);
             } else {
@@ -143,10 +143,10 @@ public:
 
 private:
     template <typename FaGmTensorType>
-    __aicore__ inline void ProcessS1G(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void ProcessS1G(FaL1Tensor<Q_T, L1_FORMAT>& dstTensor, FaGmTensorType& srcTensor,
+                                      GmCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
         uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
@@ -154,7 +154,6 @@ private:
 
         uint64_t queryGmbaseOffset =
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
-
 
         if (offsetCalculator.GetDimG() == 1) {
             CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[queryGmbaseOffset], s1IdxEnd - s1IdxStart,
@@ -197,11 +196,11 @@ private:
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                             GmCoord &gmCoord)
+    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_T, L1_FORMAT>& dstTensor, FaGmTensorType& srcTensor,
+                                             GmCoord& gmCoord)
     {
         // B*N2*GS1*D
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t gIdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimS1();
         uint32_t s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
 
@@ -211,11 +210,11 @@ private:
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void ProcessGS1(FaL1Tensor<Q_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void ProcessGS1(FaL1Tensor<Q_T, L1_FORMAT>& dstTensor, FaGmTensorType& srcTensor,
+                                      GmCoord& gmCoord)
     {
         // N2*G*T(BS1)*D
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
@@ -284,8 +283,8 @@ template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
 class CopyKvGmToL1 {
 public:
     template <typename FaGmTensorType>
-    __aicore__ inline void operator()(FaL1Tensor<KV_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                      GmKvCoord &gmCoord)
+    __aicore__ inline void operator()(FaL1Tensor<KV_T, L1_FORMAT>& dstTensor, FaGmTensorType& srcTensor,
+                                      GmKvCoord& gmCoord)
     {
         static_assert(std::is_same_v<KV_T, typename FaGmTensorType::dataType>, "DataType of FaGmTensorType mismatch");
         static_assert(GM_FORMAT == FaGmTensorType::gmFormat, "GmFormat of FaGmTensorType mismatch");
@@ -301,21 +300,21 @@ public:
 
 private:
     template <typename FaGmTensorType>
-    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<KV_T, L1_FORMAT> &dstTensor,
-                                                         FaGmTensorType &srcTensor, GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<KV_T, L1_FORMAT>& dstTensor,
+                                                         FaGmTensorType& srcTensor, GmKvCoord& gmCoord)
     {
         // B*N2*GS1*D
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
         CopySingleMatrixNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize, gmCoord.dDealSize,
                                offsetCalculator.GetStrideS2(), dstTensor.rowCount);
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline void ProcessPageAttention(FaL1Tensor<KV_T, L1_FORMAT> &dstTensor, FaGmTensorType &srcTensor,
-                                                GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessPageAttention(FaL1Tensor<KV_T, L1_FORMAT>& dstTensor, FaGmTensorType& srcTensor,
+                                                GmKvCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
         uint32_t blockElementCnt = 32 / sizeof(KV_T);
@@ -357,9 +356,9 @@ template <typename KV_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format::NZ>
 class CopyKKropePAGmToL1 {
 public:
     template <typename FaGmTensorKType, typename FaGmTensorKropeType>
-    __aicore__ inline void operator()(FaL1Tensor<KV_T, L1_FORMAT> &dstTensorK,
-                                      FaL1Tensor<KV_T, L1_FORMAT> &dstTensorKrope, FaGmTensorKType &srcTensorK,
-                                      FaGmTensorKropeType &srcTensorKrope, GmKvCoord &gmCoordK, GmKvCoord &gmCoordKrope)
+    __aicore__ inline void operator()(FaL1Tensor<KV_T, L1_FORMAT>& dstTensorK,
+                                      FaL1Tensor<KV_T, L1_FORMAT>& dstTensorKrope, FaGmTensorKType& srcTensorK,
+                                      FaGmTensorKropeType& srcTensorKrope, GmKvCoord& gmCoordK, GmKvCoord& gmCoordKrope)
     {
         static_assert(std::is_same_v<KV_T, typename FaGmTensorKType::dataType>, "DataType of FaGmTensorKType mismatch");
         static_assert(GM_FORMAT == FaGmTensorKType::gmFormat, "GmFormat of FaGmTensorKType mismatch");
@@ -375,16 +374,16 @@ public:
 
 private:
     template <typename FaGmTensorType>
-    __aicore__ inline uint64_t GetBlockIdx(FaGmTensorType &srcKTensor, uint64_t blockIdxInBatch, uint32_t bIdx)
+    __aicore__ inline uint64_t GetBlockIdx(FaGmTensorType& srcKTensor, uint64_t blockIdxInBatch, uint32_t bIdx)
     {
         return srcKTensor.offsetCalculator.blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
     }
 
     template <typename FaGmTensorType>
-    __aicore__ inline uint64_t GetOffset(FaGmTensorType &srcTensor, int32_t blockIdx, uint32_t n2Idx, uint32_t s2Idx,
+    __aicore__ inline uint64_t GetOffset(FaGmTensorType& srcTensor, int32_t blockIdx, uint32_t n2Idx, uint32_t s2Idx,
                                          uint32_t dIdx)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t bsIdx = s2Idx % offsetCalculator.GetBlockSize();
         uint64_t offset = 0;
         if constexpr (GM_FORMAT == GmFormat::PA_NZ) {
@@ -402,13 +401,13 @@ private:
     }
 
     template <typename FaGmTensorKType, typename FaGmTensorKropeType>
-    __aicore__ inline void ProcessPageAttention(FaL1Tensor<KV_T, L1_FORMAT> &dstTensorK,
-                                                FaL1Tensor<KV_T, L1_FORMAT> &dstTensorKrope,
-                                                FaGmTensorKType &srcTensorK, FaGmTensorKropeType &srcTensorKrope,
-                                                GmKvCoord &gmCoordK, GmKvCoord &gmCoordKrope)
+    __aicore__ inline void ProcessPageAttention(FaL1Tensor<KV_T, L1_FORMAT>& dstTensorK,
+                                                FaL1Tensor<KV_T, L1_FORMAT>& dstTensorKrope,
+                                                FaGmTensorKType& srcTensorK, FaGmTensorKropeType& srcTensorKrope,
+                                                GmKvCoord& gmCoordK, GmKvCoord& gmCoordKrope)
     {
-        auto &offsetCalculatorK = srcTensorK.offsetCalculator;
-        auto &offsetCalculatorKrope = srcTensorKrope.offsetCalculator;
+        auto& offsetCalculatorK = srcTensorK.offsetCalculator;
+        auto& offsetCalculatorKrope = srcTensorKrope.offsetCalculator;
         uint32_t curS2Idx = gmCoordK.s2Idx;
         uint32_t copyFinishRowCnt = 0;
         uint32_t blockElementCnt = 32 / sizeof(KV_T);
@@ -479,7 +478,7 @@ __aicore__ inline void CopySingleMXScaleDNToNZ(LocalTensor<T> l1Tensor, const Gl
 
     LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
     GlobalTensor<bfloat16_t> gmTensorCast;
-    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(gmTensor.GetPhyAddr())));
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(gmTensor.GetPhyAddr())));
     DataCopy(l1TensorCast, gmTensorCast, dn2nzPara);
 }
 
@@ -501,7 +500,7 @@ __aicore__ inline void CopyMultiMXScaleDNToNZ(LocalTensor<T> l1Tensor, const Glo
 
     LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
     GlobalTensor<bfloat16_t> gmTensorCast;
-    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(gmTensor.GetPhyAddr())));
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(gmTensor.GetPhyAddr())));
     DataCopy(l1TensorCast, gmTensorCast, dn2nzPara);
 }
 
@@ -509,8 +508,8 @@ template <typename Q_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format:
 class CopyQueryScaleGmToL1 {
 public:
     template <typename GmTensorType>
-    __aicore__ inline void operator()(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void operator()(FaL1Tensor<Q_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                      GmCoord& gmCoord)
     {
         static_assert(std::is_same_v<Q_SCALE_T, typename GmTensorType::dataType>, "DataType of GmTensorType mismatch");
         static_assert(GM_FORMAT == GmTensorType::gmFormat, "GmFormat of GmTensorType mismatch");
@@ -520,27 +519,27 @@ public:
         } else if (GM_FORMAT == GmFormat::TNGD) {
             ProcessS1(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
-            auto &offsetCalculator = srcTensor.offsetCalculator;
+            auto& offsetCalculator = srcTensor.offsetCalculator;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 ProcessGS1(dstTensor, srcTensor, gmCoord);
             } else {
                 ProcessContinuous(dstTensor, srcTensor, gmCoord);
             }
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD2) {
-            auto &offsetCalculator = srcTensor.offsetCalculator;
+            auto& offsetCalculator = srcTensor.offsetCalculator;
             ProcessGS1MXFP4(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::NBSGD2) {
-            auto &offsetCalculator = srcTensor.offsetCalculator;
+            auto& offsetCalculator = srcTensor.offsetCalculator;
             ProcessS1GMXFP4(dstTensor, srcTensor, gmCoord);
         }
     }
 
 private:
     template <typename GmTensorType>
-    __aicore__ inline void ProcessS1G(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void ProcessS1G(FaL1Tensor<Q_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                      GmCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
         uint64_t queryScaleGmbaseOffset =
@@ -552,10 +551,10 @@ private:
     }
 
     template <typename GmTensorType>
-    __aicore__ inline void ProcessS1GMXFP4(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                           GmCoord &gmCoord)
+    __aicore__ inline void ProcessS1GMXFP4(FaL1Tensor<Q_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                           GmCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
         uint64_t queryScaleGmbaseOffset =
@@ -566,10 +565,10 @@ private:
     }
 
     template <typename GmTensorType>
-    __aicore__ inline void ProcessS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                     GmCoord &gmCoord)
+    __aicore__ inline void ProcessS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                     GmCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint64_t queryScaleGmbaseOffset =
             offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, gmCoord.dIdx);
@@ -580,11 +579,11 @@ private:
     }
 
     template <typename GmTensorType>
-    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                             GmCoord &gmCoord)
+    __aicore__ inline void ProcessContinuous(FaL1Tensor<Q_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                             GmCoord& gmCoord)
     {
         // B*N2*GS1*D
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t gIdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimS1();
         uint32_t s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
 
@@ -594,11 +593,11 @@ private:
     }
 
     template <typename GmTensorType>
-    __aicore__ inline void ProcessGS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void ProcessGS1(FaL1Tensor<Q_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                      GmCoord& gmCoord)
     {
         // N2*G*T(BS1)*D
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
@@ -652,11 +651,11 @@ private:
     }
 
     template <typename GmTensorType>
-    __aicore__ inline void ProcessGS1MXFP4(FaL1Tensor<Q_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                           GmCoord &gmCoord)
+    __aicore__ inline void ProcessGS1MXFP4(FaL1Tensor<Q_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                           GmCoord& gmCoord)
     {
         // BN2GS1D2 连续搬运合轴块
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
@@ -698,8 +697,8 @@ template <typename K_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format:
 class CopyKeyScaleGmToL1 {
 public:
     template <typename GmTensorType>
-    __aicore__ inline void operator()(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                      GmKvCoord &gmCoord)
+    __aicore__ inline void operator()(FaL1Tensor<K_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                      GmKvCoord& gmCoord)
     {
         static_assert(std::is_same_v<K_SCALE_T, typename GmTensorType::dataType>, "DataType of GmTensorType mismatch");
         static_assert(GM_FORMAT == GmTensorType::gmFormat, "GmFormat of GmTensorType mismatch");
@@ -715,20 +714,20 @@ public:
 
 private:
     template <typename GmTensorType>
-    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor,
-                                                         GmTensorType &srcTensor, GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<K_SCALE_T, L1_FORMAT>& dstTensor,
+                                                         GmTensorType& srcTensor, GmKvCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
         CopySingleMXScaleDNToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.dDealSize, gmCoord.s2DealSize,
                                 offsetCalculator.GetStrideS2(), gmCoord.dDealSize);
     }
 
     template <typename GmTensorType>
-    __aicore__ inline void ProcessPageAttention(FaL1Tensor<K_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                                GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessPageAttention(FaL1Tensor<K_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                                GmKvCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
         uint32_t blockElementCnt = 32 / sizeof(K_SCALE_T);
@@ -792,7 +791,7 @@ __aicore__ inline void CopySingleMXScaleNDToNZ(LocalTensor<T> l1Tensor, const Gl
 
     LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
     GlobalTensor<bfloat16_t> gmTensorCast;
-    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(gmTensor.GetPhyAddr())));
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(gmTensor.GetPhyAddr())));
     DataCopy(l1TensorCast, gmTensorCast, nd2nzPara);
 }
 
@@ -801,8 +800,8 @@ template <typename V_SCALE_T, GmFormat GM_FORMAT, L1Format L1_FORMAT = L1Format:
 class CopyValueScaleGmToL1 {
 public:
     template <typename GmTensorType>
-    __aicore__ inline void operator()(FaL1Tensor<V_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                      GmKvCoord &gmCoord)
+    __aicore__ inline void operator()(FaL1Tensor<V_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                      GmKvCoord& gmCoord)
     {
         static_assert(std::is_same_v<V_SCALE_T, typename GmTensorType::dataType>, "DataType of GmTensorType mismatch");
         static_assert(GM_FORMAT == GmTensorType::gmFormat, "GmFormat of GmTensorType mismatch");
@@ -818,10 +817,10 @@ public:
 
 private:
     template <typename GmTensorType>
-    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<V_SCALE_T, L1_FORMAT> &dstTensor,
-                                                         GmTensorType &srcTensor, GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessContinuousOrTensorlist(FaL1Tensor<V_SCALE_T, L1_FORMAT>& dstTensor,
+                                                         GmTensorType& srcTensor, GmKvCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
         if (SCALE_TRANS == ScaleTrans::ND2NZ) {
             CopySingleMXScaleNDToNZ(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize, gmCoord.dDealSize,
@@ -833,10 +832,10 @@ private:
     }
 
     template <typename GmTensorType>
-    __aicore__ inline void ProcessPageAttention(FaL1Tensor<V_SCALE_T, L1_FORMAT> &dstTensor, GmTensorType &srcTensor,
-                                                GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessPageAttention(FaL1Tensor<V_SCALE_T, L1_FORMAT>& dstTensor, GmTensorType& srcTensor,
+                                                GmKvCoord& gmCoord)
     {
-        auto &offsetCalculator = srcTensor.offsetCalculator;
+        auto& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
         uint32_t blockElementCnt = 32 / sizeof(V_SCALE_T);

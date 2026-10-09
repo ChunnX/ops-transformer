@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file add_example_tiling.cpp
@@ -37,10 +37,10 @@ constexpr uint32_t INDEXTHREE = 3;
 struct AddExampleCompileInfo {};
 
 // 获取平台信息如ubSize, coreNum
-static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &ubSize, int64_t &coreNum)
+static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, uint64_t& ubSize, int64_t& coreNum)
 {
     // 获取ubsize coreNum
-    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     coreNum = ascendcPlatform.GetCoreNumAiv();
@@ -51,7 +51,7 @@ static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &u
 }
 
 // 获取属性，shape信息
-ge::graphStatus GetShapeAttrsInfo(gert::TilingContext *context, int64_t &totalIdx, ge::DataType &dataType)
+ge::graphStatus GetShapeAttrsInfo(gert::TilingContext* context, int64_t& totalIdx, ge::DataType& dataType)
 {
     // 获取输入shape信息
     auto inputX = context->GetInputShape(0);
@@ -90,16 +90,16 @@ ge::graphStatus GetShapeAttrsInfo(gert::TilingContext *context, int64_t &totalId
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GetWorkspaceSize(gert::TilingContext *context)
+ge::graphStatus GetWorkspaceSize(gert::TilingContext* context)
 {
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, currentWorkspace);
     currentWorkspace[0] = WS_SYS_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
 // tiling 分发入口
-static ge::graphStatus AddExampleTilingFunc(gert::TilingContext *context)
+static ge::graphStatus AddExampleTilingFunc(gert::TilingContext* context)
 {
     // 1、获取平台运行信息
     uint64_t ubSize;
@@ -117,7 +117,7 @@ static ge::graphStatus AddExampleTilingFunc(gert::TilingContext *context)
                 return ge::GRAPH_FAILED);
 
     // 4、设置tiling信息
-    AddExampleTilingData *tiling = context->GetTilingData<AddExampleTilingData>();
+    AddExampleTilingData* tiling = context->GetTilingData<AddExampleTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);
     OP_CHECK_IF(memset_s(tiling, sizeof(AddExampleTilingData), 0, sizeof(AddExampleTilingData)) != EOK,
                 OP_LOGE(context, "set tiling data error"), return ge::GRAPH_FAILED);
@@ -140,7 +140,7 @@ static ge::graphStatus AddExampleTilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParseForAddExample([[maybe_unused]] gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForAddExample([[maybe_unused]] gert::TilingParseContext* context)
 {
     return ge::GRAPH_SUCCESS;
 }

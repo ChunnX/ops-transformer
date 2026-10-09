@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file vf_rms_norm.h
@@ -21,7 +21,7 @@ namespace MlaProlog {
 constexpr uint64_t FLOAT_REP_SIZE = 64;
 
 template <typename InType, typename GammaType, typename C, typename OutType>
-__simd_vf__ void RmsNormVFImpl(__ubuf__ InType *inputBuf, __ubuf__ GammaType *gammaBuf, __ubuf__ OutType *outputBuf,
+__simd_vf__ void RmsNormVFImpl(__ubuf__ InType* inputBuf, __ubuf__ GammaType* gammaBuf, __ubuf__ OutType* outputBuf,
                                uint32_t cnt, uint32_t repeatTimes, const RmsNormParam rmsNormParams)
 {
     Reg::RegTensor<C> vregSum;
@@ -82,15 +82,15 @@ __simd_vf__ void RmsNormVFImpl(__ubuf__ InType *inputBuf, __ubuf__ GammaType *ga
           epsilon，防止除零极小数
  */
 template <typename InType, typename GammaType, typename C, typename OutType>
-__aicore__ inline void RmsNormVF(const LocalTensor<OutType> &outputLocal, const LocalTensor<InType> &inputLocal,
-                                 const LocalTensor<GammaType> &gammaLocal, const RmsNormParam rmsNormParams)
+__aicore__ inline void RmsNormVF(const LocalTensor<OutType>& outputLocal, const LocalTensor<InType>& inputLocal,
+                                 const LocalTensor<GammaType>& gammaLocal, const RmsNormParam rmsNormParams)
 {
     uint32_t cnt = rmsNormParams.row * rmsNormParams.col;
     uint32_t repeatTimes = (cnt + FLOAT_REP_SIZE - 1) / FLOAT_REP_SIZE;
 
-    __ubuf__ InType *inputBuf = (__ubuf__ InType *)inputLocal.GetPhyAddr();
-    __ubuf__ GammaType *gammaBuf = (__ubuf__ GammaType *)gammaLocal.GetPhyAddr();
-    __ubuf__ OutType *outputBuf = (__ubuf__ OutType *)outputLocal.GetPhyAddr();
+    __ubuf__ InType* inputBuf = (__ubuf__ InType*)inputLocal.GetPhyAddr();
+    __ubuf__ GammaType* gammaBuf = (__ubuf__ GammaType*)gammaLocal.GetPhyAddr();
+    __ubuf__ OutType* outputBuf = (__ubuf__ OutType*)outputLocal.GetPhyAddr();
 
     RmsNormVFImpl<InType, GammaType, C, OutType>(inputBuf, gammaBuf, outputBuf, cnt, repeatTimes, rmsNormParams);
 

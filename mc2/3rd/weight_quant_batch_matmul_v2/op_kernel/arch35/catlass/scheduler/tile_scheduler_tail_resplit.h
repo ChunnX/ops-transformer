@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef ARCH35_CATLASS_SCHEDULER_TILE_SCHEDULER_TAIL_RESPLIT_H
 #define ARCH35_CATLASS_SCHEDULER_TILE_SCHEDULER_TAIL_RESPLIT_H
 
@@ -30,7 +30,7 @@ class TileSchedulerTailResplit {
 public:
     template <typename ProblemShape, typename Params,
               AscendC::Std::enable_if_t<!AscendC::Std::is_tuple_v<Params>, bool> = true>
-    DEVICE TileSchedulerTailResplit(ProblemShape const &problemShape, Params const &params)
+    DEVICE TileSchedulerTailResplit(ProblemShape const& problemShape, Params const& params)
         : nIter(params.mainBlockCount, params.firstTailBlockCount, params.secondTailBlockCount, params.mainBlockSize,
                 params.firstTailBlockSize, params.secondTailBlockSize, params.cubeBlockDimN,
                 static_cast<uint64_t>(get<1>(problemShape)))
@@ -62,7 +62,7 @@ public:
 
     template <typename ProblemShape, typename TilingShape,
               AscendC::Std::enable_if_t<AscendC::Std::is_tuple_v<TilingShape>, bool> = true>
-    DEVICE TileSchedulerTailResplit(ProblemShape const &problemShape, TilingShape const &tiling)
+    DEVICE TileSchedulerTailResplit(ProblemShape const& problemShape, TilingShape const& tiling)
     {}
 
     DEVICE bool IsValid()
@@ -93,12 +93,12 @@ public:
         return mIter;
     }
 
-    DEVICE ContinuousIterator<uint64_t> &MIterRef()
+    DEVICE ContinuousIterator<uint64_t>& MIterRef()
     {
         return mIter;
     }
 
-    DEVICE const ContinuousIterator<uint64_t> &MIterRef() const
+    DEVICE const ContinuousIterator<uint64_t>& MIterRef() const
     {
         return mIter;
     }
@@ -113,12 +113,12 @@ public:
         return nIter;
     }
 
-    DEVICE TailResplitIterator<uint64_t> &NIterRef()
+    DEVICE TailResplitIterator<uint64_t>& NIterRef()
     {
         return nIter;
     }
 
-    DEVICE const TailResplitIterator<uint64_t> &NIterRef() const
+    DEVICE const TailResplitIterator<uint64_t>& NIterRef() const
     {
         return nIter;
     }

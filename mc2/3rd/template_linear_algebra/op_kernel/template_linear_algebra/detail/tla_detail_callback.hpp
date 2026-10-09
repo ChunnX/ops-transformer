@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_DETAIL_CALLBACK_HPP
 #define CATLASS_DETAIL_CALLBACK_HPP
@@ -20,8 +20,8 @@
 /// the callable structure it carries like std::function<void(void)>, so it is necessary to ensure
 /// that it is used within the life cycle of the callable structure.
 struct Callback {
-    void const *func{nullptr};
-    void (*caller)(void const *){nullptr};
+    void const* func{nullptr};
+    void (*caller)(void const*){nullptr};
 
     Callback() = default;
 
@@ -41,14 +41,14 @@ struct Callback {
 };
 
 template <typename Func>
-CATLASS_DEVICE static void FuncWrapper(void const *func)
+CATLASS_DEVICE static void FuncWrapper(void const* func)
 {
-    (*static_cast<Func const *>(func))();
+    (*static_cast<Func const*>(func))();
 }
 
 // Use this to make a callback
 template <typename Func>
-CATLASS_DEVICE Callback MakeCallback(Func *func)
+CATLASS_DEVICE Callback MakeCallback(Func* func)
 {
     Callback callback;
     callback.func = func;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_gather_out_droppad.h
@@ -28,8 +28,8 @@ class MoeGatherOutDroppad {
 public:
     __aicore__ inline MoeGatherOutDroppad(){};
     __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData *tilingData,
-                                TPipe *tPipe);
+                                GM_ADDR expandedScale, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tilingData,
+                                TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -37,7 +37,7 @@ private:
     __aicore__ inline void CopyOut(int64_t progress);
 
 private:
-    TPipe *pipe_;
+    TPipe* pipe_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, GATHER_OUT_DROPPAD_BUFFER_NUM> xCopyInQueue_;
     TQue<QuePosition::VECIN, GATHER_OUT_DROPPAD_BUFFER_NUM> expandedRowIdxCopyInQueue_;
 
@@ -47,7 +47,7 @@ private:
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<float> expandedScaleGm_;
 
-    const MoeV3GatherOutComputeTilingData *gatherOutTilingData_;
+    const MoeV3GatherOutComputeTilingData* gatherOutTilingData_;
 
     int64_t needCoreNum_;
     int64_t blockIdx_;
@@ -122,7 +122,7 @@ __aicore__ inline void MoeGatherOutDroppad<T>::CopyOut(int64_t progress)
 template <typename T>
 __aicore__ inline void MoeGatherOutDroppad<T>::Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR expandedRowIdx,
                                                     GM_ADDR expandedX, GM_ADDR expandedScale, GM_ADDR workspace,
-                                                    const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+                                                    const MoeInitRoutingV3TilingData* tilingData, TPipe* tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -148,10 +148,10 @@ __aicore__ inline void MoeGatherOutDroppad<T>::Init(GM_ADDR inputX, GM_ADDR scal
     lastLoopCols_ = gatherOutTilingData_->lastLoopCols;
     colLoops_ = gatherOutTilingData_->colsLoops;
 
-    inputXGm_.SetGlobalBuffer((__gm__ T *)inputX, coreRows_ * cols_);
-    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX, n_ * k_ * cols_);
+    inputXGm_.SetGlobalBuffer((__gm__ T*)inputX, coreRows_ * cols_);
+    expandedXGm_.SetGlobalBuffer((__gm__ T*)expandedX, n_ * k_ * cols_);
     expandedRowIdxGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)expandedRowIdx + blockIdx_ * gatherOutTilingData_->perCoreIndicesElements,
+        (__gm__ int32_t*)expandedRowIdx + blockIdx_ * gatherOutTilingData_->perCoreIndicesElements,
         Align(coreRows_, sizeof(int32_t)));
 
     pipe_->InitBuffer(xCopyInQueue_, GATHER_OUT_DROPPAD_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_softmax_v2_proto.h
@@ -22,8 +22,10 @@ namespace ge {
 /**
  * @brief compute softmax and topk for moe input.
  * @par Inputs:
- * @li x: A 2D or 3D tensor, the size of each dimensioin should not exceed the maximum value of int32, which is 2147483647. Type is:BFloat16, Float16 or Float32. Format supports ND.
- * @li finished: An optional tensor, the size of each dimensioin should not exceed the maximum value of int32, which is 2147483647. Type is:Bool. Shape is x_shape[:-1]. Format supports ND.
+ * @li x: A 2D or 3D tensor, the size of each dimensioin should not exceed the maximum value of int32, which is
+ 2147483647. Type is:BFloat16, Float16 or Float32. Format supports ND.
+ * @li finished: An optional tensor, the size of each dimensioin should not exceed the maximum value of int32, which is
+ 2147483647. Type is:Bool. Shape is x_shape[:-1]. Format supports ND.
  * @par Outputs:
  * @li y: A tensor. Type is:BFloat16, Float16 or Float32. The data type must be the same as that of x.
        The size of the non-1 axis must be the same as that of the corresponding axis of x.

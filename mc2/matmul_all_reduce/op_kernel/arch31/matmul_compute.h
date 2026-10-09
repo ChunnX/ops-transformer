@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_compute.h
@@ -74,9 +74,9 @@ class MatmulCompute {
 
 public:
     __aicore__ inline MatmulCompute() {}
-    __aicore__ inline void Init(AscendC::tiling::TCubeTiling &tiling, Mc2Tiling::RCSTiling &cfg,
-                                Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling,
-                                const LocalTensor<uint8_t> &mmFormatUb);
+    __aicore__ inline void Init(AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg,
+                                Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
+                                const LocalTensor<uint8_t>& mmFormatUb);
     __aicore__ inline void InitGlobalBTensor(GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR antiquantScale,
                                              GM_ADDR antiquantOffset);
     __aicore__ inline void InitGlobalATensor(GM_ADDR aGM, uint32_t aSize, GM_ADDR cGM, uint32_t cSize);
@@ -114,8 +114,8 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cac
     (void)antiquantScale;
     (void)antiquantOffset;
     // MC2的计算流中默认B矩阵不变，GM地址无需偏移
-    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ B_T *>(bGM), block.tiling.Kb * block.tiling.N);
-    biasGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ BiasT *>(biasGM), block.tiling.N);
+    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ B_T*>(bGM), block.tiling.Kb * block.tiling.N);
+    biasGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ BiasT*>(biasGM), block.tiling.N);
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
@@ -125,8 +125,8 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cac
                                                                             uint32_t cSize)
 {
     // MC2的计算流中默认B矩阵不变，GM地址无需偏移
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(aGM), aSize);
-    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(cGM), cSize);
+    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T*>(aGM), aSize);
+    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T*>(cGM), cSize);
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
@@ -135,7 +135,7 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cac
                                      hasAntiQuantOffset>::InitDequantScale(GM_ADDR dequantGM)
 {
     // per-channel quant dequant与bias的shape类似，默认无需偏移
-    dequantGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t *>(dequantGM));
+    dequantGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(dequantGM));
     isPerTensor = static_cast<uint32_t>(IsPerTensor::PER_CHANNEL); // per-channel 为2
 }
 
@@ -152,10 +152,10 @@ __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cac
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool Mc2L2Cache, bool WeightQuant,
           AntiQuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType,
-                                     hasAntiQuantOffset>::Init(AscendC::tiling::TCubeTiling &tiling,
-                                                               Mc2Tiling::RCSTiling &cfg,
-                                                               Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling,
-                                                               const LocalTensor<uint8_t> &mmFormatUb)
+                                     hasAntiQuantOffset>::Init(AscendC::tiling::TCubeTiling& tiling,
+                                                               Mc2Tiling::RCSTiling& cfg,
+                                                               Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
+                                                               const LocalTensor<uint8_t>& mmFormatUb)
 {
     // MatmulImpl初始化
     mm.SetSubBlockIdx(0);

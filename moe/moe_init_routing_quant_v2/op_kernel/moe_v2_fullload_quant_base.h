@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_v2_fullload_quant_base.h
@@ -27,7 +27,7 @@ public:
 protected:
     __aicore__ inline void InitBase(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
                                     GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace,
-                                    const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe);
+                                    const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void ProcessBase();
     __aicore__ inline void CopyIn();
     __aicore__ inline void SortCompute();
@@ -36,9 +36,9 @@ protected:
     __aicore__ inline void ComputeExpertTokenCountOrCumsum();
 
 protected:
-    const InnerMoeV2GatherOutComputeTilingData *gatherOutTilingData;
+    const InnerMoeV2GatherOutComputeTilingData* gatherOutTilingData;
 
-    TPipe *pipe;
+    TPipe* pipe;
     int64_t tileLength;
     int64_t bufferNum = 1;
     int64_t totalLength;
@@ -247,7 +247,7 @@ __aicore__ inline void MoeV2FullLoadQuantBase::CopyOutEmpty()
 __aicore__ inline void MoeV2FullLoadQuantBase::InitBase(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX,
                                                         GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
                                                         GM_ADDR workspace,
-                                                        const MoeInitRoutingQuantV2TilingData *tilingData, TPipe *tPipe)
+                                                        const MoeInitRoutingQuantV2TilingData* tilingData, TPipe* tPipe)
 {
     this->gatherOutTilingData = &(tilingData->gatherOutComputeParamsOp);
     this->blockIdx = GetBlockIdx();
@@ -271,13 +271,13 @@ __aicore__ inline void MoeV2FullLoadQuantBase::InitBase(GM_ADDR x, GM_ADDR exper
     this->totalLength = tilingData->n * tilingData->k;
     this->pipe = tPipe;
 
-    expertIdxGm.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength);
+    expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx, this->tileLength);
 
-    expandedXGm.SetGlobalBuffer((__gm__ int8_t *)expandedX);
-    expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength);
+    expandedXGm.SetGlobalBuffer((__gm__ int8_t*)expandedX);
+    expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx, this->tileLength);
     if (this->expertTokensCountOrCumsumFlag > 0) {
         // dropless
-        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum,
+        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t*)expertTokensCountOrCumsum,
                                                     Align(this->expertNum, sizeof(int32_t)));
     }
 

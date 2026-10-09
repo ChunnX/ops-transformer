@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <array>
 #include <vector>
@@ -22,11 +22,11 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void moe_token_permute_with_ep(
-    GM_ADDR tokens, GM_ADDR indices, GM_ADDR probs, GM_ADDR permuteTokens, GM_ADDR sortedIndices, GM_ADDR permuteProbs,
-    GM_ADDR workspace, GM_ADDR tiling);
-class moe_token_permute_with_ep_test : public testing::Test
-{
+extern "C" __global__ __aicore__ void moe_token_permute_with_ep(GM_ADDR tokens, GM_ADDR indices, GM_ADDR probs,
+                                                                GM_ADDR permuteTokens, GM_ADDR sortedIndices,
+                                                                GM_ADDR permuteProbs, GM_ADDR workspace,
+                                                                GM_ADDR tiling);
+class moe_token_permute_with_ep_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -71,9 +71,8 @@ TEST_F(moe_token_permute_with_ep_test, test_token_permute_0)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs,
+                workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -119,9 +118,8 @@ TEST_F(moe_token_permute_with_ep_test, test_token_permute_1)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs,
+                workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -167,9 +165,8 @@ TEST_F(moe_token_permute_with_ep_test, test_token_permute_2)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs,
+                workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -215,9 +212,8 @@ TEST_F(moe_token_permute_with_ep_test, test_token_permute_3)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs,
+                workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -263,9 +259,8 @@ TEST_F(moe_token_permute_with_ep_test, test_token_permute_4)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs,
+                workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -311,9 +306,8 @@ TEST_F(moe_token_permute_with_ep_test, test_token_permute_5)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs,
+                workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -359,9 +353,8 @@ TEST_F(moe_token_permute_with_ep_test, test_token_permute_6)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs,
+                workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);
@@ -407,9 +400,8 @@ TEST_F(moe_token_permute_with_ep_test, test_token_permute_7)
     string path(path_);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_token_permute_with_ep, blockDim, x, rowIdx, probs, expandedX, expandedExpertIdx, expandedProbs,
+                workspace, tiling);
 
     AscendC::GmFree((void*)x);
     AscendC::GmFree((void*)rowIdx);

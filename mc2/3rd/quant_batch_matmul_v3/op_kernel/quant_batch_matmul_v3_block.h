@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file quant_batch_matmul_v3_block.h
@@ -21,8 +21,8 @@ namespace AscendC {
 class Mc2QuantBatchMatmulV3BaseBlock {
 public:
     __aicore__ inline Mc2QuantBatchMatmulV3BaseBlock() {}
-    __aicore__ inline void Init(const Mc2QuantBatchMatmulV3TilingData *tilingData);
-    __aicore__ inline void Init(const Mc2L2cacheTileParam *tilingL2, const TCubeTiling *matmulTilingData);
+    __aicore__ inline void Init(const Mc2QuantBatchMatmulV3TilingData* tilingData);
+    __aicore__ inline void Init(const Mc2L2cacheTileParam* tilingL2, const TCubeTiling* matmulTilingData);
     __aicore__ inline void UpdateBlockCnt(uint64_t mTileIndex, uint64_t nTileIndex);
     __aicore__ inline void InitFirstTileBlockIndex();
     __aicore__ inline void InitBlockIndex();
@@ -42,16 +42,16 @@ public:
     uint64_t blockIdxStart_;
     uint64_t blockIdxEnd_;
     uint32_t blockIdx_;
-    const TCubeTiling *matmulTilingData_;
+    const TCubeTiling* matmulTilingData_;
 };
 
-__aicore__ inline void Mc2QuantBatchMatmulV3BaseBlock::Init(const Mc2QuantBatchMatmulV3TilingData *tilingData)
+__aicore__ inline void Mc2QuantBatchMatmulV3BaseBlock::Init(const Mc2QuantBatchMatmulV3TilingData* tilingData)
 {
     this->Init(&(tilingData->tileL2cacheTiling), &(tilingData->matmulTiling));
 }
 
-__aicore__ inline void Mc2QuantBatchMatmulV3BaseBlock::Init(const Mc2L2cacheTileParam *tilingL2,
-                                                            const TCubeTiling *matmulTilingData)
+__aicore__ inline void Mc2QuantBatchMatmulV3BaseBlock::Init(const Mc2L2cacheTileParam* tilingL2,
+                                                            const TCubeTiling* matmulTilingData)
 {
     blockIdx_ = static_cast<uint32_t>(GetBlockIdx());
     if ASCEND_IS_AIV {

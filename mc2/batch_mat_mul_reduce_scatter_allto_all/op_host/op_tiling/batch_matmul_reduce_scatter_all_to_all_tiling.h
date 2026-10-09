@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file batch_matmul_reduce_scatter_all_to_all_tiling.h
@@ -44,7 +44,7 @@ struct ReduceScatterAlltoAllBatchInfo {
 };
 
 struct ReduceScatterAlltoAllMatmulInfo {
-    const char *opName = nullptr;
+    const char* opName = nullptr;
     bool isWeightTrans = false;
     bool isBias = false;
     ge::DataType aType = ge::DT_FLOAT16;
@@ -58,9 +58,9 @@ struct ReduceScatterAlltoAllMatmulInfo {
 
 class BatchMatMulReduceScatterAlltoAllTiling : public Mc2batch_mat_mul_v3::Mc2BatchMatmulV3BaseTiling {
 public:
-    BatchMatMulReduceScatterAlltoAllTiling(gert::TilingContext *context, Mc2BatchMatmulTilingData &bmmTilingData,
-                                           ReduceScatterAlltoAllBatchInfo &BMMV3BatchInfo,
-                                           ReduceScatterAlltoAllMatmulInfo &MMV3ArgsInfo)
+    BatchMatMulReduceScatterAlltoAllTiling(gert::TilingContext* context, Mc2BatchMatmulTilingData& bmmTilingData,
+                                           ReduceScatterAlltoAllBatchInfo& BMMV3BatchInfo,
+                                           ReduceScatterAlltoAllMatmulInfo& MMV3ArgsInfo)
         : Mc2BatchMatmulV3BaseTiling(context, bmmTilingData),
           BMMV3BatchInfo_(BMMV3BatchInfo),
           MMV3ArgsInfo_(MMV3ArgsInfo)

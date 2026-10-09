@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_checker_for_mmads8s4.cpp
@@ -97,12 +97,12 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckAttr()
     size_t idx = 0;
     auto transposeX = attrs->GetAttrPointer<bool>(idx++);
     auto transposeWeight = attrs->GetAttrPointer<bool>(idx++);
-    const int64_t *groupSizePtr = nullptr;
+    const int64_t* groupSizePtr = nullptr;
     if (attrs->GetAttrNum() > idx) {
         groupSizePtr = attrs->GetAttrPointer<int64_t>(idx++);
     }
     idx++; // 跳过dtype属性
-    const int64_t *innerPrecisePtr = nullptr;
+    const int64_t* innerPrecisePtr = nullptr;
     if (attrs->GetAttrNum() > idx) {
         innerPrecisePtr = attrs->GetAttrPointer<int64_t>(idx++);
     }
@@ -212,8 +212,8 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckShape()
     return true;
 }
 
-bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckInputShape(const gert::StorageShape *xShape,
-                                                                  const gert::StorageShape *weightShape)
+bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckInputShape(const gert::StorageShape* xShape,
+                                                                  const gert::StorageShape* weightShape)
 {
     OP_TILING_CHECK(inputParams_.aFormat != ge::Format::FORMAT_ND && inputParams_.aFormat != ge::Format::FORMAT_NCHW,
                     OP_LOGE_FOR_INVALID_FORMAT(inputParams_.opName, "x",
@@ -270,8 +270,8 @@ bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckInputShape(const gert::St
     return true;
 }
 
-bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckAntiQuantShape(const gert::StorageShape *antiQuantScaleShape,
-                                                                      const gert::StorageShape *antiQuantOffsetShape)
+bool Mc2WeightQuantBatchMatmulV2Checker4MmadS8S4::CheckAntiQuantShape(const gert::StorageShape* antiQuantScaleShape,
+                                                                      const gert::StorageShape* antiQuantOffsetShape)
 {
     size_t antiQuantScaleDimNum = antiQuantScaleShape->GetStorageShape().GetDimNum();
     size_t antiQuantScaleShapeSize = static_cast<size_t>(antiQuantScaleShape->GetStorageShape().GetShapeSize());

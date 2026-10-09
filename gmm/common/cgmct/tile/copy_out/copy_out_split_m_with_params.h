@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file copy_out_split_m_with_params.h
@@ -54,7 +54,7 @@ public:
      * @param [in] orgKc: original Kc value
      * @param [in] id: blcok id, default is 0
      */
-    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT> &dstLocal, const AscendC::LocalTensor<SrcT> &src,
+    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT>& dstLocal, const AscendC::LocalTensor<SrcT>& src,
                                       int32_t curRow, int32_t curCol, int32_t l0CTileH, int32_t l0CTileW, int32_t baseM,
                                       int32_t baseN, int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
     {
@@ -128,7 +128,7 @@ public:
      * @param [in] id: blcok id, default is 0
      * @note Calculate the destination offset, set up copy parameters, and perform the data copy using Fixpipe
      */
-    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT> &dst, const AscendC::LocalTensor<SrcT> &src,
+    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT>& dst, const AscendC::LocalTensor<SrcT>& src,
                                       int curRow, int curCol, int32_t l0CTileH, int32_t l0CTileW, int32_t baseM,
                                       int32_t baseN, int orgM, int orgN, int orgKc, uint8_t id = 0)
     {
@@ -192,7 +192,7 @@ public:
      * @param [in] orgKc: original Kc value
      * @param [in] id: blcok id, default is 0
      */
-    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT> &dst, const AscendC::LocalTensor<SrcT> &src,
+    __aicore__ inline void operator()(const AscendC::LocalTensor<DstT>& dst, const AscendC::LocalTensor<SrcT>& src,
                                       int32_t curRow, int32_t curCol, int32_t l0CTileH, int32_t l0CTileW, int32_t baseM,
                                       int32_t baseN, int32_t orgM, int32_t orgN, int32_t orgKc, uint8_t id = 0)
     {

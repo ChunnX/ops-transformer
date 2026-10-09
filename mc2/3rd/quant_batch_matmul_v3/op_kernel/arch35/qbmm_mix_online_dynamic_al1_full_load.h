@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file qbmm_mix_online_dynamic_al1_full_load.h
@@ -25,14 +25,14 @@ using namespace matmul;
 
 template <class aType, class bType, class scaleType, class biasType, class ptScaleType, class cType, CubeFormat aFormat,
           CubeFormat bFormat, CubeFormat cFormat, bool aTrans, bool bTrans, class l0cDtype,
-          class blockType = Mc2QuantBmmAswBlock, const MatmulConfig &mmCfg = MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>
+          class blockType = Mc2QuantBmmAswBlock, const MatmulConfig& mmCfg = MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>
 class Mc2QuantBmmPertokenAL1FullLoad
     : public Mc2QuantBmmPertokenRegbaseKernel<aType, bType, scaleType, biasType, ptScaleType, cType, aFormat, bFormat,
                                               cFormat, aTrans, bTrans, l0cDtype, blockType, mmCfg> {
 public:
     __aicore__ inline Mc2QuantBmmPertokenAL1FullLoad() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR scale, GM_ADDR offset, GM_ADDR bias, GM_ADDR ptScale,
-                                GM_ADDR cGM, GM_ADDR workSpace, const void *tilingData, TPipe *pipe);
+                                GM_ADDR cGM, GM_ADDR workSpace, const void* tilingData, TPipe* pipe);
     __aicore__ inline void InitBuffer();
     __aicore__ inline void Process();
     __aicore__ inline void ProcessWithoutBatch();
@@ -54,7 +54,7 @@ protected:
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 __aicore__ inline void Mc2QuantBmmPertokenAL1FullLoad<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR scale, GM_ADDR offset, GM_ADDR bias, GM_ADDR ptScale, GM_ADDR cGM,
-    GM_ADDR workSpace, const void *tilingData, TPipe *pipe)
+    GM_ADDR workSpace, const void* tilingData, TPipe* pipe)
 {
     this->blockIdx_ = GetBlockIdx();
     if ASCEND_IS_AIV {
@@ -62,7 +62,7 @@ __aicore__ inline void Mc2QuantBmmPertokenAL1FullLoad<LOCAL_TEMPLATE_FUNC_MIX_PA
         this->subBlockIdx_ = AscendC::GetSubBlockIdx();
     }
     this->pipe_ = pipe;
-    this->tilingData_ = static_cast<const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *>(tilingData);
+    this->tilingData_ = static_cast<const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams*>(tilingData);
 
     this->biasDtype_ = this->tilingData_->params.biasDtype;
     this->isBiasEpilogue_ =

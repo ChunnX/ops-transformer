@@ -1,10 +1,10 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License. */
 
 /*!
@@ -113,7 +113,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight, GM_ADDR weight_scale, GM_ADDR group_list,
                                 GM_ADDR bias, GM_ADDR x_scale, GM_ADDR x_offset, GM_ADDR smooth_scale, GM_ADDR y,
-                                GM_ADDR usrWorkspace, const QuantGroupedMatmulDequantTilingData *__restrict qmmTiling)
+                                GM_ADDR usrWorkspace, const QuantGroupedMatmulDequantTilingData* __restrict qmmTiling)
     {
         // block_id
         block_id = GetBlockIdx();
@@ -141,8 +141,8 @@ protected:
                                              GM_ADDR group_list, GM_ADDR bias, GM_ADDR x_scale, GM_ADDR x_offset,
                                              GM_ADDR smooth_scale, GM_ADDR y, GM_ADDR usrWorkspace)
     {
-        groupGM.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(group_list), tilingData->originE);
-        xZNGM.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(usrWorkspace),
+        groupGM.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(group_list), tilingData->originE);
+        xZNGM.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(usrWorkspace),
                               (tilingData->originM + NM_FRACTAL_INT8 - 1) / NM_FRACTAL_INT8 * NM_FRACTAL_INT8 *
                                   tilingData->originKAligned32);
         usrWorkspace += (tilingData->originM + NM_FRACTAL_INT8 - 1) / NM_FRACTAL_INT8 * NM_FRACTAL_INT8 *
@@ -150,13 +150,13 @@ protected:
         InitCommonGlobalTensors(x, quantized_weight, weight_scale, bias, x_scale, x_offset, smooth_scale, y,
                                 usrWorkspace);
         quantizedWeightGm.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int8_t *>(quantized_weight),
+            reinterpret_cast<__gm__ int8_t*>(quantized_weight),
             tilingData->originE * tilingData->fracK * tilingData->fracN * NM_FRACTAL_INT8 * K_FRACTAL_INT8);
         if (isWScaleInt64) {
-            wScaleGmInt64.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(weight_scale),
+            wScaleGmInt64.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(weight_scale),
                                           tilingData->originE * tilingData->originN);
         } else {
-            wScaleGm.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weight_scale),
+            wScaleGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(weight_scale),
                                      tilingData->originE * tilingData->originN);
         }
     }

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_v2_tiling_util.h
@@ -33,7 +33,7 @@ typename std::enable_if<std::is_signed<T>::value, T>::type CeilDiv(T x, T y)
     return x;
 }
 
-std::string PrintShape(const gert::Shape &shape)
+std::string PrintShape(const gert::Shape& shape)
 {
     std::ostringstream oss;
     oss << "[";
@@ -47,7 +47,7 @@ std::string PrintShape(const gert::Shape &shape)
     return oss.str();
 }
 
-std::string PrintTensorDesc(const gert::StorageShape *shape, const gert::CompileTimeTensorDesc *tensor)
+std::string PrintTensorDesc(const gert::StorageShape* shape, const gert::CompileTimeTensorDesc* tensor)
 {
     if (shape == nullptr || tensor == nullptr) {
         return "nil ";
@@ -67,7 +67,7 @@ std::string PrintTensorDesc(const gert::StorageShape *shape, const gert::Compile
     return oss.str();
 }
 
-std::string PrintTilingContext(gert::TilingContext *context)
+std::string PrintTilingContext(gert::TilingContext* context)
 {
     std::ostringstream oss;
     for (size_t i = 0; i < context->GetComputeNodeInfo()->GetInputsNum(); ++i) {

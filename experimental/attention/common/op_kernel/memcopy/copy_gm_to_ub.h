@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file copy_gm_to_ub.h
@@ -104,8 +104,8 @@ struct AntiqGmCoord {
 template <typename T, GmFormat GM_FORMAT>
 class CopyAntiquantGmToUb {
 public:
-    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
-                                      AntiqGmCoord &antiqGmCoord)
+    __aicore__ inline void operator()(FaUbTensor<T>& dstTensor, FaGmTensor<T, GM_FORMAT>& srcTensor,
+                                      AntiqGmCoord& antiqGmCoord)
     {
         // per tensor场景在接口外部直接getvalue
         // per channel / per token
@@ -119,11 +119,11 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessAntiqPerChannelOrPerToken(FaUbTensor<T> &dstTensor,
-                                                            FaGmTensor<T, GM_FORMAT> &srcTensor,
-                                                            AntiqGmCoord &antiqGmCoord)
+    __aicore__ inline void ProcessAntiqPerChannelOrPerToken(FaUbTensor<T>& dstTensor,
+                                                            FaGmTensor<T, GM_FORMAT>& srcTensor,
+                                                            AntiqGmCoord& antiqGmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset = offsetCalculator.GetOffset(antiqGmCoord.bIdx, antiqGmCoord.n2Idx, antiqGmCoord.s2Idx, 0);
         if constexpr (GM_FORMAT == GmFormat::ND) {
             CopySingleMatrixNDToND<T>(dstTensor.tensor, srcTensor.gmTensor[offset], 1, offsetCalculator.GetDimD(),
@@ -134,10 +134,10 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessAntiqPA(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
-                                          AntiqGmCoord &antiqGmCoord)
+    __aicore__ inline void ProcessAntiqPA(FaUbTensor<T>& dstTensor, FaGmTensor<T, GM_FORMAT>& srcTensor,
+                                          AntiqGmCoord& antiqGmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
 
         uint64_t dstOffset = 0;
         uint32_t copyFinishElmeCnt = 0;
@@ -165,12 +165,12 @@ private:
 template <typename T, GmFormat GM_FORMAT>
 class CopyQueryGmToUb {
 public:
-    __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    __aicore__ inline void operator()(FaUbTensor<T>& dstTensor, FaGmTensor<T, GM_FORMAT>& srcTensor, GmCoord& gmCoord)
     {
         if constexpr ((GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
             ProcessS1G(dstTensor, srcTensor, gmCoord);
         } else if constexpr (GM_FORMAT == GmFormat::BNGSD) {
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+            OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 ProcessGS1(dstTensor, srcTensor, gmCoord);
             } else {
@@ -182,9 +182,9 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessGS1(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    __aicore__ inline void ProcessGS1(FaUbTensor<T>& dstTensor, FaGmTensor<T, GM_FORMAT>& srcTensor, GmCoord& gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t s1Size = 0;
         if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
             s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
@@ -235,11 +235,11 @@ private:
         }
     }
 
-    __aicore__ inline void ProcessContinuous(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor,
-                                             GmCoord &gmCoord)
+    __aicore__ inline void ProcessContinuous(FaUbTensor<T>& dstTensor, FaGmTensor<T, GM_FORMAT>& srcTensor,
+                                             GmCoord& gmCoord)
     {
         // B*N2*GS1*D
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t gIdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimS1();
         uint32_t s1IdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimS1();
 
@@ -248,9 +248,9 @@ private:
                                   offsetCalculator.GetStrideS1(), dstTensor.colCount);
     }
 
-    __aicore__ inline void ProcessS1G(FaUbTensor<T> &dstTensor, FaGmTensor<T, GM_FORMAT> &srcTensor, GmCoord &gmCoord)
+    __aicore__ inline void ProcessS1G(FaUbTensor<T>& dstTensor, FaGmTensor<T, GM_FORMAT>& srcTensor, GmCoord& gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = dstTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = dstTensor.offsetCalculator;
         uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
         uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
         uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();
@@ -295,8 +295,8 @@ private:
 template <typename KV_T, GmFormat GM_FORMAT>
 class CopyKvGmToUb {
 public:
-    __aicore__ inline void operator()(FaUbTensor<KV_T> &dstTensor, FaGmTensor<KV_T, GM_FORMAT> &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void operator()(FaUbTensor<KV_T>& dstTensor, FaGmTensor<KV_T, GM_FORMAT>& srcTensor,
+                                      GmCoord& gmCoord)
     {
         if constexpr (GM_FORMAT == GmFormat::BNSD || GM_FORMAT == GmFormat::BSND || GM_FORMAT == GmFormat::NTD ||
                       GM_FORMAT == GmFormat::TND) {
@@ -308,19 +308,19 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessContinuousOrTensorlist(FaUbTensor<KV_T> &dstTensor,
-                                                         FaGmTensor<KV_T, GM_FORMAT> &srcTensor, GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessContinuousOrTensorlist(FaUbTensor<KV_T>& dstTensor,
+                                                         FaGmTensor<KV_T, GM_FORMAT>& srcTensor, GmKvCoord& gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint64_t offset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gmCoord.s2Idx, gmCoord.dIdx);
         CopySingleMatrixNDToND<KV_T>(dstTensor.tensor, srcTensor.gmTensor[offset], gmCoord.s2DealSize,
                                      offsetCalculator.GetStrideS2(), gmCoord.dDealSize, dstTensor.colCount);
     }
 
-    __aicore__ inline void ProcessPageAttention(FaUbTensor<KV_T> &dstTensor, FaGmTensor<KV_T, GM_FORMAT> &srcTensor,
-                                                GmKvCoord &gmCoord)
+    __aicore__ inline void ProcessPageAttention(FaUbTensor<KV_T>& dstTensor, FaGmTensor<KV_T, GM_FORMAT>& srcTensor,
+                                                GmKvCoord& gmCoord)
     {
-        OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+        OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
         uint32_t blockElementCnt = AttentionCommon::BYTE_BLOCK / sizeof(KV_T);
@@ -394,13 +394,13 @@ struct GmPseCoord {
 template <typename PSE_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
 class CopyPSEGmToUb {
 public:
-    __aicore__ inline void operator()(FaUbTensor<PSE_T> &dstTensor, FaGmTensor<PSE_T, GM_FORMAT> &srcTensor,
-                                      GmPseCoord &gmPseCoord,
+    __aicore__ inline void operator()(FaUbTensor<PSE_T>& dstTensor, FaGmTensor<PSE_T, GM_FORMAT>& srcTensor,
+                                      GmPseCoord& gmPseCoord,
                                       bool qsEqualOne = false) // qsEqualOne用于适配qs = 1时，pseshifts1 > qs的场景
     {
         if constexpr (UB_FORMAT == UbFormat::GS1) {
             // 连续，单次拷贝
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+            OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
             uint64_t s1Size = 0;
             if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmPseCoord.actualBIdx);
@@ -425,7 +425,7 @@ public:
             }
         } else if constexpr (UB_FORMAT == UbFormat::S1G) {
             // 不连续，需要分3次拷贝
-            OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+            OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
             uint32_t s1IdxStart = gmPseCoord.gS1Idx / offsetCalculator.GetDimG();
             uint32_t gIdxStart = gmPseCoord.gS1Idx % offsetCalculator.GetDimG();
             uint32_t s1IdxEnd = (gmPseCoord.gS1Idx + gmPseCoord.gS1DealSize) / offsetCalculator.GetDimG();

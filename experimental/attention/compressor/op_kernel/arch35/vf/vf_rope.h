@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file vf_rope.h
@@ -36,7 +36,7 @@ constexpr Reg::CastTrait castTraitB322B16 = {
 };
 
 template <typename T, typename ROPET>
-__simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T *inUb, __ubuf__ ROPET *outUb,
+__simd_vf__ void HalfModeRopeVF(__ubuf__ T* sinUb, __ubuf__ T* cosUb, __ubuf__ T* inUb, __ubuf__ ROPET* outUb,
                                 uint32_t row, uint32_t col, uint32_t actualCol, uint64_t baseAddr)
 {
     Reg::RegTensor<T> vregCos;
@@ -57,10 +57,10 @@ __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T
     uint32_t halfCol = col / 2;
 
     for (uint32_t rIdx = 0; rIdx < row; rIdx++) {
-        __ubuf__ T *curSinUb = sinUb + rIdx * col;
-        __ubuf__ T *curCosUb = cosUb + rIdx * col;
-        __ubuf__ T *curInUb = inUb + rIdx * actualCol;
-        __ubuf__ ROPET *curOutUb = outUb + rIdx * actualCol;
+        __ubuf__ T* curSinUb = sinUb + rIdx * col;
+        __ubuf__ T* curCosUb = cosUb + rIdx * col;
+        __ubuf__ T* curInUb = inUb + rIdx * actualCol;
+        __ubuf__ ROPET* curOutUb = outUb + rIdx * actualCol;
 
         Reg::DataCopy(vregIn, curInUb + baseAddr);
         Reg::DataCopy(vregHalfIn, curInUb + baseAddr + halfCol);
@@ -90,7 +90,7 @@ __simd_vf__ void HalfModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T
 }
 
 template <typename T, typename ROPET>
-__simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ubuf__ T *inUb, __ubuf__ ROPET *outUb,
+__simd_vf__ void InterleaveModeRopeVF(__ubuf__ T* sinUb, __ubuf__ T* cosUb, __ubuf__ T* inUb, __ubuf__ ROPET* outUb,
                                       uint32_t row, uint32_t col, uint32_t actualCol, uint64_t baseAddr)
 {
     Reg::RegTensor<T> vregCos;
@@ -107,10 +107,10 @@ __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ub
     Reg::MaskReg mask = Reg::UpdateMask<T>(maskValue);
 
     for (uint32_t rIdx = 0; rIdx < row; rIdx++) {
-        __ubuf__ T *curSinUb = sinUb + rIdx * col;
-        __ubuf__ T *curCosUb = cosUb + rIdx * col;
-        __ubuf__ T *curInUb = inUb + rIdx * actualCol;
-        __ubuf__ ROPET *curOutUb = outUb + rIdx * actualCol;
+        __ubuf__ T* curSinUb = sinUb + rIdx * col;
+        __ubuf__ T* curCosUb = cosUb + rIdx * col;
+        __ubuf__ T* curInUb = inUb + rIdx * actualCol;
+        __ubuf__ ROPET* curOutUb = outUb + rIdx * actualCol;
 
         Reg::DataCopy(vregIn, curInUb + baseAddr);
         Reg::DataCopy(vregCos, curCosUb);
@@ -134,14 +134,14 @@ __simd_vf__ void InterleaveModeRopeVF(__ubuf__ T *sinUb, __ubuf__ T *cosUb, __ub
 }
 
 template <Compressor::ROTARY_MODE MODE, typename T, typename ROPET>
-__aicore__ inline void RopeVF(const LocalTensor<T> &sinTensor, const LocalTensor<T> &cosTensor,
-                              const LocalTensor<T> &inTensor, const LocalTensor<ROPET> &outTensor, uint32_t row,
+__aicore__ inline void RopeVF(const LocalTensor<T>& sinTensor, const LocalTensor<T>& cosTensor,
+                              const LocalTensor<T>& inTensor, const LocalTensor<ROPET>& outTensor, uint32_t row,
                               uint32_t col, uint32_t actualCol, uint64_t baseAddr)
 {
-    __ubuf__ T *sinUb = (__ubuf__ T *)sinTensor.GetPhyAddr();
-    __ubuf__ T *cosUb = (__ubuf__ T *)cosTensor.GetPhyAddr();
-    __ubuf__ T *inUb = (__ubuf__ T *)inTensor.GetPhyAddr();
-    __ubuf__ ROPET *outUb = (__ubuf__ ROPET *)outTensor.GetPhyAddr();
+    __ubuf__ T* sinUb = (__ubuf__ T*)sinTensor.GetPhyAddr();
+    __ubuf__ T* cosUb = (__ubuf__ T*)cosTensor.GetPhyAddr();
+    __ubuf__ T* inUb = (__ubuf__ T*)inTensor.GetPhyAddr();
+    __ubuf__ ROPET* outUb = (__ubuf__ ROPET*)outTensor.GetPhyAddr();
 
     if constexpr (MODE == Compressor::ROTARY_MODE::HALF) {
         HalfModeRopeVF(sinUb, cosUb, inUb, outUb, row, col, actualCol, baseAddr);

@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /**
  * @brief matmul implementation for single q&k^t base tile
@@ -72,7 +72,7 @@ public:
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementQ, fp8_e4m3fn_t>::value;
 
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, Mm1L1TileHelper &mm1L1TileHelper)
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag>& resource, Mm1L1TileHelper& mm1L1TileHelper)
     {
         l1QBufNum = mm1L1TileHelper.qL1BufNum;
         l1KBufNum = mm1L1TileHelper.kL1BufNum;
@@ -99,7 +99,7 @@ public:
     __aicore__ inline ~BlockMmadTla() {}
 
     template <class TensorQ>
-    __aicore__ inline void loadQGM(TensorQ &gQTensor, GemmCoord actualOriShape)
+    __aicore__ inline void loadQGM(TensorQ& gQTensor, GemmCoord actualOriShape)
     {
         uint32_t qSTile = actualOriShape[0];
         uint32_t embed = actualOriShape[1];
@@ -116,7 +116,7 @@ public:
     }
 
     template <class TensorK, class TensorL1K>
-    __aicore__ inline void SparseKL1TileNLoad(TensorK &gKTensor, TensorL1K &l1KTensorTla,
+    __aicore__ inline void SparseKL1TileNLoad(TensorK& gKTensor, TensorL1K& l1KTensorTla,
                                               AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
                                               uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen, uint32_t kvSBaseTile,
                                               uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
@@ -170,7 +170,7 @@ public:
     }
 
     template <class TensorK, class TensorS>
-    __aicore__ inline void operator()(TensorK &gKTensor, TensorS &ubCTensor,
+    __aicore__ inline void operator()(TensorK& gKTensor, TensorS& ubCTensor,
                                       AscendC::GlobalTensor<int32_t> gSparseBlockIdx, GemmCoord actualOriShape,
                                       uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen, uint32_t kvSBaseTile,
                                       uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,

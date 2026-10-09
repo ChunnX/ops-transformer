@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_swiglu_quant_v2_base_tiling.h
@@ -24,7 +24,7 @@ namespace GroupedMatmulSwigluQuantV2Tiling {
 
 class GroupedMatmulSwigluQuantV2BaseTiling : public GroupedMatmulSwigluQuantV2Tiling {
 public:
-    explicit GroupedMatmulSwigluQuantV2BaseTiling(gert::TilingContext *context)
+    explicit GroupedMatmulSwigluQuantV2BaseTiling(gert::TilingContext* context)
         : GroupedMatmulSwigluQuantV2Tiling(context) {};
 
     ~GroupedMatmulSwigluQuantV2BaseTiling() override = default;
@@ -44,9 +44,9 @@ protected:
     ge::graphStatus ParseInputAndAttr();
     int64_t CalMaxRowInUbA8W4(const uint64_t ubSize, const uint64_t n) const;
     int64_t CalMaxRowInUb(const uint64_t ubSize, const uint64_t n) const;
-    int32_t FindBestSingleN(const uint32_t &aicNum, int64_t baseM, int64_t baseN) const;
+    int32_t FindBestSingleN(const uint32_t& aicNum, int64_t baseM, int64_t baseN) const;
     bool TryFullLoadA(int32_t baseM, int64_t baseN, int64_t baseK, uint64_t l1Size);
-    ge::graphStatus DynamicTilingSingleN(const gert::TilingContext *context, const uint32_t &aicNum, int64_t baseM,
+    ge::graphStatus DynamicTilingSingleN(const gert::TilingContext* context, const uint32_t& aicNum, int64_t baseM,
                                          int64_t baseN, int64_t baseK);
 
 private:

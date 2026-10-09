@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file gm_ub_gm_copy.h
@@ -31,12 +31,12 @@ template <typename DataType>
 class GmUbGmCopy {
 public:
     __aicore__ inline GmUbGmCopy(){};
-    __aicore__ inline void Init(uint64_t dataSize, uint64_t aivNum, GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe *tPipe);
+    __aicore__ inline void Init(uint64_t dataSize, uint64_t aivNum, GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InitParams(uint64_t dataSize, uint64_t aivNum);
-    __aicore__ inline void InitBuffers(GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe *tPipe);
+    __aicore__ inline void InitBuffers(GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe* tPipe);
     __aicore__ inline void GmUbGmDataBlockCopy(uint64_t curOffset, uint64_t elemsPerBlock, bool isTail);
     __aicore__ inline void ComputeTailAivId();
 
@@ -69,7 +69,7 @@ private:
  */
 template <typename DataType>
 __aicore__ inline void GmUbGmCopy<DataType>::Init(uint64_t dataSize, uint64_t aivNum, GM_ADDR srcAddr, GM_ADDR dstAddr,
-                                                  TPipe *tPipe)
+                                                  TPipe* tPipe)
 {
     // 初始化计算参数 (核分配策略等)
     InitParams(dataSize, aivNum);
@@ -127,10 +127,10 @@ __aicore__ inline void GmUbGmCopy<DataType>::InitParams(uint64_t dataSize, uint6
  *
  */
 template <typename DataType>
-__aicore__ inline void GmUbGmCopy<DataType>::InitBuffers(GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe *tPipe)
+__aicore__ inline void GmUbGmCopy<DataType>::InitBuffers(GM_ADDR srcAddr, GM_ADDR dstAddr, TPipe* tPipe)
 {
-    srcGm_.SetGlobalBuffer((__gm__ DataType *)srcAddr);
-    dstGm_.SetGlobalBuffer((__gm__ DataType *)dstAddr);
+    srcGm_.SetGlobalBuffer((__gm__ DataType*)srcAddr);
+    dstGm_.SetGlobalBuffer((__gm__ DataType*)dstAddr);
 
     tPipe->InitBuffer(dataQueue_, BUFFER_NUM, perBlockNum_ * sizeof(DataType));
 }

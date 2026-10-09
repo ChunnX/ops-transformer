@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_v2_gather_out_for_simt.h
@@ -28,7 +28,7 @@ class MoeV2GatherOutSimt {
 public:
     __aicore__ inline MoeV2GatherOutSimt(){};
     __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR workspace,
-                                const MoeInitRoutingV2TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingV2TilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -38,7 +38,7 @@ private:
     __aicore__ inline void CopyOutZero(int64_t progress);
 
 private:
-    TPipe *pipe;
+    TPipe* pipe;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, BUFFER_NUM> inputActivationsCopyInQueue;
     TQue<QuePosition::VECIN, BUFFER_NUM> expandedRowIdxIndexCopyInQueue;
 
@@ -47,7 +47,7 @@ private:
     GlobalTensor<int32_t> expandedRowIdxGm;
     GlobalTensor<int32_t> expandedRowIdxIndexGm_;
 
-    const MoeV2GatherOutComputeTilingData *gatherOutTilingData;
+    const MoeV2GatherOutComputeTilingData* gatherOutTilingData;
 
     int64_t needCoreNum;
     int64_t blockIdx;
@@ -172,8 +172,8 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::CopyOut(int64_t progress)
 
 template <typename T>
 __aicore__ inline void MoeV2GatherOutSimt<T>::Init(GM_ADDR inputX, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                                   GM_ADDR workspace, const MoeInitRoutingV2TilingData *tilingData,
-                                                   TPipe *tPipe)
+                                                   GM_ADDR workspace, const MoeInitRoutingV2TilingData* tilingData,
+                                                   TPipe* tPipe)
 {
     this->pipe = tPipe;
     this->blockIdx = GetBlockIdx();
@@ -206,14 +206,14 @@ __aicore__ inline void MoeV2GatherOutSimt<T>::Init(GM_ADDR inputX, GM_ADDR expan
     }
     this->colLoops = this->gatherOutTilingData->colLoops;
 
-    inputXGm.SetGlobalBuffer((__gm__ T *)inputX, this->coreRows * this->cols);
-    expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX, tilingData->n * tilingData->k * this->cols);
+    inputXGm.SetGlobalBuffer((__gm__ T*)inputX, this->coreRows * this->cols);
+    expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX, tilingData->n * tilingData->k * this->cols);
     expandedRowIdxGm.SetGlobalBuffer(
-        (__gm__ int32_t *)expandedRowIdx + this->blockIdx * this->gatherOutTilingData->perCoreRows,
+        (__gm__ int32_t*)expandedRowIdx + this->blockIdx * this->gatherOutTilingData->perCoreRows,
         Align(this->coreRows, sizeof(int32_t)));
 
-    expandedRowIdxIndexGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                               Align(this->totalLength_, sizeof(int32_t)) * 2 + this->expertNum_ +
+    expandedRowIdxIndexGm_.SetGlobalBuffer((__gm__ int32_t*)workspace + Align(this->totalLength_, sizeof(int32_t)) * 2 +
+                                               this->expertNum_ +
                                                this->blockIdx * this->gatherOutTilingData->perCoreRows,
                                            0);
     if (this->gatherOutTilingData->perLoopCols > this->cols) {

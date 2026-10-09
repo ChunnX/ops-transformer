@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_init_routing_v2_grad_split_h_tiling_arch35.cpp
@@ -29,8 +29,7 @@ const static int64_t MAX_CACHE_LINE_SIZE = 512;
 const static int64_t DOUBLE_BUFFER = 2;
 const static int64_t FP16_BF16_SIZE = 2;
 
-class MoeInitRoutingV2GradRegbaseSplitH : public MoeInitRoutingV2GradTilingBaseClass
-{
+class MoeInitRoutingV2GradRegbaseSplitH : public MoeInitRoutingV2GradTilingBaseClass {
 public:
     explicit MoeInitRoutingV2GradRegbaseSplitH(gert::TilingContext* context)
         : MoeInitRoutingV2GradTilingBaseClass(context)

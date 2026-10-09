@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef OP_API_INC_GROUPED_MATMUL_UTIL_H
 #define OP_API_INC_GROUPED_MATMUL_UTIL_H
 #include "opdev/common_types.h"
@@ -21,12 +21,12 @@
 namespace gmm {
 using namespace op;
 
-inline bool CheckDTypeInVector(const op::DataType dtype, const std::vector<op::DataType> &validTypes)
+inline bool CheckDTypeInVector(const op::DataType dtype, const std::vector<op::DataType>& validTypes)
 {
     return std::find(validTypes.begin(), validTypes.end(), dtype) != validTypes.end();
 }
 
-inline std::string DTypeVectorToString(const std::vector<op::DataType> &dataTypes)
+inline std::string DTypeVectorToString(const std::vector<op::DataType>& dataTypes)
 {
     std::ostringstream oss;
     oss << "[";
@@ -121,19 +121,19 @@ enum class GMMApiVersion : uint32_t {
 
 template <typename T>
 struct GroupedMatmulParamsBase {
-    const T *x = nullptr;
-    const T *weight = nullptr;
-    const aclTensorList *biasOptional = nullptr;
-    const aclIntArray *groupListOptional = nullptr;
-    const aclTensor *groupTensorOptional = nullptr;
-    const T *scaleOptional = nullptr;
-    const aclTensorList *offsetOptional = nullptr;
-    const aclTensorList *antiquantScaleOptional = nullptr;
-    const aclTensorList *antiquantOffsetOptional = nullptr;
-    const T *perTokenScaleOptional = nullptr;
-    const aclTensorList *activationInputOptional = nullptr;
-    const aclTensorList *activationQuantScaleOptional = nullptr;
-    const aclTensorList *activationQuantOffsetOptional = nullptr;
+    const T* x = nullptr;
+    const T* weight = nullptr;
+    const aclTensorList* biasOptional = nullptr;
+    const aclIntArray* groupListOptional = nullptr;
+    const aclTensor* groupTensorOptional = nullptr;
+    const T* scaleOptional = nullptr;
+    const aclTensorList* offsetOptional = nullptr;
+    const aclTensorList* antiquantScaleOptional = nullptr;
+    const aclTensorList* antiquantOffsetOptional = nullptr;
+    const T* perTokenScaleOptional = nullptr;
+    const aclTensorList* activationInputOptional = nullptr;
+    const aclTensorList* activationQuantScaleOptional = nullptr;
+    const aclTensorList* activationQuantOffsetOptional = nullptr;
     int64_t splitItem = 0;
     int64_t groupListType = 0;
     int64_t activeType = 0;
@@ -142,10 +142,10 @@ struct GroupedMatmulParamsBase {
     bool isSingleWeight = false;
     GMMApiVersion apiVersion = GMMApiVersion::V1;
     int64_t groupType = -1L;
-    const aclIntArray *tuningConfigOptional = nullptr;
-    const T *y = nullptr;
-    const aclTensorList *activationFeatureOutOptional = nullptr;
-    const aclTensorList *dynQuantScaleOutOptional = nullptr;
+    const aclIntArray* tuningConfigOptional = nullptr;
+    const T* y = nullptr;
+    const aclTensorList* activationFeatureOutOptional = nullptr;
+    const aclTensorList* dynQuantScaleOutOptional = nullptr;
     DataType xDtype = DataType::DT_FLOAT16;
 };
 
@@ -169,14 +169,14 @@ const std::map<DataType, std::string> DTYPE_STRING{{DataType::DT_FLOAT16, "FLOAT
 
 const std::vector<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16, DataType::DT_BF16};
 
-bool IsTransposeLastTwoDims(const aclTensor *tensor);
-bool IsTransposeForMxShape(const aclTensor *tensor);
-bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
-                                           aclOpExecutor *executor);
-bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
-                                               aclOpExecutor *executor);
-bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
-                                aclOpExecutor *executor);
-std::string dTypeToString(const ge::DataType &dtype);
+bool IsTransposeLastTwoDims(const aclTensor* tensor);
+bool IsTransposeForMxShape(const aclTensor* tensor);
+bool CreateContiguousTensorListForPertoken(const aclTensorList* tensorList, std::vector<aclTensor*>& newTensorList,
+                                           aclOpExecutor* executor);
+bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList* tensorList, std::vector<aclTensor*>& newTensorList,
+                                               aclOpExecutor* executor);
+bool CreateContiguousTensorList(const aclTensorList* tensorList, std::vector<aclTensor*>& newTensorList,
+                                aclOpExecutor* executor);
+std::string dTypeToString(const ge::DataType& dtype);
 } // namespace gmm
 #endif

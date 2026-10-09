@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file allto_allv_grouped_mat_mul_tiling_a5.h
@@ -20,7 +20,7 @@
 namespace optiling {
 class AlltoAllvGmmTilingA5 : public AlltoAllvGmmTiling {
 public:
-    explicit AlltoAllvGmmTilingA5(gert::TilingContext *context)
+    explicit AlltoAllvGmmTilingA5(gert::TilingContext* context)
         : AlltoAllvGmmTiling(context)
     {}
     std::vector<int64_t> GetEpWorldSizeOptional() const override;
@@ -29,12 +29,12 @@ public:
 
 class AlltoAllvGmmTilingFuncA5 : public AlltoAllvGmmTilingCommon {
 public:
-    ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext *context) override;
+    ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext* context) override;
 };
 
 class AlltoAllvGmmTilingStructA5 : public AlltoAllvGmmTilingStruct {
 public:
-    explicit AlltoAllvGmmTilingStructA5(gert::TilingContext *context)
+    explicit AlltoAllvGmmTilingStructA5(gert::TilingContext* context)
         : AlltoAllvGmmTilingStruct(context) {};
 
 protected:

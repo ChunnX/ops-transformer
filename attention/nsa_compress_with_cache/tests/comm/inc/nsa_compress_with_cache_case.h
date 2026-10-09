@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_compress_with_cache_case.h
@@ -39,18 +39,18 @@ public:
 
     class DoTilingParam {
     public:
-        gert::TilingContext *ctx = nullptr;
+        gert::TilingContext* ctx = nullptr;
         ge::graphStatus ret = ge::GRAPH_SUCCESS;
-        gert::Tensor *slotMappingTensor = nullptr;
-        gert::Tensor *actSeqLenTensor = nullptr;
-        gert::Tensor *blockTableTensor = nullptr;
+        gert::Tensor* slotMappingTensor = nullptr;
+        gert::Tensor* actSeqLenTensor = nullptr;
+        gert::Tensor* blockTableTensor = nullptr;
     };
     /**
      * 执行 Tiling 前, 修改 TilingContext 回调函数.
      *
      * \attention: 一般用于异常用例.
      */
-    typedef void (*PreTilingRunCbf)(DoTilingParam &tilingParam);
+    typedef void (*PreTilingRunCbf)(DoTilingParam& tilingParam);
 
 public:
     /* 算子控制信息 */
@@ -64,17 +64,17 @@ public:
     PreTilingRunCbf mPreTilingRunCbf = nullptr;
 
     NsaCompressWithCacheCase();
-    NsaCompressWithCacheCase(const char *name, bool enable, const char *dbgInfo, OpInfo incre,
+    NsaCompressWithCacheCase(const char* name, bool enable, const char* dbgInfo, OpInfo incre,
                              NsaCompressWithCacheParam param,
                              int32_t tilingTemplatePriority = kTilingTemplatePriority_Invalid);
     bool Run() override;
-    bool DoOpTiling(DoTilingParam &tilingParam);
+    bool DoOpTiling(DoTilingParam& tilingParam);
 
-    static void PreTilingRunCbf_SetPlatformInfoNull(NsaCompressWithCacheCase::DoTilingParam &tilingParam);
+    static void PreTilingRunCbf_SetPlatformInfoNull(NsaCompressWithCacheCase::DoTilingParam& tilingParam);
 
 protected:
     std::string mNsaCompressWithCacheOriginTilingFuncName;
-    void *mNsaCompressWithCacheKernelFunc = nullptr;
+    void* mNsaCompressWithCacheKernelFunc = nullptr;
 
     bool InitParam() override;
     bool InitOpInfo() override;

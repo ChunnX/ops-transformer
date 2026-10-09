@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_info.h
@@ -192,13 +192,13 @@ std::string QuantModeToSerialString(FiaQuantMode fiaQuantMode);
 std::string SituationToSerialString(RopeMode ropeMode);
 
 struct FIARequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct FIAOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 struct FIAParaInfo {
@@ -238,27 +238,27 @@ struct FIAParaInfo {
     FIARequiredParaInfo attenOut = {nullptr, nullptr};
     FIARequiredParaInfo lseOut = {nullptr, nullptr};
 
-    const int32_t *numHeads = nullptr;
-    const int64_t *preToken = nullptr;
-    const int64_t *nextToken = nullptr;
-    const float *scaleValue = nullptr;
-    const int32_t *kvHeadNums = nullptr;
-    const char *layOut = nullptr;
-    const int32_t *blockSize = nullptr;
-    const int32_t *innerPrecise = nullptr;
-    const int64_t *antiquantMode = nullptr;
-    const bool *softmaxLseFlag = nullptr;
-    const int64_t *keyAntiquantMode = nullptr;
-    const int64_t *valueAntiquantMode = nullptr;
-    const int32_t *sparseMode = nullptr;
-    const int64_t *queryQuantMode = nullptr;
-    const int64_t *pseType = nullptr;
+    const int32_t* numHeads = nullptr;
+    const int64_t* preToken = nullptr;
+    const int64_t* nextToken = nullptr;
+    const float* scaleValue = nullptr;
+    const int32_t* kvHeadNums = nullptr;
+    const char* layOut = nullptr;
+    const int32_t* blockSize = nullptr;
+    const int32_t* innerPrecise = nullptr;
+    const int64_t* antiquantMode = nullptr;
+    const bool* softmaxLseFlag = nullptr;
+    const int64_t* keyAntiquantMode = nullptr;
+    const int64_t* valueAntiquantMode = nullptr;
+    const int32_t* sparseMode = nullptr;
+    const int64_t* queryQuantMode = nullptr;
+    const int64_t* pseType = nullptr;
 };
 
 class FiaTilingInfo : public TilingInfo {
 public:
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     FIAParaInfo opParamInfo;
 
     // Base Param
@@ -279,16 +279,16 @@ public:
     int32_t innerPrecise = 0;
     uint32_t l2CacheOffFlag = 0;
     uint64_t l2CacheSize = 0;
-    std::vector<gert::StorageShape *> kCache = {};
-    std::vector<gert::StorageShape *> vCache = {};
+    std::vector<gert::StorageShape*> kCache = {};
+    std::vector<gert::StorageShape*> vCache = {};
     std::vector<int32_t> qSize = {};
     std::vector<int32_t> kvSize = {};
     // 增加strides参数和tensorv1的标志位
-    const gert::Stride *keyStrides = nullptr;
-    const gert::Stride *valueStrides = nullptr;
-    const gert::Stride *kRopeStrides = nullptr;
-    const gert::Stride *kScaleStrides = nullptr;
-    const gert::Stride *vScaleStrides = nullptr;
+    const gert::Stride* keyStrides = nullptr;
+    const gert::Stride* valueStrides = nullptr;
+    const gert::Stride* kRopeStrides = nullptr;
+    const gert::Stride* kScaleStrides = nullptr;
+    const gert::Stride* vScaleStrides = nullptr;
     bool isTensorV1 = false;
     // empty Tensor
     bool emptyTensorFlag = false;
@@ -327,7 +327,7 @@ public:
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
     uint32_t actualLenDims = 0;
-    std::vector<int64_t> kvListSeqLens {};
+    std::vector<int64_t> kvListSeqLens{};
     bool isAccumKVSeq = false;
 
     // PSE
@@ -388,5 +388,5 @@ public:
     FiaLayout outLayout = FiaLayout::BSND;
     FiaLayout kvLayout = FiaLayout::BSND;
 };
-} // optiling
+} // namespace optiling
 #endif // FIA_TILING_INFO_H

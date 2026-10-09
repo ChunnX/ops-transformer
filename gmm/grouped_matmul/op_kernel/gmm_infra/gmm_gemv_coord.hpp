@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef GMM_GEMV_COORD_HPP
 #define GMM_GEMV_COORD_HPP
@@ -58,7 +58,7 @@ struct GemvCoord : public Coord<2, uint32_t> {
 
     /// Constructs from Coord<2> and a batch
     CATLASS_HOST_DEVICE
-    GemvCoord(Coord<2, Index> const &coord)
+    GemvCoord(Coord<2, Index> const& coord)
         : Base(coord)
     {}
 
@@ -70,28 +70,28 @@ struct GemvCoord : public Coord<2, uint32_t> {
 
     /// Returns the GEMV M coordinate (row of the result y)
     CATLASS_HOST_DEVICE
-    Index const &m() const
+    Index const& m() const
     {
         return this->At(M_INDEX);
     }
 
     /// Returns reference to the GEMV M coordinate
     CATLASS_HOST_DEVICE
-    Index &m()
+    Index& m()
     {
         return this->At(M_INDEX);
     }
 
     /// Returns the GEMV N coordinate (column of the matrix A or the input vector x)
     CATLASS_HOST_DEVICE
-    Index const &n() const
+    Index const& n() const
     {
         return this->At(N_INDEX);
     }
 
     /// Returns reference to the GEMV N coordinate
     CATLASS_HOST_DEVICE
-    Index &n()
+    Index& n()
     {
         return this->At(N_INDEX);
     }

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file service_gather_sin_cos_arch35.h
@@ -33,9 +33,9 @@ namespace MlaProlog {
  * @param col 列数
  */
 template <typename T, typename O>
-__aicore__ inline void GatherSinCos(LocalTensor<O> &cosLocal, LocalTensor<O> &sinLocal, const GlobalTensor<T> &cosGm,
-                                    const GlobalTensor<T> &sinGm, int64_t tokenIndex, int64_t curVecToken,
-                                    LocalTensor<uint8_t> &shareTmpUb, int64_t row, int64_t col)
+__aicore__ inline void GatherSinCos(LocalTensor<O>& cosLocal, LocalTensor<O>& sinLocal, const GlobalTensor<T>& cosGm,
+                                    const GlobalTensor<T>& sinGm, int64_t tokenIndex, int64_t curVecToken,
+                                    LocalTensor<uint8_t>& shareTmpUb, int64_t row, int64_t col)
 {
     int64_t offset = col * tokenIndex;
     int64_t curDataSize = col * curVecToken;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file test_moe_init_routing_proto.cpp
@@ -19,8 +19,7 @@
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class MoeInitRouting : public testing::Test
-{
+class MoeInitRouting : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -32,7 +31,6 @@ protected:
         std::cout << "MoeInitRouting TearDown" << std::endl;
     }
 };
-
 
 TEST_F(MoeInitRouting, moe_init_routing_infer_shape_1)
 {
@@ -57,7 +55,7 @@ TEST_F(MoeInitRouting, moe_init_routing_infer_shape_1)
 
 TEST_F(MoeInitRouting, moe_init_routing_infer_shape_2)
 {
-gert::InfershapeContextPara infershapeContextPara(
+    gert::InfershapeContextPara infershapeContextPara(
         "MoeInitRouting",
         {
             {{{-1, -1}, {-1, -1}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -902,13 +900,13 @@ TEST_F(MoeInitRouting, moe_init_routing_infer_data_type_01)
     ge::DataType expertIdxDtype = ge::DT_INT32;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .SetOpType("MoeInitRouting")
-        .IrInstanceNum(std::vector<uint32_t>{1, 1, 1}, std::vector<uint32_t>{1, 1, 1})
-        .InputDataTypes({&xDtype, &rowIdxDtype, &expertIdxDtype})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .SetOpType("MoeInitRouting")
+                             .IrInstanceNum(std::vector<uint32_t>{1, 1, 1}, std::vector<uint32_t>{1, 1, 1})
+                             .InputDataTypes({&xDtype, &rowIdxDtype, &expertIdxDtype})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeInitRouting")->infer_datatype;
@@ -926,13 +924,13 @@ TEST_F(MoeInitRouting, moe_init_routing_infer_data_type_02)
     ge::DataType expertIdxDtype = ge::DT_INT32;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .SetOpType("MoeInitRouting")
-        .IrInstanceNum(std::vector<uint32_t>{1, 1, 1}, std::vector<uint32_t>{1, 1, 1})
-        .InputDataTypes({&xDtype, &rowIdxDtype, &expertIdxDtype})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
+                             .SetOpType("MoeInitRouting")
+                             .IrInstanceNum(std::vector<uint32_t>{1, 1, 1}, std::vector<uint32_t>{1, 1, 1})
+                             .InputDataTypes({&xDtype, &rowIdxDtype, &expertIdxDtype})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeInitRouting")->infer_datatype;

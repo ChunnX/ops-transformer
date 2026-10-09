@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -26,12 +26,12 @@
 namespace MC2Tiling {
 class AllToAllMatmulTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit AllToAllMatmulTilingBase(gert::TilingContext *context)
+    explicit AllToAllMatmulTilingBase(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
     ~AllToAllMatmulTilingBase() override = default;
 
-    void Reset(gert::TilingContext *context) override
+    void Reset(gert::TilingContext* context) override
     {
         TilingBaseClass::Reset(context);
     }
@@ -47,16 +47,16 @@ protected:
     virtual CutResult GetCutResOfCommAndCompute();
     ge::graphStatus TileCommAndCompute();
     void SetUserWorkSpace();
-    ge::graphStatus CheckAlltoAllOutShape(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckAlltoAllOut(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckMatrixMulShapes(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus SetAlltoAllMatmulShapeInfo(const gert::TilingContext *context, TilingContextInfo &contextInfo);
-    ge::graphStatus CheckKcQuantTensorDataType(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckKcQuantShapeInfo(const gert::TilingContext *context, const char *opName,
-                                          const OpAttrIndexSchema &indexSchema);
+    ge::graphStatus CheckAlltoAllOutShape(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus CheckAlltoAllOut(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus CheckMatrixMulShapes(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus SetAlltoAllMatmulShapeInfo(const gert::TilingContext* context, TilingContextInfo& contextInfo);
+    ge::graphStatus CheckKcQuantTensorDataType(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus CheckKcQuantShapeInfo(const gert::TilingContext* context, const char* opName,
+                                          const OpAttrIndexSchema& indexSchema);
 
     NpuArch npuArch_;
-    const char *opName_{nullptr};
+    const char* opName_{nullptr};
     uint32_t libApiWorkSpaceSize_{0};
     TilingContextInfo contextInfo_;
     TilingInferredInfo inferredInfo_;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_BLOCK_BLOCK_MMAD_GEMM_HPP
 #define CATLASS_BLOCK_BLOCK_MMAD_GEMM_HPP
@@ -69,7 +69,7 @@ public:
     static_assert(std::is_same_v<LayoutC, layout::RowMajor>, "LayoutC only support RowMajor yet!");
 
     CATLASS_DEVICE
-    BlockGemm(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
+    BlockGemm(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart = 0)
     {
         uint32_t l1AOffset = l1BufAddrStart;
         uint32_t l1BOffset = l1BufAddrStart + L1ASize * STAGES;
@@ -104,12 +104,12 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementA> const &gmA, LayoutA const &layoutA,
-                    AscendC::GlobalTensor<ElementB> const &gmB, LayoutB const &layoutB,
-                    AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC,
-                    AscendC::GlobalTensor<ElementA> const &gmNextBlockA,
-                    AscendC::GlobalTensor<ElementB> const &gmNextBlockB, GemmCoord const &actualShape,
-                    GemmCoord const &actualShapeNext, bool isFirstBlock, bool hasNextBlock, uint32_t singleIdx)
+    void operator()(AscendC::GlobalTensor<ElementA> const& gmA, LayoutA const& layoutA,
+                    AscendC::GlobalTensor<ElementB> const& gmB, LayoutB const& layoutB,
+                    AscendC::GlobalTensor<ElementC> const& gmC, LayoutC const& layoutC,
+                    AscendC::GlobalTensor<ElementA> const& gmNextBlockA,
+                    AscendC::GlobalTensor<ElementB> const& gmNextBlockB, GemmCoord const& actualShape,
+                    GemmCoord const& actualShapeNext, bool isFirstBlock, bool hasNextBlock, uint32_t singleIdx)
     {
         uint32_t K = actualShape.k();
         uint32_t maxKPerBlock = L1TileShape::K;

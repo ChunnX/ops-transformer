@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file scatter_pa_kv_cache_tiling.cpp
@@ -562,13 +562,13 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
     bool isViewKCache = context_->InputIsView(DIM_1);
     bool isViewVCache = context_->InputIsView(DIM_4);
     if (isViewKCache) {
-        auto *kCacheStride = context_->GetInputStride(DIM_1);
+        auto* kCacheStride = context_->GetInputStride(DIM_1);
         if (kCacheStride != nullptr) {
             params_.kCacheBlockStride = kCacheStride->GetStride(DIM_0);
         }
     }
     if (isViewVCache) {
-        auto *VCacheStride = context_->GetInputStride(DIM_4);
+        auto* VCacheStride = context_->GetInputStride(DIM_4);
         if (VCacheStride != nullptr) {
             params_.vCacheBlockStride = VCacheStride->GetStride(DIM_0);
         }

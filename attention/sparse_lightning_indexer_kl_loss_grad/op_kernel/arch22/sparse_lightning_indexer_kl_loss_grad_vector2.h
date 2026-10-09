@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_lightning_indexer_kl_loss_grad_vector2.h
@@ -49,17 +49,17 @@ public:
 
     __aicore__ inline SLIKLLossVector2Service(){};
     __aicore__ inline void InitParams(
-        const struct SLIKLLossGradConstInfo &vecConstInfo,
-        const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
+        const struct SLIKLLossGradConstInfo& vecConstInfo,
+        const optiling::SparseLightningIndexerKLLossGradTilingData* __restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
     // =============== vector 2 functions ==============
-    __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T> &scatterAddBank0,
-                                         const GlobalTensor<int32_t> &topK, const GlobalTensor<OUT_T> &dKeyIndexGm,
-                                         GlobalTensor<int32_t> &actualSeqLengthsQ,
-                                         GlobalTensor<int32_t> &actualSeqLengthsKV,
+    __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T>& scatterAddBank0,
+                                         const GlobalTensor<int32_t>& topK, const GlobalTensor<OUT_T>& dKeyIndexGm,
+                                         GlobalTensor<int32_t>& actualSeqLengthsQ,
+                                         GlobalTensor<int32_t>& actualSeqLengthsKV,
                                          scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM]);
     __aicore__ inline void ProcessVector2();
 
@@ -68,7 +68,7 @@ private:
 
     // =============== vector2 variable ==============
     SLIKLLossGradConstInfo constInfo;
-    const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData;
+    const optiling::SparseLightningIndexerKLLossGradTilingData* __restrict tilingData;
 
     // global tensor
     GlobalTensor<MM3_OUT_T> bmm3ResGm;
@@ -95,8 +95,8 @@ private:
 
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitParams(
-    const struct SLIKLLossGradConstInfo &vecConstInfo,
-    const optiling::SparseLightningIndexerKLLossGradTilingData *__restrict tilingData)
+    const struct SLIKLLossGradConstInfo& vecConstInfo,
+    const optiling::SparseLightningIndexerKLLossGradTilingData* __restrict tilingData)
 {
     this->constInfo = vecConstInfo;
     this->tilingData = tilingData;
@@ -104,9 +104,9 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitParams(
 
 template <typename SLIT>
 __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitVector2GM(
-    const GlobalTensor<MM3_OUT_T> &scatterAddBank0, const GlobalTensor<int32_t> &topK,
-    const GlobalTensor<OUT_T> &dKeyIndexGm, GlobalTensor<int32_t> &actualSeqLengthsQ,
-    GlobalTensor<int32_t> &actualSeqLengthsKV, scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM])
+    const GlobalTensor<MM3_OUT_T>& scatterAddBank0, const GlobalTensor<int32_t>& topK,
+    const GlobalTensor<OUT_T>& dKeyIndexGm, GlobalTensor<int32_t>& actualSeqLengthsQ,
+    GlobalTensor<int32_t>& actualSeqLengthsKV, scatterAddGmType scatterAddBanks[SLI_DETER_SCATTER_BANK_NUM])
 {
     this->bmm3ResGm = scatterAddBank0;
     this->topKGm = topK;
@@ -121,7 +121,7 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::InitVector2GM(
 }
 
 template <typename SLIT>
-__aicore__ inline void SLIKLLossVector2Service<SLIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void SLIKLLossVector2Service<SLIT>::InitBuffers(TPipe* pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(mm3TBuf, SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
@@ -196,7 +196,7 @@ __aicore__ inline void SLIKLLossVector2Service<SLIT>::ProcessVector2()
                 scatterBankNum = 1;
             }
             int64_t bankElems = totalCost * constInfo.dSizeQueryIndex;
-            __gm__ MM3_OUT_T *basePtr = (__gm__ MM3_OUT_T *)bmm3ResGm.GetPhyAddr();
+            __gm__ MM3_OUT_T* basePtr = (__gm__ MM3_OUT_T*)bmm3ResGm.GetPhyAddr();
             GlobalTensor<MM3_OUT_T> bank0Gm;
             bank0Gm.SetGlobalBuffer(basePtr);
             DataCopy(copyInUb, bank0Gm[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);

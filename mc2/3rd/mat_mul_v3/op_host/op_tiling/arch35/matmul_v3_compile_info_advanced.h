@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_v3_compile_info_advanced.h
@@ -27,7 +27,7 @@
 namespace optiling {
 namespace mc2_matmul_v3_advanced {
 
-inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, Mc2MatmulV3CompileInfo *compileInfoPtr)
+inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos* platformInfo, Mc2MatmulV3CompileInfo* compileInfoPtr)
 {
     OP_TILING_CHECK(platformInfo == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "platformInfo"),
                     return ge::GRAPH_FAILED);
@@ -62,10 +62,10 @@ inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, Mc2Matmu
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus InitCompileInfo(gert::TilingParseContext *context)
+inline ge::graphStatus InitCompileInfo(gert::TilingParseContext* context)
 {
     OP_TILING_CHECK(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("Mc2MatMul", "context"), return ge::GRAPH_FAILED);
-    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
+    fe::PlatFormInfos* platformInfo = context->GetPlatformInfo();
     auto compileInfoPtr = context->GetCompiledInfo<Mc2MatmulV3CompileInfo>();
     return InitCompileInfo(platformInfo, compileInfoPtr);
 }

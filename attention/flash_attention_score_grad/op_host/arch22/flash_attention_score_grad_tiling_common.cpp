@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_tiling_common.cpp
@@ -20,7 +20,7 @@
 
 namespace optiling {
 
-ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1)
+ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext* context, int64_t b, int64_t n1, int64_t s1)
 {
     auto softmaxMaxShape = context->GetOptionalInputShape(SOFTMAX_MAX);
     if (softmaxMaxShape == nullptr) {
@@ -48,14 +48,14 @@ ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, in
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckTndSoftmaxMaxShape(gert::TilingContext *context, int64_t t1, int64_t n1)
+ge::graphStatus CheckTndSoftmaxMaxShape(gert::TilingContext* context, int64_t t1, int64_t n1)
 {
     auto softmaxMaxShape = context->GetOptionalInputShape(SOFTMAX_MAX);
     if (softmaxMaxShape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     auto softmaxMaxShapeDim = softmaxMaxShape->GetStorageShape().GetDimNum();
-    const char *tndSoftmaxIn = context->GetAttrs()->GetAttrNum() > static_cast<size_t>(TND_SOFTMAX_IN) ?
+    const char* tndSoftmaxIn = context->GetAttrs()->GetAttrNum() > static_cast<size_t>(TND_SOFTMAX_IN) ?
                                    context->GetAttrs()->GetAttrPointer<char>(TND_SOFTMAX_IN) :
                                    "";
 
@@ -90,7 +90,7 @@ ge::graphStatus CheckTndSoftmaxMaxShape(gert::TilingContext *context, int64_t t1
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1)
+ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext* context, int64_t b, int64_t n1, int64_t s1)
 {
     auto softmaxSumShape = context->GetOptionalInputShape(SOFTMAX_SUM);
     if (softmaxSumShape == nullptr) {
@@ -118,14 +118,14 @@ ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, in
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext *context, int64_t t1, int64_t n1)
+ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext* context, int64_t t1, int64_t n1)
 {
     auto softmaxSumShape = context->GetOptionalInputShape(SOFTMAX_SUM);
     if (softmaxSumShape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     auto softmaxSumShapeDim = softmaxSumShape->GetStorageShape().GetDimNum();
-    const char *tndSoftmaxIn = context->GetAttrs()->GetAttrNum() > static_cast<size_t>(TND_SOFTMAX_IN) ?
+    const char* tndSoftmaxIn = context->GetAttrs()->GetAttrNum() > static_cast<size_t>(TND_SOFTMAX_IN) ?
                                    context->GetAttrs()->GetAttrPointer<char>(TND_SOFTMAX_IN) :
                                    "";
 
@@ -160,7 +160,7 @@ ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext *context, int64_t t1
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
+ge::graphStatus CheckAttentionInShape(gert::TilingContext* context)
 {
     auto attentionInShape = context->GetOptionalInputShape(ATTENTION_IN);
     if (attentionInShape == nullptr) {
@@ -193,7 +193,7 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context)
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext* context)
 {
     auto softmaxMax = context->GetOptionalInputDesc(SOFTMAX_MAX);
     auto softmaxSum = context->GetOptionalInputDesc(SOFTMAX_SUM);
@@ -218,7 +218,7 @@ ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context)
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext* context)
 {
     auto query = context->GetInputDesc(QUERY);
     auto attentionIn = context->GetOptionalInputDesc(ATTENTION_IN);
@@ -241,7 +241,7 @@ ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d)
+ge::graphStatus CheckShapeValid(gert::TilingContext* context, int64_t b, int64_t n1, int64_t s1, int64_t d)
 {
     auto isShapeInValid = (b == 0 || n1 == 0 || s1 == 0 || d == 0);
     OP_CHECK_IF(isShapeInValid,
@@ -267,7 +267,7 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d)
+ge::graphStatus CheckTndShapeValid(gert::TilingContext* context, int64_t t1, int64_t n1, int64_t d)
 {
     if (context == nullptr) {
         OP_LOGE(context, "In op [FlashAttentionScoreGrad], context is null");
@@ -298,7 +298,7 @@ ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckDtypeValid(gert::TilingContext *context)
+ge::graphStatus CheckDtypeValid(gert::TilingContext* context)
 {
     if (context == nullptr) {
         OP_LOGE(context, "In op [FlashAttentionScoreGrad], context is null");
@@ -317,7 +317,7 @@ ge::graphStatus CheckDtypeValid(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape)
+bool IsSameShape(const gert::StorageShape* aShape, const gert::StorageShape* bShape)
 {
     OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
                 OP_LOGW("flash_attention_score_grad_tiling_common", "aShape or bShape is nullptr."), return false);
@@ -337,7 +337,7 @@ bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bSh
     return true;
 }
 
-bool IsSameShapeButValueDLeEqD(const gert::StorageShape *aShape, const gert::StorageShape *bShape)
+bool IsSameShapeButValueDLeEqD(const gert::StorageShape* aShape, const gert::StorageShape* bShape)
 {
     OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
                 OP_LOGW("flash_attention_score_grad_tiling_common", "aShape or bShape is nullptr."), return false);
@@ -363,7 +363,7 @@ bool IsSameShapeButValueDLeEqD(const gert::StorageShape *aShape, const gert::Sto
     return true;
 }
 
-bool isTndSABHit(const gert::TilingContext *context)
+bool isTndSABHit(const gert::TilingContext* context)
 {
     auto actualSeqQLenTensor = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
     auto actualSeqKVLenTensor = context->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
@@ -371,8 +371,8 @@ bool isTndSABHit(const gert::TilingContext *context)
                  actualSeqKVLenTensor != nullptr && actualSeqKVLenTensor->GetShapeSize() > 0;
 
     if (isTND) {
-        const int64_t *qTensor = actualSeqQLenTensor->GetData<int64_t>();
-        const int64_t *kvTensor = actualSeqKVLenTensor->GetData<int64_t>();
+        const int64_t* qTensor = actualSeqQLenTensor->GetData<int64_t>();
+        const int64_t* kvTensor = actualSeqKVLenTensor->GetData<int64_t>();
         const size_t actualSeqQLen = static_cast<size_t>(actualSeqQLenTensor->GetShapeSize());
 
         uint64_t qSum = 0;

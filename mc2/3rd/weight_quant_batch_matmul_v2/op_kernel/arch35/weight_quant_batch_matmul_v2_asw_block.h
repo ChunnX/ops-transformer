@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file weight_quant_batch_matmul_v2_asw_block.h
@@ -55,7 +55,7 @@ struct Mc2ASWOffsetParam {
 class Mc2WeightQuantBmmAswBlock {
 public:
     __aicore__ inline Mc2WeightQuantBmmAswBlock() {}
-    __aicore__ inline void Init(const WeightQuantBatchMatmulV2ASWTilingData *tilingData, uint32_t blockIdx);
+    __aicore__ inline void Init(const WeightQuantBatchMatmulV2ASWTilingData* tilingData, uint32_t blockIdx);
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx);
     __aicore__ inline void UpdateBlockParams(uint64_t roundIdx);
     template <bool aTrans, bool bTrans, CubeFormat formatX2 = CubeFormat::ND>
@@ -65,14 +65,14 @@ public:
 public:
     Mc2ASWTilingParam params_;
     Mc2ASWOffsetParam offset_;
-    const WeightQuantBatchMatmulV2ASWTilingData *tilingData_;
+    const WeightQuantBatchMatmulV2ASWTilingData* tilingData_;
 
 private:
     const uint64_t WINDOW_LEN = 4;
     uint32_t blockIdx_;
 };
 
-__aicore__ inline void Mc2WeightQuantBmmAswBlock::Init(const WeightQuantBatchMatmulV2ASWTilingData *tilingData,
+__aicore__ inline void Mc2WeightQuantBmmAswBlock::Init(const WeightQuantBatchMatmulV2ASWTilingData* tilingData,
                                                        uint32_t blockIdx)
 {
     params_.mSplitAddrOffset = 0;

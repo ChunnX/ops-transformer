@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file fallback_moe_update_expert.cpp
@@ -29,7 +29,7 @@ static constexpr size_t IDX_ATTR_BALANCE_MODE = 2;
 
 static constexpr size_t IDX_OUT_EXPERT_IDS = 0;
 static constexpr size_t IDX_OUT_ACTIVE_MASK = 1;
-static ge::graphStatus MoeUpdateExpertExecuteFunc(gert::OpExecuteContext *host_api_ctx)
+static ge::graphStatus MoeUpdateExpertExecuteFunc(gert::OpExecuteContext* host_api_ctx)
 {
     OP_LOGD("Start MoeUpdateExpertFallback.");
     OPS_CHECK(host_api_ctx == nullptr, OP_LOGE_WITH_INVALID_INPUT("MoeUpdateExpertFallback", "host_api_ctx"),

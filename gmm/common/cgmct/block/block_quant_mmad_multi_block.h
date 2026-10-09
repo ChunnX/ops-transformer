@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file block_quant_mmad_multi_block.h
@@ -53,7 +53,7 @@ public:
     __aicore__ BlockMmad() = default;
     __aicore__ ~BlockMmad() = default;
 
-    template <const auto &MM_CFG, typename Impl, typename InputAType, typename InputBType, typename OutputCType,
+    template <const auto& MM_CFG, typename Impl, typename InputAType, typename InputBType, typename OutputCType,
               typename InputBiasType>
     struct MatmulPolicyNew : public AscendC::Impl::Detail::MatmulWithScalePolicy<MM_CFG, Impl, InputAType, InputBType,
                                                                                  OutputCType, InputBiasType> {};
@@ -66,7 +66,7 @@ public:
                                     L0Shape>(cfg);
 
 public:
-    __aicore__ inline void Init(TCubeTiling *__restrict cubeTiling, AscendC::TPipe *tpipe = nullptr)
+    __aicore__ inline void Init(TCubeTiling* __restrict cubeTiling, AscendC::TPipe* tpipe = nullptr)
     {
         matmul_.Init(cubeTiling, tpipe);
     }
@@ -78,20 +78,20 @@ public:
     {
         matmul_.SetSingleShape(singleM, singleN, singleK);
     }
-    __aicore__ inline void SetTensorA(const AscendC::GlobalTensor<typename AType::T> &gm, bool isTransposeA = false)
+    __aicore__ inline void SetTensorA(const AscendC::GlobalTensor<typename AType::T>& gm, bool isTransposeA = false)
     {
         matmul_.SetTensorA(gm, isTransposeA);
     }
-    __aicore__ inline void SetTensorB(const AscendC::GlobalTensor<typename BType::T> &gm, bool isTransposeB = false)
+    __aicore__ inline void SetTensorB(const AscendC::GlobalTensor<typename BType::T>& gm, bool isTransposeB = false)
     {
         matmul_.SetTensorB(gm, isTransposeB);
     }
-    __aicore__ inline void SetTensorScaleA(const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleAGlobal,
+    __aicore__ inline void SetTensorScaleA(const AscendC::GlobalTensor<AscendC::fp8_e8m0_t>& scaleAGlobal,
                                            bool isTransposeA = false)
     {
         matmul_.SetTensorScaleA(scaleAGlobal, isTransposeA);
     }
-    __aicore__ inline void SetTensorScaleB(const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleBGlobal,
+    __aicore__ inline void SetTensorScaleB(const AscendC::GlobalTensor<AscendC::fp8_e8m0_t>& scaleBGlobal,
                                            bool isTransposeB = false)
     {
         matmul_.SetTensorScaleB(scaleBGlobal, isTransposeB);
@@ -100,11 +100,11 @@ public:
     {
         matmul_.SetSubBlockIdx(subBlockIdx);
     }
-    __aicore__ inline void IterateAll(const AscendC::GlobalTensor<typename CType::T> &gm, uint8_t enAtomic = 0)
+    __aicore__ inline void IterateAll(const AscendC::GlobalTensor<typename CType::T>& gm, uint8_t enAtomic = 0)
     {
         matmul_.IterateAll(gm, enAtomic);
     }
-    __aicore__ inline void IterateAll(const AscendC::LocalTensor<typename CType::T> &ubCmatrix, uint8_t enAtomic = 0)
+    __aicore__ inline void IterateAll(const AscendC::LocalTensor<typename CType::T>& ubCmatrix, uint8_t enAtomic = 0)
     {
         matmul_.IterateAll(ubCmatrix, enAtomic);
     }
@@ -112,16 +112,16 @@ public:
     {
         return matmul_.Iterate(enPartialSum);
     }
-    __aicore__ inline void GetTensorC(const AscendC::GlobalTensor<typename CType::T> &gm, uint8_t enAtomic = 0)
+    __aicore__ inline void GetTensorC(const AscendC::GlobalTensor<typename CType::T>& gm, uint8_t enAtomic = 0)
     {
         matmul_.GetTensorC(gm, enAtomic);
     }
-    __aicore__ inline void operator()(const AscendC::GlobalTensor<typename AType::T> &aGlobal,
-                                      const AscendC::GlobalTensor<typename BType::T> &bGlobal,
-                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleAGlobal,
-                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleBGlobal,
-                                      const AscendC::GlobalTensor<typename CType::T> &cGlobal,
-                                      const AscendC::Std::tuple<int32_t, int32_t, int32_t> &singleShape,
+    __aicore__ inline void operator()(const AscendC::GlobalTensor<typename AType::T>& aGlobal,
+                                      const AscendC::GlobalTensor<typename BType::T>& bGlobal,
+                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t>& scaleAGlobal,
+                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t>& scaleBGlobal,
+                                      const AscendC::GlobalTensor<typename CType::T>& cGlobal,
+                                      const AscendC::Std::tuple<int32_t, int32_t, int32_t>& singleShape,
                                       bool isTransposeA = false, bool isTransposeB = false)
     {
         matmul_.SetSingleShape(Get<0>(singleShape), Get<1>(singleShape), Get<2>(singleShape)); // 2: idx of k

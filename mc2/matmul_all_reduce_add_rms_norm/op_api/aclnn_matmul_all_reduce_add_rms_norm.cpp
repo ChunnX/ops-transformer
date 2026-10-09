@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_matmul_all_reduce_add_rms_norm.cpp
@@ -36,12 +36,12 @@ using namespace op;
 extern "C" {
 #endif
 
-aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                           const aclTensor *bias, const aclTensor *residual,
-                                                           const aclTensor *gamma, double epsilon, const char *group,
-                                                           const char *reduceOp, int64_t commTurn, int64_t streamMode,
-                                                           const aclTensor *y, const aclTensor *normOut,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(const aclTensor* x1, const aclTensor* x2,
+                                                           const aclTensor* bias, const aclTensor* residual,
+                                                           const aclTensor* gamma, double epsilon, const char* group,
+                                                           const char* reduceOp, int64_t commTurn, int64_t streamMode,
+                                                           const aclTensor* y, const aclTensor* normOut,
+                                                           uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     // inplace接口复用非inplace接口 告警内提示两个接口都将被废弃
     DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize",
@@ -79,7 +79,7 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(const aclTensor *x1, 
     return ret;
 }
 
-aclnnStatus aclnnMatmulAllReduceAddRmsNorm(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnMatmulAllReduceAddRmsNorm(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                            const aclrtStream stream)
 {
     DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnMatmulAllReduceAddRmsNorm", "aclnnInplaceMatmulAllReduceAddRmsNorm",

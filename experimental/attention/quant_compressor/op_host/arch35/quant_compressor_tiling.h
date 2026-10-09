@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_compressor_tiling.h
@@ -170,14 +170,14 @@ struct QuantCompressorCompileInfo {
 };
 
 struct RequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct OptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
+    const gert::Tensor* tensor;
 };
 
 enum class LayoutType {
@@ -191,7 +191,7 @@ enum class TemplateId : uint8_t {
     FULL_LOAD = 2
 };
 
-CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context);
+CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext* context);
 struct QuantCompressorBaseShapeInfo {
     uint32_t bSize = 0;    // B
     uint32_t sSize = 0;    // S
@@ -221,9 +221,9 @@ enum class QUANT_MODE : uint8_t {
 };
 
 struct QuantCompressorContext {
-    const char *opName;
-    const char *opType;
-    fe::PlatFormInfos *platformInfo;
+    const char* opName;
+    const char* opType;
+    fe::PlatFormInfos* platformInfo;
 
     RequiredParaInfo x;
     RequiredParaInfo wkv;
@@ -239,35 +239,35 @@ struct QuantCompressorContext {
     OptionalParaInfo startPos;
     RequiredParaInfo cmpKv;
 
-    const int *coff;
-    const int *cmpRatio;
-    const int *cacheMode;
-    const int *stateCacheStrideDim0;
-    const int *quantMode;
+    const int* coff;
+    const int* cmpRatio;
+    const int* cacheMode;
+    const int* stateCacheStrideDim0;
+    const int* quantMode;
     TemplateId templateId;
 
     ge::DataType dtype = ge::DT_BF16;
     LayoutType layout = LayoutType::LAYOUT_BSH;
 
-    size_t *workSpaces;
+    size_t* workSpaces;
     uint64_t tilingKey;
     uint32_t blockDim;
 };
 
 class QuantCompressorTiling {
 public:
-    explicit QuantCompressorTiling(QuantCompressorContext *context)
+    explicit QuantCompressorTiling(QuantCompressorContext* context)
         : context_(context)
     {}
     ~QuantCompressorTiling() = default;
 
-    static ge::graphStatus ConvertContext(gert::TilingContext &context, QuantCompressorContext &compressorContext);
-    ge::graphStatus RunBigKernelTiling(QuantCompressorTilingData *tilingData);
+    static ge::graphStatus ConvertContext(gert::TilingContext& context, QuantCompressorContext& compressorContext);
+    ge::graphStatus RunBigKernelTiling(QuantCompressorTilingData* tilingData);
 
 private:
-    static void ConvertRequiredParams(gert::TilingContext &context, QuantCompressorContext &compressorContext);
+    static void ConvertRequiredParams(gert::TilingContext& context, QuantCompressorContext& compressorContext);
 
-    static void ConvertOptionalParams(gert::TilingContext &context, QuantCompressorContext &compressorContext);
+    static void ConvertOptionalParams(gert::TilingContext& context, QuantCompressorContext& compressorContext);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
     ge::graphStatus SetPageAttentionInfo();
@@ -279,23 +279,23 @@ private:
     ge::graphStatus GenTilingKey() const;
     // ================================通用检查辅助函数==================================
     template <typename T>
-    ge::graphStatus CheckFeatureValueSupport(const T *featureValue, const std::vector<T> &expectFeatureValList,
-                                             const std::string &name) const;
+    ge::graphStatus CheckFeatureValueSupport(const T* featureValue, const std::vector<T>& expectFeatureValList,
+                                             const std::string& name) const;
     template <typename T>
-    ge::graphStatus CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
-                                          const std::string &name) const;
+    ge::graphStatus CheckAttrValueSupport(const T* attrValue, const std::vector<T>& expectAttrValList,
+                                          const std::string& name) const;
     template <typename T>
-    void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
+    void LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue, const std::string& name,
                                const std::string subName) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const std::string &layout, const gert::StorageShape *shape,
-                                               const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
-    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
-                              const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::string &name) const;
-    ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
-                                             const uint32_t &dimNum, const std::string &subName,
-                                             const uint32_t &expectNum) const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const std::string& layout, const gert::StorageShape* shape,
+                                               const std::string& name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc, const std::string& name) const;
+    void LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList, const ge::DataType& actualDtype,
+                              const std::string& name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape* shape, const std::string& name) const;
+    ge::graphStatus LogErrorShapeConsistency(const std::string& name, const gert::StorageShape* shape,
+                                             const uint32_t& dimNum, const std::string& subName,
+                                             const uint32_t& expectNum) const;
     // ================================Check functions==================================
     // 总入口
     ge::graphStatus CheckSinglePara() const;
@@ -353,11 +353,11 @@ private:
     uint32_t dbaseSize = 0;
 
     QuantCompressorBaseShapeInfo baseShapeInfo_;
-    QuantCompressorContext *context_ = nullptr;
-    QuantCompressorBaseParams *baseParams_ = nullptr;
-    QuantCompressorPageAttentionParams *pageAttentionParams_ = nullptr;
-    QuantCompressorInnerSplitParams *innerSplitParams_ = nullptr;
-    QuantCompressorWorkspaceParams *workspaceParams_ = nullptr;
+    QuantCompressorContext* context_ = nullptr;
+    QuantCompressorBaseParams* baseParams_ = nullptr;
+    QuantCompressorPageAttentionParams* pageAttentionParams_ = nullptr;
+    QuantCompressorInnerSplitParams* innerSplitParams_ = nullptr;
+    QuantCompressorWorkspaceParams* workspaceParams_ = nullptr;
 };
 
 } // namespace optiling

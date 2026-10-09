@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file vf_process_vec4_kl_loss_grad.h
@@ -21,7 +21,7 @@ namespace AscendC {
 using namespace Reg;
 
 template <typename T>
-__simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb, __ubuf__ T *maxUb, __ubuf__ T *sumUb,
+__simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T* dstUb, __ubuf__ T* srcUb, __ubuf__ T* maxUb, __ubuf__ T* sumUb,
                                            float scaleValue, float pScaler, uint32_t m, const uint32_t nBaseSize)
 {
     RegTensor<float> vreg_input_x1;
@@ -53,20 +53,20 @@ __simd_vf__ inline void ProcessVec4BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb,
     }
     Muls(vreg_output_x1, vreg_output_x1, pScaler, preg_all_b32);
     Muls(vreg_output_x2, vreg_output_x2, pScaler, preg_all_b32);
-    StoreAlign(((__ubuf__ T *&)dstUb), vreg_output_x1, preg_all_b32);
-    StoreAlign(((__ubuf__ T *&)dstUb + floatRepSize), vreg_output_x2, preg_all_b32);
+    StoreAlign(((__ubuf__ T*&)dstUb), vreg_output_x1, preg_all_b32);
+    StoreAlign(((__ubuf__ T*&)dstUb + floatRepSize), vreg_output_x2, preg_all_b32);
 }
 
 template <typename T>
-__aicore__ inline void ProcessVec4Vf(const LocalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor,
-                                     const LocalTensor<T> &maxTensor, const LocalTensor<T> &sumTensor,
+__aicore__ inline void ProcessVec4Vf(const LocalTensor<T>& dstTensor, const LocalTensor<T>& srcTensor,
+                                     const LocalTensor<T>& maxTensor, const LocalTensor<T>& sumTensor,
                                      const float scaleValue, const float pScaler, const uint32_t m,
                                      const uint32_t nBaseSize)
 {
-    __ubuf__ T *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
-    __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ T *maxUb = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ T *sumUb = (__ubuf__ T *)sumTensor.GetPhyAddr();
+    __ubuf__ T* dstUb = (__ubuf__ T*)dstTensor.GetPhyAddr();
+    __ubuf__ T* srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ T* maxUb = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ T* sumUb = (__ubuf__ T*)sumTensor.GetPhyAddr();
 
     ProcessVec4BasicVF<T>(dstUb, srcUb, maxUb, sumUb, scaleValue, pScaler, m, nBaseSize);
 }

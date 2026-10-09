@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tiling_utils.h
@@ -104,7 +104,7 @@ inline std::string ToString(ge::Format format)
     return FormatToSerialString(format);
 }
 
-static std::vector<int64_t> ToVector(const gert::Shape &shape)
+static std::vector<int64_t> ToVector(const gert::Shape& shape)
 {
     size_t shapeSize = shape.GetDimNum();
     std::vector<int64_t> shapeVec(shapeSize, 0);
@@ -116,7 +116,7 @@ static std::vector<int64_t> ToVector(const gert::Shape &shape)
 }
 
 template <typename T>
-static std::string ToString(const std::vector<T> &v)
+static std::string ToString(const std::vector<T>& v)
 {
     std::ostringstream oss;
     oss << "[";
@@ -130,7 +130,7 @@ static std::string ToString(const std::vector<T> &v)
     return oss.str();
 }
 
-inline std::string ToString(const std::vector<const gert::Shape *> &v)
+inline std::string ToString(const std::vector<const gert::Shape*>& v)
 {
     std::ostringstream oss;
     oss << "[";
@@ -144,7 +144,7 @@ inline std::string ToString(const std::vector<const gert::Shape *> &v)
     return oss.str();
 }
 
-inline std::string ToStringRaw(const gert::Shape &shape)
+inline std::string ToStringRaw(const gert::Shape& shape)
 {
     std::ostringstream oss;
     auto v = ToVector(shape);
@@ -157,7 +157,7 @@ inline std::string ToStringRaw(const gert::Shape &shape)
     return oss.str();
 }
 
-inline std::string ToString(const gert::Shape &shape)
+inline std::string ToString(const gert::Shape& shape)
 {
     return ToString(ToVector(shape));
 }

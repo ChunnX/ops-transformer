@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file case.h
@@ -30,7 +30,7 @@ public:
 
 public:
     Case();
-    Case(const char *name, bool enable, const char *dbgInfo,
+    Case(const char* name, bool enable, const char* dbgInfo,
          int32_t tilingTemplatePriority = kTilingTemplatePriority_Invalid);
     virtual ~Case() = default;
 
@@ -44,7 +44,7 @@ public:
      *
      * \attention 若子类需要调用该接口, 需确保已重写 InitCurrentCasePtr 实现, 以确保所获取指针的正确性.
      */
-    static void *GetCurrentCase();
+    static void* GetCurrentCase();
 
     /**
      * 执行用例
@@ -54,7 +54,7 @@ public:
     /**
      * 获取用例根目录
      */
-    const char *GetRootPath();
+    const char* GetRootPath();
 
 protected:
     /**
@@ -88,7 +88,7 @@ protected:
     /**
      * 当前用例
      */
-    static void *mCurrentCasePtr;
+    static void* mCurrentCasePtr;
 
 protected:
     /**

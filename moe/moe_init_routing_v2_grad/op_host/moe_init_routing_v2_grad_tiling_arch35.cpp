@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_init_routing_v2_grad_tiling_arch35.cpp
@@ -28,10 +28,10 @@ const static int64_t FP16_BF16_SIZE = 2;
 const static int64_t FP32_SIZE = 4;
 const static int64_t UINT16_MAX_VALUE = 65535;
 
-class MoeInitRoutingV2GradRegbase : public MoeInitRoutingV2GradTilingBaseClass
-{
+class MoeInitRoutingV2GradRegbase : public MoeInitRoutingV2GradTilingBaseClass {
 public:
-    explicit MoeInitRoutingV2GradRegbase(gert::TilingContext* context) : MoeInitRoutingV2GradTilingBaseClass(context)
+    explicit MoeInitRoutingV2GradRegbase(gert::TilingContext* context)
+        : MoeInitRoutingV2GradTilingBaseClass(context)
     {
         Reset();
     }
@@ -91,7 +91,7 @@ void MoeInitRoutingV2GradRegbase::SetTilingShapeInfo()
 void MoeInitRoutingV2GradRegbase::SetTilingSplitCore()
 {
     int64_t nBlockFactor = Ops::Base::CeilDiv(N, aivNum); // 单核处理最大token数
-    numBlocks = Ops::Base::CeilDiv(N, nBlockFactor);       // 实际使用核数
+    numBlocks = Ops::Base::CeilDiv(N, nBlockFactor);      // 实际使用核数
 
     moeInitRoutingV2GradTilingData.set_numBlocks(numBlocks);
     moeInitRoutingV2GradTilingData.set_nBlockFactor(nBlockFactor);

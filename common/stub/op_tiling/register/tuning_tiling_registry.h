@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef __INC_REGISTER_TUNING_TILING_REGISTRY_HEADER__
 #define __INC_REGISTER_TUNING_TILING_REGISTRY_HEADER__
@@ -24,8 +24,8 @@ struct TilingItem {
 
 class TuningTilingDef {
 public:
-    virtual void FromJson(const nlohmann::json &j) = 0;
-    virtual void ToJson(nlohmann::json &j) = 0;
+    virtual void FromJson(const nlohmann::json& j) = 0;
+    virtual void ToJson(nlohmann::json& j) = 0;
     ge::AscendString GetClassName() const;
     virtual std::vector<TilingItem> GetItemInfo() const = 0;
 
@@ -40,12 +40,12 @@ protected:
 #define BEGIN_TUNING_TILING_DEF(class_name) \
     class class_name : public TuningTilingDef { \
     public: \
-        virtual void FromJson(const nlohmann::json &j) \
+        virtual void FromJson(const nlohmann::json& j) \
         { \
             FromJsonImpl(*this, "", j); \
         } \
 \
-        virtual void ToJson(nlohmann::json &j) \
+        virtual void ToJson(nlohmann::json& j) \
         { \
             DumpObj(*this, "", j); \
         } \
@@ -57,7 +57,7 @@ protected:
 \
         class FieldHandler { \
         public: \
-            FieldHandler(class_name *pinstance, const ge::AscendString &dtype, const ge::AscendString &name) \
+            FieldHandler(class_name* pinstance, const ge::AscendString& dtype, const ge::AscendString& name) \
             { \
                 pinstance->field_info_.push_back({dtype, name}); \
             } \
@@ -82,9 +82,9 @@ public: \
 using TuningTilingDefConstructor = std::shared_ptr<TuningTilingDef> (*)();
 class TuningTilingClassFactory {
 public:
-    static std::map<ge::AscendString, TuningTilingDefConstructor> &RegisterInfo();
-    static void RegisterTilingData(const ge::AscendString &optype, TuningTilingDefConstructor const constructor);
-    static std::shared_ptr<TuningTilingDef> CreateTilingDataInstance(const ge::AscendString &optype);
+    static std::map<ge::AscendString, TuningTilingDefConstructor>& RegisterInfo();
+    static void RegisterTilingData(const ge::AscendString& optype, TuningTilingDefConstructor const constructor);
+    static std::shared_ptr<TuningTilingDef> CreateTilingDataInstance(const ge::AscendString& optype);
 };
 
 #define REGISTER_TUNING_TILING_CLASS(optype, class_name) \

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file parser.h
@@ -50,9 +50,9 @@ public:
         this->actualLenDims = actualLenDims;
     }
 
-    __aicore__ inline void Init(__gm__ uint8_t *gmAddr, uint32_t actualLenDims)
+    __aicore__ inline void Init(__gm__ uint8_t* gmAddr, uint32_t actualLenDims)
     {
-        this->actualSeqLengthsGm.SetGlobalBuffer((__gm__ ACTLEN_T *)gmAddr, actualLenDims);
+        this->actualSeqLengthsGm.SetGlobalBuffer((__gm__ ACTLEN_T*)gmAddr, actualLenDims);
         this->actualLenDims = actualLenDims;
     }
 
@@ -116,11 +116,11 @@ public:
         this->seqUsedDims = 0;
     }
 
-    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensGmAddr, uint32_t actualLenDims,
-                                __gm__ uint8_t *seqUsedGmAddr = nullptr, uint32_t seqUsedDims = 0)
+    __aicore__ inline void Init(__gm__ uint8_t* cuSeqLensGmAddr, uint32_t actualLenDims,
+                                __gm__ uint8_t* seqUsedGmAddr = nullptr, uint32_t seqUsedDims = 0)
     {
-        this->cuSeqLensGm.SetGlobalBuffer((__gm__ ACTLEN_T *)cuSeqLensGmAddr, actualLenDims);
-        this->seqUsedGm.SetGlobalBuffer((__gm__ ACTLEN_T *)seqUsedGmAddr, seqUsedDims);
+        this->cuSeqLensGm.SetGlobalBuffer((__gm__ ACTLEN_T*)cuSeqLensGmAddr, actualLenDims);
+        this->seqUsedGm.SetGlobalBuffer((__gm__ ACTLEN_T*)seqUsedGmAddr, seqUsedDims);
         this->actualLenDims = actualLenDims;
         this->seqUsedDims = seqUsedDims;
     }
@@ -189,9 +189,9 @@ public:
         this->defaultVal = defaultVal;
     }
 
-    __aicore__ inline void Init(__gm__ uint8_t *gmAddr, uint32_t actualLenDims, uint64_t defaultVal)
+    __aicore__ inline void Init(__gm__ uint8_t* gmAddr, uint32_t actualLenDims, uint64_t defaultVal)
     {
-        this->actualSeqLengthsGm.SetGlobalBuffer((__gm__ ACTLEN_T *)gmAddr, actualLenDims);
+        this->actualSeqLengthsGm.SetGlobalBuffer((__gm__ ACTLEN_T*)gmAddr, actualLenDims);
         this->actualLenDims = actualLenDims;
         this->defaultVal = defaultVal;
     }
@@ -229,9 +229,9 @@ public:
         this->maxblockNumPerBatch = maxblockNumPerBatch;
     }
 
-    __aicore__ inline void Init(__gm__ uint8_t *blockTableGmAddr, uint32_t maxblockNumPerBatch)
+    __aicore__ inline void Init(__gm__ uint8_t* blockTableGmAddr, uint32_t maxblockNumPerBatch)
     {
-        this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTableGmAddr);
+        this->blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTableGmAddr);
         this->maxblockNumPerBatch = maxblockNumPerBatch;
     }
 

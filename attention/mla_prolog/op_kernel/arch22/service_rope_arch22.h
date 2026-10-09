@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file service_rope_arch22.h
@@ -29,9 +29,9 @@ namespace MlaProlog {
  * @param sinCosRepStride 行与行之间sin/cos系数的偏移，单位为元素个数。
  */
 template <typename C>
-__aicore__ inline void RotaryPosEmb(const LocalTensor<C> &outputLocal, const LocalTensor<C> &inputLocal,
-                                    const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-                                    const LocalTensor<uint8_t> &shareTmpUb, uint64_t row, uint64_t col,
+__aicore__ inline void RotaryPosEmb(const LocalTensor<C>& outputLocal, const LocalTensor<C>& inputLocal,
+                                    const LocalTensor<C>& cosLocal, const LocalTensor<C>& sinLocal,
+                                    const LocalTensor<uint8_t>& shareTmpUb, uint64_t row, uint64_t col,
                                     uint8_t sinCosRepStride)
 {
     uint64_t cnt = row * col;

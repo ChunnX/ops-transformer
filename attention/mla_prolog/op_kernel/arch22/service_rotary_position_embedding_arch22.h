@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file service_rotary_position_embedding_arch22.h
@@ -23,10 +23,10 @@
 namespace MlaProlog {
 
 template <typename T, typename C>
-__aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, LocalTensor<uint8_t> &shareTmpUb,
-                                           const Rectangle &ropeParams, LocalTensor<C> &kFp32Local,
-                                           LocalTensor<T> &kLocal, LocalTensor<C> &ropeShareUB,
-                                           LocalTensor<C> &kFp32OutputLocal, int64_t cnt)
+__aicore__ inline void PreprocessRopeInput(const GlobalTensor<T>& inputGm, LocalTensor<uint8_t>& shareTmpUb,
+                                           const Rectangle& ropeParams, LocalTensor<C>& kFp32Local,
+                                           LocalTensor<T>& kLocal, LocalTensor<C>& ropeShareUB,
+                                           LocalTensor<C>& kFp32OutputLocal, int64_t cnt)
 {
     kLocal = shareTmpUb.ReinterpretCast<T>();
 
@@ -70,9 +70,9 @@ __aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, Local
  * @param scale 量化参数；该tensor共用
  */
 template <typename T, typename C, typename O, bool a22EnableDequant = false, bool a22DoRope = true>
-__aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
-                                             const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-                                             LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams,
+__aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O>& outputLocal, const GlobalTensor<T>& inputGm,
+                                             const LocalTensor<C>& cosLocal, const LocalTensor<C>& sinLocal,
+                                             LocalTensor<uint8_t>& shareTmpUb, Rectangle ropeParams,
                                              LocalTensor<float> channelDeqScaleLocal = LocalTensor<float>(),
                                              LocalTensor<float> scale = LocalTensor<float>())
 {
@@ -138,9 +138,9 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
  * @param deQuantScale 量化参数；最终使用shape[row,8]
  */
 template <typename T, typename C, typename O, bool a22EnableDequant = false, bool a22DoRope = true>
-__aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
-                                           const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-                                           LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams, int64_t strideScale,
+__aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O>& outputLocal, const GlobalTensor<T>& inputGm,
+                                           const LocalTensor<C>& cosLocal, const LocalTensor<C>& sinLocal,
+                                           LocalTensor<uint8_t>& shareTmpUb, Rectangle ropeParams, int64_t strideScale,
                                            GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>(),
                                            LocalTensor<float> deQuantScale = LocalTensor<float>())
 {
@@ -199,8 +199,8 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
 }
 
 template <typename T, typename O>
-__aicore__ inline void RopePostQuantPerChannel(LocalTensor<O> &outputLocal, LocalTensor<T> &inputLocal,
-                                               LocalTensor<float> &quantScaleLocal, LocalTensor<uint8_t> &shareTmpUb,
+__aicore__ inline void RopePostQuantPerChannel(LocalTensor<O>& outputLocal, LocalTensor<T>& inputLocal,
+                                               LocalTensor<float>& quantScaleLocal, LocalTensor<uint8_t>& shareTmpUb,
                                                int64_t cnt)
 {
     LocalTensor<float> inFp32;

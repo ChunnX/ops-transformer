@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mat_mul_nd2nz_util.h
@@ -44,7 +44,7 @@ enum class Nd2NzMode : int32_t {
 };
 
 template <class T>
-__aicore__ inline void Copy(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal, uint32_t count)
+__aicore__ inline void Copy(const LocalTensor<T>& dstLocal, const LocalTensor<T>& srcLocal, uint32_t count)
 {
     constexpr uint32_t copyLen = SINGLE_COPY_SIZE / sizeof(T);
     const CopyRepeatParams para(1, 1, 8, 8); // vnchw parameters, which is used to decide stride, burstlength of Copy
@@ -67,7 +67,7 @@ __aicore__ inline int32_t Align2(uint32_t x, uint32_t divisor)
 }
 
 template <class T>
-__aicore__ inline void PadDMain(uint64_t progress, LocalTensor<T> &dstLocal, LocalTensor<T> &srcLocal,
+__aicore__ inline void PadDMain(uint64_t progress, LocalTensor<T>& dstLocal, LocalTensor<T>& srcLocal,
                                 LocalTensor<T> midBuf, LocalTensor<T> zeroBuf, int eventIn, int eventOut,
                                 uint32_t totalWidth, uint64_t c0Size, uint32_t hBlockNum, uint32_t copyInRepeat,
                                 uint32_t hBuffer, uint32_t wTail, bool hasFlag)
@@ -185,7 +185,7 @@ __aicore__ inline void PadDMain(uint64_t progress, LocalTensor<T> &dstLocal, Loc
 }
 
 template <class T>
-__aicore__ inline void PadDAligned(uint64_t progress, LocalTensor<T> &dstLocal, LocalTensor<T> &srcLocal, int eventIn,
+__aicore__ inline void PadDAligned(uint64_t progress, LocalTensor<T>& dstLocal, LocalTensor<T>& srcLocal, int eventIn,
                                    int eventOut, uint32_t totalWidth, uint64_t c0Size, uint32_t hBlockNum, bool hasFlag)
 {
     if (hasFlag) {

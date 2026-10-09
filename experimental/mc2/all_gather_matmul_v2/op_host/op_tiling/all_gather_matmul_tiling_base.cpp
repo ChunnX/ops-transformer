@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_tiling_base.cpp
@@ -43,8 +43,8 @@ constexpr uint64_t BLOCK_SIZE_INDEX = 6;
 
 void AllGatherMatmulTilingBase::SetTilingArgsDim()
 {
-    const gert::StorageShape *x1Shape = context_->GetInputShape(INPUT_X1);
-    const gert::StorageShape *x2Shape = context_->GetInputShape(INPUT_X2);
+    const gert::StorageShape* x1Shape = context_->GetInputShape(INPUT_X1);
+    const gert::StorageShape* x2Shape = context_->GetInputShape(INPUT_X2);
     uint64_t x1Dim0 = x1Shape->GetStorageShape().GetDim(0);
     uint64_t x1Dim1 = x1Shape->GetStorageShape().GetDim(1);
     uint64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
@@ -61,7 +61,7 @@ void AllGatherMatmulTilingBase::SetTilingArgsDim()
 
 void AllGatherMatmulTilingBase::SetTilingArgsDataType()
 {
-    const gert::StorageShape *matrixBias = context_->GetOptionalInputShape(BIAS);
+    const gert::StorageShape* matrixBias = context_->GetOptionalInputShape(BIAS);
     ge::DataType aType = context_->GetInputDesc(INPUT_X1)->GetDataType();
     ge::DataType bType = context_->GetInputDesc(INPUT_X2)->GetDataType();
     ge::DataType biasType;
@@ -130,8 +130,8 @@ ge::graphStatus AllGatherMatmulTilingBase::AnalyzeShapeAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling,
-                                                        ::TCubeTiling &tailTiling)
+void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling,
+                                                        ::TCubeTiling& tailTiling)
 {
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
     auto columnNum = args_.orgKValue;
@@ -139,7 +139,7 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling &rc
             args_.orgNValue);
 }
 
-ge::graphStatus AllGatherMatmulTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcfCfg,
+ge::graphStatus AllGatherMatmulTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling& rcfCfg,
                                                            mc2tiling::Mc2QuantMode quantMmMode)
 {
     if (tileMValue_ * args_.kValue * sizeof(args_.geAType) * args_.rankDim <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
@@ -176,8 +176,8 @@ ge::graphStatus AllGatherMatmulTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling 
 
 // tiling
 
-void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling,
-                                                  ::TCubeTiling &tailTiling, uint32_t &dataType)
+void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling,
+                                                  ::TCubeTiling& tailTiling, uint32_t& dataType)
 {
     SetMC2AllGatherDataInfo(rcsCfg, mmTiling, tailTiling);
 
@@ -187,7 +187,7 @@ void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling &rcsCfg, 
     storageA_ = GetStorageA(rcsCfg);
 }
 
-void AllGatherMatmulTilingBase::SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCfg)
+void AllGatherMatmulTilingBase::SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg)
 {
     rcsCfg.rankDim = args_.rankDim;
     rcsCfg.isTransposeA = args_.isATrans;
@@ -220,7 +220,7 @@ bool AllGatherMatmulTilingBase::SetCommAlgo()
     return true;
 }
 
-uint32_t AllGatherMatmulTilingBase::AllGatherSplitM(mc2tiling::TilingArgs &args, uint32_t maxTileCnt = 64)
+uint32_t AllGatherMatmulTilingBase::AllGatherSplitM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64)
 {
     // 检查允许通信的最大次数
     if (args.commTurn >= maxTileCnt) {
@@ -249,7 +249,7 @@ CutResult AllGatherMatmulTilingBase::GetTilingResult()
     return tileFormulate.GetTiling();
 }
 
-void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling &rcfCfg)
+void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg)
 {
     // cmdType = HCCL_CMD_ALLGATHER, 是允许切K
     if (args_.enableSplitK) { // 只有1份
@@ -361,10 +361,16 @@ ge::graphStatus AllGatherMatmulTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 };
 
-ge::graphStatus AllGatherMatmulTilingBase::GetShapeAttrsInfo() { return AnalyzeShapeAttr(); };
-ge::graphStatus AllGatherMatmulTilingBase::DoLibApiTiling() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus AllGatherMatmulTilingBase::GetShapeAttrsInfo()
+{
+    return AnalyzeShapeAttr();
+};
+ge::graphStatus AllGatherMatmulTilingBase::DoLibApiTiling()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
-uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
+uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling& rcsCfg)
 {
     constexpr uint64_t alignAddrLen = 512;
     uint32_t gatherIndex = rcsCfg.gatherIndex;
@@ -407,7 +413,7 @@ uint64_t AllGatherMatmulTilingBase::GetStorageA(Mc2Tiling::RCSTiling &rcsCfg)
 
 ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 {
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "get workspace failed"),
                     return ge::GRAPH_FAILED);
 

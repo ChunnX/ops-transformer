@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_floyd_attention_grad_tiling_s1s2_bn2gs1s2.h
@@ -129,7 +129,7 @@ struct FuzzyBaseInfoParams { // 频繁使用的基础参数
 
 class FusedFloydAttentionGradTilingS1s2Bn2gs1s2 : public TilingBaseClass {
 public:
-    explicit FusedFloydAttentionGradTilingS1s2Bn2gs1s2(gert::TilingContext *context)
+    explicit FusedFloydAttentionGradTilingS1s2Bn2gs1s2(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
     FusedFloydAttentionGradTilingDataS1s2Bn2gs1s2 tilingData;
@@ -148,7 +148,7 @@ protected:
     ge::graphStatus DoSparse();
     bool CheckFuzzyArgsLegal(uint32_t s1Inner, uint32_t s2Inner);
     std::tuple<uint32_t, uint32_t, uint32_t> FuzzyForBestSplit();
-    void SetMatmulTilingBufferInfo(TCubeTiling &mmTiling);
+    void SetMatmulTilingBufferInfo(TCubeTiling& mmTiling);
     ge::graphStatus GetSparseBlockInfo();
     ge::graphStatus DoPreTiling();
     ge::graphStatus DoPostTiling();
@@ -159,17 +159,17 @@ protected:
     ge::graphStatus SaveToTilingData();
     ge::graphStatus GetSparsePrefixBlockInfo();
     ge::graphStatus GetSparseUnpadBlockInfo();
-    ge::graphStatus SetBmm1k1TilingInput(matmul_tiling::MatmulApiTiling &bmm1k1, matmul_tiling::DataType dataType);
-    ge::graphStatus SetBmm2k1TilingInput(matmul_tiling::MatmulApiTiling &bmm2k1, matmul_tiling::DataType dataType);
-    ge::graphStatus SetBmm3k1V1TilingInput(matmul_tiling::MatmulApiTiling &bmm3k1v1, matmul_tiling::DataType dataType);
+    ge::graphStatus SetBmm1k1TilingInput(matmul_tiling::MatmulApiTiling& bmm1k1, matmul_tiling::DataType dataType);
+    ge::graphStatus SetBmm2k1TilingInput(matmul_tiling::MatmulApiTiling& bmm2k1, matmul_tiling::DataType dataType);
+    ge::graphStatus SetBmm3k1V1TilingInput(matmul_tiling::MatmulApiTiling& bmm3k1v1, matmul_tiling::DataType dataType);
 
-    bool CheckForDichotomy(std::vector<int64_t> &nums, int64_t x, int64_t m);
-    void FillS1s2WeightVec(std::vector<std::vector<int64_t>> &everyBlockInfo, std::vector<int64_t> &s1s2Weight);
+    bool CheckForDichotomy(std::vector<int64_t>& nums, int64_t x, int64_t m);
+    void FillS1s2WeightVec(std::vector<std::vector<int64_t>>& everyBlockInfo, std::vector<int64_t>& s1s2Weight);
     bool CoreLoadBalancingForUnpad(int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM],
                                    int64_t splitCounter);
 
-    void FillBlockInfo(std::vector<std::vector<std::vector<int64_t>>> &calculatedBlockInfo,
-                       std::vector<std::vector<int64_t>> &totalBlockInfo);
+    void FillBlockInfo(std::vector<std::vector<std::vector<int64_t>>>& calculatedBlockInfo,
+                       std::vector<std::vector<int64_t>>& totalBlockInfo);
     bool SetSparseParams();
     void PrintShapeInfo();
     ge::graphStatus GetBaseShapeInfo();

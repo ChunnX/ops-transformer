@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_reduce_scatter_tiling_a2a3.cpp
@@ -25,8 +25,8 @@
 #include "../../../op_kernel/matmul_reduce_scatter_tiling.h"
 
 namespace optiling {
-CutResult MatmulReduceScatterTilingFuncA2A3::GetCutResult(MatmulReduceScatterTilingData &tilingData,
-                                                          mc2tiling::TilingArgs &args)
+CutResult MatmulReduceScatterTilingFuncA2A3::GetCutResult(MatmulReduceScatterTilingData& tilingData,
+                                                          mc2tiling::TilingArgs& args)
 {
     SocVersion_2201 socVersion_2201 =
         (tilingData.socParam.isA3 == 0) ? SocVersion_2201::SOC910_B : SocVersion_2201::SOC910_93;
@@ -39,8 +39,8 @@ CutResult MatmulReduceScatterTilingFuncA2A3::GetCutResult(MatmulReduceScatterTil
 }
 
 ge::graphStatus MatmulReduceScatterTilingFuncA2A3::CheckValidRank(
-    const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK, MatmulReduceScatterTilingData *tilingData,
-    gert::TilingContext *context, uint32_t rankSize)
+    const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK, MatmulReduceScatterTilingData* tilingData,
+    gert::TilingContext* context, uint32_t rankSize)
 {
     // distinguish between 910A2 and 910A3
     auto it = std::find(VALID_RANK.at(tilingData->socParam.isA3).begin(),
@@ -54,21 +54,21 @@ ge::graphStatus MatmulReduceScatterTilingFuncA2A3::CheckValidRank(
     return ge::GRAPH_SUCCESS;
 }
 
-std::string MatmulReduceScatterTilingFuncA2A3::GetRsConfig(MatmulReduceScatterTilingData &tilingData)
+std::string MatmulReduceScatterTilingFuncA2A3::GetRsConfig(MatmulReduceScatterTilingData& tilingData)
 {
     std::string rsConfig =
         (tilingData.socParam.isA3 == 0) ? "ReduceScatter=level0:fullmesh" : "ReduceScatter=level0:doublering";
     return rsConfig;
 }
 
-static ge::graphStatus MatmulReduceScatterTilingImplFuncA2A3(gert::TilingContext *context)
+static ge::graphStatus MatmulReduceScatterTilingImplFuncA2A3(gert::TilingContext* context)
 {
     MatmulReduceScatterTilingFuncA2A3 impl;
     return impl.MatmulReduceScatterTilingFunc(context);
 }
 
 struct MatmulReduceScatterCompileInfo {};
-static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

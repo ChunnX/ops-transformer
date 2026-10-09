@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file qbmm_asw_block.h
@@ -93,7 +93,7 @@ __aicore__ inline constexpr uint32_t GetVectorRegSize()
 class Mc2QuantBmmAswBlock {
 public:
     __aicore__ inline Mc2QuantBmmAswBlock() {}
-    __aicore__ inline void Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx);
+    __aicore__ inline void Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* tilingData, uint32_t blockIdx);
     __aicore__ inline void UpdateBasicIndex(uint64_t roundIdx);
     __aicore__ inline void UpdateBasicIndex4AL1FullLoad(uint64_t roundIdx);
     template <bool bTrans, CubeFormat formatX2 = CubeFormat::ND>
@@ -113,7 +113,7 @@ public:
     ASWOffsetParam offset_;
     PerBlockUBParam ubParams_;
     PerBlockMmParam mmParams_;
-    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData_;
+    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* tilingData_;
 
 private:
     const uint64_t WINDOW_LEN = 4;
@@ -121,7 +121,7 @@ private:
     uint32_t blockIdx_;
 };
 
-__aicore__ inline void Mc2QuantBmmAswBlock::Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData,
+__aicore__ inline void Mc2QuantBmmAswBlock::Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* tilingData,
                                                  uint32_t blockIdx)
 {
     params_.mSplitAddrOffset = 0UL;

@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matrix_coord.hpp
@@ -58,7 +58,7 @@ struct MatrixCoord : public Coord<2, uint32_t> {
 
     /// Constructs from Coord<2>
     HOST_DEVICE
-    MatrixCoord(Coord<2, Index> const &coord)
+    MatrixCoord(Coord<2, Index> const& coord)
         : Base(coord)
     {}
 
@@ -76,42 +76,42 @@ struct MatrixCoord : public Coord<2, uint32_t> {
 
     /// Returns the row of the coordinate
     HOST_DEVICE
-    Index const &row() const
+    Index const& row() const
     {
         return this->At(ROW_INDEX);
     }
 
     /// Returns the row of the coordinate
     HOST_DEVICE
-    Index &row()
+    Index& row()
     {
         return this->At(ROW_INDEX);
     }
 
     /// Returns the column of the coordinate
     HOST_DEVICE
-    Index const &column() const
+    Index const& column() const
     {
         return this->At(COLUMN_INDEX);
     }
 
     /// Returns the column of the coordinate
     HOST_DEVICE
-    Index &column()
+    Index& column()
     {
         return this->At(COLUMN_INDEX);
     }
 
     /// Element-wise addition
     HOST_DEVICE
-    MatrixCoord operator+(Base const &b) const
+    MatrixCoord operator+(Base const& b) const
     {
         return MatrixCoord(Base::operator+(b));
     }
 
     /// In-place addition
     HOST_DEVICE
-    MatrixCoord &operator+=(Base const &b)
+    MatrixCoord& operator+=(Base const& b)
     {
         Base::operator+=(b);
         return *this;

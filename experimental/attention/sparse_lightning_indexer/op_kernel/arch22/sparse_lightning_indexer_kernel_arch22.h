@@ -1,12 +1,12 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_lightning_indexer_kernel_arch22.h
@@ -64,13 +64,13 @@ template <typename LIT>
 class SparseLightningIndexerKernel {
 public:
     __aicore__ inline SparseLightningIndexerKernel() {}
-    __aicore__ inline void Init(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w, __gm__ uint8_t *cuSeqlensQ,
-                                __gm__ uint8_t *cuSeqlensK, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
-                                __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata,
-                                __gm__ uint8_t *candidateTopkIndices, __gm__ uint8_t *candidateBlockLength,
-                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace,
-                                const SparseLITilingData *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* q, __gm__ uint8_t* k, __gm__ uint8_t* w, __gm__ uint8_t* cuSeqlensQ,
+                                __gm__ uint8_t* cuSeqlensK, __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sequsedK,
+                                __gm__ uint8_t* cmpResidualK, __gm__ uint8_t* blockTable,
+                                __gm__ uint8_t* outputIdxOffset, __gm__ uint8_t* metadata,
+                                __gm__ uint8_t* candidateTopkIndices, __gm__ uint8_t* candidateBlockLength,
+                                __gm__ uint8_t* sparseIndices, __gm__ uint8_t* sparseValues, __gm__ uint8_t* workspace,
+                                const SparseLITilingData* __restrict tiling, TPipe* tPipe);
     __aicore__ inline void Process();
 
     // ================================ 类型定义区 ================================
@@ -104,7 +104,7 @@ public:
     static constexpr uint32_t WS_DOUBLE = 2;
 
 protected:
-    TPipe *pipe = nullptr;
+    TPipe* pipe = nullptr;
 
     // offset
     uint64_t queryCoreOffset = 0ULL;
@@ -145,38 +145,38 @@ protected:
     SparseLICommon::SplitCoreInfo splitCoreInfo{};
 
     // ================================ Init functions ================================
-    __aicore__ inline void InitTilingData(const SparseLITilingData *__restrict tilingData);
+    __aicore__ inline void InitTilingData(const SparseLITilingData* __restrict tilingData);
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
-                                            __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensK,
+                                            __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sequsedK);
     // ================================ Split Core ================================
-    __aicore__ inline void SplitCore(uint32_t curCoreIdx, uint32_t &coreNum, SparseLICommon::SplitCoreInfo &info);
+    __aicore__ inline void SplitCore(uint32_t curCoreIdx, uint32_t& coreNum, SparseLICommon::SplitCoreInfo& info);
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t s1gIdx, uint32_t actS1Size, uint32_t actS2SizeOrig);
     __aicore__ inline uint32_t GetTotalBaseBlockNum();
     // ================================ Process functions ================================
     __aicore__ inline void ProcessMain();
-    __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, SparseLICommon::RunInfo &runInfo);
+    __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, SparseLICommon::RunInfo& runInfo);
     __aicore__ inline void ProcessDecode();
     __aicore__ inline void ProcessInvalid();
     // ================================ Params Calc ================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
-                                               GlobalTensor<uint32_t> &actualSeqLengthsGm, uint32_t defaultSeqLen);
+                                               GlobalTensor<uint32_t>& actualSeqLengthsGm, uint32_t defaultSeqLen);
     __aicore__ inline uint32_t GetActualSeqLenKey(uint32_t bIdx, uint32_t actualLenDims, uint32_t usedLenKDims,
-                                                  bool isAccumSeq, GlobalTensor<uint32_t> &actualSeqLengthsGm,
-                                                  GlobalTensor<uint32_t> &usedSeqLengthsKGm, uint32_t defaultSeqLen,
+                                                  bool isAccumSeq, GlobalTensor<uint32_t>& actualSeqLengthsGm,
+                                                  GlobalTensor<uint32_t>& usedSeqLengthsKGm, uint32_t defaultSeqLen,
                                                   uint32_t cmpRatio);
-    __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size,
-                                               uint32_t &actS2SizeOrig);
+    __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t& actS1Size, uint32_t& actS2Size,
+                                               uint32_t& actS2SizeOrig);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
-    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SparseLICommon::RunInfo &runInfo);
+    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SparseLICommon::RunInfo& runInfo);
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
 };
 
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerKernel<LIT>::InitTilingData(
-    const SparseLITilingData *__restrict tilingData)
+    const SparseLITilingData* __restrict tilingData)
 {
     usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
@@ -230,34 +230,34 @@ __aicore__ inline void SparseLightningIndexerKernel<LIT>::InitBuffers()
 }
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerKernel<LIT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
-                                                                           __gm__ uint8_t *actualSeqLengths,
-                                                                           __gm__ uint8_t *sequsedQ,
-                                                                           __gm__ uint8_t *sequsedK)
+__aicore__ inline void SparseLightningIndexerKernel<LIT>::InitActualSeqLen(__gm__ uint8_t* actualSeqLengthsQ,
+                                                                           __gm__ uint8_t* actualSeqLengths,
+                                                                           __gm__ uint8_t* sequsedQ,
+                                                                           __gm__ uint8_t* sequsedK)
 {
     if (actualSeqLengthsQ == nullptr) {
         constInfo.actualLenQDims = 0;
     } else {
         constInfo.actualLenQDims = constInfo.batchSize + 1;
-        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t *)actualSeqLengthsQ, constInfo.actualLenQDims);
+        actualSeqLengthsGmQ.SetGlobalBuffer((__gm__ uint32_t*)actualSeqLengthsQ, constInfo.actualLenQDims);
     }
     if (actualSeqLengths == nullptr) {
         constInfo.actualLenDims = 0;
     } else {
         constInfo.actualLenDims = constInfo.batchSize + 1;
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)actualSeqLengths, constInfo.actualLenDims);
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t*)actualSeqLengths, constInfo.actualLenDims);
     }
     if (sequsedK == nullptr) {
         constInfo.usedLenKDims = 0;
     } else {
         constInfo.usedLenKDims = constInfo.batchSize;
-        usedSeqLengthsKGm.SetGlobalBuffer((__gm__ uint32_t *)sequsedK, constInfo.usedLenKDims);
+        usedSeqLengthsKGm.SetGlobalBuffer((__gm__ uint32_t*)sequsedK, constInfo.usedLenKDims);
     }
 }
 
 template <typename LIT>
 __aicore__ inline uint32_t SparseLightningIndexerKernel<LIT>::GetActualSeqLen(
-    uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq, GlobalTensor<uint32_t> &actualSeqLengthsGm,
+    uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq, GlobalTensor<uint32_t>& actualSeqLengthsGm,
     uint32_t defaultSeqLen)
 {
     if (actualLenDims == 0) {
@@ -272,7 +272,7 @@ __aicore__ inline uint32_t SparseLightningIndexerKernel<LIT>::GetActualSeqLen(
 template <typename LIT>
 __aicore__ inline uint32_t SparseLightningIndexerKernel<LIT>::GetActualSeqLenKey(
     uint32_t bIdx, uint32_t actualLenDims, uint32_t usedLenKDims, bool isAccumSeq,
-    GlobalTensor<uint32_t> &actualSeqLengthsGm, GlobalTensor<uint32_t> &usedSeqLengthsKGm, uint32_t defaultSeqLen,
+    GlobalTensor<uint32_t>& actualSeqLengthsGm, GlobalTensor<uint32_t>& usedSeqLengthsKGm, uint32_t defaultSeqLen,
     uint32_t cmpRatio)
 {
     int32_t residualK = isCmpResidualKValid ? cmpResidualKGm.GetValue(bIdx) : 0;
@@ -290,9 +290,9 @@ __aicore__ inline uint32_t SparseLightningIndexerKernel<LIT>::GetActualSeqLenKey
 }
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerKernel<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size,
-                                                                              uint32_t &actS2Size,
-                                                                              uint32_t &actS2SizeOrig)
+__aicore__ inline void SparseLightningIndexerKernel<LIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t& actS1Size,
+                                                                              uint32_t& actS2Size,
+                                                                              uint32_t& actS2SizeOrig)
 {
     actS1Size = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, actualSeqLengthsGmQ,
                                 constInfo.qSeqSize);
@@ -349,8 +349,8 @@ __aicore__ inline uint32_t SparseLightningIndexerKernel<LIT>::GetTotalBaseBlockN
 
 // 多核版本，双闭区间
 template <typename LIT>
-__aicore__ void inline SparseLightningIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &coreNum,
-                                                                    SparseLICommon::SplitCoreInfo &info)
+__aicore__ void inline SparseLightningIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t& coreNum,
+                                                                    SparseLICommon::SplitCoreInfo& info)
 {
     // 计算每个核最少处理的块数, 剩余的部分前面的核每个核多处理一块
     uint32_t totalBlockNum = GetTotalBaseBlockNum();
@@ -462,11 +462,11 @@ __aicore__ inline void SparseLightningIndexerKernel<LIT>::DealActSeqLenIsZero(ui
 
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerKernel<LIT>::Init(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights, __gm__ uint8_t *cuSeqlensQ,
-    __gm__ uint8_t *cuSeqlensK, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
-    __gm__ uint8_t *blockTable, __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata,
-    __gm__ uint8_t *candidateTopkIndices, __gm__ uint8_t *candidateBlockLength, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseValues, __gm__ uint8_t *workspace, const SparseLITilingData *__restrict tiling, TPipe *tPipe)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* weights, __gm__ uint8_t* cuSeqlensQ,
+    __gm__ uint8_t* cuSeqlensK, __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sequsedK, __gm__ uint8_t* cmpResidualK,
+    __gm__ uint8_t* blockTable, __gm__ uint8_t* outputIdxOffset, __gm__ uint8_t* metadata,
+    __gm__ uint8_t* candidateTopkIndices, __gm__ uint8_t* candidateBlockLength, __gm__ uint8_t* sparseIndices,
+    __gm__ uint8_t* sparseValues, __gm__ uint8_t* workspace, const SparseLITilingData* __restrict tiling, TPipe* tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -480,7 +480,7 @@ __aicore__ inline void SparseLightningIndexerKernel<LIT>::Init(
     InitActualSeqLen(cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK);
 
     if (cmpResidualK != nullptr) {
-        cmpResidualKGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualK);
+        cmpResidualKGm.SetGlobalBuffer((__gm__ int32_t*)cmpResidualK);
         isCmpResidualKValid = true;
     }
     // 计算分核
@@ -494,39 +494,39 @@ __aicore__ inline void SparseLightningIndexerKernel<LIT>::Init(
 
     // mm1开DoubleBuffer
     uint64_t singleCoreMm1ResSize = WS_DOUBLE * constInfo.mBaseSizeAlign * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
-    mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
+    mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T*)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
     // ld流程需要ws大小: [aicnum, 2, CeilDiv(constInfo.mBaseSize, constInfo.gSize), topkOut_*2]
     // (aic, 8, 2, 2, 2048)
     // (aic, s1_cube, 头尾, idx/value, K)
-    vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
+    vec1ResGm.SetGlobalBuffer((__gm__ float*)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * WS_DOUBLE * BASE_TOPK * sizeof(float);
 
     // (aic, 8, 2, 16)
     // (aic, s1_cube, 头尾，16ele)
-    vec1ParamGm.SetGlobalBuffer((__gm__ int64_t *)(workspace + offset));
+    vec1ParamGm.SetGlobalBuffer((__gm__ int64_t*)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * LD_PARAM_NUM * sizeof(int64_t);
 
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tiling);
-        indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        valueOutGm.SetGlobalBuffer((__gm__ OUT_V_T *)sparseValues);
-        weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
+        indiceOutGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
+        valueOutGm.SetGlobalBuffer((__gm__ OUT_V_T*)sparseValues);
+        weightsGm.SetGlobalBuffer((__gm__ W_T*)weights);
         // candidate (two-level topk)：consumer 候选输入绑定（REQUIRED 恒非空）；
         // candidateBlockLength 预留绑定不消费（C7 保证恒空）
         if (candidateTopkIndices != nullptr) {
-            candidateTopkIndexInGm.SetGlobalBuffer((__gm__ int32_t *)candidateTopkIndices);
+            candidateTopkIndexInGm.SetGlobalBuffer((__gm__ int32_t*)candidateTopkIndices);
         }
         vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, vec1ParamGm, weightsGm, indiceOutGm, valueOutGm);
         vectorService.InitVecCandidateTensor(candidateTopkIndexInGm);
     } else {
         matmulService.InitParams(constInfo);
-        queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
+        queryGm.SetGlobalBuffer((__gm__ Q_T*)query);
         if constexpr (PAGE_ATTENTION) {
-            blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+            blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
         }
-        keyGm.SetGlobalBuffer((__gm__ K_T *)key);
+        keyGm.SetGlobalBuffer((__gm__ K_T*)key);
         matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm, mm1ResGm);
     }
     InitBuffers();
@@ -588,7 +588,7 @@ __aicore__ inline void SparseLightningIndexerKernel<LIT>::CalcGS1LoopParams(uint
 
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerKernel<LIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx,
-                                                                      SparseLICommon::RunInfo &runInfo)
+                                                                      SparseLICommon::RunInfo& runInfo)
 {
     runInfo.loop = loop;
     runInfo.bIdx = tempLoopInfo.bIdx;
@@ -684,7 +684,7 @@ __aicore__ inline void SparseLightningIndexerKernel<LIT>::ProcessInvalid()
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
 
                 GlobalTensor<uint32_t> valueOutGmTmp;
-                valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t*)valueOutGm.GetPhyAddr());
                 GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
 
                 AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
@@ -743,7 +743,7 @@ __aicore__ inline void SparseLightningIndexerKernel<LIT>::ProcessMain()
 
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerKernel<LIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
-                                                                           SparseLICommon::RunInfo &runInfo)
+                                                                           SparseLICommon::RunInfo& runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {

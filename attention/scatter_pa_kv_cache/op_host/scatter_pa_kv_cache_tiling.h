@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file scatter_pa_kv_cache_tiling.h
@@ -85,7 +85,7 @@ struct ScatterPaKvCacheCompileInfo {
 
 class ScatterPaKvCacheTiling : public TilingBaseClass {
 public:
-    explicit ScatterPaKvCacheTiling(gert::TilingContext *context, int64_t inOutMode)
+    explicit ScatterPaKvCacheTiling(gert::TilingContext* context, int64_t inOutMode)
         : TilingBaseClass(context),
           inOutMode_(inOutMode)
     {}
@@ -113,17 +113,17 @@ protected:
     ge::graphStatus CheckAlibi();
     ge::graphStatus CheckNz();
     ge::graphStatus GetTemplateType(int64_t inputKeyDimNum);
-    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
     void GetNonContigousStrideInfo();
-    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
     void SetInputPos();
     void GetCommonTilingInfo();
     ge::graphStatus CheckSlotMappingShape(int64_t requiredDimNum);
     int64_t RoundUp(int64_t x, int64_t dtypeSize);
     void GenTilingKey();
     bool IsNonContiguous();
-    bool IsAxesContiguous(const gert::Stride &stride, const gert::Shape &shape, int64_t startAxis, int64_t endAxis);
-    bool IsLastAxisContiguous(const gert::Stride &stride, const gert::Shape &shape);
+    bool IsAxesContiguous(const gert::Stride& stride, const gert::Shape& shape, int64_t startAxis, int64_t endAxis);
+    bool IsLastAxisContiguous(const gert::Stride& stride, const gert::Shape& shape);
 
 private:
     platform_ascendc::SocVersion socVersion_;
@@ -233,7 +233,7 @@ struct ScatterPaKvCacheMembaseParams {
 
 class ScatterPaKvCacheMembaseTiling : public TilingBaseClass {
 public:
-    explicit ScatterPaKvCacheMembaseTiling(gert::TilingContext *context)
+    explicit ScatterPaKvCacheMembaseTiling(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
 

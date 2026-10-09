@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_a2_base.h
@@ -29,7 +29,7 @@ class MoeDistributeA2Context {
 public:
     __aicore__ inline void Init(GM_ADDR hcclContext)
     {
-        hcclContext_ = (__gm__ HcclA2CombineOpParam *)hcclContext;
+        hcclContext_ = (__gm__ HcclA2CombineOpParam*)hcclContext;
     }
 
     __aicore__ inline GM_ADDR GetWindowsInAddr(uint32_t rankId) const
@@ -59,7 +59,7 @@ public:
     }
 
 private:
-    __gm__ HcclA2CombineOpParam *hcclContext_;
+    __gm__ HcclA2CombineOpParam* hcclContext_;
 };
 
 template <typename T>
@@ -166,7 +166,7 @@ private:
         GM_ADDR magicAddrStart =
             shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcFlagAddrStart_[0] + IPC_MAGIC_OFFSET + aivId_ * UB_32B_ALIGN;
         AscendC::GlobalTensor<uint64_t> magicGt;
-        magicGt.SetGlobalBuffer((__gm__ uint64_t *)(magicAddrStart));
+        magicGt.SetGlobalBuffer((__gm__ uint64_t*)(magicAddrStart));
         auto tempLocal = AscendC::LocalTensor<uint64_t>{AscendC::TPosition::LCM, 0, UB_32B_ALIGN / sizeof(uint64_t)};
         AscendC::DataCopy(tempLocal, magicGt, UB_32B_ALIGN / sizeof(uint64_t));
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
@@ -186,7 +186,7 @@ public:
         auto hcclContext = AscendC::GetHcclContext<AscendC::HCCL_GROUP_ID_0>();
         context_.Init(hcclContext);
 
-        auto winSize = ((__gm__ HcclA2CombineOpParam *)hcclContext)->winSize;
+        auto winSize = ((__gm__ HcclA2CombineOpParam*)hcclContext)->winSize;
         aivId_ = AscendC::GetBlockIdx();
         localMoeExpertNum_ = localMoeExpertNum;
         worldSize_ = worldSize;

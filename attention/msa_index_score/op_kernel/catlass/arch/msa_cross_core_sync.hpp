@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_MSA_ARCH_CROSS_CORE_SYNC_HPP
 #define CATLASS_MSA_ARCH_CROSS_CORE_SYNC_HPP
@@ -90,25 +90,25 @@ CATLASS_DEVICE void CrossCoreBarrier()
 }
 
 template <uint8_t MODE, pipe_t PIPE>
-CATLASS_DEVICE void CrossCoreSetFlag(CrossCoreFlag &flag)
+CATLASS_DEVICE void CrossCoreSetFlag(CrossCoreFlag& flag)
 {
     AscendC::CrossCoreSetFlag<MODE, PIPE>(flag.id);
 }
 
 CATLASS_DEVICE
-void CrossCoreWaitFlag(CrossCoreFlag &flag)
+void CrossCoreWaitFlag(CrossCoreFlag& flag)
 {
     AscendC::CrossCoreWaitFlag(flag.id);
 }
 
 template <uint8_t MODE, pipe_t PIPE>
-CATLASS_DEVICE void CrossCoreWaitFlag(CrossCoreFlag &flag)
+CATLASS_DEVICE void CrossCoreWaitFlag(CrossCoreFlag& flag)
 {
     AscendC::CrossCoreWaitFlag<MODE, PIPE>(flag.id);
 }
 
 template <uint8_t MODE, pipe_t PIPE, uint32_t REVERSE_DEPTH>
-CATLASS_DEVICE void CrossCoreSetFlagWithReverse(CrossCoreFlagWithReverse<REVERSE_DEPTH> &flag)
+CATLASS_DEVICE void CrossCoreSetFlagWithReverse(CrossCoreFlagWithReverse<REVERSE_DEPTH>& flag)
 {
     AscendC::CrossCoreSetFlag<MODE, PIPE>(flag.id);
     if (++flag.count >= REVERSE_DEPTH) {
@@ -118,7 +118,7 @@ CATLASS_DEVICE void CrossCoreSetFlagWithReverse(CrossCoreFlagWithReverse<REVERSE
 }
 
 template <uint8_t MODE, pipe_t PIPE, uint32_t REVERSE_DEPTH>
-CATLASS_DEVICE void CrossCoreWaitFlagWithReverse(CrossCoreFlagWithReverse<REVERSE_DEPTH> &flag)
+CATLASS_DEVICE void CrossCoreWaitFlagWithReverse(CrossCoreFlagWithReverse<REVERSE_DEPTH>& flag)
 {
     AscendC::CrossCoreWaitFlag(flag.id);
     if (++flag.count >= REVERSE_DEPTH) {

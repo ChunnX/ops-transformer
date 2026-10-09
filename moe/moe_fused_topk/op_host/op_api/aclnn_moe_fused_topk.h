@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_moe_fused_topk.h
@@ -58,20 +58,22 @@ extern "C" {
  * @param [out] executor: 返回op执行器，包含算子计算流程。
  * @return aclnnStatus: 返回状态码。
  */
-ACLNN_API aclnnStatus aclnnMoeFusedTopkGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* addNum, const aclTensor* mappingNum, const aclTensor* mappingTable,
-    uint32_t groupNum, uint32_t groupTopk, uint32_t topN, uint32_t topK, uint32_t activateType, 
-    bool isNorm, float scale, bool enableExpertMapping, aclTensor* y, aclTensor* indices,
-    uint64_t* workspaceSize, aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnMoeFusedTopkGetWorkspaceSize(const aclTensor* x, const aclTensor* addNum,
+                                                        const aclTensor* mappingNum, const aclTensor* mappingTable,
+                                                        uint32_t groupNum, uint32_t groupTopk, uint32_t topN,
+                                                        uint32_t topK, uint32_t activateType, bool isNorm, float scale,
+                                                        bool enableExpertMapping, aclTensor* y, aclTensor* indices,
+                                                        uint64_t* workspaceSize, aclOpExecutor** executor);
 
-/* @brief aclnnMoeFusedTopk的第二段接口，用于执行计算. 
+/* @brief aclnnMoeFusedTopk的第二段接口，用于执行计算.
  * @param [in] workspace: 在npu device侧申请的workspace内存起址
  * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口aclnnMoeFusedTopkGetWorkspaceSize获取.
  * @param [in] executor: op执行器，包含了算子计算流程.
  * @param [in] stream: acl stream流.
  * @return aclnnStatus: 返回状态码。
  */
-ACLNN_API aclnnStatus aclnnMoeFusedTopk(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnMoeFusedTopk(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                        aclrtStream stream);
 
 #ifdef __cplusplus
 }
