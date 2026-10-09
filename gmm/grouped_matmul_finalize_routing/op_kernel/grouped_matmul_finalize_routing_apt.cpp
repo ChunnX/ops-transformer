@@ -46,16 +46,14 @@
 #endif
 #endif
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201) && defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_W) && \
-    defined(ORIG_DTYPE_SCALE) && defined(DT_FLOAT8_E4M3FN) && defined(DT_FLOAT4_E2M1) && \
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202) && defined(ORIG_DTYPE_X) && \
+    defined(ORIG_DTYPE_W) && defined(ORIG_DTYPE_SCALE) && defined(DT_FLOAT8_E4M3FN) && defined(DT_FLOAT4_E2M1) && \
     defined(DT_HIFLOAT4) && defined(DT_FLOAT8_E8M0) && defined(DT_HIFLOAT4_SCALE)
-#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) && \
-    (ORIG_DTYPE_W == DT_FLOAT4_E2M1 || ORIG_DTYPE_W == DT_HIFLOAT4) && \
+#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN) && (ORIG_DTYPE_W == DT_FLOAT4_E2M1 || ORIG_DTYPE_W == DT_HIFLOAT4) && \
     (ORIG_DTYPE_SCALE == DT_FLOAT8_E8M0 || ORIG_DTYPE_SCALE == DT_HIFLOAT4_SCALE)
 #define V9201_GMM_FINALIZE_ROUTING_WEIGHT_QUANT
 #endif
-#if (ORIG_DTYPE_X == DT_HIFLOAT4) && (ORIG_DTYPE_W == DT_HIFLOAT4) && \
-    (ORIG_DTYPE_SCALE == DT_HIFLOAT4_SCALE)
+#if (ORIG_DTYPE_X == DT_HIFLOAT4) && (ORIG_DTYPE_W == DT_HIFLOAT4) && (ORIG_DTYPE_SCALE == DT_HIFLOAT4_SCALE)
 #define V9201_GMM_FINALIZE_ROUTING_HIF4
 #endif
 #endif
@@ -84,12 +82,12 @@
     ORIG_DTYPE_X != DT_FLOAT4_E2M1
 #include "arch35/grouped_matmul_finalize_routing_pertoken_dequant.h"
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
-#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 9201)
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 9201 && __NPU_ARCH__ != 9202)
 #include "arch35/grouped_matmul_finalize_routing_arch35.h"
 #endif
 #include "arch35/grouped_matmul_finalize_routing_mx_legacy.h"
 #else
-#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 9201)
+#if !defined(__NPU_ARCH__) || (__NPU_ARCH__ != 9201 && __NPU_ARCH__ != 9202)
 #include "arch35/grouped_matmul_finalize_routing_arch35.h"
 #endif
 #include "arch35/grouped_matmul_finalize_routing_mx_legacy.h"
@@ -215,7 +213,7 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
 #else
     AscendC::TPipe pipe;
     // Full Quantization scenario
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -260,7 +258,7 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
                                                                       workspaceGM, tilingGM);
     }
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
     // Preserve the dev CGMCT MX route on A6; Blaze/TensorAPI remains on A5.
     if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
         grouped_matmul_finalize_routing_mx_legacy<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
@@ -287,7 +285,7 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
     }
 #endif
 #else
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
     if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
         grouped_matmul_finalize_routing_mx_legacy<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
             x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
