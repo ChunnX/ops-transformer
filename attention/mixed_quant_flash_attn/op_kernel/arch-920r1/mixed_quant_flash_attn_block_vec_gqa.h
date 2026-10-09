@@ -624,16 +624,8 @@ public:
         WaitFlag<HardEvent::MTE3_V>(MTE3_V_VEC1RES_0 + vec1ResId);
         CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0 + bmm1BufId);
 
-        // C310 Fixpipe applies scale with reduced mantissa precision. Correct
-        // that scale in FP32 before softmax so QK and the FP32 sink stay aligned.
-        float fixpipeScale = constInfo.scaleValue;
-        uint32_t fixpipeScaleBits = *reinterpret_cast<uint32_t *>(&fixpipeScale);
-        fixpipeScaleBits &= ~((1U << 13) - 1U);
-        fixpipeScale = *reinterpret_cast<float *>(&fixpipeScaleBits);
-        if (fixpipeScale != 0.0F) {
-            Muls<T>(bmm1ResBuf, bmm1ResBuf, constInfo.scaleValue / fixpipeScale, runInfo.actVecMSize * s2BaseSize);
-            PipeBarrier<PIPE_V>();
-        }
+        // QK is already scaled by Fixpipe QF322F32_PRE. Keep its native
+        // scale precision (FP32 mantissa bits [12:0] ignored); golden mirrors it.
 
         bool initializeFromSink = constInfo.learnableSinkFlag && runInfo.isFirstS2Loop && runInfo.isFirstFdBlock;
         if (initializeFromSink) {

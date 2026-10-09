@@ -163,7 +163,10 @@ def test_cpu_pv_uses_native_weights_and_fp32_sum(dtype, with_sink, monkeypatch):
     monkeypatch.setattr(torch, "matmul", matmul)
     result = run_cpu_golden(inputs)
     q, kt = operands[0]
-    scores = original(q, kt) * inputs["softmax_scale"]
+    # Independent bit-view reference: Fixpipe ignores the low 13 scale bits.
+    scale = torch.tensor(inputs["softmax_scale"], dtype=torch.float32)
+    scale = (scale.view(torch.int32) & -8192).view(torch.float32)
+    scores = original(q, kt) * scale
     sink = inputs["sinks"]
     maximum = scores.amax(-1, keepdim=True)
     if sink is not None:

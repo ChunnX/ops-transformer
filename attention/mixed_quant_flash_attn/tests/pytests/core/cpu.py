@@ -891,6 +891,17 @@ def npu_batch_matmul_fp32(x, x2):
     return y_out
 
 
+def fixpipe_softmax_scale(scale):
+    """Model QF322F32_PRE: retain FP32 bits [31:13], not FP16 rounding.
+
+    The current MQFA entry uses ND Fixpipe scaling for every Q layout
+    (useDn=false). Only this scalar is truncated, not QK, sink, or PV.
+    A future DN entry scales in vector and must not use this conversion.
+    """
+    bits = np.asarray(scale, dtype=np.float32).view(np.uint32)
+    return float((bits & np.uint32(0xFFFFE000)).view(np.float32))
+
+
 def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
     q = kwargs["q"]
     k = kwargs["k"]
@@ -904,7 +915,7 @@ def tforward(sinner=-1, souter=-1, use_npu=False, **kwargs):
     sinks = kwargs["sinks"]
     attn_mask = kwargs["attn_mask"]
     quant_compute_mode = kwargs["quant_compute_mode"]
-    softmax_scale = kwargs["softmax_scale"]
+    softmax_scale = fixpipe_softmax_scale(kwargs["softmax_scale"])
     mask_mode = kwargs["mask_mode"]
     win_left = kwargs["win_left"]
     win_right = kwargs["win_right"]
