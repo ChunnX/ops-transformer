@@ -2680,9 +2680,8 @@ static ge::graphStatus CheckAndSetExpertExecutionParams(const gert::TilingContex
     OP_TILING_CHECK(CheckAndSetExpertGmmModes(context, expertParams, tilingData->topoType, tilingData, nodeName) !=
                         ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "expert GMM modes are invalid."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        CheckAndSetTokenDimensions(context, tilingData, config, nodeName) != ge::GRAPH_SUCCESS,
-        OP_LOGE(nodeName, "token dimensions are invalid."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckAndSetTokenDimensions(context, tilingData, config, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "token dimensions are invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(CheckAndSetHiddenDim(context, tilingData, expertParams, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "hiddenDim is invalid."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
