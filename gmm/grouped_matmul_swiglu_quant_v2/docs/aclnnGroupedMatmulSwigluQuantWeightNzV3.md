@@ -209,11 +209,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV3(
 - **参数说明：**
 
   | 参数名 | 输入/输出 | 描述 |
-  | --- | --- | --- |
-  | workspace（void *） | 输入 | Device 侧申请的 workspace 内存地址；`workspaceSize` 大于 0 时不能为空，等于 0 时可传 `nullptr`。 |
-  | workspaceSize（uint64_t） | 输入 | Device 侧 workspace 大小，必须使用第一段接口返回的值。 |
-  | executor（aclOpExecutor *） | 输入 | 第一段接口返回的 op executor，不能为空。 |
-  | stream（aclrtStream） | 输入 | 指定算子执行的 ACL stream。 |
+  |--------|:---:|------|
+  | workspace | 输入 | 在Device侧申请的workspace内存地址 |
+  | workspaceSize | 输入 | 在Device侧申请的workspace大小，由第一段接口 `aclnnGroupedMatmulSwigluQuantWeightNzV3GetWorkspaceSize` 获取 |
+  | executor | 输入 | op执行器，包含了算子计算流程 |
+  | stream | 输入 | 指定执行任务的Stream |
 
 - **返回值：**
 
