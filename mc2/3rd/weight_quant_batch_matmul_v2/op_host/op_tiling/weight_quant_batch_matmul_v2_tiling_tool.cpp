@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_tool.cpp
@@ -39,7 +39,7 @@ uint64_t Mc2GetShapeSizeWithDataType(uint64_t shapeSize, ge::DataType dtype)
     }
 }
 
-bool Mc2CheckOptionalInputByShape(const gert::StorageShape *storageShape)
+bool Mc2CheckOptionalInputByShape(const gert::StorageShape* storageShape)
 {
     return storageShape != nullptr && storageShape->GetStorageShape().GetShapeSize() != 0;
 }
@@ -80,7 +80,7 @@ matmul_tiling::DataType Mc2GetMatmulTilingDtype(ge::DataType dtype)
     return it != DTYPE_MAP.end() ? it->second : matmul_tiling::DataType::DT_FLOAT16;
 }
 
-ge::Format Mc2GetInputStorageFormat(const gert::TilingContext *context, size_t id)
+ge::Format Mc2GetInputStorageFormat(const gert::TilingContext* context, size_t id)
 {
     auto desc = context->GetInputDesc(id);
     OP_TILING_CHECK(

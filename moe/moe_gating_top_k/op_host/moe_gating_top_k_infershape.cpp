@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_gating_top_k_infershape.cpp
@@ -28,7 +28,7 @@ static constexpr int64_t Y_INDEX = 0;
 static constexpr int64_t EXPERT_IDX_INDEX = 1;
 static constexpr int64_t OUT_INDEX = 2;
 
-static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const gert::Shape *xShape)
+static ge::graphStatus CheckInputShape(gert::InferShapeContext* context, const gert::Shape* xShape)
 {
     int64_t XRows = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(0);
     int64_t expertNum = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(1);
@@ -40,7 +40,7 @@ static ge::graphStatus CheckInputShape(gert::InferShapeContext *context, const g
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckInputDimsAndAttr(gert::InferShapeContext *context, const gert::Shape *xShape,
+static ge::graphStatus CheckInputDimsAndAttr(gert::InferShapeContext* context, const gert::Shape* xShape,
                                              const int64_t k)
 {
     if (xShape->GetDimNum() == 1U) {
@@ -50,8 +50,7 @@ static ge::graphStatus CheckInputDimsAndAttr(gert::InferShapeContext *context, c
             return ge::GRAPH_FAILED;
         }
     } else if (xShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()),
-                                     "2 or dynamic");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", std::to_string(xShape->GetDimNum()), "2 or dynamic");
         return ge::GRAPH_FAILED;
     }
 
@@ -63,38 +62,38 @@ static ge::graphStatus CheckInputDimsAndAttr(gert::InferShapeContext *context, c
     return ge::GRAPH_SUCCESS;
 }
 
-static void ShowInputShapeInfo(gert::InferShapeContext *context, const gert::Shape *xShape, const int64_t k)
+static void ShowInputShapeInfo(gert::InferShapeContext* context, const gert::Shape* xShape, const int64_t k)
 {
     OP_LOGD(context, "x shape is: %s.", Ops::Base::ToString(*xShape).c_str());
     OP_LOGD(context, "k is: %ld.", k);
 }
 
-static void ShowOutputShapeInfo(gert::InferShapeContext *context, const gert::Shape *yShape,
-                                const gert::Shape *expertIdxShape, const gert::Shape *outShape)
+static void ShowOutputShapeInfo(gert::InferShapeContext* context, const gert::Shape* yShape,
+                                const gert::Shape* expertIdxShape, const gert::Shape* outShape)
 {
     OP_LOGD(context, "y shape is: %s after infershape.", Ops::Base::ToString(*yShape).c_str());
     OP_LOGD(context, "expert_idx shape is: %s after infershape.", Ops::Base::ToString(*expertIdxShape).c_str());
     OP_LOGD(context, "out shape is: %s after infershape.", Ops::Base::ToString(*outShape).c_str());
 }
 
-static ge::graphStatus InferShape4MoeGatingTopK(gert::InferShapeContext *context)
+static ge::graphStatus InferShape4MoeGatingTopK(gert::InferShapeContext* context)
 {
     OP_LOGD(context, "Begin to do MoeGatingTopKInfershape.");
 
     // 获取输入shape
-    const gert::Shape *xShape = context->GetInputShape(0);
+    const gert::Shape* xShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
-    gert::Shape *yShape = context->GetOutputShape(0);
+    gert::Shape* yShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
-    gert::Shape *expertIdxShape = context->GetOutputShape(1);
+    gert::Shape* expertIdxShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertIdxShape);
-    gert::Shape *outShape = context->GetOutputShape(2);
+    gert::Shape* outShape = context->GetOutputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context, outShape);
 
     // 获取attr
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *kPtr = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, kPtr);
     const int64_t k = *kPtr;
     ShowInputShapeInfo(context, xShape, k);
@@ -128,7 +127,7 @@ static ge::graphStatus InferShape4MoeGatingTopK(gert::InferShapeContext *context
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataType4MoeGatingTopK(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataType4MoeGatingTopK(gert::InferDataTypeContext* context)
 {
     OP_LOGD(context, "Begin to do MoeGatingTopKInferDataType.");
     auto xDtype = context->GetInputDataType(0);

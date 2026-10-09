@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_reduce_formulaic_tiling.h
@@ -31,7 +31,7 @@ constexpr double SHORT_TILE_GROW_RATIO = 1.25;
 class MMPlusAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
-    explicit MMPlusAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
+    explicit MMPlusAllReduce(const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
                              NpuArch npuArch = Ops::Base::DAV_2201, bool isPerBlock = false,
                              SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, npuArch, socVersion_2201)
@@ -60,7 +60,7 @@ private:
 class MMPlusQuantAllReduce : public OneCalcOneCommBase {
 public:
     // Constructor
-    explicit MMPlusQuantAllReduce(const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
+    explicit MMPlusQuantAllReduce(const mc2tiling::TilingArgs& args, uint32_t inputRankDim, KernelType inputKernelType,
                                   NpuArch npuArch = Ops::Base::DAV_2201,
                                   SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B)
         : OneCalcOneCommBase(args, inputRankDim, inputKernelType, npuArch, socVersion_2201)
@@ -75,9 +75,9 @@ public:
     }
 
     void EstimateKernelTime() override;
-    void SmallShortCheck(const uint64_t totalLen, uint64_t &longTileLen, const uint64_t &shortTileLen) const;
-    void UniformCutSetShort(const uint64_t totalLen, const uint64_t minAlign, uint64_t &shortTileLen) const;
+    void SmallShortCheck(const uint64_t totalLen, uint64_t& longTileLen, const uint64_t& shortTileLen) const;
+    void UniformCutSetShort(const uint64_t totalLen, const uint64_t minAlign, uint64_t& shortTileLen) const;
     void SelectTilingMethod() override;
-    void SelectTilingScene(bool &longTileAlignUpFlag);
+    void SelectTilingScene(bool& longTileAlignUpFlag);
 };
 #endif //__ALL_REDUCE_FORMULAIC_TILING_H__

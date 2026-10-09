@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dense_lightning_indexer_softmax_lse_vector.h
@@ -41,14 +41,14 @@ public:
     static constexpr OUT_T SOFTMAX_MIN_NUM = -2e38;
 
     __aicore__ inline DenseLISoftmaxLseVector(){};
-    __aicore__ inline void ProcessVec(const DenseLISoftmaxLseCommon::RunInfo &info);
-    __aicore__ inline void ProcessSoftmax(const DenseLISoftmaxLseCommon::RunInfo &info);
+    __aicore__ inline void ProcessVec(const DenseLISoftmaxLseCommon::RunInfo& info);
+    __aicore__ inline void ProcessSoftmax(const DenseLISoftmaxLseCommon::RunInfo& info);
     __aicore__ inline void ProcessReduceMax(uint32_t pingPongFlag);
     __aicore__ inline void ProcessReduceSum(uint32_t pingPongFlag);
     __aicore__ inline void ProcessOutput(uint64_t outOffset, uint64_t coreDealSize);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitParams(const struct DenseLISoftmaxLseCommon::ConstInfo &constInfo,
-                                      const DenseLISoftmaxLseTilingData *__restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitParams(const struct DenseLISoftmaxLseCommon::ConstInfo& constInfo,
+                                      const DenseLISoftmaxLseTilingData* __restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
                                                 GlobalTensor<W_T> weightsGm, GlobalTensor<OUT_T> softmaxMaxGm,
                                                 GlobalTensor<OUT_T> softmaxSumGm);
@@ -100,7 +100,7 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseVector<T>::InitBuffers(TPipe *pipe)
+__aicore__ inline void DenseLISoftmaxLseVector<T>::InitBuffers(TPipe* pipe)
 {
     // mm1Res UB + weight UB + brocast UB
     pipe->InitBuffer(
@@ -123,8 +123,8 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::InitBuffers(TPipe *pipe)
 
 template <typename T>
 __aicore__ inline void DenseLISoftmaxLseVector<T>::InitParams(
-    const struct DenseLISoftmaxLseCommon::ConstInfo &constInfo,
-    const DenseLISoftmaxLseTilingData *__restrict tilingData)
+    const struct DenseLISoftmaxLseCommon::ConstInfo& constInfo,
+    const DenseLISoftmaxLseTilingData* __restrict tilingData)
 {
     constInfo_ = constInfo;
     gSize_ = constInfo.gSize;
@@ -165,7 +165,7 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::FreeEventID()
 {}
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessVec(const DenseLISoftmaxLseCommon::RunInfo &info)
+__aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessVec(const DenseLISoftmaxLseCommon::RunInfo& info)
 {
     int32_t cuBaseS1Idx = info.gS1Idx * s1BaseSize_;
     int32_t cuBaseS2Idx = info.s2Idx * s2BaseSize_;
@@ -243,7 +243,7 @@ __aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessVec(const DenseLISoftm
 }
 
 template <typename T>
-__aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessSoftmax(const DenseLISoftmaxLseCommon::RunInfo &info)
+__aicore__ inline void DenseLISoftmaxLseVector<T>::ProcessSoftmax(const DenseLISoftmaxLseCommon::RunInfo& info)
 {
     uint32_t loop = info.s1BlockInnerLoop;
     uint32_t actDealS1BaseSize =

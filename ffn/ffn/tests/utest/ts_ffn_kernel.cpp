@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file ts_ffn_kernel.cpp
@@ -128,12 +128,12 @@ const auto Tc_FFN_Kernel_Case = ::testing::Values(
         OpInfo(ControlInfo(true, true),
                ExpectInfo(true, 7,
                           ExpectInfo::kFullTilingBlockDim)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
-        Param({GenTensor("x", {256, 512}, ge::DataType::DT_BF16),
-               GenTensor("weight1", {4, 512, 0}, ge::DataType::DT_BF16),
-               GenTensor("weight2", {4, 0, 512}, ge::DataType::DT_BF16),
-               GenTensor("expertTokens", {4}, ge::DataType::DT_INT64),
-               GenTensor("y", {256, 512}, ge::DataType::DT_BF16)},
-              {64, 64, 64, 64}, "fastgelu", 0, -1),
+        Param(
+            {GenTensor("x", {256, 512}, ge::DataType::DT_BF16),
+             GenTensor("weight1", {4, 512, 0}, ge::DataType::DT_BF16),
+             GenTensor("weight2", {4, 0, 512}, ge::DataType::DT_BF16),
+             GenTensor("expertTokens", {4}, ge::DataType::DT_INT64), GenTensor("y", {256, 512}, ge::DataType::DT_BF16)},
+            {64, 64, 64, 64}, "fastgelu", 0, -1),
         0),
     FFNCase(
         "FFN_Moe_Case12", true, "", /* CaseName, Enable, DebugInfo */
@@ -188,13 +188,13 @@ const auto Tc_FFN_Kernel_Case = ::testing::Values(
         OpInfo(ControlInfo(true, true),
                ExpectInfo(true, 0,
                           ExpectInfo::kFullTilingBlockDim)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
-        Param({GenTensor("x", {64, 768}, ge::DataType::DT_FLOAT16),
-               GenTensor("weight1", {768, 1024}, ge::DataType::DT_FLOAT16),
-               GenTensor("weight2", {1024, 768}, ge::DataType::DT_FLOAT16),
-               GenTensor("bias1", {1024}, ge::DataType::DT_FLOAT16),
-               GenTensor("bias2", {768}, ge::DataType::DT_FLOAT16),
-               GenTensor("y", {64, 768}, ge::DataType::DT_FLOAT16)},
-              {}, "fastgelu", 1, -1),
+        Param(
+            {GenTensor("x", {64, 768}, ge::DataType::DT_FLOAT16),
+             GenTensor("weight1", {768, 1024}, ge::DataType::DT_FLOAT16),
+             GenTensor("weight2", {1024, 768}, ge::DataType::DT_FLOAT16),
+             GenTensor("bias1", {1024}, ge::DataType::DT_FLOAT16), GenTensor("bias2", {768}, ge::DataType::DT_FLOAT16),
+             GenTensor("y", {64, 768}, ge::DataType::DT_FLOAT16)},
+            {}, "fastgelu", 1, -1),
         0),
     FFNCase(
         "FFN_geglu_Case19", true, "", /* CaseName, Enable, DebugInfo */
@@ -237,18 +237,17 @@ const auto Tc_FFN_Kernel_Case = ::testing::Values(
         OpInfo(ControlInfo(true, false),
                ExpectInfo(true, 13,
                           ExpectInfo::kFullTilingBlockDim)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
-        Param({GenTensor("x", {8, 5120}, ge::DataType::DT_INT8),
-               GenTensor("weight1", {4, 5120, 0}, ge::DataType::DT_INT8),
-               GenTensor("weight2", {4, 0, 5120}, ge::DataType::DT_INT8),
-               GenTensor("expertTokens", {4}, ge::DataType::DT_INT64),
-               GenTensor("bias1", {4, 0}, ge::DataType::DT_INT32),
-               GenTensor("bias2", {4, 5120}, ge::DataType::DT_INT32), GenTensor("scale", {4}, ge::DataType::DT_FLOAT),
-               GenTensor("offset", {4}, ge::DataType::DT_FLOAT), GenTensor("deqScale1", {4, 0}, ge::DataType::DT_FLOAT),
-               GenTensor("deqScale2", {4, 5120}, ge::DataType::DT_FLOAT),
-               GenTensor("y", {8, 5120}, ge::DataType::DT_FLOAT16)},
-              {2, 2, 2, 2}, "relu", 1, -1),
-        0)
-    );
+        Param(
+            {GenTensor("x", {8, 5120}, ge::DataType::DT_INT8),
+             GenTensor("weight1", {4, 5120, 0}, ge::DataType::DT_INT8),
+             GenTensor("weight2", {4, 0, 5120}, ge::DataType::DT_INT8),
+             GenTensor("expertTokens", {4}, ge::DataType::DT_INT64), GenTensor("bias1", {4, 0}, ge::DataType::DT_INT32),
+             GenTensor("bias2", {4, 5120}, ge::DataType::DT_INT32), GenTensor("scale", {4}, ge::DataType::DT_FLOAT),
+             GenTensor("offset", {4}, ge::DataType::DT_FLOAT), GenTensor("deqScale1", {4, 0}, ge::DataType::DT_FLOAT),
+             GenTensor("deqScale2", {4, 5120}, ge::DataType::DT_FLOAT),
+             GenTensor("y", {8, 5120}, ge::DataType::DT_FLOAT16)},
+            {2, 2, 2, 2}, "relu", 1, -1),
+        0));
 
 // INSTANTIATE_TEST_SUITE_P(FFN, Ts_FFN_WithParam_Ascend910B3, Tc_FFN_Kernel_Case);
 } // namespace

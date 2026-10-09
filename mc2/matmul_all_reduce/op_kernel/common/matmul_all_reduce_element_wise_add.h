@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_element_wise_add.h
@@ -23,7 +23,7 @@ class MatmulAllReduceElementWiseAdd {
 public:
     __aicore__ inline MatmulAllReduceElementWiseAdd() {}
 
-    __aicore__ inline void Init(GM_ADDR left, GM_ADDR right, uint64_t totalCnt, uint64_t tileCnt, TPipe *tPipe,
+    __aicore__ inline void Init(GM_ADDR left, GM_ADDR right, uint64_t totalCnt, uint64_t tileCnt, TPipe* tPipe,
                                 uint32_t coreNum)
     {
         pipe_ = tPipe;
@@ -34,8 +34,8 @@ public:
         }
         this->tileNum_ = Ceil(this->blockCnt_, tileCnt);
         this->tileCnt_ = tileCnt;
-        mmOutGm_.SetGlobalBuffer((__gm__ xDtype *)left + blockAddr, this->blockCnt_);
-        addGm_.SetGlobalBuffer((__gm__ yDtype *)right + blockAddr, this->blockCnt_);
+        mmOutGm_.SetGlobalBuffer((__gm__ xDtype*)left + blockAddr, this->blockCnt_);
+        addGm_.SetGlobalBuffer((__gm__ yDtype*)right + blockAddr, this->blockCnt_);
         pipe_->InitBuffer(inQueueX_, DOUBLE_BUFFER, tileCnt * sizeof(xDtype));
         pipe_->InitBuffer(inQueueY_, DOUBLE_BUFFER, tileCnt * sizeof(yDtype));
         pipe_->InitBuffer(outQueueZ_, DOUBLE_BUFFER, tileCnt * sizeof(xDtype));
@@ -108,7 +108,7 @@ public:
     static constexpr bool Y_NEED_INCREASE_ACCURACY = NEED_INCREASE_ACCURACY && (!std::is_same<yDtype, float>::value);
 #endif
 
-    TPipe *pipe_;
+    TPipe* pipe_;
     TQue<QuePosition::VECIN, 1> inQueueX_;
     TQue<QuePosition::VECIN, 1> inQueueY_;
     TQue<QuePosition::VECOUT, 1> outQueueZ_;
@@ -123,7 +123,7 @@ public:
 
 template <typename xDtype, typename yDtype = xDtype>
 __aicore__ inline void MatmulAllReduceElementWiseAddKernel(GM_ADDR x, GM_ADDR y, uint64_t totalCnt, uint64_t tileCnt,
-                                                           TPipe *tPipe)
+                                                           TPipe* tPipe)
 {
     if ASCEND_IS_AIC {
         return;

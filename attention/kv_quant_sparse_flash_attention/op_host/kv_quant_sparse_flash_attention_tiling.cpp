@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kv_quant_sparse_flash_attention_tiling.cpp
@@ -126,7 +126,7 @@ static const std::map<QSFALayout, size_t> QSFA_LAYOUT_DIM_MAP = {
     {QSFALayout::PA_BSND, DIM_NUM_FOUR},
 };
 
-static std::string ToStringRaw(const gert::Shape &shape)
+static std::string ToStringRaw(const gert::Shape& shape)
 {
     std::ostringstream oss;
     const size_t qsfaRank = shape.GetDimNum();
@@ -141,7 +141,7 @@ static std::string ToStringRaw(const gert::Shape &shape)
 }
 
 template <typename T>
-static std::string GetShapeStr(const T &shape)
+static std::string GetShapeStr(const T& shape)
 {
     std::ostringstream qsfaOss;
     qsfaOss << "[";
@@ -166,7 +166,7 @@ static std::string QSFADataTypeToSerialString(ge::DataType type)
     }
 }
 
-string QSFATensorDesc2String(const gert::StorageShape *shape, const gert::CompileTimeTensorDesc *tensor)
+string QSFATensorDesc2String(const gert::StorageShape* shape, const gert::CompileTimeTensorDesc* tensor)
 {
     if (shape == nullptr || tensor == nullptr) {
         return "nil ";
@@ -186,7 +186,7 @@ string QSFATensorDesc2String(const gert::StorageShape *shape, const gert::Compil
     return qsfaOss.str();
 }
 
-string QSFADebugTilingContext(const gert::TilingContext *context)
+string QSFADebugTilingContext(const gert::TilingContext* context)
 {
     std::ostringstream qsfaOss;
     for (size_t i = 0; i < context->GetComputeNodeInfo()->GetInputsNum(); ++i) {
@@ -249,12 +249,12 @@ ge::graphStatus QSFAMlaTiling::SetWorkspaceSize(uint64_t workspaceSize) const
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "workSpaceSize got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAMlaTiling::SetTilingData(TilingDef &tilingData) const
+ge::graphStatus QSFAMlaTiling::SetTilingData(TilingDef& tilingData) const
 {
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "RawTilingData got from GE context is nullptr."),
@@ -553,7 +553,7 @@ void QSFAMlaTiling::CalcBlockDim()
     OP_LOGI(qsfaInfo_->opName, "QSFA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
 }
 
-ge::graphStatus QSFAMlaTiling::DoOpTiling(QSFATilingInfo *qsfaInfo)
+ge::graphStatus QSFAMlaTiling::DoOpTiling(QSFATilingInfo* qsfaInfo)
 {
     qsfaInfo_ = qsfaInfo;
     if (GetPlatformInfo() != ge::GRAPH_SUCCESS) {
@@ -575,7 +575,7 @@ ge::graphStatus QSFAMlaTiling::DoOpTiling(QSFATilingInfo *qsfaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingKvQuantSparseFlashAttention(gert::TilingContext *context)
+ge::graphStatus TilingKvQuantSparseFlashAttention(gert::TilingContext* context)
 {
     QSFATilingInfo qsfaInfo;
     QSFAInfoParser qsfaInfoParser(context);
@@ -592,14 +592,14 @@ ge::graphStatus TilingKvQuantSparseFlashAttention(gert::TilingContext *context)
     return tiling.DoOpTiling(&qsfaInfo);
 }
 
-ge::graphStatus TilingPrepareForKvQuantSparseFlashAttention(gert::TilingParseContext *const context)
+ge::graphStatus TilingPrepareForKvQuantSparseFlashAttention(gert::TilingParseContext* const context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFATilingCheck::GetExpectedShape(gert::Shape &shapeExpected, const QSFATilingShapeCompareParam &param,
-                                                  const QSFALayout &layout) const
+ge::graphStatus QSFATilingCheck::GetExpectedShape(gert::Shape& shapeExpected, const QSFATilingShapeCompareParam& param,
+                                                  const QSFALayout& layout) const
 {
     if (layout == QSFALayout::BSND) {
         shapeExpected = gert::Shape({param.B, param.S, param.N, param.D});
@@ -614,8 +614,8 @@ ge::graphStatus QSFATilingCheck::GetExpectedShape(gert::Shape &shapeExpected, co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFATilingCheck::CompareShape(QSFATilingShapeCompareParam &param, const gert::Shape &shape,
-                                              const QSFALayout &layout, const std::string &name) const
+ge::graphStatus QSFATilingCheck::CompareShape(QSFATilingShapeCompareParam& param, const gert::Shape& shape,
+                                              const QSFALayout& layout, const std::string& name) const
 {
     gert::Shape qsfaShapeExpected;
     if (GetExpectedShape(qsfaShapeExpected, param, layout) != ge::GRAPH_SUCCESS) {
@@ -641,8 +641,8 @@ ge::graphStatus QSFATilingCheck::CompareShape(QSFATilingShapeCompareParam &param
     return ge::GRAPH_SUCCESS;
 }
 
-void QSFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-                                           const ge::DataType &actualDtype, const std::string &name) const
+void QSFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList,
+                                           const ge::DataType& actualDtype, const std::string& name) const
 {
     std::ostringstream qsfaOss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -655,15 +655,15 @@ void QSFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expe
                                           "The dtype of " + name + " must be " + qsfaOss.str());
 }
 
-ge::graphStatus QSFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc,
-                                                   const std::string &name) const
+ge::graphStatus QSFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc* qsfaDesc,
+                                                   const std::string& name) const
 {
     if (qsfaDesc != nullptr) {
-        const auto &qsfaIt = DTYPE_SUPPORT_MAP.find(name);
+        const auto& qsfaIt = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(qsfaIt == DTYPE_SUPPORT_MAP.end(),
                     OP_LOGE(opName_, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
                     return ge::GRAPH_FAILED);
-        auto &qsfaExpectDtypeList = qsfaIt->second;
+        auto& qsfaExpectDtypeList = qsfaIt->second;
         OP_CHECK_IF(std::find(qsfaExpectDtypeList.begin(), qsfaExpectDtypeList.end(), qsfaDesc->GetDataType()) ==
                         qsfaExpectDtypeList.end(),
                     LogErrorDtypeSupport(qsfaExpectDtypeList, qsfaDesc->GetDataType(), name), return ge::GRAPH_FAILED);
@@ -672,8 +672,8 @@ ge::graphStatus QSFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensor
 }
 
 template <typename T>
-void QSFATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                            const std::string &name, const std::string subName) const
+void QSFATilingCheck::LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                            const std::string& name, const std::string subName) const
 {
     std::ostringstream qsfaOssNum;
     size_t count = expectNumberList.size();
@@ -693,16 +693,16 @@ void QSFATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberLi
 }
 
 template <typename T>
-void QSFATilingCheck::LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                            const std::string &name) const
+void QSFATilingCheck::LogErrorDimNumSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                            const std::string& name) const
 {
     LogErrorNumberSupport(expectNumberList, actualValue, name, "dimension");
 }
 
-ge::graphStatus QSFATilingCheck::CheckDimNumInLayoutSupport(const QSFALayout &layout, const gert::StorageShape *shape,
-                                                            const std::string &name) const
+ge::graphStatus QSFATilingCheck::CheckDimNumInLayoutSupport(const QSFALayout& layout, const gert::StorageShape* shape,
+                                                            const std::string& name) const
 {
-    const auto &qsfaDimIt = QSFA_LAYOUT_DIM_MAP.find(layout);
+    const auto& qsfaDimIt = QSFA_LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != qsfaDimIt->second,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
                     opName_, name.c_str(), std::to_string(shape->GetStorageShape().GetDimNum()).c_str(),
@@ -712,9 +712,9 @@ ge::graphStatus QSFATilingCheck::CheckDimNumInLayoutSupport(const QSFALayout &la
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFATilingCheck::CheckDimNumSupport(const gert::StorageShape *shape,
-                                                    const std::vector<size_t> &qsfaExpectDimNumList,
-                                                    const std::string &name) const
+ge::graphStatus QSFATilingCheck::CheckDimNumSupport(const gert::StorageShape* shape,
+                                                    const std::vector<size_t>& qsfaExpectDimNumList,
+                                                    const std::string& name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -729,8 +729,8 @@ ge::graphStatus QSFATilingCheck::CheckDimNumSupport(const gert::StorageShape *sh
     return ge::GRAPH_SUCCESS;
 }
 
-void QSFATilingCheck::LogErrorLayoutSupport(const std::vector<QSFALayout> &expectLayoutList,
-                                            const QSFALayout &actualLayout, const std::string &name) const
+void QSFATilingCheck::LogErrorLayoutSupport(const std::vector<QSFALayout>& expectLayoutList,
+                                            const QSFALayout& actualLayout, const std::string& name) const
 {
     std::ostringstream qsfaOssLayout;
     for (size_t i = 0; i < expectLayoutList.size(); ++i) {
@@ -743,13 +743,13 @@ void QSFATilingCheck::LogErrorLayoutSupport(const std::vector<QSFALayout> &expec
                                           "Tensor " + name + " only supports layout " + qsfaOssLayout.str());
 }
 
-ge::graphStatus QSFATilingCheck::CheckLayoutSupport(const QSFALayout &actualLayout, const std::string &name) const
+ge::graphStatus QSFATilingCheck::CheckLayoutSupport(const QSFALayout& actualLayout, const std::string& name) const
 {
-    const auto &qsfaItLayout = LAYOUT_SUPPORT_MAP.find(name);
+    const auto& qsfaItLayout = LAYOUT_SUPPORT_MAP.find(name);
     OP_CHECK_IF(qsfaItLayout == LAYOUT_SUPPORT_MAP.end(),
                 OP_LOGE(opName_, "%s layout support list should be specify in LAYOUT_SUPPORT_MAP", name.c_str()),
                 return ge::GRAPH_FAILED);
-    auto &qsfaExpectLayoutList = qsfaItLayout->second;
+    auto& qsfaExpectLayoutList = qsfaItLayout->second;
     OP_CHECK_IF(
         std::find(qsfaExpectLayoutList.begin(), qsfaExpectLayoutList.end(), actualLayout) == qsfaExpectLayoutList.end(),
         LogErrorLayoutSupport(qsfaExpectLayoutList, actualLayout, name), return ge::GRAPH_FAILED);
@@ -832,7 +832,7 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSinks() const
         return ge::GRAPH_FAILED;
     }
 
-    const gert::Shape &sinksShape = opParamInfo_.sinks.tensor->GetStorageShape();
+    const gert::Shape& sinksShape = opParamInfo_.sinks.tensor->GetStorageShape();
     OP_CHECK_IF(sinksShape.GetDimNum() != DIM_NUM_ONE,
                 OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, SINKS_NAME.c_str(),
                                                          std::to_string(sinksShape.GetDimNum()).c_str(),
@@ -907,11 +907,11 @@ ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
 }
 
 template <typename T>
-ge::graphStatus QSFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::pair<const T *, T>> &attrMap) const
+ge::graphStatus QSFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::pair<const T*, T>>& attrMap) const
 {
-    for (auto const &kv : attrMap) {
-        const std::string &qsfaAttrName = kv.first;
-        const std::pair<const T *, T> &qsfaPointerValuePair = kv.second;
+    for (auto const& kv : attrMap) {
+        const std::string& qsfaAttrName = kv.first;
+        const std::pair<const T*, T>& qsfaPointerValuePair = kv.second;
         if (qsfaPointerValuePair.first == nullptr) {
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, qsfaAttrName.c_str(),
                                                      qsfaAttrName + " should not be nullptr");
@@ -969,8 +969,8 @@ ge::graphStatus QSFATilingCheck::CheckParaExistence()
     return CheckParaExistenceMla();
 }
 
-static ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, const std::string &name,
-                                           const char *opName)
+static ge::graphStatus GetActualSeqLenSize(int64_t& size, const gert::Tensor* tensor, const std::string& name,
+                                           const char* opName)
 {
     if (tensor == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, name.c_str(), name + " must be provided");
@@ -1017,8 +1017,8 @@ ge::graphStatus QSFATilingCheck::CheckBlockTable() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFATilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
-                                                       const std::string &name) const
+ge::graphStatus QSFATilingCheck::CheckDTypeConsistency(const ge::DataType& actualDtype, const ge::DataType& expectDtype,
+                                                       const std::string& name) const
 {
     if (actualDtype != expectDtype) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -1568,20 +1568,20 @@ ge::graphStatus QSFATilingCheck::Process()
 
 static constexpr int64_t kInvalidDimValue = std::numeric_limits<int64_t>::min();
 
-static bool HasAxis(const QSFAAxis &axis, const QSFALayout &layout, const gert::Shape &shape)
+static bool HasAxis(const QSFAAxis& axis, const QSFALayout& layout, const gert::Shape& shape)
 {
-    const auto &qsfaLayoutIt = QSFA_LAYOUT_AXIS_MAP.find(layout);
+    const auto& qsfaLayoutIt = QSFA_LAYOUT_AXIS_MAP.find(layout);
     if (qsfaLayoutIt == QSFA_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
 
-    const std::vector<QSFAAxis> &qsfaAxes = qsfaLayoutIt->second;
-    const auto &qsfaAxisIt = std::find(qsfaAxes.begin(), qsfaAxes.end(), axis);
+    const std::vector<QSFAAxis>& qsfaAxes = qsfaLayoutIt->second;
+    const auto& qsfaAxisIt = std::find(qsfaAxes.begin(), qsfaAxes.end(), axis);
     if (qsfaAxisIt == qsfaAxes.end()) {
         return false;
     }
 
-    const auto &qsfaDimIt = QSFA_LAYOUT_DIM_MAP.find(layout);
+    const auto& qsfaDimIt = QSFA_LAYOUT_DIM_MAP.find(layout);
     if (qsfaDimIt == QSFA_LAYOUT_DIM_MAP.end() || qsfaDimIt->second != shape.GetDimNum()) {
         return false;
     }
@@ -1589,15 +1589,15 @@ static bool HasAxis(const QSFAAxis &axis, const QSFALayout &layout, const gert::
     return true;
 }
 
-static size_t GetAxisIdx(const QSFAAxis &axis, const QSFALayout &layout)
+static size_t GetAxisIdx(const QSFAAxis& axis, const QSFALayout& layout)
 {
-    const std::vector<QSFAAxis> &axes = QSFA_LAYOUT_AXIS_MAP.find(layout)->second;
-    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<QSFAAxis>& axes = QSFA_LAYOUT_AXIS_MAP.find(layout)->second;
+    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
 
     return std::distance(axes.begin(), axisIt);
 }
 
-static int64_t GetAxisNum(const gert::Shape &shape, const QSFAAxis &axis, const QSFALayout &layout)
+static int64_t GetAxisNum(const gert::Shape& shape, const QSFAAxis& axis, const QSFALayout& layout)
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : kInvalidDimValue;
 }
@@ -1692,7 +1692,7 @@ ge::graphStatus QSFAInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(int64_t &size)
+ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(int64_t& size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, "actual_seq_lengths_query", opName_);
 }
@@ -1704,7 +1704,7 @@ ge::graphStatus QSFAInfoParser::GetOpName()
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
-    const ge::char_t *opType = context_->GetNodeType();
+    const ge::char_t* opType = context_->GetNodeType();
     if (opType != nullptr && std::strcmp(opType, "KvQuantSparseFlashAttentionV2") == 0) {
         isV2Op_ = true;
     }
@@ -2125,7 +2125,7 @@ ge::graphStatus QSFAInfoParser::GetShapeAndSizeInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
+void QSFAInfoParser::GenerateInfo(QSFATilingInfo& qsfaInfo)
 {
     qsfaInfo.opName = opName_;
     qsfaInfo.platformInfo = platformInfo_;
@@ -2177,7 +2177,7 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
     FillTilingInfoAttrsAndLayouts(qsfaInfo);
 }
 
-void QSFAInfoParser::FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo)
+void QSFAInfoParser::FillTilingInfoAttrsAndLayouts(QSFATilingInfo& qsfaInfo)
 {
     qsfaInfo.actualLenDimsQ = actualLenDimsQ_;
     qsfaInfo.actualLenDimsKV = actualLenDimsKV_;
@@ -2207,7 +2207,7 @@ void QSFAInfoParser::FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo)
     qsfaInfo.returnSoftmaxLse = (opParamInfo_.returnSoftmaxLse != nullptr) ? *opParamInfo_.returnSoftmaxLse : false;
 }
 
-ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &qsfaInfo)
+ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo& qsfaInfo)
 {
     if (context_ == nullptr) {
         OP_LOGE("KvQuantSparseFlashAttention", "tiling context is nullptr");

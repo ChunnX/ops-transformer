@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_tiling_s1s2_bn2.h
@@ -18,7 +18,6 @@
 #include "flash_attention_score_grad_tiling_common.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_type.h"
-
 
 namespace optiling {
 
@@ -62,12 +61,13 @@ struct TempParamsS1s2Bn2 {
 
 class FlashAttentionScoreGradTilingS1s2Bn2 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit FlashAttentionScoreGradTilingS1s2Bn2(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    explicit FlashAttentionScoreGradTilingS1s2Bn2(gert::TilingContext* context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         td_->reset();
     }
 
-    FlashAttentionScoreGradTilingDataS1s2Bn2 *td_ = context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2>();
+    FlashAttentionScoreGradTilingDataS1s2Bn2* td_ = context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2>();
 
 protected:
     bool IsCapable() override;
@@ -95,9 +95,9 @@ private:
     ge::graphStatus SetBmm1TilingData(uint32_t sOut, uint32_t sFla, uint32_t l1SizeRemain);
     ge::graphStatus SetBmm31TilingData(uint32_t l1SizeRemain);
     ge::graphStatus SetBmm4TilingData(uint32_t l1SizeRemain);
-    ge::graphStatus SetBaseInfo(const gert::Shape &queryShape, const gert::Shape &keyShape, int64_t dimN1);
+    ge::graphStatus SetBaseInfo(const gert::Shape& queryShape, const gert::Shape& keyShape, int64_t dimN1);
     ge::graphStatus ProcessDropInfo();
-    ge::graphStatus SetMaskShapeType(const gert::Shape &storageShape, const uint32_t maskShapeDims);
+    ge::graphStatus SetMaskShapeType(const gert::Shape& storageShape, const uint32_t maskShapeDims);
     virtual void SetQKVStartIdx();
     void PrintShapeInfo();
     void DecideBranch();
@@ -111,8 +111,8 @@ private:
     void VectorBaseMNSplit();
     void MatmulBaseMNSplit();
     void SFTBaseMDSplit();
-    bool CheckForDichotomy(std::vector<int64_t> &nums, uint32_t x, uint32_t m);
-    int64_t GetSplitArrayMinMaxSum(std::vector<int64_t> &s1s2WeightNums, uint32_t coreNum);
+    bool CheckForDichotomy(std::vector<int64_t>& nums, uint32_t x, uint32_t m);
+    int64_t GetSplitArrayMinMaxSum(std::vector<int64_t>& s1s2WeightNums, uint32_t coreNum);
 
     TempParamsS1s2Bn2 tmpData_;
     uint32_t tensorSize{0};
@@ -146,10 +146,9 @@ private:
 
 class FlashAttentionScoreGradTilingDeterministic : public FlashAttentionScoreGradTilingS1s2Bn2 {
 public:
-    explicit FlashAttentionScoreGradTilingDeterministic(gert::TilingContext *context)
+    explicit FlashAttentionScoreGradTilingDeterministic(gert::TilingContext* context)
         : FlashAttentionScoreGradTilingS1s2Bn2(context)
-    {
-    }
+    {}
 
 protected:
     bool IsCapable() override;

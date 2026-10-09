@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_tiling.cpp
@@ -38,8 +38,8 @@ using namespace AscendC;
 using namespace Mc2Tiling;
 
 namespace optiling {
-ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext *context);
-ge::graphStatus TilingParseForAllGatherMatmul(gert::TilingParseContext *context);
+ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext* context);
+ge::graphStatus TilingParseForAllGatherMatmul(gert::TilingParseContext* context);
 
 bool AllGatherMatmulTiling::IsCapable()
 {
@@ -80,9 +80,9 @@ ge::graphStatus AllGatherMatmulTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AllGatherMatmulTiling::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
-                                                        Mc2MMRegisterCfg &registerCfg,
-                                                        Mc2MatMulV3TilingData &tilingData)
+ge::graphStatus AllGatherMatmulTiling::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg,
+                                                        Mc2MMRegisterCfg& registerCfg,
+                                                        Mc2MatMulV3TilingData& tilingData)
 {
     tilingCfg.SetRankDim(args_.rankDim - 1);
     tilingCfg.SetMatMulV3TilingData(tilingData);
@@ -119,14 +119,14 @@ ge::graphStatus AllGatherMatmulTiling::DoVersion2Tiling()
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, args_, opName_);
 
     // 计算 local 块 tiling
-    Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
-                                                       reinterpret_cast<const void *>(&mmV3Args_));
+    Mc2MatmulHelper::Mc2MatmulTilingCfg localTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
+                                                       reinterpret_cast<const void*>(&mmV3Args_));
     MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(localTilingCfg, registerCfg, MutableMC2MatmulV3LocalTilingData()));
 
     // 计算 tile 块 tiling
     mmV3Args_.mValue = tileMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tileCnt);
-    Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
-                                                      reinterpret_cast<const void *>(&mmV3Args_), tileMValue_);
+    Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
+                                                      reinterpret_cast<const void*>(&mmV3Args_), tileMValue_);
     tileTilingCfg.SetCommCnt(MutableRCSTilingData().tileCnt);
     MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MatmulV3TileTilingData()));
     MutableMC2MatmulV3TileTilingData().tCubeTiling.M = (tileMValue_ * (args_.rankDim - 1));
@@ -134,8 +134,8 @@ ge::graphStatus AllGatherMatmulTiling::DoVersion2Tiling()
     if (tailMValue_ > 0) {
         // 计算 tail 块 tiling
         mmV3Args_.mValue = tailMValue_ * (args_.rankDim - 1) * (MutableRCSTilingData().tailCnt);
-        Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&compileInfo_),
-                                                          reinterpret_cast<const void *>(&mmV3Args_), tailMValue_);
+        Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void*>(&compileInfo_),
+                                                          reinterpret_cast<const void*>(&mmV3Args_), tailMValue_);
         tailTilingCfg.SetCommCnt(MutableRCSTilingData().tailCnt);
         MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MatmulV3TailTilingData()));
         MutableMC2MatmulV3TailTilingData().tCubeTiling.M = (tailMValue_ * (args_.rankDim - 1));
@@ -144,7 +144,7 @@ ge::graphStatus AllGatherMatmulTiling::DoVersion2Tiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AllGatherMatmulTiling::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg)
+ge::graphStatus AllGatherMatmulTiling::SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCfg)
 {
     int index = 0;
     auto group = context_->GetAttrs()->GetAttrPointer<char>(index++);
@@ -166,22 +166,22 @@ ge::graphStatus AllGatherMatmulTiling::SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg)
     return ge::GRAPH_SUCCESS;
 }
 
-AllGatherMatmulTiling::AllGatherMatmulTiling(gert::TilingContext *context)
-    : AllGatherMatmulTilingBase(context), allGatherMatmulTilingData_(&allGatherMatmulTilingDataSelf_)
-{
-}
+AllGatherMatmulTiling::AllGatherMatmulTiling(gert::TilingContext* context)
+    : AllGatherMatmulTilingBase(context),
+      allGatherMatmulTilingData_(&allGatherMatmulTilingDataSelf_)
+{}
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AllGatherMatmulV2, AllGatherMatmulTiling, static_cast<int32_t>(NpuArch::DAV_3510),
                                    0);
 
-ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext *context)
+ge::graphStatus AllGatherMatmulTilingFunc(gert::TilingContext* context)
 {
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
 struct AllGatherMatmulCompileInfo {};
 
-ge::graphStatus TilingParseForAllGatherMatmul(gert::TilingParseContext *context)
+ge::graphStatus TilingParseForAllGatherMatmul(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

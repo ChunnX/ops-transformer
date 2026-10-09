@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_floyd_attention_tiling_common.h
@@ -50,13 +50,13 @@ struct FusedFloydAttentionCompileInfo {
 };
 
 uint32_t FloydCalcTschBlockDim(uint32_t sliceNum, uint32_t aicCoreNum, uint32_t aivCoreNum);
-ge::graphStatus CheckAttentionMaskShape(gert::TilingContext *context, int64_t b, int64_t s1, int64_t s3);
-ge::graphStatus CheckSupportShape(gert::TilingContext *context);
-ge::graphStatus CheckInputShapeValid(gert::TilingContext *context, int64_t b, int64_t n, int64_t s1, int64_t s2,
+ge::graphStatus CheckAttentionMaskShape(gert::TilingContext* context, int64_t b, int64_t s1, int64_t s3);
+ge::graphStatus CheckSupportShape(gert::TilingContext* context);
+ge::graphStatus CheckInputShapeValid(gert::TilingContext* context, int64_t b, int64_t n, int64_t s1, int64_t s2,
                                      int64_t s3, int64_t d);
-bool CheckSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape);
-ge::graphStatus CheckAttrs(gert::TilingContext *context);
-ge::graphStatus CheckBaseInput(gert::TilingContext *context);
+bool CheckSameShape(const gert::StorageShape* aShape, const gert::StorageShape* bShape);
+ge::graphStatus CheckAttrs(gert::TilingContext* context);
+ge::graphStatus CheckBaseInput(gert::TilingContext* context);
 
 } // namespace FFA
 } // namespace optiling

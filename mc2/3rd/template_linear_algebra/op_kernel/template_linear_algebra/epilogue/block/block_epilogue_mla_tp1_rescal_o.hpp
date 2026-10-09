@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_MLA_TP1_RESACLE_O_HPP
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_MLA_TP1_RESACLE_O_HPP
@@ -52,7 +52,7 @@ public:
     static constexpr uint32_t NUM4 = 4;
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, uint32_t kvSplitCoreNum_ = 1)
+    BlockEpilogue(Arch::Resource<ArchTag>& resource, uint32_t kvSplitCoreNum_ = 1)
     {
         // Allocate UB space
         constexpr uint32_t LO_UB_TENSOR_OFFSET = 4 * UB_UINT8_BLOCK_SIZE_MLA;
@@ -105,10 +105,10 @@ public:
     CATLASS_DEVICE
     void SubCoreCompute(AscendC::GlobalTensor<ElementInput> gInput, AscendC::GlobalTensor<ElementUpdate> gUpdate,
                         AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementUpdate> gOCoreTmp,
-                        AscendC::GlobalTensor<ElementUpdate> gl, const LayoutInput &layoutInput,
-                        const LayoutOutput &layoutOutput, const LayoutUpdate &layoutUpdate, uint32_t nIdx,
+                        AscendC::GlobalTensor<ElementUpdate> gl, const LayoutInput& layoutInput,
+                        const LayoutOutput& layoutOutput, const LayoutUpdate& layoutUpdate, uint32_t nIdx,
                         uint32_t isLastNTile, uint32_t needRowLoop, uint32_t rowLoopIdx, uint32_t rescaleOPingPongFlag,
-                        uint32_t &glFlag)
+                        uint32_t& glFlag)
     {
         uint32_t curRowNum = layoutInput.shape(0);
         uint32_t embed = layoutInput.shape(1);
@@ -262,9 +262,9 @@ public:
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementInput> gInput, AscendC::GlobalTensor<ElementUpdate> gUpdate,
                     AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementUpdate> gOCoreTmp,
-                    AscendC::GlobalTensor<ElementUpdate> gl, const LayoutInput &layoutInput,
-                    const LayoutUpdate &layoutUpdate, const LayoutOutput &layoutOutput, GemmCoord actualBlockShape,
-                    uint32_t nIdx, uint32_t isLastNTile, uint32_t rescaleOPingPongFlag, uint32_t &glFlag)
+                    AscendC::GlobalTensor<ElementUpdate> gl, const LayoutInput& layoutInput,
+                    const LayoutUpdate& layoutUpdate, const LayoutOutput& layoutOutput, GemmCoord actualBlockShape,
+                    uint32_t nIdx, uint32_t isLastNTile, uint32_t rescaleOPingPongFlag, uint32_t& glFlag)
     {
         uint32_t embed = layoutInput.shape(1);
         uint32_t rowActual = actualBlockShape.m();

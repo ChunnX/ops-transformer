@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_based_a2a_rs_ag.h
@@ -24,8 +24,8 @@ constexpr uint64_t FIVE_ONE_TWO = 512;
 template <typename XType, typename YType, Mc2CoreType CoreType, int commMode>
 class MatmulAllReduceBase<XType, YType, CoreType, true, commMode> {
 public:
-    __aicore__ inline MatmulAllReduceBase(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs, ArnGmAddrs *arnAddrs,
-                                          MC2TilingHeader *tilingData, TPipe *tPipe)
+    __aicore__ inline MatmulAllReduceBase(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs,
+                                          MC2TilingHeader* tilingData, TPipe* tPipe)
         : addrs_(addrs),
           quantAddrs_(quantAddrs),
           arnAddrs_(arnAddrs),
@@ -45,7 +45,7 @@ public:
         hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTiling));
         hccl_.SetCcTilingV2(offsetof(MC2TilingHeader, mc2CcTilingComm));
 
-        __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
+        __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
         OOMInit(context);
 #if defined(__DAV_C310__)
         addrs_->cGM = addrs_->workspaceGM + paramInTiling_->nd2NzWorkLen + paramInTiling_->biasLen;
@@ -308,14 +308,14 @@ protected:
     uint32_t biasUbCnt_; // bias epilogue 的 N 方向 UB 切分粒度（子类构造时从 tiling struct 读取）
     bool hasBias_;       // bias 是否存在（子类构造时从 tiling struct 读取）
 
-    QuantGmAddrs *quantAddrs_;
-    MC2GmAddrs *addrs_;
-    ArnGmAddrs *arnAddrs_;
-    Mc2Tiling::RCSTiling *paramInTiling_;
-    Mc2Tiling::Mc2Msg *msgInTiling_;
-    MC2TilingHeader *tilingData_;
+    QuantGmAddrs* quantAddrs_;
+    MC2GmAddrs* addrs_;
+    ArnGmAddrs* arnAddrs_;
+    Mc2Tiling::RCSTiling* paramInTiling_;
+    Mc2Tiling::Mc2Msg* msgInTiling_;
+    MC2TilingHeader* tilingData_;
     MC2TileInfo tileInfo_, tailInfo_;
-    TPipe *tPipe_;
+    TPipe* tPipe_;
     typename HcclTypeSelector<commMode>::type hccl_;
 
     AscendC::HcclHandle all2allHandleId_[A2A_VSUM_AG_MAX_HANDLE_ID_NUM] = {0};

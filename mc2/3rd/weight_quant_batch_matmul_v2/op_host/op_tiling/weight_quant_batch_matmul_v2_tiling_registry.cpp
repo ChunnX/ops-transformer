@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_registry.cpp
@@ -49,12 +49,12 @@ REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMat
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingFixpipe, FIXPIPE_PRIORITY);
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2WeightNz, WEIGHT_NZ_PRIORITY);
 
-static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext *context)
+static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext* context)
 {
     platform_ascendc::SocVersion socVersion;
     bool supportMmadS8S4 = false;
     OP_LOGE_IF(context == nullptr, ge::GRAPH_FAILED, "Mc2WeightQuantBatchMatmulV2", "tilingContext is null");
-    auto compileInfoPtr = reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo *>(context->GetCompileInfo());
+    auto compileInfoPtr = reinterpret_cast<const Mc2WeightQuantBatchMatmulV2CompileInfo*>(context->GetCompileInfo());
     if (compileInfoPtr == nullptr) {
         auto platformInfoPtr = context->GetPlatformInfo();
         OP_LOGE_IF(platformInfoPtr == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "platformInfoPtr is null");
@@ -104,7 +104,7 @@ static ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingFunc(gert::TilingContext
     }
 }
 
-static ge::graphStatus Mc2TilingParseForWeightQuantBatchMatmulV2(gert::TilingParseContext *context)
+static ge::graphStatus Mc2TilingParseForWeightQuantBatchMatmulV2(gert::TilingParseContext* context)
 {
     OP_LOGE_IF(context == nullptr, ge::GRAPH_FAILED, "Mc2WeightQuantBatchMatmulV2", "tilingParseContext is null");
     auto platformInfoPtr = context->GetPlatformInfo();

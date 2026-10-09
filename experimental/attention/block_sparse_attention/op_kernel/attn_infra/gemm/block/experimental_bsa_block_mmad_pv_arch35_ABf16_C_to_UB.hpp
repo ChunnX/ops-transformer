@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /**
  * @brief matmul implementation for single p&v base tile
@@ -95,8 +95,8 @@ public:
 
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
 
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart,
-                                   Mm2L1TileHelper &mm2L1TileHelper)
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart,
+                                   Mm2L1TileHelper& mm2L1TileHelper)
     {
         l1ATileM = mm2L1TileHelper.mm2L1TileM;
         l1BTileN = mm2L1TileHelper.mm2L1TileN;
@@ -125,7 +125,7 @@ public:
     __aicore__ inline ~BlockMmadTla() {}
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         // in mode 4, AIC set for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -138,7 +138,7 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         // in mode 4, AIC wait for 2 AIVs seperately
         if constexpr (MODE == 4U) {
@@ -156,12 +156,12 @@ public:
     }
 
     template <class TensorB, class TensorL1B>
-    __aicore__ inline void SparseVBaseTileL1FullLoad(TensorB &gBTensor, TensorL1B &l1BTensorTla,
+    __aicore__ inline void SparseVBaseTileL1FullLoad(TensorB& gBTensor, TensorL1B& l1BTensorTla,
                                                      AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
                                                      uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen,
                                                      uint32_t kvSBaseTile, uint32_t blockShapeY, uint32_t yBlockNumAval,
                                                      uint32_t yBlockNumRsvd, uint32_t curBaseTileSize, uint32_t embed,
-                                                     EffRowsCtx *effRowsCtx = nullptr)
+                                                     EffRowsCtx* effRowsCtx = nullptr)
     {
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
@@ -218,13 +218,13 @@ public:
     }
 
     template <class TensorB, class TensorC>
-    __aicore__ inline void operator()(TensorB &gBTensor, TensorC &ubCTensor,
+    __aicore__ inline void operator()(TensorB& gBTensor, TensorC& ubCTensor,
                                       AscendC::GlobalTensor<int32_t> gSparseBlockIdx, GemmCoord actualOriShape,
                                       uint32_t gatheredKvSTileIdx, uint32_t kvSeqlen, uint32_t kvSBaseTile,
                                       uint32_t blockShapeY, uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                                       uint64_t prefixSumL0AStages, uint64_t prefixSumL0BStages,
                                       Arch::CrossCoreFlag smToMm2Flag, Arch::CrossCoreFlag mm2ToReFlag,
-                                      uint64_t deqScalar = 0, EffRowsCtx *effRowsCtx = nullptr)
+                                      uint64_t deqScalar = 0, EffRowsCtx* effRowsCtx = nullptr)
     {
         using CopyL0CToDst = typename TileCopy_::template CopyL0CToDst<TensorC>;
 

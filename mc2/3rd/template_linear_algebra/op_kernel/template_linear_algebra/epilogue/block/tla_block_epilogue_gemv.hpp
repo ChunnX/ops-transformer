@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_GEMV_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_GEMV_HPP
@@ -88,7 +88,7 @@ public:
     };
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, Params const &params)
+    BlockEpilogue(Arch::Resource<ArchTag>& resource, Params const& params)
         : params(params)
     {
         ubC = resource.ubBuf.template GetBufferByByte<ElementC>(0);
@@ -108,8 +108,8 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(TensorCoord const &blockOffsetMN, TensorCoord const &actualBlockShapeMN,
-                    AscendC::GlobalTensor<ElementCompute> const &gmBlockC, LayoutC const &layoutBlockC)
+    void operator()(TensorCoord const& blockOffsetMN, TensorCoord const& actualBlockShapeMN,
+                    AscendC::GlobalTensor<ElementCompute> const& gmBlockC, LayoutC const& layoutBlockC)
     {
         TensorCoord actualBlockShape = actualBlockShapeMN;
         TensorCoord blockOffset = blockOffsetMN;
@@ -127,13 +127,13 @@ public:
 
         // Get the data and layout of y
         AscendC::GlobalTensor<ElementY> gmY;
-        gmY.SetGlobalBuffer(reinterpret_cast<__gm__ ElementY *>(params.ptrY));
+        gmY.SetGlobalBuffer(reinterpret_cast<__gm__ ElementY*>(params.ptrY));
         auto gmSubblockY = gmY[params.layoutY.GetOffset(blockOffset + subblockOffset)];
         auto layoutSubblockY = params.layoutY.GetTileLayout(actualSubblockShape);
 
         // Get the data and layout of Z
         AscendC::GlobalTensor<ElementZ> gmZ;
-        gmZ.SetGlobalBuffer(reinterpret_cast<__gm__ ElementZ *>(params.ptrZ));
+        gmZ.SetGlobalBuffer(reinterpret_cast<__gm__ ElementZ*>(params.ptrZ));
         auto gmSubblockZ = gmZ[params.layoutZ.GetOffset(blockOffset + subblockOffset)];
         auto layoutSubblockZ = params.layoutZ.GetTileLayout(actualSubblockShape);
 

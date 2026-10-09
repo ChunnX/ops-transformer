@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_v3_common.h
@@ -127,7 +127,7 @@ struct Mc2TilingEnable {
 };
 
 struct Mc2MatmulV3Args {
-    const char *opName = nullptr;
+    const char* opName = nullptr;
     bool isATrans = false;
     bool isBTrans = false;
     bool isHf32 = false;
@@ -231,7 +231,7 @@ inline bool Is16Align(T base)
     return false;
 };
 
-inline uint64_t GetSizeC0(const uint64_t &dataTypeSize)
+inline uint64_t GetSizeC0(const uint64_t& dataTypeSize)
 {
     uint64_t c0Size = BASIC_ALIGN_16;
     if (dataTypeSize == sizeof(float)) {
@@ -256,7 +256,7 @@ inline bool IsNumAlign(T base, uint64_t size)
 };
 
 template <typename T>
-inline bool CheckNumberIsValid(const T &number, const std::string &opName, const std::string &description)
+inline bool CheckNumberIsValid(const T& number, const std::string& opName, const std::string& description)
 {
     if (number > static_cast<uint64_t>(UINT32_MAX)) {
         OP_LOGW(opName, "%s size is greater than UINT32_MAX or less than 0, number: %s", description.c_str(),
@@ -268,7 +268,7 @@ inline bool CheckNumberIsValid(const T &number, const std::string &opName, const
 
 // 需要对齐16的参数需要判断是否大于floorAlign(uint32_max, 16)
 template <typename T>
-inline bool CheckNumberIsValid2(const T &number, const std::string &opName, const std::string &description)
+inline bool CheckNumberIsValid2(const T& number, const std::string& opName, const std::string& description)
 {
     if (number > Ops::Base::FloorAlign(static_cast<uint64_t>(UINT32_MAX), BASIC_ALIGN_16)) {
         OP_LOGW(opName, "%s size is greater than floorAlign(UINT32_MAX, 16) or less than 0, number: %s",

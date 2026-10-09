@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file qbmm_asw_block_noncontiguous.h
@@ -25,12 +25,12 @@ class Mc2QuantBmmAswBlockNonContiguous : public Mc2QuantBmmAswBlock {
 public:
     __aicore__ inline Mc2QuantBmmAswBlockNonContiguous() {}
     template <bool aTrans, bool bTrans, class x1Type, class scaleType, CubeFormat formatX2>
-    __aicore__ inline void CalcGMOffset(const uint32_t strideCount, const uint32_t *batchWeight);
+    __aicore__ inline void CalcGMOffset(const uint32_t strideCount, const uint32_t* batchWeight);
 };
 
 template <bool aTrans, bool bTrans, class x1Type, class scaleType, CubeFormat formatX2>
 __aicore__ inline void Mc2QuantBmmAswBlockNonContiguous::CalcGMOffset(const uint32_t strideCount,
-                                                                      const uint32_t *batchWeight)
+                                                                      const uint32_t* batchWeight)
 {
     uint64_t mOffset = params_.mIndex * tilingData_->matmulTiling.baseM + params_.mSplitAddrOffset;
     uint64_t nOffset = params_.nIndex * tilingData_->matmulTiling.baseN + params_.nSplitAddrOffset;

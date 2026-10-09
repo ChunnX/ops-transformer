@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <unistd.h>
 #include <array>
@@ -26,11 +26,9 @@ using namespace std;
 extern "C" __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bias,
                                                                       GM_ADDR pertoken_scale, GM_ADDR group_list,
                                                                       GM_ADDR share_input, GM_ADDR logit,
-                                                                      GM_ADDR row_index, GM_ADDR offset,
-                                                                      GM_ADDR y, GM_ADDR workspaceGM,
-                                                                      GM_ADDR tilingGM);
-class grouped_matmul_finalize_routing_test : public testing::Test
-{
+                                                                      GM_ADDR row_index, GM_ADDR offset, GM_ADDR y,
+                                                                      GM_ADDR workspaceGM, GM_ADDR tilingGM);
+class grouped_matmul_finalize_routing_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -51,10 +49,9 @@ struct HcclCombinOpParam {
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test1)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
 
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 gen_data.py 1");
@@ -71,7 +68,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t shape_scale = 8 * n * sizeof(float);
     size_t shape_pertoken_scale = m * 1 * sizeof(float);
     size_t shape_group_list = 8 * sizeof(int64_t);
-    size_t shape_share_input = m * n * sizeof(uint16_t);  // bf16
+    size_t shape_share_input = m * n * sizeof(uint16_t); // bf16
     size_t shape_logit = m * 1 * sizeof(float);
     size_t shape_row_index = m * 1 * sizeof(int64_t);
 
@@ -205,10 +202,9 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test2)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 gen_data.py 0");
 
@@ -347,10 +343,9 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test3_int32_row_index)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 gen_data.py 1");
 
@@ -366,7 +361,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t shape_scale = 8 * n * sizeof(float);
     size_t shape_pertoken_scale = m * 1 * sizeof(float);
     size_t shape_group_list = 8 * sizeof(int64_t);
-    size_t shape_share_input = m * n * sizeof(uint16_t);  // bf16
+    size_t shape_share_input = m * n * sizeof(uint16_t); // bf16
     size_t shape_logit = m * 1 * sizeof(float);
     size_t shape_row_index = m * 1 * sizeof(int32_t);
 
@@ -500,10 +495,9 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test4_w4a8)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 w4a8_gen_data.py");
 
@@ -520,7 +514,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t shape_bias = 8 * n * sizeof(float);
     size_t shape_pertoken_scale = m * 1 * sizeof(float);
     size_t shape_group_list = 8 * sizeof(int64_t);
-    size_t shape_share_input = m * n * sizeof(uint16_t);  // bf16
+    size_t shape_share_input = m * n * sizeof(uint16_t); // bf16
     size_t shape_logit = m * 1 * sizeof(float);
     size_t shape_row_index = m * 1 * sizeof(int64_t);
 
@@ -659,10 +653,9 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test5_w4a8_offset)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 w4a8_gen_data.py");
 
@@ -680,7 +673,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t shape_bias = 8 * n * sizeof(float);
     size_t shape_pertoken_scale = m * 1 * sizeof(float);
     size_t shape_group_list = 8 * sizeof(int64_t);
-    size_t shape_share_input = m * n * sizeof(uint16_t);  // bf16
+    size_t shape_share_input = m * n * sizeof(uint16_t); // bf16
     size_t shape_logit = m * 1 * sizeof(float);
     size_t shape_row_index = m * 1 * sizeof(int64_t);
 

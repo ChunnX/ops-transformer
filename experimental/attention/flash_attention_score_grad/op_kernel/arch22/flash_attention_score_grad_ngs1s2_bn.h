@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_ngs1s2_bn.h
@@ -26,108 +26,174 @@ constexpr uint32_t BN_DROPOUT4BIT_LEN = 16;
 using matmul::Matmul;
 using matmul::MatmulType;
 
-__aicore__ const constexpr MatmulConfig GetMm1Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType) {
+__aicore__ const constexpr MatmulConfig GetMm1Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType,
+                                                    DTemplateType dTemplateType)
+{
     if (dTemplateType == DTemplateType::NotAligned72) {
         if (s1TemplateType == S1TemplateType::Aligned48 && s2TemplateType == S2TemplateType::Aligned48) {
             // FAG_CP_CFG_31_D72_S1S2_48_MM1_MM2;
-            return MatmulConfig{true, false, false, 48, 48, 80, false, false, false, false,
-                                0, 48, 48, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 48,    48,
+                                80,    false, false, false, false,
+                                0,     48,    48,    72,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::NotAligned60 && s2TemplateType == S2TemplateType::NotAligned60) {
             // FAG_CP_CFG_31_D72_S1S2_60_MM1_MM2;
-            return MatmulConfig{true, false, false, 64, 64, 80, false, false, false, false,
-                                0, 60, 60, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 64,    64,
+                                80,    false, false, false, false,
+                                0,     60,    60,    72,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::Aligned64 && s2TemplateType == S2TemplateType::Aligned64) {
             // FAG_CP_CFG_31_D72_S1S2_64_MM1_MM2;
-            return MatmulConfig{true, false, false, 64, 64, 80, false, false, false, false,
-                                0, 64, 64, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 64,    64,
+                                80,    false, false, false, false,
+                                0,     64,    64,    72,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::NotAligned30 && s2TemplateType == S2TemplateType::NotAligned30) {
             // FAG_CP_CFG_31_D72_S1S2_30_MM1_MM2;
-            return MatmulConfig{true, false, false, 32, 32, 80, false, false, false, false,
-                                0, 30, 30, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 32,    32,
+                                80,    false, false, false, false,
+                                0,     30,    30,    72,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::Aligned32 && s2TemplateType == S2TemplateType::Aligned32) {
             // FAG_CP_CFG_31_D72_S1S2_32_MM1_MM2;
-            return MatmulConfig{true, false, false, 32, 32, 80, false, false, false, false,
-                                0, 32, 32, 72, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 32,    32,
+                                80,    false, false, false, false,
+                                0,     32,    32,    72,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         }
     }
     return FAG_CP_CFG_31_41_DEFAULT;
 }
 
-__aicore__ const constexpr MatmulConfig GetMm2Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType) {
+__aicore__ const constexpr MatmulConfig GetMm2Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType,
+                                                    DTemplateType dTemplateType)
+{
     if (dTemplateType == DTemplateType::NotAligned72) {
         if (s1TemplateType == S1TemplateType::Aligned48 && s2TemplateType == S2TemplateType::Aligned48) {
             // FAG_CP_CFG_31_D72_S1S2_48_MM31;
-            return MatmulConfig{true, false, false, 48, 80, 48, false, false, false, false,
-                                0, 48, 72, 48, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 48,    80,
+                                48,    false, false, false, false,
+                                0,     48,    72,    48,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::NotAligned60 && s2TemplateType == S2TemplateType::NotAligned60) {
             // FAG_CP_CFG_31_D72_S1S2_60_MM31;
-            return MatmulConfig{true, false, false, 64, 80, 64, false, false, false, false,
-                                0, 60, 72, 60, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 64,    80,
+                                64,    false, false, false, false,
+                                0,     60,    72,    60,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::Aligned64 && s2TemplateType == S2TemplateType::Aligned64) {
             // FAG_CP_CFG_31_D72_S1S2_64_MM31;
-            return MatmulConfig{true, false, false, 64, 80, 64, false, false, false, false,
-                                0, 64, 72, 64, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 64,    80,
+                                64,    false, false, false, false,
+                                0,     64,    72,    64,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::NotAligned30 && s2TemplateType == S2TemplateType::NotAligned30) {
             // FAG_CP_CFG_31_D72_S1S2_30_MM31;
-            return MatmulConfig{true, false, false, 32, 80, 32, false, false, false, false,
-                                0, 30, 72, 30, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 32,    80,
+                                32,    false, false, false, false,
+                                0,     30,    72,    30,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::Aligned32 && s2TemplateType == S2TemplateType::Aligned32) {
             // FAG_CP_CFG_31_D72_S1S2_32_MM31;
-            return MatmulConfig{true, false, false, 32, 80, 32, false, false, false, false,
-                                0, 32, 72, 32, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 32,    80,
+                                32,    false, false, false, false,
+                                0,     32,    72,    32,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         }
     }
     return FAG_CP_CFG_31_41_DEFAULT;
 }
 
-__aicore__ const constexpr MatmulConfig GetMm3Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType) {
+__aicore__ const constexpr MatmulConfig GetMm3Cfg31(S1TemplateType s1TemplateType, S2TemplateType s2TemplateType,
+                                                    DTemplateType dTemplateType)
+{
     if (dTemplateType == DTemplateType::NotAligned72) {
         if (s1TemplateType == S1TemplateType::Aligned48 && s2TemplateType == S2TemplateType::Aligned48) {
             // FAG_CP_CFG_31_D72_S1S2_48_MM32_MM4;
-            return MatmulConfig{true, false, false, 48, 80, 48, false, false, false, false,
-                                0, 48, 72, 48, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 48,    80,
+                                48,    false, false, false, false,
+                                0,     48,    72,    48,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::NotAligned60 && s2TemplateType == S2TemplateType::NotAligned60) {
             // FAG_CP_CFG_31_D72_S1S2_60_MM32_MM4;
-            return MatmulConfig{true, false, false, 64, 80, 64, false, false, false, false,
-                                0, 60, 72, 60, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 64,    80,
+                                64,    false, false, false, false,
+                                0,     60,    72,    60,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::Aligned64 && s2TemplateType == S2TemplateType::Aligned64) {
             // FAG_CP_CFG_31_D72_S1S2_64_MM32_MM4;
-            return MatmulConfig{true, false, false, 64, 80, 64, false, false, false, false,
-                                0, 64, 72, 64, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 64,    80,
+                                64,    false, false, false, false,
+                                0,     64,    72,    64,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::NotAligned30 && s2TemplateType == S2TemplateType::NotAligned30) {
             // FAG_CP_CFG_31_D72_S1S2_30_MM32_MM4;
-            return MatmulConfig{true, false, false, 32, 80, 32, false, false, false, false,
-                                0, 30, 72, 30, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 32,    80,
+                                32,    false, false, false, false,
+                                0,     30,    72,    30,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         } else if (s1TemplateType == S1TemplateType::Aligned32 && s2TemplateType == S2TemplateType::Aligned32) {
             // FAG_CP_CFG_31_D72_S1S2_32_MM32_MM4;
-            return MatmulConfig{true, false, false, 32, 80, 32, false, false, false, false,
-                                0, 32, 72, 32, 0, 0, 0, 0, true, false, false, false, false, true,
-                                BatchMode::BATCH_LESS_THAN_L1, true, true, true, false, true, false};
+            return MatmulConfig{true,  false, false, 32,    80,
+                                32,    false, false, false, false,
+                                0,     32,    72,    32,    0,
+                                0,     0,     0,     true,  false,
+                                false, false, false, true,  BatchMode::BATCH_LESS_THAN_L1,
+                                true,  true,  true,  false, true,
+                                false};
         }
     }
     return FAG_CP_CFG_31_41_DEFAULT;
 }
 
 #if __CCE_KT_TEST__
-#define MIX_LOG1(...)                                                                                                  \
-    do {                                                                                                               \
-        if (mBlockIdx == 0) {                                                                                          \
-            MIX_LOG(__VA_ARGS__);                                                                                      \
-        }                                                                                                              \
+#define MIX_LOG1(...) \
+    do { \
+        if (mBlockIdx == 0) { \
+            MIX_LOG(__VA_ARGS__); \
+        } \
     } while (0)
 
 #else
@@ -135,30 +201,26 @@ __aicore__ const constexpr MatmulConfig GetMm3Cfg31(S1TemplateType s1TemplateTyp
 #endif
 
 // T1 for data, T2 for vecClc
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16 = false,
-          LayoutMode layout = LayoutMode::BNGS1S2, const CubeFormat MMPre_OUT_FORMAT = CubeFormat::ND,
-          const CubeFormat MMNext_OUT_FORMAT = CubeFormat::ND,
-          S1TemplateType s1TemplateType = S1TemplateType::NotAligned,
-          S2TemplateType s2TemplateType = S2TemplateType::NotAligned,
-          DTemplateType dTemplateType = DTemplateType::NotAligned>
+template <
+    typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16 = false,
+    LayoutMode layout = LayoutMode::BNGS1S2, const CubeFormat MMPre_OUT_FORMAT = CubeFormat::ND,
+    const CubeFormat MMNext_OUT_FORMAT = CubeFormat::ND, S1TemplateType s1TemplateType = S1TemplateType::NotAligned,
+    S2TemplateType s2TemplateType = S2TemplateType::NotAligned, DTemplateType dTemplateType = DTemplateType::NotAligned>
 class FlashAttentionScoreGradUngs1s2Bbn {
 public:
     __aicore__ inline FlashAttentionScoreGradUngs1s2Bbn(){};
-    __aicore__ inline void Init(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dx, __gm__ uint8_t *query,
-                                __gm__ uint8_t *pse_shift, __gm__ uint8_t *drop_mask, __gm__ uint8_t *atten_mask,
-                                __gm__ uint8_t *forward_res, __gm__ uint8_t *softmax_max, __gm__ uint8_t *softmax_sum,
-                                __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *workspace,
-                                const FlashAttentionScoreGradTilingDataUngs1s2Bbn *__restrict ordTilingData,
-                                TPipe *pipe_in);
+    __aicore__ inline void Init(__gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* dx, __gm__ uint8_t* query,
+                                __gm__ uint8_t* pse_shift, __gm__ uint8_t* drop_mask, __gm__ uint8_t* atten_mask,
+                                __gm__ uint8_t* forward_res, __gm__ uint8_t* softmax_max, __gm__ uint8_t* softmax_sum,
+                                __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* workspace,
+                                const FlashAttentionScoreGradTilingDataUngs1s2Bbn* __restrict ordTilingData,
+                                TPipe* pipe_in);
 
     __aicore__ inline void Process();
 
-    constexpr static MatmulConfig MM_1_2_CONFIG31 =
-        GetMm1Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
-    constexpr static MatmulConfig MM_31_CONFIG31 =
-        GetMm2Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
-    constexpr static MatmulConfig MM_32_4_CONFIG31 =
-        GetMm3Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
+    constexpr static MatmulConfig MM_1_2_CONFIG31 = GetMm1Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
+    constexpr static MatmulConfig MM_31_CONFIG31 = GetMm2Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
+    constexpr static MatmulConfig MM_32_4_CONFIG31 = GetMm3Cfg31(s1TemplateType, s2TemplateType, dTemplateType);
 
     using biasType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 
@@ -176,11 +238,13 @@ public:
     using GmT1FalseBNS2 = MatmulType<TPosition::GM, CubeFormat::ND, T1, false, layout>;
 
     // matmul 1 2 config
-    constexpr MatmulApiStaticTiling static CFG_NORM_TILING_MM1 = GetMatmulApiTiling<GmT1FalseLayout, GmT1TrueLayout, GmT2FalseBNSS, biasType>(MM_1_2_CONFIG31);
+    constexpr MatmulApiStaticTiling static CFG_NORM_TILING_MM1 =
+        GetMatmulApiTiling<GmT1FalseLayout, GmT1TrueLayout, GmT2FalseBNSS, biasType>(MM_1_2_CONFIG31);
     Matmul<GmT1FalseLayout, GmT1TrueLayout, GmT2FalseBNSS, biasType, CFG_NORM_TILING_MM1> mm1;
 
     // matmul 31 config
-    constexpr MatmulApiStaticTiling static CFG_NORM_TILING_MM31 = GetMatmulApiTiling<GmT1FalseBNSS, GmT1FalseLayout, GmT2FalseBNSS0, biasType>(MM_31_CONFIG31);
+    constexpr MatmulApiStaticTiling static CFG_NORM_TILING_MM31 =
+        GetMatmulApiTiling<GmT1FalseBNSS, GmT1FalseLayout, GmT2FalseBNSS0, biasType>(MM_31_CONFIG31);
     using modeTypeMmDq = typename AscendC::Conditional<
         (MMNext_OUT_FORMAT == CubeFormat::NZ),
         Matmul<GmT1FalseBNSS, GmT1FalseLayout, GmT2FalseBNSS0, biasType, CFG_NORM_TILING_MM31>,
@@ -188,7 +252,8 @@ public:
     modeTypeMmDq mm31;
 
     // matmul 32 config
-    constexpr MatmulApiStaticTiling static CFG_NORM_TILING_MM32 = GetMatmulApiTiling<GmT1TrueBNSS, GmT1FalseLayout, GmT2FalseBNSS0, biasType>(MM_32_4_CONFIG31);
+    constexpr MatmulApiStaticTiling static CFG_NORM_TILING_MM32 =
+        GetMatmulApiTiling<GmT1TrueBNSS, GmT1FalseLayout, GmT2FalseBNSS0, biasType>(MM_32_4_CONFIG31);
     using modeTypeMmDk = typename AscendC::Conditional<
         (MMNext_OUT_FORMAT == CubeFormat::NZ),
         Matmul<GmT1TrueBNSS, GmT1FalseLayout, GmT2FalseBNSS0, biasType, CFG_NORM_TILING_MM32>,
@@ -196,7 +261,8 @@ public:
     modeTypeMmDk mm32;
 
     // matmul 4 config
-    constexpr MatmulApiStaticTiling static CFG_NORM_TILING_MM4 = GetMatmulApiTiling<GmT1TrueBNSS, GmT1FalseLayout, GmT1FalseBNS2, biasType>(MM_32_4_CONFIG31);
+    constexpr MatmulApiStaticTiling static CFG_NORM_TILING_MM4 =
+        GetMatmulApiTiling<GmT1TrueBNSS, GmT1FalseLayout, GmT1FalseBNS2, biasType>(MM_32_4_CONFIG31);
     Matmul<GmT1TrueBNSS, GmT1FalseLayout, GmT1FalseBNS2, biasType, CFG_NORM_TILING_MM4> mm4;
 
 protected:
@@ -208,9 +274,9 @@ protected:
     TBuf<> vecCast;
     TQue<QuePosition::VECOUT, 1> apiClcQue;
 
-    const FlashAttentionScoreGradTilingDataUngs1s2Bbn *__restrict ordTilingData_;
+    const FlashAttentionScoreGradTilingDataUngs1s2Bbn* __restrict ordTilingData_;
 
-    TPipe *pipe;
+    TPipe* pipe;
 
     GlobalTensor<uint8_t> attenMaskU8Gm;
     GlobalTensor<T1> keyGm, valueGm, dxGm, queryGm, attenMaskGm, forwardResGm, pseGm;
@@ -318,73 +384,74 @@ protected:
     int64_t lastNCvInner = 0;
 
     DropMaskInfo dropMaskInfo = {0};
-    __aicore__ inline void FrontCompute(const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset,
-                                        const int64_t &dropMaskOffset, const int64_t &nCvIndex);
+    __aicore__ inline void FrontCompute(const int64_t& batchSqLoopOffset, const int64_t& batchSkvLoopOffset,
+                                        const int64_t& dropMaskOffset, const int64_t& nCvIndex);
 
-    __aicore__ inline void ReCompute(const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset,
-                                     const int64_t &attenMaskOffset, const int64_t &dropMaskOffset,
-                                     const int64_t &batchSoftmaxInputOffset, const int64_t &nCvIndex);
+    __aicore__ inline void ReCompute(const int64_t& batchSqLoopOffset, const int64_t& batchSkvLoopOffset,
+                                     const int64_t& attenMaskOffset, const int64_t& dropMaskOffset,
+                                     const int64_t& batchSoftmaxInputOffset, const int64_t& nCvIndex);
 
-    __aicore__ inline void SetFrontClcShape(LocalTensor<T2> &sftFrontResInner, LocalTensor<T2> &frontResInner,
-                                            LocalTensor<uint8_t> &dpMaskInner);
+    __aicore__ inline void SetFrontClcShape(LocalTensor<T2>& sftFrontResInner, LocalTensor<T2>& frontResInner,
+                                            LocalTensor<uint8_t>& dpMaskInner);
 
-    __aicore__ inline void CopyInSoftMaxGrad(LocalTensor<T1> &dxInner, const GlobalTensor<T1> &dxGmIn,
-                                             LocalTensor<T1> &forwardResInner, const GlobalTensor<T1> &forwardResGmIn,
+    __aicore__ inline void CopyInSoftMaxGrad(LocalTensor<T1>& dxInner, const GlobalTensor<T1>& dxGmIn,
+                                             LocalTensor<T1>& forwardResInner, const GlobalTensor<T1>& forwardResGmIn,
                                              int64_t thisDAlign, int64_t thisD, int64_t dAlignOffset);
 
-    __aicore__ inline void ClcSoftMaxGrad(LocalTensor<T2> &softmaxGradOutUb, LocalTensor<T1> &dxUb,
-                                          LocalTensor<T1> &attentionInUb, int64_t thisDAlign);
+    __aicore__ inline void ClcSoftMaxGrad(LocalTensor<T2>& softmaxGradOutUb, LocalTensor<T1>& dxUb,
+                                          LocalTensor<T1>& attentionInUb, int64_t thisDAlign);
 
-    __aicore__ inline void HandleSoftMaxGrad(const int64_t &batchSqLoopOffset, LocalTensor<T2> &softmaxGradOutUb);
+    __aicore__ inline void HandleSoftMaxGrad(const int64_t& batchSqLoopOffset, LocalTensor<T2>& softmaxGradOutUb);
 
-    __aicore__ inline void ClcSoftMaxGradSplitD(LocalTensor<T2> &softmaxGradOutUb, LocalTensor<T1> &dxUb,
-                                                LocalTensor<T1> &attentionInUb, int64_t thisDAlign);
+    __aicore__ inline void ClcSoftMaxGradSplitD(LocalTensor<T2>& softmaxGradOutUb, LocalTensor<T1>& dxUb,
+                                                LocalTensor<T1>& attentionInUb, int64_t thisDAlign);
 
-    __aicore__ inline void HandleSoftMaxGradSplitD(const int64_t &batchSqLoopOffset, LocalTensor<T2> &softmaxGradOutUb);
+    __aicore__ inline void HandleSoftMaxGradSplitD(const int64_t& batchSqLoopOffset, LocalTensor<T2>& softmaxGradOutUb);
 
-    __aicore__ inline void ClcSub(LocalTensor<T2> &frontResInner, LocalTensor<T2> &dpResInner,
-                                  LocalTensor<T2> &sftFrontResInner);
+    __aicore__ inline void ClcSub(LocalTensor<T2>& frontResInner, LocalTensor<T2>& dpResInner,
+                                  LocalTensor<T2>& sftFrontResInner);
 
-    __aicore__ inline void SetReClcShape(LocalTensor<T2> &mulResInner, LocalTensor<float> &maxInner,
-                                         LocalTensor<float> &sumInner, LocalTensor<T2> &dvDropResInner);
+    __aicore__ inline void SetReClcShape(LocalTensor<T2>& mulResInner, LocalTensor<float>& maxInner,
+                                         LocalTensor<float>& sumInner, LocalTensor<T2>& dvDropResInner);
 
-    __aicore__ inline void CopyInSoftMax(LocalTensor<float> &maxInner, const GlobalTensor<float> &softmaxMaxGmIn,
-                                         LocalTensor<float> &sumInner, const GlobalTensor<float> &softmaxSumGmIn);
+    __aicore__ inline void CopyInSoftMax(LocalTensor<float>& maxInner, const GlobalTensor<float>& softmaxMaxGmIn,
+                                         LocalTensor<float>& sumInner, const GlobalTensor<float>& softmaxSumGmIn);
 
-    __aicore__ inline bool CopyInAttenMask(const int64_t &attenMaskOffset);
+    __aicore__ inline bool CopyInAttenMask(const int64_t& attenMaskOffset);
 
-    __aicore__ inline void CalcAttenMaskOffset(int64_t &attenMaskOffset, const int64_t delta);
+    __aicore__ inline void CalcAttenMaskOffset(int64_t& attenMaskOffset, const int64_t delta);
 
-    __aicore__ inline void CalcCausalAttenMaskOffset(int64_t &attenMaskOffset, const int64_t delta);
+    __aicore__ inline void CalcCausalAttenMaskOffset(int64_t& attenMaskOffset, const int64_t delta);
 
-    __aicore__ inline void ClcAttenMask(LocalTensor<T2> &mmResUb);
+    __aicore__ inline void ClcAttenMask(LocalTensor<T2>& mmResUb);
 
-    __aicore__ inline void ClcSoftMax(LocalTensor<T2> &softmaxResInner, LocalTensor<T2> &reMatmulResInner,
-                                      LocalTensor<float> &maxInner, LocalTensor<float> &sumInner);
+    __aicore__ inline void ClcSoftMax(LocalTensor<T2>& softmaxResInner, LocalTensor<T2>& reMatmulResInner,
+                                      LocalTensor<float>& maxInner, LocalTensor<float>& sumInner);
 
-    __aicore__ inline void ClcMm1(const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset);
+    __aicore__ inline void ClcMm1(const int64_t& batchSqLoopOffset, const int64_t& batchSkvLoopOffset);
 
-    __aicore__ inline void ClcMm2(const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset);
+    __aicore__ inline void ClcMm2(const int64_t& batchSqLoopOffset, const int64_t& batchSkvLoopOffset);
 
-    __aicore__ inline void ClcMm31(const int64_t &cvMulOffset, const int64_t &batchSqLoopOffset,
-                                   const int64_t &batchSkvLoopOffset, const bool &isSync);
+    __aicore__ inline void ClcMm31(const int64_t& cvMulOffset, const int64_t& batchSqLoopOffset,
+                                   const int64_t& batchSkvLoopOffset, const bool& isSync);
     /* matmul 32 和 matmul31的区别在于输入TensorA是需要做Transpose的，且输出需要做G轴的reduce. */
-    __aicore__ inline void ClcMm32(const int64_t &cvMulOffset, const int64_t &batchSqLoopOffset,
-                                   const int64_t &batchSkvLoopOffset, const bool &isSync);
+    __aicore__ inline void ClcMm32(const int64_t& cvMulOffset, const int64_t& batchSqLoopOffset,
+                                   const int64_t& batchSkvLoopOffset, const bool& isSync);
 
-    __aicore__ inline void ClcMm4(const int64_t &cvMulOffset, const int64_t &batchSqLoopOffset,
-                                  const int64_t &batchSkvLoopOffset, const bool &isSync);
+    __aicore__ inline void ClcMm4(const int64_t& cvMulOffset, const int64_t& batchSqLoopOffset,
+                                  const int64_t& batchSkvLoopOffset, const bool& isSync);
 
-    __aicore__ inline void CopyToWorkspace(const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset,
-                                           LocalTensor<T2> &mulResInner, LocalTensor<T2> &dvDropResInner,
-                                           const int64_t &nCvIndex);
+    __aicore__ inline void CopyToWorkspace(const int64_t& batchSqLoopOffset, const int64_t& batchSkvLoopOffset,
+                                           LocalTensor<T2>& mulResInner, LocalTensor<T2>& dvDropResInner,
+                                           const int64_t& nCvIndex);
 
-    __aicore__ inline void Mm12OutProcess(GlobalTensor<T2> &matmulOutGm, LocalTensor<T2> &outLocalTensor, const int64_t nCvIndex);
+    __aicore__ inline void Mm12OutProcess(GlobalTensor<T2>& matmulOutGm, LocalTensor<T2>& outLocalTensor,
+                                          const int64_t nCvIndex);
 };
 
-
 #if __CCE_KT_TEST__
-template <typename T1> inline void Ngs1s2BnPrint(const GlobalTensor<T1> global, uint32_t len1, uint32_t printLen)
+template <typename T1>
+inline void Ngs1s2BnPrint(const GlobalTensor<T1> global, uint32_t len1, uint32_t printLen)
 {
     std::ostringstream os_;
     os_.str("");
@@ -412,7 +479,8 @@ template <typename T1> inline void Ngs1s2BnPrint(const GlobalTensor<T1> global, 
     std::cout << os_.str();
 }
 
-template <typename T1> inline void Ngs1s2BnPrint(const LocalTensor<T1> global, uint32_t len1, uint32_t printLen)
+template <typename T1>
+inline void Ngs1s2BnPrint(const LocalTensor<T1> global, uint32_t len1, uint32_t printLen)
 {
     std::ostringstream os_;
     os_.str("");
@@ -450,33 +518,34 @@ inline void Ngs1s2BnRightPad(const LocalTensor<T1> global, int64_t dim1, int64_t
 }
 #endif // __CCE_KT_TEST__
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
-__aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::Init(
-    __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *dx, __gm__ uint8_t *query, __gm__ uint8_t *pse_shift,
-    __gm__ uint8_t *drop_mask, __gm__ uint8_t *atten_mask, __gm__ uint8_t *forward_res, __gm__ uint8_t *softmax_max,
-    __gm__ uint8_t *softmax_sum, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *workspace,
-    const FlashAttentionScoreGradTilingDataUngs1s2Bbn *__restrict ordTilingData, TPipe *pipe_in)
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+__aicore__ inline void FlashAttentionScoreGradUngs1s2Bbn<
+    T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType,
+    dTemplateType>::Init(__gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* dx, __gm__ uint8_t* query,
+                         __gm__ uint8_t* pse_shift, __gm__ uint8_t* drop_mask, __gm__ uint8_t* atten_mask,
+                         __gm__ uint8_t* forward_res, __gm__ uint8_t* softmax_max, __gm__ uint8_t* softmax_sum,
+                         __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* workspace,
+                         const FlashAttentionScoreGradTilingDataUngs1s2Bbn* __restrict ordTilingData, TPipe* pipe_in)
 {
     mBlockIdx = GetBlockIdx();
-    keyGm.SetGlobalBuffer((__gm__ T1 *)key);
-    valueGm.SetGlobalBuffer((__gm__ T1 *)value);
-    dxGm.SetGlobalBuffer((__gm__ T1 *)dx);
-    queryGm.SetGlobalBuffer((__gm__ T1 *)query);
-    pseGm.SetGlobalBuffer((__gm__ T1 *)pse_shift);
-    dropMaskGm.SetGlobalBuffer((__gm__ uint8_t *)drop_mask);
-    attenMaskGm.SetGlobalBuffer((__gm__ T1 *)atten_mask);
-    forwardResGm.SetGlobalBuffer((__gm__ T1 *)forward_res);
-    attenMaskU8Gm.SetGlobalBuffer((__gm__ uint8_t *)atten_mask);
-    softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmax_max);
-    softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmax_sum);
-    dqGm.SetGlobalBuffer((__gm__ T1 *)dq);
-    dkGm.SetGlobalBuffer((__gm__ T1 *)dk);
-    dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
-    workspaceGm.SetGlobalBuffer((__gm__ T2 *)workspace);
-    dropoutWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace);
+    keyGm.SetGlobalBuffer((__gm__ T1*)key);
+    valueGm.SetGlobalBuffer((__gm__ T1*)value);
+    dxGm.SetGlobalBuffer((__gm__ T1*)dx);
+    queryGm.SetGlobalBuffer((__gm__ T1*)query);
+    pseGm.SetGlobalBuffer((__gm__ T1*)pse_shift);
+    dropMaskGm.SetGlobalBuffer((__gm__ uint8_t*)drop_mask);
+    attenMaskGm.SetGlobalBuffer((__gm__ T1*)atten_mask);
+    forwardResGm.SetGlobalBuffer((__gm__ T1*)forward_res);
+    attenMaskU8Gm.SetGlobalBuffer((__gm__ uint8_t*)atten_mask);
+    softmaxMaxGm.SetGlobalBuffer((__gm__ float*)softmax_max);
+    softmaxSumGm.SetGlobalBuffer((__gm__ float*)softmax_sum);
+    dqGm.SetGlobalBuffer((__gm__ T1*)dq);
+    dkGm.SetGlobalBuffer((__gm__ T1*)dk);
+    dvGm.SetGlobalBuffer((__gm__ T1*)dv);
+    workspaceGm.SetGlobalBuffer((__gm__ T2*)workspace);
+    dropoutWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t*)workspace);
 
     ordTilingData_ = ordTilingData;
     pipe = pipe_in;
@@ -562,14 +631,14 @@ __aicore__ inline void
 
     int64_t batchMatRstNum = nCvInner * g * sQ * sKVAlignVec * mBlockIdx;
 
-    matmulResultBuffer1.SetGlobalBuffer((__gm__ T2 *)workspace + mm1WorkspaceOffest + batchMatRstNum);
-    matmulResultBuffer2.SetGlobalBuffer((__gm__ T2 *)workspace + mm2WorkspaceOffest + batchMatRstNum);
+    matmulResultBuffer1.SetGlobalBuffer((__gm__ T2*)workspace + mm1WorkspaceOffest + batchMatRstNum);
+    matmulResultBuffer2.SetGlobalBuffer((__gm__ T2*)workspace + mm2WorkspaceOffest + batchMatRstNum);
 
     int64_t usedWorkspaceLen = dropoutWorkspaceLen + mm1WorkspaceLen + mm2WorkspaceLen;
     auto dqAddr = usedWorkspaceLen / sizeof(T2);
     auto dkAddr = dqAddr + dqWorkspaceLen / sizeof(T2);
-    dqWorkspaceGm.SetGlobalBuffer((__gm__ T2 *)workspace + dqAddr);
-    dkWorkspaceGm.SetGlobalBuffer((__gm__ T2 *)workspace + dkAddr);
+    dqWorkspaceGm.SetGlobalBuffer((__gm__ T2*)workspace + dqAddr);
+    dkWorkspaceGm.SetGlobalBuffer((__gm__ T2*)workspace + dkAddr);
     // 对于dropout mask其size是nIn * g * sQ * sKVAlignByte， sKVAlignByte这个值一定小于等于sKVAlignSize
     // 例如sKVALign是17，sKVAlignByte = 32， sKVAlignSize = 64
     // sKVAlign是32， sKVAlignByte = 32， sKVAlignSize = 64
@@ -588,11 +657,11 @@ __aicore__ inline void
 
     // drop workspace offset
     int64_t workspaceOffsets = dkAddr * sizeof(T2) + dkWorkspaceLen;
-    dropWorkSpaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + workspaceOffsets / sizeof(T1));
+    dropWorkSpaceGm.SetGlobalBuffer((__gm__ T1*)workspace + workspaceOffsets / sizeof(T1));
 
     // mul workspace offset
     workspaceOffsets = workspaceOffsets + dropGmWorkspaceLen;
-    mulWorkSpaceGm.SetGlobalBuffer((__gm__ T1 *)workspace + workspaceOffsets / sizeof(T1));
+    mulWorkSpaceGm.SetGlobalBuffer((__gm__ T1*)workspace + workspaceOffsets / sizeof(T1));
 
     DropOutBitModeInit();
 
@@ -625,13 +694,14 @@ __aicore__ inline void
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
-__aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::CopyInSoftMaxGrad(
-    LocalTensor<T1> &dxInner, const GlobalTensor<T1> &dxGmIn, LocalTensor<T1> &forwardResInner,
-    const GlobalTensor<T1> &forwardResGmIn, int64_t thisDAlign, int64_t thisD, int64_t dAlignOffset)
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+__aicore__ inline void FlashAttentionScoreGradUngs1s2Bbn<
+    T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType,
+    dTemplateType>::CopyInSoftMaxGrad(LocalTensor<T1>& dxInner, const GlobalTensor<T1>& dxGmIn,
+                                      LocalTensor<T1>& forwardResInner, const GlobalTensor<T1>& forwardResGmIn,
+                                      int64_t thisDAlign, int64_t thisD, int64_t dAlignOffset)
 {
     DataCopyExtParams copyParams;
     DataCopyPadExtParams<T1> copyPadParams;
@@ -666,12 +736,14 @@ __aicore__ inline void
     vecInQue1.EnQue(forwardResInner); // enque,等待数据copy，dxUb和dxUb同一个que的，共用一个enque操作
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::SetFrontClcShape(
-    LocalTensor<T2> &sftFrontResUb, LocalTensor<T2> &frontResUb, LocalTensor<uint8_t> &dpMaskUb)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::SetFrontClcShape(LocalTensor<T2>& sftFrontResUb,
+                                                                                   LocalTensor<T2>& frontResUb,
+                                                                                   LocalTensor<uint8_t>& dpMaskUb)
 {
     uint32_t innerFrontReClcShape[2] = {static_cast<uint32_t>(sQ), static_cast<uint32_t>(nIn * g * (32 / sizeof(T2)))};
     sftFrontResUb.SetShapeInfo(ShapeInfo(2, innerFrontReClcShape, DataFormat::ND));
@@ -680,12 +752,15 @@ __aicore__ inline void
 }
 
 /* D不切分 直接复用softmaxGradOutUb结果内存，计算的结果放在softmaxGradOutUb */
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcSoftMaxGrad(
-    LocalTensor<T2> &softmaxGradOutUb, LocalTensor<T1> &dxUb, LocalTensor<T1> &attentionInUb, int64_t thisDAlign)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcSoftMaxGrad(LocalTensor<T2>& softmaxGradOutUb,
+                                                                                 LocalTensor<T1>& dxUb,
+                                                                                 LocalTensor<T1>& attentionInUb,
+                                                                                 int64_t thisDAlign)
 {
     vecInQue1.DeQue<T1>(); // deque一把等待数据copy完，dxUb和dxUb同一个que的，共用一个deque操作
     auto softmaxGradInputNum = softmaxGradInputShape[0] * thisDAlign;
@@ -723,12 +798,13 @@ __aicore__ inline void
     apiClcQue.FreeTensor(apiClcTensor);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::HandleSoftMaxGrad(
-    const int64_t &batchSqLoopOffset, LocalTensor<T2> &softmaxGradOutUb)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::HandleSoftMaxGrad(const int64_t& batchSqLoopOffset,
+                                                                                    LocalTensor<T2>& softmaxGradOutUb)
 {
     LocalTensor<T1> attentionInUb = vecInQue1.AllocTensor<T1>();
     LocalTensor<T1> dxUb = vecInQue1.AllocTensor<T1>();
@@ -749,12 +825,13 @@ __aicore__ inline void
     vecInQue1.FreeTensor(dxUb);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
-__aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcSoftMaxGradSplitD(
-    LocalTensor<T2> &softmaxGradOutUb, LocalTensor<T1> &dxUb, LocalTensor<T1> &attentionInUb, int64_t thisDAlign)
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+__aicore__ inline void FlashAttentionScoreGradUngs1s2Bbn<
+    T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType,
+    dTemplateType>::ClcSoftMaxGradSplitD(LocalTensor<T2>& softmaxGradOutUb, LocalTensor<T1>& dxUb,
+                                         LocalTensor<T1>& attentionInUb, int64_t thisDAlign)
 {
     vecInQue1.DeQue<T1>(); // deque一吧等待数据copyin完，dxUb和dxUb同一个que的，共用一个deque操作
     auto softmaxGradInputNum = softmaxGradInputShape[0] * thisDAlign;
@@ -798,12 +875,12 @@ __aicore__ inline void
     apiClcQue.FreeTensor(apiClcTensor);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
-__aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::HandleSoftMaxGradSplitD(
-    const int64_t &batchSqLoopOffset, LocalTensor<T2> &softmaxGradOutUb)
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+__aicore__ inline void FlashAttentionScoreGradUngs1s2Bbn<
+    T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType,
+    dTemplateType>::HandleSoftMaxGradSplitD(const int64_t& batchSqLoopOffset, LocalTensor<T2>& softmaxGradOutUb)
 {
     int64_t softmaxGradInputNum = 0;
     // 清空softmaxGradOutUb
@@ -840,12 +917,14 @@ __aicore__ inline void
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcSub(
-    LocalTensor<T2> &frontResInner, LocalTensor<T2> &dpResInner, LocalTensor<T2> &sftFrontResInner)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcSub(LocalTensor<T2>& frontResInner,
+                                                                         LocalTensor<T2>& dpResInner,
+                                                                         LocalTensor<T2>& sftFrontResInner)
 {
     // [m,n] - [m,16] -> [m,n] 按n轴的block数repeat，每个指令repeat算[m,16] - [m,16], subRange循环处理 超过mask情况
     for (int64_t batchIndex = 0; batchIndex < nIn * g; ++batchIndex) {
@@ -865,13 +944,15 @@ __aicore__ inline void
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::SetReClcShape(
-    LocalTensor<T2> &mulResInner, LocalTensor<float> &maxInner, LocalTensor<float> &sumInner,
-    LocalTensor<T2> &dvDropResInner)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::SetReClcShape(LocalTensor<T2>& mulResInner,
+                                                                                LocalTensor<float>& maxInner,
+                                                                                LocalTensor<float>& sumInner,
+                                                                                LocalTensor<T2>& dvDropResInner)
 {
     mulResInner.SetShapeInfo(ShapeInfo(2, innerMatOutShape, DataFormat::ND));
     maxInner.SetShapeInfo(ShapeInfo(2, innerReduceShape, DataFormat::ND));
@@ -879,13 +960,13 @@ __aicore__ inline void
     dvDropResInner.SetShapeInfo(ShapeInfo(2, innerMatOutShape, DataFormat::ND));
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
-__aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::CopyInSoftMax(
-    LocalTensor<float> &maxInner, const GlobalTensor<float> &softmaxMaxGmIn, LocalTensor<float> &sumInner,
-    const GlobalTensor<float> &softmaxSumGmIn)
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+__aicore__ inline void FlashAttentionScoreGradUngs1s2Bbn<
+    T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType,
+    dTemplateType>::CopyInSoftMax(LocalTensor<float>& maxInner, const GlobalTensor<float>& softmaxMaxGmIn,
+                                  LocalTensor<float>& sumInner, const GlobalTensor<float>& softmaxSumGmIn)
 {
     // innerReduceNum是*8 *4（数据类型size），已经32bytes对齐，符合DataCopy的接口要求，不需要在做16对齐
     DataCopy(maxInner, softmaxMaxGmIn, innerReduceNum);
@@ -893,12 +974,12 @@ __aicore__ inline void
     vecInQue1.EnQue(sumInner);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline bool
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::CopyInAttenMask(
-    const int64_t &attenMaskOffset)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::CopyInAttenMask(const int64_t& attenMaskOffset)
 {
     if (hasAttenMask != 1) {
         return false;
@@ -920,12 +1001,12 @@ __aicore__ inline bool
     return true;
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcAttenMask(
-    LocalTensor<T2> &mmResUb)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcAttenMask(LocalTensor<T2>& mmResUb)
 {
     LocalTensor<uint8_t> attenMaskUb = vecInQue2.DeQue<uint8_t>();
     LocalTensor<uint8_t> ubWorkspace = apiClcQue.AllocTensor<uint8_t>();
@@ -933,10 +1014,10 @@ __aicore__ inline void
     T2 scalar;
     if constexpr (IsSameType<T2, float>::value) {
         uint32_t tmp = 0xFF7FFFFF;
-        scalar = *((float *)&tmp);
+        scalar = *((float*)&tmp);
     } else {
         uint16_t tmp = 0xFBFF;
-        scalar = *((half *)&tmp);
+        scalar = *((half*)&tmp);
     }
     SelectWithBytesMaskShapeInfo shapeInfo;
     shapeInfo.firstAxis = nIn * g * sQ;
@@ -950,13 +1031,15 @@ __aicore__ inline void
     vecInQue2.FreeTensor(attenMaskUb);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcSoftMax(
-    LocalTensor<T2> &softmaxResInner, LocalTensor<T2> &reMatmulResInner, LocalTensor<float> &maxInner,
-    LocalTensor<float> &sumInner)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcSoftMax(LocalTensor<T2>& softmaxResInner,
+                                                                             LocalTensor<T2>& reMatmulResInner,
+                                                                             LocalTensor<float>& maxInner,
+                                                                             LocalTensor<float>& sumInner)
 {
     vecInQue1.DeQue<float>();
     LocalTensor<uint8_t> apiClcTensor = apiClcQue.AllocTensor<uint8_t>();
@@ -973,18 +1056,20 @@ __aicore__ inline void
     apiClcQue.FreeTensor(apiClcTensor);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::FrontCompute(
-    const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset, const int64_t &dropMaskOffset,
-    const int64_t &nCvIndex)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::FrontCompute(const int64_t& batchSqLoopOffset,
+                                                                               const int64_t& batchSkvLoopOffset,
+                                                                               const int64_t& dropMaskOffset,
+                                                                               const int64_t& nCvIndex)
 {
     LocalTensor<T2> softmaxGradOutUb = vecClc2.Get<T2>(nIn * g * sQ * 32 / sizeof(T2)); // FlashSoftmaxGrad的计算结果
     LocalTensor<T2> frontResUb = vecClc1.Get<T2>(innerMatResNum);                       // Sub的计算结果
-    LocalTensor<T2> &dpResUb = frontResUb;                               // Dropout计算结果 共用内存
-    LocalTensor<T2> &dpMatmmulResUb = frontResUb;                        // BMM1计算结果 共用内存
+    LocalTensor<T2>& dpResUb = frontResUb;                               // Dropout计算结果 共用内存
+    LocalTensor<T2>& dpMatmmulResUb = frontResUb;                        // BMM1计算结果 共用内存
     LocalTensor<uint8_t> dpMaskInner = vecInQue2.AllocTensor<uint8_t>(); // drop_mask的输入
 
     dpMaskInner.SetSize(maskInputNum);
@@ -1007,7 +1092,6 @@ __aicore__ inline void
 
     Mm12OutProcess(matmulResultBuffer1, dpMatmmulResUb, nCvIndex);
 
-
     if (isDrop) {
         AscendC::PipeBarrier<PIPE_V>();
         // for compute dropout mask
@@ -1028,13 +1112,16 @@ __aicore__ inline void
     vecInQue2.FreeTensor(dpMaskInner);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::CopyToWorkspace(
-    const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset, LocalTensor<T2> &mulResInner,
-    LocalTensor<T2> &dvDropResInner, const int64_t &nCvIndex)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::CopyToWorkspace(const int64_t& batchSqLoopOffset,
+                                                                                  const int64_t& batchSkvLoopOffset,
+                                                                                  LocalTensor<T2>& mulResInner,
+                                                                                  LocalTensor<T2>& dvDropResInner,
+                                                                                  const int64_t& nCvIndex)
 {
     int64_t offset = previousBatchCnt * sQ * sKV + nCvIndex * oriNIn * g * sQ * sKV;
     if constexpr (IS_BF16) {
@@ -1074,12 +1161,13 @@ __aicore__ inline void
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::CalcAttenMaskOffset(
-    int64_t &attenMaskOffset, const int64_t delta)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::CalcAttenMaskOffset(int64_t& attenMaskOffset,
+                                                                                      const int64_t delta)
 {
     if (delta == 0) {
         attenMaskOffset = 0;
@@ -1098,23 +1186,24 @@ __aicore__ inline void
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
-__aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::CalcCausalAttenMaskOffset(
-    int64_t &attenMaskOffset, const int64_t delta)
-{
-    CalcAttenMaskOffset(attenMaskOffset, delta);
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
           const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
           S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
 FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
-                                  s2TemplateType, dTemplateType>::Mm12OutProcess(GlobalTensor<T2> &matmulOutGm,
-                                                                                 LocalTensor<T2> &outLocalTensor,
+                                  s2TemplateType, dTemplateType>::CalcCausalAttenMaskOffset(int64_t& attenMaskOffset,
+                                                                                            const int64_t delta)
+{
+    CalcAttenMaskOffset(attenMaskOffset, delta);
+}
+
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+__aicore__ inline void
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::Mm12OutProcess(GlobalTensor<T2>& matmulOutGm,
+                                                                                 LocalTensor<T2>& outLocalTensor,
                                                                                  const int64_t nCvIndex)
 {
     DataCopyParams intriParams;
@@ -1162,21 +1251,25 @@ FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FOR
     }
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ReCompute(
-    const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset, const int64_t &attenMaskOffset,
-    const int64_t &dropMaskOffset, const int64_t &batchSoftmaxInputOffset, const int64_t &nCvIndex)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ReCompute(const int64_t& batchSqLoopOffset,
+                                                                            const int64_t& batchSkvLoopOffset,
+                                                                            const int64_t& attenMaskOffset,
+                                                                            const int64_t& dropMaskOffset,
+                                                                            const int64_t& batchSoftmaxInputOffset,
+                                                                            const int64_t& nCvIndex)
 {
     LocalTensor<T2> subResInner = vecClc1.Get<T2>(innerMatResNum);
-    LocalTensor<T2> &mulResInner = subResInner;
+    LocalTensor<T2>& mulResInner = subResInner;
     LocalTensor<T2> dvDropResInner = vecClc2.Get<T2>(innerMatResNum);
 
-    LocalTensor<T2> &reMatmulResInner = dvDropResInner;
-    LocalTensor<T2> &softmaxResInner = dvDropResInner;
-    LocalTensor<T2> &attenMaskResInner = dvDropResInner;
+    LocalTensor<T2>& reMatmulResInner = dvDropResInner;
+    LocalTensor<T2>& softmaxResInner = dvDropResInner;
+    LocalTensor<T2>& attenMaskResInner = dvDropResInner;
 
     bool clcAttenMask = false;
     if (pseSq != 0) {
@@ -1193,8 +1286,7 @@ __aicore__ inline void
         clcAttenMask = CopyInAttenMask(attenMaskOffset);
     }
 
-    Mm12OutProcess(matmulResultBuffer2,reMatmulResInner, nCvIndex);
-
+    Mm12OutProcess(matmulResultBuffer2, reMatmulResInner, nCvIndex);
 
     if (pseSq != 0) {
         LocalTensor<T1> pseUb = vecInQue2.DeQue<T1>();
@@ -1267,92 +1359,101 @@ __aicore__ inline void
     CopyToWorkspace(batchSqLoopOffset, batchSkvLoopOffset, mulResInner, dvDropResInner, nCvIndex);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcMm1(
-    const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcMm1(const int64_t& batchSqLoopOffset,
+                                                                         const int64_t& batchSkvLoopOffset)
 {
     mm1.SetTensorA(dxGm[batchSqLoopOffset]);
     mm1.SetTensorB(valueGm[batchSkvLoopOffset], true);
     mm1.template IterateBatch<false, true>(matmulResultBuffer1, nCvInner * g, nCvInner, false);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcMm2(
-    const int64_t &batchSqLoopOffset, const int64_t &batchSkvLoopOffset)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcMm2(const int64_t& batchSqLoopOffset,
+                                                                         const int64_t& batchSkvLoopOffset)
 {
     mm1.SetTensorA(queryGm[batchSqLoopOffset]);
     mm1.SetTensorB(keyGm[batchSkvLoopOffset], true);
     mm1.template IterateBatch<false, true>(matmulResultBuffer2, nCvInner * g, nCvInner, false);
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcMm31(
-    const int64_t &cvMulOffset, const int64_t &batchSqLoopOffset,
-    const int64_t &batchSkvLoopOffset, const bool &isSync)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcMm31(const int64_t& cvMulOffset,
+                                                                          const int64_t& batchSqLoopOffset,
+                                                                          const int64_t& batchSkvLoopOffset,
+                                                                          const bool& isSync)
 {
     mm31.SetTail(sQ, d, -1);
     mm31.SetTensorA(mulWorkSpaceGm[lastPingpongIdx * pingPongMulOffset + cvMulOffset]);
     mm31.SetTensorB(keyGm[batchSkvLoopOffset]);
     if (isSync) {
-      mm31.template IterateBatch<true>(dqWorkspaceGm[batchSqLoopOffset], lastNCvInner * g, lastNCvInner, false);
+        mm31.template IterateBatch<true>(dqWorkspaceGm[batchSqLoopOffset], lastNCvInner * g, lastNCvInner, false);
     } else {
-      mm31.template IterateBatch<false>(dqWorkspaceGm[batchSqLoopOffset], lastNCvInner * g, lastNCvInner, false);
+        mm31.template IterateBatch<false>(dqWorkspaceGm[batchSqLoopOffset], lastNCvInner * g, lastNCvInner, false);
     }
     mm31.End();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcMm32(
-    const int64_t &cvMulOffset, const int64_t &batchSqLoopOffset,
-    const int64_t &batchSkvLoopOffset, const bool &isSync)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcMm32(const int64_t& cvMulOffset,
+                                                                          const int64_t& batchSqLoopOffset,
+                                                                          const int64_t& batchSkvLoopOffset,
+                                                                          const bool& isSync)
 {
     mm32.SetTail(sKV, -1, sQ);
     mm32.SetTensorA(mulWorkSpaceGm[lastPingpongIdx * pingPongMulOffset + cvMulOffset], true);
     mm32.SetTensorB(queryGm[batchSqLoopOffset]);
     if (isSync) {
-      mm32.template IterateBatch<true>(dkWorkspaceGm[batchSkvLoopOffset], lastNCvInner * g, lastNCvInner * g, false);
+        mm32.template IterateBatch<true>(dkWorkspaceGm[batchSkvLoopOffset], lastNCvInner * g, lastNCvInner * g, false);
     } else {
-      mm32.template IterateBatch<false>(dkWorkspaceGm[batchSkvLoopOffset], lastNCvInner * g, lastNCvInner * g, false);
+        mm32.template IterateBatch<false>(dkWorkspaceGm[batchSkvLoopOffset], lastNCvInner * g, lastNCvInner * g, false);
     }
     mm32.End();
 }
 
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::ClcMm4(
-    const int64_t &cvMulOffset, const int64_t &batchSqLoopOffset,
-    const int64_t &batchSkvLoopOffset, const bool &isSync)
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::ClcMm4(const int64_t& cvMulOffset,
+                                                                         const int64_t& batchSqLoopOffset,
+                                                                         const int64_t& batchSkvLoopOffset,
+                                                                         const bool& isSync)
 {
     mm4.SetTensorA(dropWorkSpaceGm[lastPingpongIdx * pingPongDropOffset + cvMulOffset], true);
     mm4.SetTensorB(dxGm[batchSqLoopOffset]);
     if (isSync) {
-      mm4.template IterateBatch<true>(dvGm[batchSkvLoopOffset], lastNCvInner * g, lastNCvInner * g, false);
+        mm4.template IterateBatch<true>(dvGm[batchSkvLoopOffset], lastNCvInner * g, lastNCvInner * g, false);
     } else {
-      mm4.template IterateBatch<false>(dvGm[batchSkvLoopOffset], lastNCvInner * g, lastNCvInner * g, false);
+        mm4.template IterateBatch<false>(dvGm[batchSkvLoopOffset], lastNCvInner * g, lastNCvInner * g, false);
     }
     mm4.End();
 }
 
 // T1 INPUT_T, T2 CALC_T
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const bool IS_BF16, LayoutMode layout,
-          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType>
+template <typename T1, typename T2, const MatmulConfig& MM_CFG, const bool IS_BF16, LayoutMode layout,
+          const CubeFormat MMPre_OUT_FORMAT, const CubeFormat MMNext_OUT_FORMAT, S1TemplateType s1TemplateType,
+          S2TemplateType s2TemplateType, DTemplateType dTemplateType>
 __aicore__ inline void
-    FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType, s2TemplateType, dTemplateType>::Process()
+FlashAttentionScoreGradUngs1s2Bbn<T1, T2, MM_CFG, IS_BF16, layout, MMPre_OUT_FORMAT, MMNext_OUT_FORMAT, s1TemplateType,
+                                  s2TemplateType, dTemplateType>::Process()
 {
     if (g_coreType == AIV && mBlockIdx >= usedCoreNum) {
         SyncAll();
@@ -1450,7 +1551,7 @@ __aicore__ inline void
         ClcMm2(batchSqLoopOffset, batchSkvLoopOffset);
 
         if (batchIdx > 0) {
-          // 清workspace，否则pta连跑失败
+            // 清workspace，否则pta连跑失败
             if (inputLayout == 1) {
                 // SBH
                 for (int i = 0; i < sKV; i++) {

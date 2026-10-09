@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file block_epilogue_empty.h
@@ -49,12 +49,12 @@ public:
         return;
     }
 
-    __aicore__ inline void operator()(Arguments const &params)
+    __aicore__ inline void operator()(Arguments const& params)
     {
         Run();
     }
 
-    __host_aicore__ static Params InitParams(Arguments const &args, GM_ADDR workspaceGm)
+    __host_aicore__ static Params InitParams(Arguments const& args, GM_ADDR workspaceGm)
     {
         Params params = {};
         return params;
@@ -65,12 +65,12 @@ public:
         return 0;
     }
 
-    __host_aicore__ static Status CanImplement(Arguments const &args)
+    __host_aicore__ static Status CanImplement(Arguments const& args)
     {
         return Status::success;
     }
 
-    __aicore__ inline void operator()(BlockShape const &blockShape, BlockCoord const &blockCoord,
+    __aicore__ inline void operator()(BlockShape const& blockShape, BlockCoord const& blockCoord,
                                       int64_t dstStartOffset = 0, int64_t srcStartOffset = 0)
     {
         return;

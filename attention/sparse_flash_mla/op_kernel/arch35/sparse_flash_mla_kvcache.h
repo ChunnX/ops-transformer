@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_mla_kvcache.h
@@ -27,13 +27,13 @@ using namespace AscendC::Impl::Detail;
 using namespace SMLAKernel;
 
 TEMPLATE_INTF
-__aicore__ inline void GetSingleCoreParam(RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo,
-                                          GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &cuSeqlensOriKvGm,
-                                          GlobalTensor<int32_t> &cuSeqlensCmpKvGm,
-                                          GlobalTensor<int32_t> &actualSeqQlenGm,
-                                          GlobalTensor<int32_t> &actualSeqOriKvlenGm,
-                                          GlobalTensor<int32_t> &actualSeqCmpKvlenGm,
-                                          GlobalTensor<int32_t> &cmpResidualKvGm, bool hasActualSeqQlen,
+__aicore__ inline void GetSingleCoreParam(RunParamStr& smlaCacheRunParam, const ConstInfo& smlaCacheConstInfo,
+                                          GlobalTensor<int32_t>& cuSeqlensQGm, GlobalTensor<int32_t>& cuSeqlensOriKvGm,
+                                          GlobalTensor<int32_t>& cuSeqlensCmpKvGm,
+                                          GlobalTensor<int32_t>& actualSeqQlenGm,
+                                          GlobalTensor<int32_t>& actualSeqOriKvlenGm,
+                                          GlobalTensor<int32_t>& actualSeqCmpKvlenGm,
+                                          GlobalTensor<int32_t>& cmpResidualKvGm, bool hasActualSeqQlen,
                                           bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv)
 {
     int32_t actualS1Size = 0;
@@ -116,13 +116,13 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &smlaCacheRunParam, const 
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeParamBatch(RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo,
-                                         GlobalTensor<int32_t> &cuSeqlensQGm, GlobalTensor<int32_t> &cuSeqlensOriKvGm,
-                                         GlobalTensor<int32_t> &cuSeqlensCmpKvGm,
-                                         GlobalTensor<int32_t> &actualSeqQlenGm,
-                                         GlobalTensor<int32_t> &actualSeqOriKvlenGm,
-                                         GlobalTensor<int32_t> &actualSeqCmpKvlenGm,
-                                         GlobalTensor<int32_t> &cmpResidualKvGm, bool hasActualSeqQlen,
+__aicore__ inline void ComputeParamBatch(RunParamStr& smlaCacheRunParam, const ConstInfo& smlaCacheConstInfo,
+                                         GlobalTensor<int32_t>& cuSeqlensQGm, GlobalTensor<int32_t>& cuSeqlensOriKvGm,
+                                         GlobalTensor<int32_t>& cuSeqlensCmpKvGm,
+                                         GlobalTensor<int32_t>& actualSeqQlenGm,
+                                         GlobalTensor<int32_t>& actualSeqOriKvlenGm,
+                                         GlobalTensor<int32_t>& actualSeqCmpKvlenGm,
+                                         GlobalTensor<int32_t>& cmpResidualKvGm, bool hasActualSeqQlen,
                                          bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen, bool hasCuSeqlensCmpKv)
 {
     GetSingleCoreParam<TEMPLATE_INTF_ARGS>(smlaCacheRunParam, smlaCacheConstInfo, cuSeqlensQGm, cuSeqlensOriKvGm,
@@ -132,7 +132,7 @@ __aicore__ inline void ComputeParamBatch(RunParamStr &smlaCacheRunParam, const C
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeS1LoopInfo(RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo,
+__aicore__ inline void ComputeS1LoopInfo(RunParamStr& smlaCacheRunParam, const ConstInfo& smlaCacheConstInfo,
                                          bool lastBN, int64_t nextGs1Idx, int64_t gS1StartIdx, int64_t s2EndIdx = 0)
 {
     smlaCacheRunParam.qSNumInOneBlock = 1;
@@ -188,7 +188,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr &smlaCacheRunParam, const C
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeSouterParam(RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo,
+__aicore__ inline void ComputeSouterParam(RunParamStr& smlaCacheRunParam, const ConstInfo& smlaCacheConstInfo,
                                           uint32_t sOuterLoopIdx)
 {
     int64_t smlaCubeSOuterOffset = sOuterLoopIdx * smlaCacheRunParam.qSNumInOneBlock;
@@ -227,8 +227,8 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &smlaCacheRunParam, const 
 }
 
 TEMPLATE_INTF
-__aicore__ inline void LoopSOuterOffsetInit(RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo,
-                                            int32_t sIdx, GlobalTensor<int32_t> &cuSeqlensQGm)
+__aicore__ inline void LoopSOuterOffsetInit(RunParamStr& smlaCacheRunParam, const ConstInfo& smlaCacheConstInfo,
+                                            int32_t sIdx, GlobalTensor<int32_t>& cuSeqlensQGm)
 {
     if ASCEND_IS_AIV {
         int64_t seqOffset = 0;
@@ -271,8 +271,8 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &smlaCacheRunParam, cons
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeParamS1(RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo,
-                                      uint32_t sOuterLoopIdx, GlobalTensor<int32_t> &cuSeqlensQGm)
+__aicore__ inline bool ComputeParamS1(RunParamStr& smlaCacheRunParam, const ConstInfo& smlaCacheConstInfo,
+                                      uint32_t sOuterLoopIdx, GlobalTensor<int32_t>& cuSeqlensQGm)
 {
     if (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
@@ -308,7 +308,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &smlaCacheRunParam, const Cons
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr &smlaCacheRunParam, GlobalTensor<int32_t> &cuSeqlensQGm)
+__aicore__ inline bool ComputeLastBN(RunParamStr& smlaCacheRunParam, GlobalTensor<int32_t>& cuSeqlensQGm)
 {
     if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
@@ -329,9 +329,9 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t> &cuSeqlensQGm,
-                                         GlobalTensor<int32_t> &oriTopkLengthGm, GlobalTensor<int32_t> &cmpTopkLengthGm,
-                                         RunParamStr &smlaCacheRunParam, const ConstInfo &smlaCacheConstInfo)
+__aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t>& cuSeqlensQGm,
+                                         GlobalTensor<int32_t>& oriTopkLengthGm, GlobalTensor<int32_t>& cmpTopkLengthGm,
+                                         RunParamStr& smlaCacheRunParam, const ConstInfo& smlaCacheConstInfo)
 {
     if (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
@@ -421,8 +421,8 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
 }
 
 TEMPLATE_INTF
-__aicore__ inline void InitTaskParamByRun(const RunParamStr &smlaCacheRunParam, RunInfo &smlaCacheRunInfo,
-                                          const ConstInfo &smlaCacheConstInfo)
+__aicore__ inline void InitTaskParamByRun(const RunParamStr& smlaCacheRunParam, RunInfo& smlaCacheRunInfo,
+                                          const ConstInfo& smlaCacheConstInfo)
 {
     smlaCacheRunInfo.boIdx = smlaCacheRunParam.boIdx;
     smlaCacheRunInfo.preTokensPerBatchOri = smlaCacheRunParam.preTokensPerBatchOri;

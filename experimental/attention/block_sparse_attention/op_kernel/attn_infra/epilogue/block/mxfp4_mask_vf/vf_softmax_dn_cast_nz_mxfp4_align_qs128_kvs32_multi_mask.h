@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file vf_softmax_dn_cast_nz_mxfp4_align_qs128_kvs32_multi.h
  * \brief softmax + mxfp4 quant for qs=128, kvs padding 32 multi (kvsActBaseTileAlign32 >= 64, runtime variable)
@@ -23,10 +23,10 @@ using namespace AscendC;
 using namespace Reg;
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2, uint16_t QsBase = 128>
-__simd_callee__ inline void softmax_align_qs128_kvs32_multi_chunk_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s,
-                                                                     __ubuf__ T *local_group_max,
-                                                                     __ubuf__ T *global_max,
-                                                                     __ubuf__ uint8_t *indexes_ub, const T NEG_LOG2_CX,
+__simd_callee__ inline void softmax_align_qs128_kvs32_multi_chunk_vf(__ubuf__ T2* p_dest, __ubuf__ T* s,
+                                                                     __ubuf__ T* local_group_max,
+                                                                     __ubuf__ T* global_max,
+                                                                     __ubuf__ uint8_t* indexes_ub, const T NEG_LOG2_CX,
                                                                      const uint16_t chunkY, const uint16_t effY,
                                                                      const bool hasChunk, const uint16_t rows)
 {
@@ -148,21 +148,18 @@ __simd_callee__ inline void softmax_align_qs128_kvs32_multi_chunk_vf(__ubuf__ T2
             Cast<float4_e2m1x2_t, bfloat16_t, castTraitThree>(quant_3, src_bf16_3, preg_all_16bit);
 
             // 数据合并
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_2,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
+            Or((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_1, preg_all_8bit);
+            Or((RegTensor<uint8_t>&)quant_2, (RegTensor<uint8_t>&)quant_2, (RegTensor<uint8_t>&)quant_3, preg_all_8bit);
+            Or((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_2, preg_all_8bit);
+            Gather((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, idx_nd2nz);
 
             // 写入内存（偶数块：无+128偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256, (RegTensor<uint8_t>&)quant_0,
                        preg_vl128 // 低128字节掩码
             );
 
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256 + 16256,
-                       (RegTensor<uint8_t> &)quant_0,
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256 + 16256,
+                       (RegTensor<uint8_t>&)quant_0,
                        preg_vl128_not // 高128字节掩码
             );
         }
@@ -210,21 +207,18 @@ __simd_callee__ inline void softmax_align_qs128_kvs32_multi_chunk_vf(__ubuf__ T2
             Cast<float4_e2m1x2_t, bfloat16_t, castTraitThree>(quant_3, src_bf16_3, preg_all_16bit);
 
             // 数据合并
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_2,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
+            Or((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_1, preg_all_8bit);
+            Or((RegTensor<uint8_t>&)quant_2, (RegTensor<uint8_t>&)quant_2, (RegTensor<uint8_t>&)quant_3, preg_all_8bit);
+            Or((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_2, preg_all_8bit);
+            Gather((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, idx_nd2nz);
 
             // 奇数块：低128字节写入（基础地址 +128 偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256 + 128,
-                       (RegTensor<uint8_t> &)quant_0, preg_vl128);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256 + 128,
+                       (RegTensor<uint8_t>&)quant_0, preg_vl128);
 
             // 奇数块：高128字节写入（远端地址）
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256 + 16384,
-                       (RegTensor<uint8_t> &)quant_0, preg_vl128_not);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256 + 16384,
+                       (RegTensor<uint8_t>&)quant_0, preg_vl128_not);
         }
 
         // ====================== 全局/局部最大值更新 ======================
@@ -260,22 +254,22 @@ __simd_callee__ inline void softmax_align_qs128_kvs32_multi_chunk_vf(__ubuf__ T2
 
         // 偶数子块清零
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256, zero8, preg_vl128);
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256 + 16256, zero8, preg_vl128_not);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256, zero8, preg_vl128);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256 + 16256, zero8, preg_vl128_not);
         }
 
         // 奇数子块清零
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256 + 128, zero8, preg_vl128);
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256 + 16384, zero8, preg_vl128_not);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256 + 128, zero8, preg_vl128);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256 + 16384, zero8, preg_vl128_not);
         }
     }
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2, uint16_t QsBase = 128>
 __simd_vf__ inline void softmax_align_qs128_kvs32_multi_chunk_only_vf(
-    __ubuf__ T2 *p_dest, __ubuf__ T *s, __ubuf__ T *local_group_max, __ubuf__ T *global_max,
-    __ubuf__ uint8_t *indexes_ub, const T NEG_LOG2_CX, const uint16_t chunkY, const uint16_t effY, const uint16_t rows)
+    __ubuf__ T2* p_dest, __ubuf__ T* s, __ubuf__ T* local_group_max, __ubuf__ T* global_max,
+    __ubuf__ uint8_t* indexes_ub, const T NEG_LOG2_CX, const uint16_t chunkY, const uint16_t effY, const uint16_t rows)
 {
     softmax_align_qs128_kvs32_multi_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
         p_dest, s, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, chunkY, effY, true, rows);
@@ -283,15 +277,15 @@ __simd_vf__ inline void softmax_align_qs128_kvs32_multi_chunk_only_vf(
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2, uint16_t QsBase = 128>
 __aicore__ inline void SoftmaxWithGroupMaxAlignQs128Kvs32MultiChunkCallVF(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &localGroupMax,
-    const LocalTensor<T> &globalMax, const LocalTensor<uint8_t> &indexesBuf, const T NEG_LOG2_CX, const uint16_t chunkY,
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& localGroupMax,
+    const LocalTensor<T>& globalMax, const LocalTensor<uint8_t>& indexesBuf, const T NEG_LOG2_CX, const uint16_t chunkY,
     const uint16_t effY, const uint16_t rows)
 {
-    __ubuf__ T2 *p_dest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ T *s_ub = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ T *local_group_max = (__ubuf__ T *)localGroupMax.GetPhyAddr();
-    __ubuf__ T *global_max = (__ubuf__ T *)globalMax.GetPhyAddr();
-    __ubuf__ uint8_t *indexes_ub = (__ubuf__ uint8_t *)indexesBuf.GetPhyAddr();
+    __ubuf__ T2* p_dest = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ T* s_ub = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ T* local_group_max = (__ubuf__ T*)localGroupMax.GetPhyAddr();
+    __ubuf__ T* global_max = (__ubuf__ T*)globalMax.GetPhyAddr();
+    __ubuf__ uint8_t* indexes_ub = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
     softmax_align_qs128_kvs32_multi_chunk_only_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
         p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, chunkY, effY, rows);

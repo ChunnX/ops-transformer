@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_mrgsort_performance.h
@@ -29,11 +29,11 @@ struct MoeMrgsortPerformanceParam {
 class MoeMrgsortPerformance {
 public:
     __aicore__ inline MoeMrgsortPerformance(){};
-    __aicore__ inline void Init(MoeMrgsortPerformanceParam *param);
+    __aicore__ inline void Init(MoeMrgsortPerformanceParam* param);
     __aicore__ inline void Process();
-    __aicore__ inline void SetInput(GlobalTensor<float> &gmInput, LocalTensor<float> &ubInput,
-                                    GlobalTensor<int32_t> &gmActualSortNum);
-    __aicore__ inline void SetOutput(GlobalTensor<float> &gmOutput, LocalTensor<float> &ubOutput);
+    __aicore__ inline void SetInput(GlobalTensor<float>& gmInput, LocalTensor<float>& ubInput,
+                                    GlobalTensor<int32_t>& gmActualSortNum);
+    __aicore__ inline void SetOutput(GlobalTensor<float>& gmOutput, LocalTensor<float>& ubOutput);
 
 private:
     __aicore__ inline void CopyIn();
@@ -44,7 +44,7 @@ private:
     __aicore__ inline void ClearCache();
 
 private:
-    MoeMrgsortPerformanceParam *param = nullptr;
+    MoeMrgsortPerformanceParam* param = nullptr;
 
     GlobalTensor<float> gmInputs[4];
     GlobalTensor<float> gmOutput;
@@ -76,8 +76,8 @@ __aicore__ inline void MoeMrgsortPerformance::ClearCache()
     this->outOffset = 0;
 }
 
-__aicore__ inline void MoeMrgsortPerformance::SetInput(GlobalTensor<float> &gmInput, LocalTensor<float> &ubInput,
-                                                       GlobalTensor<int32_t> &gmActualSortNum)
+__aicore__ inline void MoeMrgsortPerformance::SetInput(GlobalTensor<float>& gmInput, LocalTensor<float>& ubInput,
+                                                       GlobalTensor<int32_t>& gmActualSortNum)
 {
     if (this->listNum == 0) {
         this->gmActualSortNum = gmActualSortNum;
@@ -87,7 +87,7 @@ __aicore__ inline void MoeMrgsortPerformance::SetInput(GlobalTensor<float> &gmIn
     this->listNum += 1;
 }
 
-__aicore__ inline void MoeMrgsortPerformance::SetOutput(GlobalTensor<float> &gmOutput, LocalTensor<float> &ubOutput)
+__aicore__ inline void MoeMrgsortPerformance::SetOutput(GlobalTensor<float>& gmOutput, LocalTensor<float>& ubOutput)
 {
     this->gmOutput = gmOutput;
     this->ubOutput = ubOutput;
@@ -180,7 +180,7 @@ __aicore__ inline void MoeMrgsortPerformance::CopyOut()
     outOffset += GetSortLen<float>(curLoopSortedNum);
 }
 
-__aicore__ inline void MoeMrgsortPerformance::Init(MoeMrgsortPerformanceParam *param)
+__aicore__ inline void MoeMrgsortPerformance::Init(MoeMrgsortPerformanceParam* param)
 {
     this->param = param;
     for (int64_t i = 0; i < listNum; i++) {

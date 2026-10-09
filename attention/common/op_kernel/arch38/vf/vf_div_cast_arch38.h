@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file vf_div_cast_arch38.h
  * \brief
@@ -18,12 +18,12 @@
 
 namespace FaVectorApi {
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCastImpl64(const LocalTensor<OUTPUT_T> &dstTensor, const LocalTensor<T> &srcTensor,
-                                     const LocalTensor<T> &expSumTensor, const uint16_t m)
+__aicore__ inline void DivCastImpl64(const LocalTensor<OUTPUT_T>& dstTensor, const LocalTensor<T>& srcTensor,
+                                     const LocalTensor<T>& expSumTensor, const uint16_t m)
 {
-    __ubuf__ OUTPUT_T *dstUb = (__ubuf__ OUTPUT_T *)dstTensor.GetPhyAddr();
-    __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ OUTPUT_T* dstUb = (__ubuf__ OUTPUT_T*)dstTensor.GetPhyAddr();
+    __ubuf__ float* srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
 
     const uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD >> 6;
@@ -52,15 +52,15 @@ __aicore__ inline void DivCastImpl64(const LocalTensor<OUTPUT_T> &dstTensor, con
             Div(vreg_div, vreg_src, vreg_exp_sum, preg_all);
 
             if constexpr (IsSameType<OUTPUT_T, float>::value) {
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div,
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T*&)dstUb + i * srcD, vreg_div,
                                                                   preg_all);
             } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
                 Cast<OUTPUT_T, T, castTraitZero>(vreg_div_bf16, vreg_div, preg_all_b16);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div_bf16,
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T*&)dstUb + i * srcD, vreg_div_bf16,
                                                                   preg_all);
             } else {
                 Cast<OUTPUT_T, T, castTraitZero>(vreg_div_f16, vreg_div, preg_all_b16);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div_f16,
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>((__ubuf__ OUTPUT_T*&)dstUb + i * srcD, vreg_div_f16,
                                                                   preg_all);
             }
         }
@@ -68,12 +68,12 @@ __aicore__ inline void DivCastImpl64(const LocalTensor<OUTPUT_T> &dstTensor, con
 }
 
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCastImpl128(const LocalTensor<OUTPUT_T> &dstTensor, const LocalTensor<T> &srcTensor,
-                                      const LocalTensor<T> &expSumTensor, const uint16_t m)
+__aicore__ inline void DivCastImpl128(const LocalTensor<OUTPUT_T>& dstTensor, const LocalTensor<T>& srcTensor,
+                                      const LocalTensor<T>& expSumTensor, const uint16_t m)
 {
-    __ubuf__ OUTPUT_T *dstUb = (__ubuf__ OUTPUT_T *)dstTensor.GetPhyAddr();
-    __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ OUTPUT_T* dstUb = (__ubuf__ OUTPUT_T*)dstTensor.GetPhyAddr();
+    __ubuf__ float* srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
 
     const uint16_t floatRepSize = 64;
 
@@ -106,23 +106,23 @@ __aicore__ inline void DivCastImpl128(const LocalTensor<OUTPUT_T> &dstTensor, co
             Div(vreg_div_odd, vreg_src_odd, vreg_exp_sum, preg_all);
 
             if constexpr (IsSameType<OUTPUT_T, float>::value) {
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_div_even,
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T*&)dstUb + i * srcD, vreg_div_even,
                                                                   preg_all);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD + (srcD >> 1),
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T*&)dstUb + i * srcD + (srcD >> 1),
                                                                   vreg_div_odd, preg_all);
             } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
                 Cast<OUTPUT_T, T, castTraitZero>(vreg_div_even_bf16, vreg_div_even, preg_all);
                 Cast<OUTPUT_T, T, castTraitOne>(vreg_div_odd_bf16, vreg_div_odd, preg_all);
-                Or((RegTensor<uint16_t> &)vreg_cast_bf16, (RegTensor<uint16_t> &)vreg_div_even_bf16,
-                   (RegTensor<uint16_t> &)vreg_div_odd_bf16, preg_all_b16);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD,
-                                                                  vreg_cast_bf16, preg_all_b16);
+                Or((RegTensor<uint16_t>&)vreg_cast_bf16, (RegTensor<uint16_t>&)vreg_div_even_bf16,
+                   (RegTensor<uint16_t>&)vreg_div_odd_bf16, preg_all_b16);
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T*&)dstUb + i * srcD, vreg_cast_bf16,
+                                                                  preg_all_b16);
             } else {
                 Cast<OUTPUT_T, T, castTraitZero>(vreg_div_even_f16, vreg_div_even, preg_all);
                 Cast<OUTPUT_T, T, castTraitOne>(vreg_div_odd_f16, vreg_div_odd, preg_all);
-                Or((RegTensor<uint16_t> &)vreg_cast_f16, (RegTensor<uint16_t> &)vreg_div_even_f16,
-                   (RegTensor<uint16_t> &)vreg_div_odd_f16, preg_all_b16);
-                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T *&)dstUb + i * srcD, vreg_cast_f16,
+                Or((RegTensor<uint16_t>&)vreg_cast_f16, (RegTensor<uint16_t>&)vreg_div_even_f16,
+                   (RegTensor<uint16_t>&)vreg_div_odd_f16, preg_all_b16);
+                DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ OUTPUT_T*&)dstUb + i * srcD, vreg_cast_f16,
                                                                   preg_all_b16);
             }
         }
@@ -130,12 +130,12 @@ __aicore__ inline void DivCastImpl128(const LocalTensor<OUTPUT_T> &dstTensor, co
 }
 
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCastImplGeneral(const LocalTensor<OUTPUT_T> &dstTensor, const LocalTensor<T> &srcTensor,
-                                          const LocalTensor<T> &expSumTensor, const uint16_t m)
+__aicore__ inline void DivCastImplGeneral(const LocalTensor<OUTPUT_T>& dstTensor, const LocalTensor<T>& srcTensor,
+                                          const LocalTensor<T>& expSumTensor, const uint16_t m)
 {
-    __ubuf__ OUTPUT_T *dstUb = (__ubuf__ OUTPUT_T *)dstTensor.GetPhyAddr();
-    __ubuf__ float *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
+    __ubuf__ OUTPUT_T* dstUb = (__ubuf__ OUTPUT_T*)dstTensor.GetPhyAddr();
+    __ubuf__ float* srcUb = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* expSumUb = (__ubuf__ T*)expSumTensor.GetPhyAddr();
 
     const uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD >> 6;
@@ -164,15 +164,15 @@ __aicore__ inline void DivCastImplGeneral(const LocalTensor<OUTPUT_T> &dstTensor
 
                 if constexpr (IsSameType<OUTPUT_T, float>::value) {
                     DataCopy<OUTPUT_T, Reg::StoreDist::DIST_NORM_B32>(
-                        (__ubuf__ OUTPUT_T *&)dstUb + i * srcD + j * floatRepSize, vreg_div, preg_all);
+                        (__ubuf__ OUTPUT_T*&)dstUb + i * srcD + j * floatRepSize, vreg_div, preg_all);
                 } else if constexpr (IsSameType<OUTPUT_T, bfloat16_t>::value) {
                     Cast<OUTPUT_T, T, castTraitZero>(vreg_div_bf16, vreg_div, preg_all_b16);
                     DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>(
-                        (__ubuf__ OUTPUT_T *&)dstUb + i * srcD + j * floatRepSize, vreg_div_bf16, preg_all);
+                        (__ubuf__ OUTPUT_T*&)dstUb + i * srcD + j * floatRepSize, vreg_div_bf16, preg_all);
                 } else {
                     Cast<OUTPUT_T, T, castTraitZero>(vreg_div_f16, vreg_div, preg_all_b16);
                     DataCopy<OUTPUT_T, Reg::StoreDist::DIST_PACK_B32>(
-                        (__ubuf__ OUTPUT_T *&)dstUb + i * srcD + j * floatRepSize, vreg_div_f16, preg_all);
+                        (__ubuf__ OUTPUT_T*&)dstUb + i * srcD + j * floatRepSize, vreg_div_f16, preg_all);
                 }
             }
         }
@@ -190,8 +190,8 @@ __aicore__ inline void DivCastImplGeneral(const LocalTensor<OUTPUT_T> &dstTensor
  * @param [in] srcD, should be 64 or 128
  */
 template <typename T, typename OUTPUT_T, uint16_t srcD>
-__aicore__ inline void DivCast(const LocalTensor<OUTPUT_T> &dstTensor, const LocalTensor<T> &srcTensor,
-                               const LocalTensor<T> &expSumTensor, const uint16_t m)
+__aicore__ inline void DivCast(const LocalTensor<OUTPUT_T>& dstTensor, const LocalTensor<T>& srcTensor,
+                               const LocalTensor<T>& expSumTensor, const uint16_t m)
 {
     if constexpr (srcD == 64) {
         DivCastImpl64<T, OUTPUT_T, srcD>(dstTensor, srcTensor, expSumTensor, m);

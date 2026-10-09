@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <cmath>
 #include <cstdio>
@@ -22,7 +22,7 @@
 #include "helper.hpp"
 
 namespace MLATiling {
-using namespace std;  // to not pollute global namespace
+using namespace std; // to not pollute global namespace
 const int32_t TILING_BATCH = 0;
 const int32_t TILING_NUMHEADS = 1;
 const int32_t TILING_HEADDIM = 2;
@@ -86,7 +86,10 @@ const int32_t KV_SEQLEN_SLICE = 128;
 
 constexpr std::array<int32_t, NUM6> QN_TILE_LIST = {128, 64, 32, 16, 8, 1};
 
-enum class MaskType { NO_MASK = 0, MASK_SPEC = 1 };
+enum class MaskType {
+    NO_MASK = 0,
+    MASK_SPEC = 1
+};
 
 struct MLAInfo {
     int32_t numTokens = 0;
@@ -98,8 +101,8 @@ struct MLAInfo {
     int32_t maxKvSeqlen = 0;
     int32_t kvHeads = 0;
     int32_t batch = 0;
-    int32_t *kvSeqLen{nullptr};
-    int32_t *qSeqLen{nullptr};
+    int32_t* kvSeqLen{nullptr};
+    int32_t* qSeqLen{nullptr};
     MaskType maskType = MaskType::NO_MASK;
 };
 
@@ -111,10 +114,16 @@ using AddrOffsets = struct AddressOffsetInfo {
     uint64_t addrLSeqOffset = 0;
 };
 
-inline uint32_t GetHigh32Bit(uint64_t v) { return static_cast<uint32_t>(v >> NUM32); }
-inline uint32_t GetLow32Bit(uint64_t v) { return static_cast<uint32_t>(v); }
+inline uint32_t GetHigh32Bit(uint64_t v)
+{
+    return static_cast<uint32_t>(v >> NUM32);
+}
+inline uint32_t GetLow32Bit(uint64_t v)
+{
+    return static_cast<uint32_t>(v);
+}
 
-void GetAddrOffsetMLA(uint32_t *tilingHost, const AddrOffsets addrOffsets, const int32_t tilingOffset)
+void GetAddrOffsetMLA(uint32_t* tilingHost, const AddrOffsets addrOffsets, const int32_t tilingOffset)
 {
     // Calculate address offset
     tilingHost[tilingOffset + NUM4] = GetHigh32Bit(addrOffsets.addrQSeqOffset);
@@ -125,7 +134,7 @@ void GetAddrOffsetMLA(uint32_t *tilingHost, const AddrOffsets addrOffsets, const
     tilingHost[tilingOffset + NUM9] = GetLow32Bit(addrOffsets.addrMaskBatchOffset);
 }
 
-void GetMLATilingCommon(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_t *tilingHost)
+void GetMLATilingCommon(const MLAInfo& mlaInfo, uint32_t& blockDim, uint32_t* tilingHost)
 {
     // Calculate the batch-related tiling parameters
     int32_t maxKVSeqlen = 0;
@@ -153,7 +162,7 @@ void GetMLATilingCommon(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_t *ti
     tilingHost[TILING_MAX_QSEQLEN] = maxQSeqlen;
 }
 
-void GetMLATilingSpec(const MLAInfo &mmInfo, uint32_t &blockDim, uint32_t *tilingHost)
+void GetMLATilingSpec(const MLAInfo& mmInfo, uint32_t& blockDim, uint32_t* tilingHost)
 {
     // Tp1 senario specialization
     // Treat every Q token with 128 heads as one process, regardless of the mtp depth
@@ -174,7 +183,7 @@ void GetMLATilingSpec(const MLAInfo &mmInfo, uint32_t &blockDim, uint32_t *tilin
     tilingHost[TILING_MAX_KVSEQLEN] = maxKVSeqlen;
 }
 
-int32_t GetQNBlockTile(const MLAInfo &mlaInfo, int32_t qSeqLen, uint32_t specStrategyFlag)
+int32_t GetQNBlockTile(const MLAInfo& mlaInfo, int32_t qSeqLen, uint32_t specStrategyFlag)
 {
     int32_t tokenNum = qSeqLen;
     if (specStrategyFlag) {
@@ -188,7 +197,7 @@ int32_t GetQNBlockTile(const MLAInfo &mlaInfo, int32_t qSeqLen, uint32_t specStr
     return qNBlockTile;
 }
 
-void GetTilingHead(const MLAInfo &mlaInfo, uint32_t *tilingHost, const uint32_t *torPtr, int32_t maxQseqlen,
+void GetTilingHead(const MLAInfo& mlaInfo, uint32_t* tilingHost, const uint32_t* torPtr, int32_t maxQseqlen,
                    uint32_t specStrategyFlag)
 {
     // Calculating tiling parameters
@@ -208,8 +217,9 @@ void GetTilingHead(const MLAInfo &mlaInfo, uint32_t *tilingHost, const uint32_t 
     tilingHost[TILING_TOR] = *torPtr;
     tilingHost[TILING_KVHEADS] = mlaInfo.kvHeads;
     int32_t curQNBlockTile = GetQNBlockTile(mlaInfo, maxQseqlen, specStrategyFlag);
-    if (curQNBlockTile==0){
-        throw std::runtime_error("curQNBlockTile can not be zero");;
+    if (curQNBlockTile == 0) {
+        throw std::runtime_error("curQNBlockTile can not be zero");
+        ;
     }
     int32_t curQNBlockNum = (mlaInfo.numHeads + curQNBlockTile - 1) / curQNBlockTile;
 
@@ -220,7 +230,7 @@ void GetTilingHead(const MLAInfo &mlaInfo, uint32_t *tilingHost, const uint32_t 
     tilingHost[TILING_TOTAL_QTOKENS] = static_cast<uint32_t>(mlaInfo.numTokens);
 }
 
-uint32_t GetKVSplitParam(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_t *tilingHost)
+uint32_t GetKVSplitParam(const MLAInfo& mlaInfo, uint32_t& blockDim, uint32_t* tilingHost)
 {
     // Calculate the tiling parameters related to flash decoding
     bool isKVSplit = (tilingHost[TILING_MAX_KVSEQLEN] >= blockDim * KV_SEQLEN_SLICE * NUM2) &&
@@ -261,13 +271,13 @@ uint32_t GetKVSplitParam(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_t *t
     return decoderBatch * kvSplitCoreNum;
 }
 
-uint32_t GetKVSplitParamSpec(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_t *tilingHost)
+uint32_t GetKVSplitParamSpec(const MLAInfo& mlaInfo, uint32_t& blockDim, uint32_t* tilingHost)
 {
     // Tp1 senario specialization
     // Calculate the tiling parameters related to flash decoding
     uint32_t totalTaskNumSpec = tilingHost[TILING_TOTAL_QTOKENS];
 
-    if (blockDim==0){
+    if (blockDim == 0) {
         throw std::runtime_error("blockDim can not be zero");
     }
 
@@ -326,7 +336,7 @@ uint32_t GetKVSplitParamSpec(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_
 
     return tailTaskNum * kvSplitCoreNum;
 }
-int32_t GetMLATilingParam(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_t *tilingHost, float softmaxScale)
+int32_t GetMLATilingParam(const MLAInfo& mlaInfo, uint32_t& blockDim, uint32_t* tilingHost, float softmaxScale)
 {
     if (tilingHost == nullptr || mlaInfo.qSeqLen == nullptr || mlaInfo.kvSeqLen == nullptr) {
         cerr << "[ERROR] pointer tilingHost or seq is nullptr." << endl;
@@ -353,7 +363,7 @@ int32_t GetMLATilingParam(const MLAInfo &mlaInfo, uint32_t &blockDim, uint32_t *
         return -1;
     }
     float tor = softmaxScale;
-    uint32_t *torPtr = reinterpret_cast<uint32_t *>(&tor);
+    uint32_t* torPtr = reinterpret_cast<uint32_t*>(&tor);
     uint32_t specStrategyFlag = (mlaInfo.numHeads == NUM128) ? 1 : 0;
     if (specStrategyFlag) {
         GetMLATilingSpec(mlaInfo, blockDim, tilingHost);

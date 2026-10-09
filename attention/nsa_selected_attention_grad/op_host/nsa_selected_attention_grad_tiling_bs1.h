@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_selected_attention_grad_bs1.h
@@ -44,7 +44,7 @@ struct TempParams {
 
 class NsaSelectedAttentionGradTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit NsaSelectedAttentionGradTiling(gert::TilingContext *context)
+    explicit NsaSelectedAttentionGradTiling(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
 
@@ -71,8 +71,8 @@ private:
     ge::graphStatus Setmm3TilingData(matmul_tiling::DataType inputDtype, matmul_tiling::DataType outputDtype);
     ge::graphStatus Setmm4TilingData(matmul_tiling::DataType inputDtype, matmul_tiling::DataType outputDtype);
     ge::graphStatus Setmm5TilingData(matmul_tiling::DataType inputDtype, matmul_tiling::DataType outputDtype);
-    ge::graphStatus SetBaseInfo(const gert::Shape &queryShape, const gert::Shape &keyShape,
-                                const gert::Shape &valueShape, int64_t dimN1);
+    ge::graphStatus SetBaseInfo(const gert::Shape& queryShape, const gert::Shape& keyShape,
+                                const gert::Shape& valueShape, int64_t dimN1);
     void PrintShapeInfo();
     void DoPreTiling();
 

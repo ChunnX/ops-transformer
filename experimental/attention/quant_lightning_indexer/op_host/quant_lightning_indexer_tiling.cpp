@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_lightning_indexer_tiling.cpp
@@ -463,8 +463,8 @@ ge::graphStatus QLIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QLIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                   const std::string &actualSeqLenName) const
+ge::graphStatus QLIInfoParser::GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor,
+                                                   const std::string& actualSeqLenName) const
 {
     size = static_cast<uint32_t>(tensor->GetShapeSize());
     if (size <= 0) {
@@ -798,7 +798,7 @@ ge::graphStatus QLIInfoParser::CheckScaleShape()
     return ge::GRAPH_SUCCESS;
 }
 
-void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
+void QLIInfoParser::GenerateInfo(QLITilingInfo& QLIInfo)
 {
     QLIInfo.opName = opName_;
     QLIInfo.platformInfo = platformInfo_;
@@ -834,7 +834,7 @@ void QLIInfoParser::GenerateInfo(QLITilingInfo &QLIInfo)
     QLIInfo.inputKLayout = kLayout_;
 }
 
-ge::graphStatus QLIInfoParser::ParseAndCheck(QLITilingInfo &QLIInfo)
+ge::graphStatus QLIInfoParser::ParseAndCheck(QLITilingInfo& QLIInfo)
 {
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
@@ -865,13 +865,13 @@ ge::graphStatus QLIInfoParser::ParseAndCheck(QLITilingInfo &QLIInfo)
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // --------------------------QuantLightningIndexerTiling类成员函数定义-----------------------
-ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
+ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo* tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -914,7 +914,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
         // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
         workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
     }
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
@@ -952,7 +952,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingForQuantLightningIndexer(gert::TilingContext *context)
+ge::graphStatus TilingForQuantLightningIndexer(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("QuantLightningIndexer", "Tiling context is null."),
                 return ge::GRAPH_FAILED);

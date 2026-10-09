@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file compressor_comm.h
@@ -49,8 +49,9 @@ __aicore__ inline T Trunc(T num, T rnd)
 template <typename T>
 __aicore__ inline T FloorPow2(T num)
 {
-    if (num == 0) return 1;
-    for(uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
+    if (num == 0)
+        return 1;
+    for (uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
         num |= (num >> i);
     }
     return num - (num >> 1);
@@ -59,12 +60,13 @@ __aicore__ inline T FloorPow2(T num)
 template <typename T>
 __aicore__ inline T CeilPow2(T num)
 {
-    if (num <= 1) return 1;
-    num --;
-    for(uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
+    if (num <= 1)
+        return 1;
+    num--;
+    for (uint32_t i = 1; i < sizeof(T) * 8; i <<= 1) {
         num |= (num >> i);
     }
-    num ++;
+    num++;
     return num;
 }
 
@@ -251,9 +253,9 @@ struct RunInfo {
 
 struct Vec1RunInfo {
     // vec相关信息，一次syncAll需处理数据的起始索引
-    bool resetResFlag = false;          // v1积攒N轮 是否是N轮的起始轮
-    uint32_t c1v1DbIdx = 0;               // vec1 doubleBuffer索引
-    uint32_t v1v2DbIdx = 0;             // v1v2 doubleBuffer索引
+    bool resetResFlag = false; // v1积攒N轮 是否是N轮的起始轮
+    uint32_t c1v1DbIdx = 0;    // vec1 doubleBuffer索引
+    uint32_t v1v2DbIdx = 0;    // v1v2 doubleBuffer索引
     uint32_t bStart = 0;
     uint32_t sStart = 0;
     uint32_t dealTcNum = 0;
@@ -262,7 +264,7 @@ struct Vec1RunInfo {
 
 struct Vec2RunInfo {
     // uint32_t bStart = 0;
-    uint32_t v2DbIdx = 0;              // v2 doubleBuffer索引
+    uint32_t v2DbIdx = 0; // v2 doubleBuffer索引
     uint32_t sStart = 0;
     uint32_t bEnd = 0;
     uint32_t sEnd = 0;
@@ -318,17 +320,17 @@ __aicore__ inline constexpr T RepeatElementNum()
     return REPEAT_BLOCK_BYTE / sizeof(T);
 }
 // BLOCK和REPEAT的FP32元素数
-inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float); // 8
+inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);         // 8
 inline constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(bfloat16_t);    // 16
 inline constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float); // 64
-inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK; // 8
+inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK;          // 8
 inline constexpr uint32_t REPEAT_MAX_NUM = 255;
 inline constexpr uint32_t BRCB_NUM = 8;
 inline constexpr uint32_t MAX_R = 256;
 
 template <typename T>
-__aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor,
-    uint32_t nValue, uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
+__aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const GlobalTensor<T> gmTensor, uint32_t nValue,
+                                              uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -338,7 +340,7 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
         nd2nzPara.srcDValue = srcDValue / HALF_SIZE_DIVISOR;
     } else {
-        nd2nzPara.dValue = dValue; // nd矩阵的列数
+        nd2nzPara.dValue = dValue;       // nd矩阵的列数
         nd2nzPara.srcDValue = srcDValue; // 同一nd矩阵相邻行起始地址间的偏移
     }
     nd2nzPara.dstNzC0Stride = dstNzC0Stride;
@@ -348,7 +350,8 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
     DataCopy(l1Tensor, gmTensor, nd2nzPara);
 }
 template <typename T>
-__aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row, uint32_t col)
+__aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row,
+                                         uint32_t col)
 {
     uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);
@@ -356,7 +359,8 @@ __aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, 
 }
 
 template <typename T>
-__aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row, uint32_t col)
+__aicore__ inline void DumpTensorForDim2(LocalTensor<T> tensor, uint32_t desc, uint32_t dumpSize, uint32_t row,
+                                         uint32_t col)
 {
     uint32_t array2[] = {static_cast<uint32_t>(row), static_cast<uint32_t>(col)};
     AscendC::ShapeInfo shapeInfo(2, array2);

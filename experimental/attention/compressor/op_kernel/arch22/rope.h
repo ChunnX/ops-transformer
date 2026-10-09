@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rope.h
@@ -27,12 +27,12 @@ namespace Compressor {
  * @param count offset的元素个数，一般为列数
  */
 template <typename T>
-__aicore__ inline void SetGatherSrcOffset(const LocalTensor<int32_t> &gatherOffsetLocal, uint32_t count)
+__aicore__ inline void SetGatherSrcOffset(const LocalTensor<int32_t>& gatherOffsetLocal, uint32_t count)
 {
     for (uint32_t i = 0; i < 8; i++) {
         gatherOffsetLocal.SetValue(i, i ^ 1);
     }
-    
+
     event_t eventId_S_V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventId_S_V);
     WaitFlag<HardEvent::S_V>(eventId_S_V);
@@ -53,7 +53,6 @@ __aicore__ inline void SetGatherSrcOffset(const LocalTensor<int32_t> &gatherOffs
     Muls(gatherOffsetLocal, gatherOffsetLocal, static_cast<int32_t>(sizeof(T)), count);
 }
 
-
 /**
  * @brief RotaryPosEmb 同时做row行的RotaryPosEmb，每一行的元素为col
  * @param dstLocal 输出tensor [row, actualCol]，支持和srcLocal是同一块空间
@@ -68,10 +67,10 @@ __aicore__ inline void SetGatherSrcOffset(const LocalTensor<int32_t> &gatherOffs
  * @param baseAddr 计算基地址
  */
 template <ROTARY_MODE MODE>
-__aicore__ inline void RotaryPosEmb(const LocalTensor<float> &dstLocal, const LocalTensor<float> &srcLocal,
-                                    const LocalTensor<float> &cosLocal, const LocalTensor<float> &sinLocal,
-                                    const LocalTensor<float> &shareTmpUb,
-                                    const LocalTensor<uint32_t> &gatherOffsetcastLocal, uint32_t row, uint32_t col,
+__aicore__ inline void RotaryPosEmb(const LocalTensor<float>& dstLocal, const LocalTensor<float>& srcLocal,
+                                    const LocalTensor<float>& cosLocal, const LocalTensor<float>& sinLocal,
+                                    const LocalTensor<float>& shareTmpUb,
+                                    const LocalTensor<uint32_t>& gatherOffsetcastLocal, uint32_t row, uint32_t col,
                                     uint32_t actualCol, uint64_t baseAddr)
 {
     uint64_t cnt = row * col;
@@ -112,7 +111,7 @@ __aicore__ inline void RotaryPosEmb(const LocalTensor<float> &dstLocal, const Lo
         }
         ResetMask();
     }
-   
+
     PipeBarrier<PIPE_V>();
     BinaryRepeatParams computeParams{1,
                                      1,
@@ -125,6 +124,6 @@ __aicore__ inline void RotaryPosEmb(const LocalTensor<float> &dstLocal, const Lo
     PipeBarrier<PIPE_V>();
     Add(dstLocal[baseAddr], dstLocal[baseAddr], reArrLocal, col, row, computeParams);
 }
-}
+} // namespace Compressor
 
 #endif

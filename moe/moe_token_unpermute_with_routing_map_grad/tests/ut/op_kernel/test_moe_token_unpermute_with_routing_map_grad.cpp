@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <array>
 #include <vector>
@@ -26,8 +26,7 @@ extern "C" __global__ __aicore__ void moe_token_unpermute_with_routing_map_grad(
     GM_ADDR permuted_tokens, GM_ADDR probs, GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad, GM_ADDR workspace,
     GM_ADDR tiling);
 
-class moe_token_unpermute_with_routing_map_grad_test : public testing::Test
-{
+class moe_token_unpermute_with_routing_map_grad_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -96,9 +95,8 @@ TEST_F(moe_token_unpermute_with_routing_map_grad_test, test_bf16_prob_not_none)
     tilingDatafromBin->totalUbSize = 196352;
 
     ICPU_SET_TILING_KEY(1);
-    ICPU_RUN_KF(
-        moe_token_unpermute_with_routing_map_grad, blockDim, unpermutedTokensGrad, outIndex, permuteTokenId, routingMap,
-        permutedTokens, probs, tokensGradOut, probsGradOutOptional, workspace, tiling);
+    ICPU_RUN_KF(moe_token_unpermute_with_routing_map_grad, blockDim, unpermutedTokensGrad, outIndex, permuteTokenId,
+                routingMap, permutedTokens, probs, tokensGradOut, probsGradOutOptional, workspace, tiling);
 
     AscendC::GmFree(unpermutedTokensGrad);
     AscendC::GmFree(outIndex);
@@ -169,9 +167,8 @@ TEST_F(moe_token_unpermute_with_routing_map_grad_test, test_bf16_prob_none_pad_f
     tilingDatafromBin->numExpertAlign = 0;
     tilingDatafromBin->totalUbSize = 196352;
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(
-        moe_token_unpermute_with_routing_map_grad, blockDim, unpermutedTokensGrad, outIndex, permuteTokenId, routingMap,
-        permutedTokens, probs, tokensGradOut, probsGradOutOptional, workspace, tiling);
+    ICPU_RUN_KF(moe_token_unpermute_with_routing_map_grad, blockDim, unpermutedTokensGrad, outIndex, permuteTokenId,
+                routingMap, permutedTokens, probs, tokensGradOut, probsGradOutOptional, workspace, tiling);
 
     AscendC::GmFree(unpermutedTokensGrad);
     AscendC::GmFree(outIndex);
@@ -242,9 +239,8 @@ TEST_F(moe_token_unpermute_with_routing_map_grad_test, test_bf16_prob_none_pad_t
     tilingDatafromBin->numExpertAlign = 0;
     tilingDatafromBin->totalUbSize = 196352;
     ICPU_SET_TILING_KEY(10);
-    ICPU_RUN_KF(
-        moe_token_unpermute_with_routing_map_grad, blockDim, unpermutedTokensGrad, outIndex, permuteTokenId, routingMap,
-        permutedTokens, probs, tokensGradOut, probsGradOutOptional, workspace, tiling);
+    ICPU_RUN_KF(moe_token_unpermute_with_routing_map_grad, blockDim, unpermutedTokensGrad, outIndex, permuteTokenId,
+                routingMap, permutedTokens, probs, tokensGradOut, probsGradOutOptional, workspace, tiling);
 
     AscendC::GmFree(unpermutedTokensGrad);
     AscendC::GmFree(outIndex);
@@ -315,9 +311,8 @@ TEST_F(moe_token_unpermute_with_routing_map_grad_test, test_tilingkey_101)
     tilingDatafromBin->numExpertAlign = 32;
     tilingDatafromBin->totalUbSize = 196352;
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(
-        moe_token_unpermute_with_routing_map_grad, blockDim, unpermutedTokensGrad, outIndex, permuteTokenId, routingMap,
-        permutedTokens, probs, tokensGradOut, probsGradOutOptional, workspace, tiling);
+    ICPU_RUN_KF(moe_token_unpermute_with_routing_map_grad, blockDim, unpermutedTokensGrad, outIndex, permuteTokenId,
+                routingMap, permutedTokens, probs, tokensGradOut, probsGradOutOptional, workspace, tiling);
 
     AscendC::GmFree(unpermutedTokensGrad);
     AscendC::GmFree(outIndex);

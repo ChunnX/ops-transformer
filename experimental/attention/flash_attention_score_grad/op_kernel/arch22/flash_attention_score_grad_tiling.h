@@ -1,14 +1,14 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
-#ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H 
+#ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_H
 
 #pragma once
@@ -835,7 +835,6 @@ public:
         reserved = 0;
     }
 };
-
 
 class PreSfmgParams {
 public:
@@ -1927,7 +1926,6 @@ public:
     }
 };
 
-
 class FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParams {
 public:
     int64_t s1Outer = 0;
@@ -2113,13 +2111,12 @@ public:
     }
 };
 
-
 class BlockNumListParams {
 public:
     int64_t blockStarts[50] = {};
     int64_t blockEnds[50] = {};
 
-    const int64_t *get_blockStarts() const
+    const int64_t* get_blockStarts() const
     {
         return blockStarts;
     }
@@ -2130,7 +2127,7 @@ public:
         }
     }
 
-    const int64_t *get_blockEnds() const
+    const int64_t* get_blockEnds() const
     {
         return blockEnds;
     }
@@ -2730,7 +2727,7 @@ public:
     int64_t bN2idxStarts[50] = {};
     int64_t bN2idxEnds[50] = {};
 
-    const int64_t *get_bN2idxStarts() const
+    const int64_t* get_bN2idxStarts() const
     {
         return bN2idxStarts;
     }
@@ -2741,7 +2738,7 @@ public:
         }
     }
 
-    const int64_t *get_bN2idxEnds() const
+    const int64_t* get_bN2idxEnds() const
     {
         return bN2idxEnds;
     }
@@ -3221,7 +3218,6 @@ public:
     }
 };
 
-
 class SplitNSplitCoreParams {
 public:
     int64_t totalBatch = 0;
@@ -3295,7 +3291,6 @@ public:
         reserved = 0;
     }
 };
-
 
 class SplitNSingleCoreParams {
 public:
@@ -4353,7 +4348,6 @@ public:
         tailCoreDpseNum = 0;
     }
 };
-
 
 class MLATensorTilingData {
 public:

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_tiling.h
@@ -109,7 +109,6 @@ public:
         return isBSNDOut;
     }
 };
-
 
 class IncreFlashAttentionBaseParams {
 public:
@@ -537,7 +536,6 @@ public:
     }
 };
 
-
 class IncreFlashAttentionCoreParams {
 public:
     uint32_t coreSidxEnd[50];
@@ -545,15 +543,15 @@ public:
     uint32_t coreSposStartRegbase[66];
 
 public:
-    uint32_t *get_coreSidxEnd()
+    uint32_t* get_coreSidxEnd()
     {
         return coreSidxEnd;
     }
-    uint32_t *get_coreSidxEndRegbase()
+    uint32_t* get_coreSidxEndRegbase()
     {
         return coreSidxEndRegbase;
     }
-    uint32_t *get_coreSposStartRegbase()
+    uint32_t* get_coreSposStartRegbase()
     {
         return coreSposStartRegbase;
     }
@@ -658,19 +656,19 @@ public:
         return seqStepKv;
     }
 
-    const uint32_t *get_startBlk() const
+    const uint32_t* get_startBlk() const
     {
         return startBlk;
     }
-    const uint32_t *get_endBlk() const
+    const uint32_t* get_endBlk() const
     {
         return endBlk;
     }
-    const uint32_t *get_startBatch() const
+    const uint32_t* get_startBatch() const
     {
         return startBatch;
     }
-    const uint32_t *get_endBatch() const
+    const uint32_t* get_endBatch() const
     {
         return endBatch;
     }
@@ -771,7 +769,6 @@ public:
         return s1SplitSize;
     }
 };
-
 
 class IncreFlashAttentionSingleCoreTensorSize {
 public:

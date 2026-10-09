@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_mat_mul_allto_allv_gen_task_training.cpp
@@ -25,14 +25,14 @@
 namespace ops {
 static const size_t ATTR_COMM_MODE_INDEX = 6;
 static const size_t RANK_DIM_BOUNDARY = 8;
-static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, std::string &commMode)
+static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext* context, std::string& commMode)
 {
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     if (attrs == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "Attrs pointer is null.");
         return ge::GRAPH_FAILED;
     }
-    const char *commModePtr = attrs->GetStr(ATTR_COMM_MODE_INDEX);
+    const char* commModePtr = attrs->GetStr(ATTR_COMM_MODE_INDEX);
     if (commModePtr == nullptr) {
         OPS_LOG_E(context->GetNodeName(), "commModePtr pointer is null.");
         return ge::GRAPH_FAILED;
@@ -41,7 +41,7 @@ static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *context)
+ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext* context)
 {
     std::string commMode;
     ge::Status status = GetRankSizeAndSetCommmode(context, commMode);
@@ -49,8 +49,8 @@ ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *co
         return status;
     }
     bool isArch35 = IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5);
-    const char *serverType = nullptr;
-    const char *streamType = nullptr;
+    const char* serverType = nullptr;
+    const char* streamType = nullptr;
 
     if ((isArch35 && commMode == "ccu")) {
         serverType = "ccu server";
@@ -64,8 +64,8 @@ ge::Status GroupedMatMulAlltoAllvCalcParamFunc(gert::ExeResGenerationContext *co
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, serverType, streamType);
 }
 
-ge::Status GroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                             std::vector<std::vector<uint8_t>> &tasks)
+ge::Status GroupedMatMulAlltoAllvGenTaskFunc(const gert::ExeResGenerationContext* context,
+                                             std::vector<std::vector<uint8_t>>& tasks)
 {
     std::string commMode;
     ge::Status status = GetRankSizeAndSetCommmode(context, commMode);

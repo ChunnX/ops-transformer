@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <map>
@@ -2175,7 +2175,7 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, HierarchyCommAlg)
 
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A3HierarchyVariableBsSuccess)
 {
-    const char *envValue = getenv("HCCL_BUFFSIZE");
+    const char* envValue = getenv("HCCL_BUFFSIZE");
     std::string originalEnv = envValue != nullptr ? envValue : "";
     setenv("HCCL_BUFFSIZE", "6000", 1);
 
@@ -3768,8 +3768,8 @@ TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2Quant2WithScalesSuccess)
 
 TEST_F(MoeDistributeDispatchV2Arch22TilingTest, A2CommAlgEmptyPcieEnvHierarchy)
 {
-    const char *pcieEnv = getenv("HCCL_INTRA_PCIE_ENABLE");
-    const char *roceEnv = getenv("HCCL_INTRA_ROCE_ENABLE");
+    const char* pcieEnv = getenv("HCCL_INTRA_PCIE_ENABLE");
+    const char* roceEnv = getenv("HCCL_INTRA_ROCE_ENABLE");
     std::string origPcie = pcieEnv != nullptr ? pcieEnv : "";
     std::string origRoce = roceEnv != nullptr ? roceEnv : "";
     setenv("HCCL_INTRA_PCIE_ENABLE", "1", 1);

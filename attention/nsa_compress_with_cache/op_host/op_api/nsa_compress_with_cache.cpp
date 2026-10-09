@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "nsa_compress_with_cache.h"
 #include "opdev/op_log.h"
@@ -19,11 +19,11 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(NsaCompressWithCache);
 
-const aclTensor *NsaCompressWithCache(const aclTensor *input, const aclTensor *weight, const aclTensor *slotMapping,
-                                      aclTensor *outputCacheRef, const aclIntArray *actSeqLenOptional,
-                                      const aclTensor *blockTableOptional, char *layoutOptional,
+const aclTensor* NsaCompressWithCache(const aclTensor* input, const aclTensor* weight, const aclTensor* slotMapping,
+                                      aclTensor* outputCacheRef, const aclIntArray* actSeqLenOptional,
+                                      const aclTensor* blockTableOptional, char* layoutOptional,
                                       int64_t compressBlockSize, int64_t compressStride, int64_t actSeqLenType,
-                                      int64_t pageBlockSize, aclOpExecutor *executor)
+                                      int64_t pageBlockSize, aclOpExecutor* executor)
 {
     // L0接口时延统计以及入参打印
     L0_DFX(NsaCompressWithCache, input, weight, slotMapping, outputCacheRef, actSeqLenOptional, blockTableOptional,
@@ -35,12 +35,12 @@ const aclTensor *NsaCompressWithCache(const aclTensor *input, const aclTensor *w
     }
 
     // 处理aclIntArray，转换成aclTensor
-    const aclTensor *actSeqLen = nullptr;
+    const aclTensor* actSeqLen = nullptr;
     if (actSeqLenOptional) {
         actSeqLen = executor->ConvertToTensor(actSeqLenOptional, DataType::DT_INT64);
-        const_cast<aclTensor *>(actSeqLen)->SetStorageFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actSeqLen)->SetViewFormat(Format::FORMAT_ND);
-        const_cast<aclTensor *>(actSeqLen)->SetOriginalFormat(Format::FORMAT_ND);
+        const_cast<aclTensor*>(actSeqLen)->SetStorageFormat(Format::FORMAT_ND);
+        const_cast<aclTensor*>(actSeqLen)->SetViewFormat(Format::FORMAT_ND);
+        const_cast<aclTensor*>(actSeqLen)->SetOriginalFormat(Format::FORMAT_ND);
     } else {
         actSeqLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }

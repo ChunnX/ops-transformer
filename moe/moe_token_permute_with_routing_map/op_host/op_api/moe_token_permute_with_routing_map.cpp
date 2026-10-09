@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_permute_with_routing_map.cpp
@@ -31,9 +31,11 @@ static constexpr int64_t GRAD_Y_SHAPE_NO_GROUP_IDX = 3;
 
 OP_TYPE_REGISTER(MoeTokenPermuteWithRoutingMap);
 
-const std::array<const aclTensor*, 3> MoeTokenPermuteWithRoutingMap(
-    const aclTensor* tokens, const aclTensor* routingMap, const aclTensor* probsOptional, int64_t numOutTokens,
-    bool dropAndPad, aclOpExecutor* executor)
+const std::array<const aclTensor*, 3> MoeTokenPermuteWithRoutingMap(const aclTensor* tokens,
+                                                                    const aclTensor* routingMap,
+                                                                    const aclTensor* probsOptional,
+                                                                    int64_t numOutTokens, bool dropAndPad,
+                                                                    aclOpExecutor* executor)
 {
     L0_DFX(MoeTokenPermuteWithRoutingMap, tokens, routingMap, probsOptional, numOutTokens, dropAndPad);
 
@@ -82,9 +84,9 @@ const std::array<const aclTensor*, 3> MoeTokenPermuteWithRoutingMap(
     }
 
     // 根据输入shape申请输出tensor
-    ADD_TO_LAUNCHER_LIST_AICORE(
-        MoeTokenPermuteWithRoutingMap, OP_INPUT(tokens, routingMap, probsOptional),
-        OP_OUTPUT(permuteTokensOut, probsOut, sortedIndicesOut), OP_ATTR(numOutTokens, dropAndPad));
+    ADD_TO_LAUNCHER_LIST_AICORE(MoeTokenPermuteWithRoutingMap, OP_INPUT(tokens, routingMap, probsOptional),
+                                OP_OUTPUT(permuteTokensOut, probsOut, sortedIndicesOut),
+                                OP_ATTR(numOutTokens, dropAndPad));
     return {permuteTokensOut, probsOut, sortedIndicesOut};
 }
 } // namespace l0op

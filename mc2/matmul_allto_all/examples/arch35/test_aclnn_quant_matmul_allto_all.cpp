@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_quant_matmul_allto_all.cpp
@@ -37,7 +37,7 @@ constexpr int g_ndev = 2;
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -47,8 +47,8 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -75,7 +75,7 @@ struct Args {
     aclrtContext context;
 };
 
-int launchOneThreadQuantMatmulAlltoAll(Args &args)
+int launchOneThreadQuantMatmulAlltoAll(Args& args)
 {
     int ret;
     ret = aclrtSetCurrentContext(args.context);
@@ -91,18 +91,18 @@ int launchOneThreadQuantMatmulAlltoAll(Args &args)
     std::vector<int64_t> x1ScaleShape = {32};
     std::vector<int64_t> x2ScaleShape = {128};
     std::vector<int64_t> outShape = {32 * g_ndev, 128 / g_ndev};
-    void *x1DeviceAddr = nullptr;
-    void *x2DeviceAddr = nullptr;
-    void *biasDeviceAddr = nullptr;
-    void *x1ScaleDeviceAddr = nullptr;
-    void *x2ScaleDeviceAddr = nullptr;
-    void *outDeviceAddr = nullptr;
-    aclTensor *x1 = nullptr;
-    aclTensor *x2 = nullptr;
-    aclTensor *bias = nullptr;
-    aclTensor *x1Scale = nullptr;
-    aclTensor *x2Scale = nullptr;
-    aclTensor *out = nullptr;
+    void* x1DeviceAddr = nullptr;
+    void* x2DeviceAddr = nullptr;
+    void* biasDeviceAddr = nullptr;
+    void* x1ScaleDeviceAddr = nullptr;
+    void* x2ScaleDeviceAddr = nullptr;
+    void* outDeviceAddr = nullptr;
+    aclTensor* x1 = nullptr;
+    aclTensor* x2 = nullptr;
+    aclTensor* bias = nullptr;
+    aclTensor* x1Scale = nullptr;
+    aclTensor* x2Scale = nullptr;
+    aclTensor* out = nullptr;
 
     int64_t x1QuantMode = 3;
     int64_t x2QuantMode = 2;
@@ -111,10 +111,10 @@ int launchOneThreadQuantMatmulAlltoAll(Args &args)
     int64_t groupSize = 0;
 
     int64_t a2aAxes[2] = {-1, -2};
-    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
+    aclIntArray* alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor;
-    void *workspaceAddr = nullptr;
+    aclOpExecutor* executor;
+    void* workspaceAddr = nullptr;
 
     long long x1ShapeSize = GetShapeSize(x1Shape);
     long long x2ShapeSize = GetShapeSize(x2Shape);
@@ -206,7 +206,7 @@ int launchOneThreadQuantMatmulAlltoAll(Args &args)
     return 0;
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     // 本样例基于Atlas A5实现，必须在Atlas A5上运行
     int ret;

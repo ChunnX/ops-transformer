@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -29,12 +29,12 @@ struct KCQuantMMAdditionalData {
 template <typename MMTilingType, typename MMType>
 class MC2KCQuantMatmul {
 public:
-    __aicore__ inline MC2KCQuantMatmul(AscendC::TPipe *tPipe)
+    __aicore__ inline MC2KCQuantMatmul(AscendC::TPipe* tPipe)
         : tPipePtr_(tPipe){};
     // 初始化方法
     __aicore__ inline void Init();
     // 获取数据上下文引用
-    __aicore__ inline MC2MMContext<KCQuantMMAdditionalData, MMTilingType> *GetContextPtr();
+    __aicore__ inline MC2MMContext<KCQuantMMAdditionalData, MMTilingType>* GetContextPtr();
     // 执行一次计算的方法
     __aicore__ inline void Process(uint32_t taskIndex);
     // 结束方法
@@ -43,7 +43,7 @@ public:
 protected:
     MC2MMContext<KCQuantMMAdditionalData, MMTilingType> MMcontext_;
     MMType MMImpl_;
-    AscendC::TPipe *tPipePtr_;
+    AscendC::TPipe* tPipePtr_;
 };
 
 template <typename MMTilingType, typename MMType>
@@ -51,7 +51,7 @@ inline __aicore__ void MC2KCQuantMatmul<MMTilingType, MMType>::Init()
 {}
 
 template <typename MMTilingType, typename MMType>
-inline __aicore__ MC2MMContext<KCQuantMMAdditionalData, MMTilingType> *
+inline __aicore__ MC2MMContext<KCQuantMMAdditionalData, MMTilingType>*
 MC2KCQuantMatmul<MMTilingType, MMType>::GetContextPtr()
 {
     return &MMcontext_;

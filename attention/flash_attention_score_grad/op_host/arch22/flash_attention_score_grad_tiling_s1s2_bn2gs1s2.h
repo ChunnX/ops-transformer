@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_tiling_s1s2_bn2gs1s2.h
@@ -133,12 +133,12 @@ struct FuzzyBaseInfoParams { // 频繁使用的基础参数
 
 class FlashAttentionScoreGradTilingS1s2Bn2gs1s2 : public TilingBaseClass {
 public:
-    explicit FlashAttentionScoreGradTilingS1s2Bn2gs1s2(gert::TilingContext *context)
+    explicit FlashAttentionScoreGradTilingS1s2Bn2gs1s2(gert::TilingContext* context)
         : TilingBaseClass(context)
     {
         tilingData->reset();
     }
-    FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2 *tilingData =
+    FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2* tilingData =
         context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2>();
 
 protected:
@@ -155,16 +155,16 @@ protected:
     ge::graphStatus DoSparse();
     bool CheckFuzzyArgsLegal(uint32_t s1Inner, uint32_t s2Inner);
     std::tuple<uint32_t, uint32_t, uint32_t> FuzzyForBestSplit();
-    void SetMatmulTilingBufferInfo(AscendC::tiling::TCubeTiling *mmTiling);
+    void SetMatmulTilingBufferInfo(AscendC::tiling::TCubeTiling* mmTiling);
     ge::graphStatus GetSparseBlockInfo();
     ge::graphStatus DoPreTiling();
     ge::graphStatus DoPostTiling();
     void DetermineMode();
     virtual void SetQKVStartIdx();
     ge::graphStatus CheckAttenMaskShape();
-    ge::graphStatus ProcessPseInfo(const char *inputLayout);
-    ge::graphStatus ProcessDropInfo(const char *inputLayout);
-    ge::graphStatus ProcessPseNormal(const char *inputLayout);
+    ge::graphStatus ProcessPseInfo(const char* inputLayout);
+    ge::graphStatus ProcessDropInfo(const char* inputLayout);
+    ge::graphStatus ProcessPseNormal(const char* inputLayout);
     ge::graphStatus ProcessSparseModeInfo();
     ge::graphStatus ProcessTokensInfo();
     ge::graphStatus SaveToTilingData();
@@ -172,22 +172,22 @@ protected:
     ge::graphStatus GetSparseUnpadBlockInfo();
     int64_t FindBandIdx();
 
-    bool CheckForDichotomy(std::vector<int64_t> &nums, int64_t x, int64_t m);
-    int64_t GetSplitArrayMinMaxSum(std::vector<int64_t> &s1s2WeightNums, int64_t coreNum);
-    void FillEveryBlockInfo(std::vector<std::vector<int64_t>> &everyBlockInfo);
-    void FillS1s2WeightVec(std::vector<std::vector<int64_t>> &everyBlockInfo, std::vector<int64_t> &s1s2Weight);
+    bool CheckForDichotomy(std::vector<int64_t>& nums, int64_t x, int64_t m);
+    int64_t GetSplitArrayMinMaxSum(std::vector<int64_t>& s1s2WeightNums, int64_t coreNum);
+    void FillEveryBlockInfo(std::vector<std::vector<int64_t>>& everyBlockInfo);
+    void FillS1s2WeightVec(std::vector<std::vector<int64_t>>& everyBlockInfo, std::vector<int64_t>& s1s2Weight);
     bool CoreLoadBalancingForUnpad(int64_t (&blockStarts)[CORE_LIST_NUM], int64_t (&blockEnds)[CORE_LIST_NUM],
                                    int64_t splitCounter);
 
-    void FillBlockInfo(std::vector<std::vector<std::vector<int64_t>>> &calculatedBlockInfo,
-                       std::vector<std::vector<int64_t>> &totalBlockInfo);
+    void FillBlockInfo(std::vector<std::vector<std::vector<int64_t>>>& calculatedBlockInfo,
+                       std::vector<std::vector<int64_t>>& totalBlockInfo);
 
     bool CheckPrefixNExist(const int64_t bIdx, const int64_t prefixN,
-                           std::vector<std::vector<std::pair<int64_t, int64_t>>> &s1ValidIdx);
+                           std::vector<std::vector<std::pair<int64_t, int64_t>>>& s1ValidIdx);
     void GetCommS1S2OuterInfo(const int64_t s1, const int64_t s2, int64_t (*parseInfo)[ARRAY_LENGTH]);
     void GetParseS1S2OuterInfo(int64_t (*parseInfo)[ARRAY_LENGTH]);
     bool SetSparseParams();
-    void GetCommS1S2OuterInfo(const int64_t prefixN, std::vector<std::pair<int64_t, int64_t>> &s1ValidIdx);
+    void GetCommS1S2OuterInfo(const int64_t prefixN, std::vector<std::pair<int64_t, int64_t>>& s1ValidIdx);
     void PrintShapeInfo();
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus ProcessTndToBsh();

@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -25,35 +25,35 @@ namespace Mc2Kernel {
 template <typename ComputationContextType>
 struct AlltoAllMmPipelineContext {
     // computation
-    ComputationContextType *computationContext;
+    ComputationContextType* computationContext;
     // transpose
-    MC2KernelTemplate::MC2TransposeContext *transposeContext;
+    MC2KernelTemplate::MC2TransposeContext* transposeContext;
     // communication
-    MC2KernelTemplate::MC2AlltoAllContext *communicationContext;
+    MC2KernelTemplate::MC2AlltoAllContext* communicationContext;
 };
 
 // 通信转置计算模板
 template <typename CommunicationType, typename TransposeType, typename ComputationType, typename ContextType>
 class AlltoAllMatmulPipeLine {
 public:
-    __aicore__ inline AlltoAllMatmulPipeLine(CommunicationType *commStage, TransposeType *transStage,
-                                             ComputationType *computeStage)
+    __aicore__ inline AlltoAllMatmulPipeLine(CommunicationType* commStage, TransposeType* transStage,
+                                             ComputationType* computeStage)
         : commStage_(commStage),
           transStage_(transStage),
           computeStage_(computeStage){};
 
     __aicore__ inline void Init();
 
-    __aicore__ inline void GetContext(ContextType *context);
+    __aicore__ inline void GetContext(ContextType* context);
 
     __aicore__ inline void Process(uint32_t taskCnt);
 
     __aicore__ inline void End();
 
 private:
-    CommunicationType *commStage_;  // 通信节点
-    TransposeType *transStage_;     // 转置计算的计算节点
-    ComputationType *computeStage_; // 矩阵乘的计算节点
+    CommunicationType* commStage_;  // 通信节点
+    TransposeType* transStage_;     // 转置计算的计算节点
+    ComputationType* computeStage_; // 矩阵乘的计算节点
 };
 
 template <typename CommunicationType, typename TransposeType, typename ComputationType, typename ContextType>
@@ -65,7 +65,7 @@ __aicore__ inline void AlltoAllMatmulPipeLine<CommunicationType, TransposeType, 
 
 template <typename CommunicationType, typename TransposeType, typename ComputationType, typename ContextType>
 __aicore__ inline void
-AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, ContextType>::GetContext(ContextType *context)
+AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType, ContextType>::GetContext(ContextType* context)
 {
     context->communicationContext = commStage_->GetContextPtr();
     context->transposeContext = transStage_->GetContextPtr();

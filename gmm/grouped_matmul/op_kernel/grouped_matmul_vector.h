@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_vector.h
@@ -21,9 +21,9 @@
 namespace GROUPED_MATMUL {
 
 template <typename T>
-__aicore__ inline void EmptyTensorCompute(GM_ADDR groupListPtr, GM_ADDR y, const GMMTilingData *__restrict tiling)
+__aicore__ inline void EmptyTensorCompute(GM_ADDR groupListPtr, GM_ADDR y, const GMMTilingData* __restrict tiling)
 {
-    const GMMBaseParams *__restrict gmmBaseParams = &tiling->gmmBaseParams;
+    const GMMBaseParams* __restrict gmmBaseParams = &tiling->gmmBaseParams;
     // In the V2 interface, groupType is -1 after host is grouped. Thus, groupType can be either -1 or 2.
     if (groupListPtr == nullptr || gmmBaseParams->groupType == 0) {
         return;
@@ -33,7 +33,7 @@ __aicore__ inline void EmptyTensorCompute(GM_ADDR groupListPtr, GM_ADDR y, const
     GlobalTensor<int64_t> groupListGm;
     yGm.SetGlobalBuffer(GetTensorAddr<T>(0, y));
     if (groupListPtr != nullptr) {
-        groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupListPtr);
+        groupListGm.SetGlobalBuffer((__gm__ int64_t*)groupListPtr);
     }
     uint64_t yBaseOffset = 0;
     int32_t preOffset = 0;
@@ -42,9 +42,9 @@ __aicore__ inline void EmptyTensorCompute(GM_ADDR groupListPtr, GM_ADDR y, const
     uint32_t singleY = gmmBaseParams->singleY;
     bool isAllSingleTensor = singleWeight == 1 && singleX == 1 && singleY == 1;
 
-    const int32_t *ubM = tiling->gmmArray.mList;
-    const int32_t *ubK = tiling->gmmArray.kList;
-    const int32_t *ubN = tiling->gmmArray.nList;
+    const int32_t* ubM = tiling->gmmArray.mList;
+    const int32_t* ubK = tiling->gmmArray.kList;
+    const int32_t* ubN = tiling->gmmArray.nList;
     int64_t coreIdx = GetBlockIdx();
     int64_t coreRation = GetTaskRation();
     if (coreRation > 1) {

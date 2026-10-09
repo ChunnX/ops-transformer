@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_elastic.h
@@ -25,20 +25,20 @@ using namespace MoeDistributeV2Base;
 
 class MoeDistributeElastic {
 public:
-    TPipe *tpipe_;
+    TPipe* tpipe_;
     TBuf<> elasticInfoBuf_;
     GlobalTensor<int32_t> elasticInfoGM_;
 
     __aicore__ inline MoeDistributeElastic() = default;
 
-    __aicore__ inline void SetElasticInitParams(TPipe *tpipe, GlobalTensor<int32_t> elasticInfoGM)
+    __aicore__ inline void SetElasticInitParams(TPipe* tpipe, GlobalTensor<int32_t> elasticInfoGM)
     {
         tpipe_ = tpipe;
         elasticInfoGM_ = elasticInfoGM;
     }
 
     __aicore__ inline void InitElasticInfoTensor(uint32_t epWorldSizeOriginal_,
-                                                 LocalTensor<int32_t> &elasticInfoTensor_)
+                                                 LocalTensor<int32_t>& elasticInfoTensor_)
     {
         uint32_t elasticInfoSizeAlign = GetElasticInfoSizeAlign(epWorldSizeOriginal_);
         tpipe_->InitBuffer(elasticInfoBuf_, elasticInfoSizeAlign);
@@ -51,9 +51,9 @@ public:
         SyncFunc<AscendC::HardEvent::MTE2_S>();
     }
 
-    __aicore__ inline void InitElasticInfo(bool &isScalingDownFlag_, uint32_t &epWorldSize_,
-                                           uint32_t &sharedExpertRankNum_, uint32_t &moeExpertNum_, uint32_t &epRankId_,
-                                           uint32_t &moeExpertNumPerRank_)
+    __aicore__ inline void InitElasticInfo(bool& isScalingDownFlag_, uint32_t& epWorldSize_,
+                                           uint32_t& sharedExpertRankNum_, uint32_t& moeExpertNum_, uint32_t& epRankId_,
+                                           uint32_t& moeExpertNumPerRank_)
     {
         if (isScalingDownFlag_) {
             epWorldSize_ = elasticInfoGM_.GetValue(EP_WORLD_SIZE_IDX);

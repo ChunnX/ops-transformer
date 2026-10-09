@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_custom.cpp
@@ -293,8 +293,8 @@ void Mc2WeightQuantBatchMatmulV2TilingCustom::AdjustL1Size() const
     }
 }
 
-void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeDefaultBlock(uint64_t &defaultVecSingleK,
-                                                                  uint64_t &defaultVecSingleN)
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeDefaultBlock(uint64_t& defaultVecSingleK,
+                                                                  uint64_t& defaultVecSingleN)
 {
     uint64_t defaultInnerAxis = matmulInfoPtr_->bDtype == ge::DT_INT8 ? 512 : 1024;
     uint64_t defaultOutterAxis = 32;
@@ -319,8 +319,8 @@ void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeDefaultBlock(uint64_t &defa
     ComputeVectorDefaultBlock(defaultVecSingleK, defaultVecSingleN);
 }
 
-void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeGroupDefaultBlock(uint64_t &defaultVecSingleK,
-                                                                       uint64_t &defaultVecSingleN)
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeGroupDefaultBlock(uint64_t& defaultVecSingleK,
+                                                                       uint64_t& defaultVecSingleN)
 {
     if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) {
         defaultVecSingleK = CUSTOM_NZ_TRANS_BF16_BASE_K;
@@ -376,8 +376,8 @@ void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeGroupDefaultBlock(uint64_t 
     }
 }
 
-void Mc2WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithTrans(uint64_t &defaultVecSingleK,
-                                                                               uint64_t &defaultVecSingleN)
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithTrans(uint64_t& defaultVecSingleK,
+                                                                               uint64_t& defaultVecSingleN)
 {
     for (; defaultVecSingleK > matmulInfoPtr_->groupSize; defaultVecSingleK -= matmulInfoPtr_->groupSize) {
         ComputeVectorDefaultBlock(defaultVecSingleK, defaultVecSingleN);
@@ -400,8 +400,8 @@ void Mc2WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithTrans(u
     }
 }
 
-void Mc2WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithoutTrans(uint64_t &defaultVecSingleK,
-                                                                                  uint64_t &defaultVecSingleN)
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithoutTrans(uint64_t& defaultVecSingleK,
+                                                                                  uint64_t& defaultVecSingleN)
 {
     while (defaultVecSingleN > 0) {
         // 若groupSize比MAX_REPEAT_TIMES大，则k对齐到groupSize后必定不满足小于MAX_REPEAT_TIMES的要求，
@@ -435,8 +435,8 @@ void Mc2WeightQuantBatchMatmulV2TilingCustom::ReviseGroupDefaultBlockWithoutTran
     }
 }
 
-void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeVectorDefaultBlock(uint64_t &defaultVecSingleK,
-                                                                        uint64_t &defaultVecSingleN)
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeVectorDefaultBlock(uint64_t& defaultVecSingleK,
+                                                                        uint64_t& defaultVecSingleN)
 {
     /*
         整体vec处理的基本块推导应该满足如下公式：antiquantBufferSize + weightBufferSize < ubSize
@@ -451,8 +451,8 @@ void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeVectorDefaultBlock(uint64_t
     }
 }
 
-void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeInt4VectorDefaultBlock(uint64_t &defaultVecSingleK,
-                                                                            uint64_t &defaultVecSingleN)
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeInt4VectorDefaultBlock(uint64_t& defaultVecSingleK,
+                                                                            uint64_t& defaultVecSingleN)
 {
     if (matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ) {
         if (matmulInfoPtr_->aDtype == ge::DT_BF16) {
@@ -504,8 +504,8 @@ void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeInt4VectorDefaultBlock(uint
     }
 }
 
-uint64_t Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeAntiquantBuffer(uint64_t &defaultVecSingleK,
-                                                                         uint64_t &defaultVecSingleN)
+uint64_t Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeAntiquantBuffer(uint64_t& defaultVecSingleK,
+                                                                         uint64_t& defaultVecSingleN)
 {
     uint64_t aDtypeBlockSize = Mc2GetBlockAlignSizeByDataType(matmulInfoPtr_->aDtype);
     uint64_t antiquantSize = ops::CeilAlign(defaultVecSingleN, aDtypeBlockSize);
@@ -579,8 +579,8 @@ uint64_t Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeWeightBuffer(uint64_t d
     }
 }
 
-void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeInt8VectorDefaultBlock(uint64_t &defaultVecSingleK,
-                                                                            uint64_t &defaultVecSingleN) const
+void Mc2WeightQuantBatchMatmulV2TilingCustom::ComputeInt8VectorDefaultBlock(uint64_t& defaultVecSingleK,
+                                                                            uint64_t& defaultVecSingleN) const
 {
     if (matmulInfoPtr_->bFormat != ge::FORMAT_FRACTAL_NZ) {
         if (matmulInfoPtr_->aDtype == ge::DT_BF16) {
@@ -674,7 +674,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingCustom::PostTiling()
     context_->SetBlockDim(
         std::max(usedAicNum, CalcTschBlockDim(usedAivNum, compileInfoPtr_->aicNum, compileInfoPtr_->aivNum)));
 
-    size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
+    size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
     workspaces[0] = workspaceSize_;
 
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),

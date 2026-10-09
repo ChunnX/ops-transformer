@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_formulaic_tiling.cpp
@@ -162,8 +162,8 @@ void MatmulFormulaicTiling::SetWeightFormat(const matmul_tiling::CubeFormat weig
     weightFormat_ = weightFormat;
 }
 
-ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(TilingArgs &args, AscendC::tiling::TCubeTiling &cubeTiling,
-                                                     Mc2Tiling::TileL2Tiling &tileL2Tiling)
+ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(TilingArgs& args, AscendC::tiling::TCubeTiling& cubeTiling,
+                                                     Mc2Tiling::TileL2Tiling& tileL2Tiling)
 {
     // 1.设置默认BaseM/N/K
     InitBaseBlockTiling();
@@ -221,7 +221,7 @@ ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(TilingArgs &args, AscendC::
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(TilingArgs &args, AscendC::tiling::TCubeTiling &cubeTiling)
+ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(TilingArgs& args, AscendC::tiling::TCubeTiling& cubeTiling)
 {
     // 1.设置默认BaseM/N/K
     InitBaseBlockTiling();
@@ -259,7 +259,7 @@ ge::graphStatus MatmulFormulaicTiling::GetCubeTiling(TilingArgs &args, AscendC::
     return ge::GRAPH_SUCCESS;
 }
 
-uint32_t MatmulFormulaicTiling::GetRankSize(const char *group)
+uint32_t MatmulFormulaicTiling::GetRankSize(const char* group)
 {
     uint32_t rankSize = 8;
     if (Mc2Hcom::MC2HcomTopology::CommGetInstSizeByGroup(group, &rankSize) != HCCL_SUCCESS) {
@@ -293,9 +293,9 @@ void MatmulFormulaicTiling::InitBaseBlockTiling()
 }
 
 // 冗余函数，兼容all_reduce，待all_reduce重构后删除
-void MatmulFormulaicTiling::GetBaseBlockParm(const platform_ascendc::SocVersion &version, uint64_t &blockBaseM,
-                                             uint64_t &blockBaseN, uint64_t &blockBaseK, uint64_t &blockDepthA1,
-                                             uint64_t &blockDepthB1)
+void MatmulFormulaicTiling::GetBaseBlockParm(const platform_ascendc::SocVersion& version, uint64_t& blockBaseM,
+                                             uint64_t& blockBaseN, uint64_t& blockBaseK, uint64_t& blockDepthA1,
+                                             uint64_t& blockDepthB1)
 {
     blockBaseM = BASE_BLOCK_M;
     blockBaseN = BASE_BLOCK_N;
@@ -311,7 +311,7 @@ void MatmulFormulaicTiling::GetBaseBlockParm(const platform_ascendc::SocVersion 
     }
 }
 
-void MatmulFormulaicTiling::InitTilingArgs(TilingArgs &args)
+void MatmulFormulaicTiling::InitTilingArgs(TilingArgs& args)
 {
     // Init Tiling Arguments
     args_.mValue = args.mValue;

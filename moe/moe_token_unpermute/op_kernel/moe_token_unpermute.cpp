@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_unpermute.cpp
@@ -15,18 +15,18 @@
 #include "moe_token_unpermute.h"
 #include "kernel_operator.h"
 
-#define MOE_TOKEN_UNPERMUTE_IMPL(T1, T2, T3, haveProbs)                                  \
-    do {                                                                                 \
-        GET_TILING_DATA(tiling_data_in, tiling);                                         \
-        const MoeTokenUnpermuteTilingData* __restrict tiling_data = &tiling_data_in;     \
-        KernelMoeTokenUnpermute<T1, T2, T3, haveProbs> op;                               \
+#define MOE_TOKEN_UNPERMUTE_IMPL(T1, T2, T3, haveProbs) \
+    do { \
+        GET_TILING_DATA(tiling_data_in, tiling); \
+        const MoeTokenUnpermuteTilingData* __restrict tiling_data = &tiling_data_in; \
+        KernelMoeTokenUnpermute<T1, T2, T3, haveProbs> op; \
         op.Init(permuted_tokens, sorted_indices, probs, unpermuted_tokens, tiling_data, &pipe); \
-        op.Process();                                                                    \
+        op.Process(); \
     } while (0)
 
-extern "C" __global__ __aicore__ void moe_token_unpermute(
-    GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens, GM_ADDR workspace,
-    GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_token_unpermute(GM_ADDR permuted_tokens, GM_ADDR sorted_indices,
+                                                          GM_ADDR probs, GM_ADDR unpermuted_tokens, GM_ADDR workspace,
+                                                          GM_ADDR tiling)
 {
     TPipe pipe;
 #if __CCE_AICORE__ == 200

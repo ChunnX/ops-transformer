@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_quant_gather_out_small_activate_row.h
@@ -26,8 +26,8 @@ class MoeGatherOutSmallActiveRow {
 public:
     __aicore__ inline MoeGatherOutSmallActiveRow(){};
     __aicore__ inline void Init(GM_ADDR inputActivations, GM_ADDR workspace, GM_ADDR expandSrcToDstRow,
-                                GM_ADDR expandedActivations, const MoeInitRoutingQuantTilingData *tilingData,
-                                TPipe *tPipe);
+                                GM_ADDR expandedActivations, const MoeInitRoutingQuantTilingData* tilingData,
+                                TPipe* tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void CopyIn(int64_t loop, int64_t row, int64_t colsLoop, LocalTensor<int32_t> indicesLocal);
     __aicore__ inline void Compute();
@@ -37,7 +37,7 @@ private:
     __aicore__ inline void CopyInIndices(int64_t progress);
 
 private:
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, BUFFER_NUM> inputActivationsCopyInQueue;
     TQue<QuePosition::VECOUT, BUFFER_NUM> inputActivationsCopyOutQueue;
     TQue<QuePosition::VECOUT, BUFFER_NUM> floatQueue;
@@ -48,7 +48,7 @@ private:
     GlobalTensor<int8_t> expandedActivationsGm;
     GlobalTensor<int32_t> expandDstToSrcRowGm;
 
-    const QuantGatherOutComputeTilingData *gatherOutTilingData;
+    const QuantGatherOutComputeTilingData* gatherOutTilingData;
 
     int64_t needCoreNum;
     int64_t blockIdx;
@@ -86,8 +86,8 @@ __aicore__ inline void MoeGatherOutSmallActiveRow<T>::CopyInIndices(int64_t prog
 template <typename T>
 __aicore__ inline void MoeGatherOutSmallActiveRow<T>::Init(GM_ADDR inputActivations, GM_ADDR workspace,
                                                            GM_ADDR expandSrcToDstRow, GM_ADDR expandedActivations,
-                                                           const MoeInitRoutingQuantTilingData *tilingData,
-                                                           TPipe *tPipe)
+                                                           const MoeInitRoutingQuantTilingData* tilingData,
+                                                           TPipe* tPipe)
 {
     this->pipe = tPipe;
     this->blockIdx = GetBlockIdx();
@@ -113,14 +113,14 @@ __aicore__ inline void MoeGatherOutSmallActiveRow<T>::Init(GM_ADDR inputActivati
         this->lastLoopRows = this->gatherOutTilingData->perCoreLastLoopRows;
     }
 
-    inputActivationsGm.SetGlobalBuffer((__gm__ T *)inputActivations, this->coreRows * this->cols);
+    inputActivationsGm.SetGlobalBuffer((__gm__ T*)inputActivations, this->coreRows * this->cols);
 
     expandedActivationsGm.SetGlobalBuffer(
-        (__gm__ int8_t *)expandedActivations + this->blockIdx * this->gatherOutTilingData->perCoreRows * this->cols,
+        (__gm__ int8_t*)expandedActivations + this->blockIdx * this->gatherOutTilingData->perCoreRows * this->cols,
         tilingData->n * tilingData->k * this->cols);
 
     expandDstToSrcRowGm.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + this->blockIdx * this->gatherOutTilingData->perCoreRows,
+        (__gm__ int32_t*)workspace + this->blockIdx * this->gatherOutTilingData->perCoreRows,
         Align(this->coreRows, sizeof(int32_t)));
 
     pipe->InitBuffer(inputActivationsCopyInQueue, BUFFER_NUM, AlignBytes(this->maxColsOneLoop, sizeof(T)));

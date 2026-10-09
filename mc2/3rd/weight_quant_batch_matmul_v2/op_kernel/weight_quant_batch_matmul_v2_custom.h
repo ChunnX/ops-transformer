@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file weight_quant_batch_matmul_v2_custom.h
@@ -59,14 +59,14 @@ public:
     __aicore__ inline Mc2WeightQuantBatchMatmulV2CustomKernel(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
                                 GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-                                const Mc2WeightQuantBatchMatmulV2TilingData *tilingData, TPipe *tPipe);
+                                const Mc2WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void UpdateGlobalAddr(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
                                             GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y,
                                             GM_ADDR workspace);
     __aicore__ inline void ComputeWeightOffsetInfo(uint64_t nLoopIdx, uint64_t nBaseOffset, uint64_t kLoopIdx,
-                                                   WeightSplitInfo &weightSplitInfo);
+                                                   WeightSplitInfo& weightSplitInfo);
     __aicore__ inline void ComputeWeightSplitInfo(uint64_t nLoopIdx, uint64_t nLoopLimit, uint64_t nRealSize,
-                                                  uint64_t kLoopIdx, WeightSplitInfo &weightSplitInfo);
+                                                  uint64_t kLoopIdx, WeightSplitInfo& weightSplitInfo);
     __aicore__ inline void Process();
 
     using inputXType = MatmulType<TPosition::GM, CubeFormat::ND, xType, aTrans>;
@@ -80,7 +80,7 @@ private:
     __aicore__ inline void SetMatmulParams(int32_t cubeNLoopIdx, uint64_t aOffset, uint64_t bOffset, uint64_t nOffset);
     __aicore__ inline void ProcessVector();
     __aicore__ inline void AntiquantWeight(uint64_t cubeNLoopIdx, uint64_t nBaseOffset, uint64_t nRealSize,
-                                           uint64_t nLoopLimit, WeightSplitInfo &weightSplitInfo);
+                                           uint64_t nLoopLimit, WeightSplitInfo& weightSplitInfo);
     __aicore__ inline void NotifyCube();
     uint64_t quantScaleValue = 0;
 };
@@ -91,7 +91,7 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
                      GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-                     const Mc2WeightQuantBatchMatmulV2TilingData *tilingData, TPipe *tPipe)
+                     const Mc2WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe)
 {
     this->BaseInit(tilingData, tPipe);
     this->InitInput(x, weight, antiquantScale, antiquantOffset, quantScale, quantOffset, bias, y);
@@ -152,7 +152,7 @@ template <typename xType, typename wType, typename biasType, typename yType, boo
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::AntiquantWeight(uint64_t cubeNLoopIdx, uint64_t nBaseOffset, uint64_t nRealSize, uint64_t nLoopLimit,
-                                WeightSplitInfo &weightSplitInfo)
+                                WeightSplitInfo& weightSplitInfo)
 {
     // 求解当次循环n方向的起点和终点
     uint64_t loopLimit = nLoopLimit * this->tiling_->vecSingleKLoop;
@@ -205,7 +205,7 @@ template <typename xType, typename wType, typename biasType, typename yType, boo
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::ComputeWeightOffsetInfo(uint64_t nLoopIdx, uint64_t nBaseOffset, uint64_t kLoopIdx,
-                                        WeightSplitInfo &weightSplitInfo)
+                                        WeightSplitInfo& weightSplitInfo)
 {
     weightSplitInfo.splitNOffset = nLoopIdx * this->tiling_->vecSingleN;
     weightSplitInfo.originNOffset = nBaseOffset + weightSplitInfo.splitNOffset;
@@ -217,7 +217,7 @@ template <typename xType, typename wType, typename biasType, typename yType, boo
 __aicore__ inline void Mc2WeightQuantBatchMatmulV2CustomKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::ComputeWeightSplitInfo(uint64_t nLoopIdx, uint64_t nLoopLimit, uint64_t nRealSize, uint64_t kLoopIdx,
-                                       WeightSplitInfo &weightSplitInfo)
+                                       WeightSplitInfo& weightSplitInfo)
 {
     if (unlikely(nLoopIdx == nLoopLimit - 1)) {
         // 当计算到最后一块时，需要重新计算尾块实际的n是多少

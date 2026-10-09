@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_weight_quant_adaptive_split.h
@@ -34,13 +34,13 @@ template <typename XType, typename WType, typename YType, class MmType, bool bas
 class MatmulAllReduceWeightQuantAdaptiveSplit
     : public MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg, commMode> {
 public:
-    __aicore__ inline MatmulAllReduceWeightQuantAdaptiveSplit(MC2GmAddrs *addrs, QuantGmAddrs *quantAddrs,
-                                                              ArnGmAddrs *arnAddrs, MC2TilingHeader *tilingData,
-                                                              TPipe *tPipe)
+    __aicore__ inline MatmulAllReduceWeightQuantAdaptiveSplit(MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs,
+                                                              ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData,
+                                                              TPipe* tPipe)
         : MatmulAllReduceBase<XType, YType, Mc2CoreType::ON_CUBE_AND_VECTOR, basedA2aRsAg, commMode>(
               addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData *)tilingData;
+        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData*)tilingData;
         this->tailInfo_.mmTiling = &mc2TilingData_->tailMmASTiling.matmulTiling;
         this->tileInfo_.mmTiling = &mc2TilingData_->tileMmASTiling.matmulTiling;
     }
@@ -57,9 +57,9 @@ public:
     }
 
 protected:
-    __aicore__ inline void InnerProcess(const bool tailFlag, const uint32_t turnCnt, const MC2TileInfo &tileInfo)
+    __aicore__ inline void InnerProcess(const bool tailFlag, const uint32_t turnCnt, const MC2TileInfo& tileInfo)
     {
-        const Mc2WeightQuantBatchMatmulV2ASTilingData *tiling =
+        const Mc2WeightQuantBatchMatmulV2ASTilingData* tiling =
             (tailFlag) ? &mc2TilingData_->tailMmASTiling : &mc2TilingData_->tileMmASTiling;
         for (uint32_t i = 0; i < turnCnt; ++i) {
             MmType mmOp;
@@ -77,7 +77,7 @@ protected:
     }
 
 private:
-    Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData *mc2TilingData_;
+    Mc2Tiling::WeightQuantMatmulAllReduceA5Fp8TilingData* mc2TilingData_;
 };
 
 #define INVOKE_MC2_WEIGHT_QUANT_ADAPTIVE_SPLIT_KERNEL(bTransFlag, offsetFlag, quantType, biasType, vecAntiQuantConfig, \
@@ -92,7 +92,7 @@ private:
 \
         QuantGmAddrs quantAddrs = {antiquantScaleGM, antiquantOffsetGM, nullptr, nullptr}; \
         MatmulAllReduceWeightQuantAdaptiveSplit<DTYPE_X1, DTYPE_X2, DTYPE_Y, OpType, basedA2aRsAg, commMode> op( \
-            &addrs, &quantAddrs, nullptr, (MC2TilingHeader *)&tilingData, &tPipe); \
+            &addrs, &quantAddrs, nullptr, (MC2TilingHeader*)&tilingData, &tPipe); \
         op.Init(); \
         op.Process(); \
     } while (0)

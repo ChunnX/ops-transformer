@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "test_aclnn_moe_distribute_combine_v5_helper.h"
 
@@ -73,7 +73,7 @@ TEST_F(L2AclnnMoeDistributeCombineV5Test, TestAclnnMoeDistributeCombineExecuteAp
     constexpr int64_t zeroExpertNum = 0;
     constexpr int64_t copyExpertNum = 0;
     constexpr int64_t constExpertNum = 0;
-    aclTensor *optionalNullTensor = nullptr;
+    aclTensor* optionalNullTensor = nullptr;
 
     auto ut =
         OP_API_UT(aclnnMoeDistributeCombineV5,
@@ -85,7 +85,7 @@ TEST_F(L2AclnnMoeDistributeCombineV5Test, TestAclnnMoeDistributeCombineExecuteAp
                         groupListType, "test", zeroExpertNum, copyExpertNum, constExpertNum),
                   OUTPUT(x));
     uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }

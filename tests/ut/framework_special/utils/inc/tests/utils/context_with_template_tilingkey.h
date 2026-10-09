@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file context_with_template_tilingkey.h
@@ -40,8 +40,8 @@ public:
      * \param tilingData TilingData 结果
      */
     typedef bool (*KernelRunTemplateCbf)(std::function<void(Args...)> func, uint64_t tilingKey, int64_t blockDim,
-                                         std::vector<TensorIntf *> &inputs, std::vector<TensorIntf *> &outputs,
-                                         uint8_t *workspace, uint8_t *tilingData);
+                                         std::vector<TensorIntf*>& inputs, std::vector<TensorIntf*>& outputs,
+                                         uint8_t* workspace, uint8_t* tilingData);
 
     /**
      * 属性设置
@@ -67,7 +67,7 @@ public:
     }
 
 protected:
-    bool RunKernelProcess(std::string &caseName) override
+    bool RunKernelProcess(std::string& caseName) override
     {
         if (kernelRunTemplateCbf_ == nullptr) {
             LOG_ERR("[%s:%s] Can't get kernelRunCbf_", opName_.c_str(), caseName.c_str());
@@ -98,9 +98,9 @@ protected:
         /* Ascend C 框架部分, 重定向 std::cerr/std::clog/std::cout 到同一个文件 */
         std::string fmkFilePath = casePath + "_kernel_" + fmk + ".log";
         std::ofstream fmkFileHdl(fmkFilePath);
-        std::streambuf *stdErr = std::cerr.rdbuf(fmkFileHdl.rdbuf());
-        std::streambuf *stdLog = std::clog.rdbuf(fmkFileHdl.rdbuf());
-        std::streambuf *stdOut = std::cout.rdbuf(fmkFileHdl.rdbuf());
+        std::streambuf* stdErr = std::cerr.rdbuf(fmkFileHdl.rdbuf());
+        std::streambuf* stdLog = std::clog.rdbuf(fmkFileHdl.rdbuf());
+        std::streambuf* stdOut = std::cout.rdbuf(fmkFileHdl.rdbuf());
 #endif
         /* 调用回调函数, 触发具体算子 Kernel 执行 */
         ICPU_SET_TILING_KEY(tilingKey_);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file gather_pa_kv_cache_tiling.h
@@ -42,8 +42,8 @@ struct Tiling4GatherPaKvCacheCompileInfo {
     uint32_t sysWorkspaceSize;
 };
 
-ge::graphStatus Tiling4GatherPaKvCache(gert::TilingContext *context);
-ge::graphStatus TilingPrepare4GatherPaKvCache(gert::TilingParseContext *context);
+ge::graphStatus Tiling4GatherPaKvCache(gert::TilingContext* context);
+ge::graphStatus TilingPrepare4GatherPaKvCache(gert::TilingParseContext* context);
 
 BEGIN_TILING_DATA_DEF(GatherPaKvCacheTilingDataV35)
 TILING_DATA_FIELD_DEF(uint32_t, seqLenAccumSize);
@@ -127,7 +127,7 @@ struct GatherPaKvCacheCompileInfo {
 
 class GatherPaKvCacheTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit GatherPaKvCacheTiling(gert::TilingContext *context)
+    explicit GatherPaKvCacheTiling(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
     ~GatherPaKvCacheTiling() override {}
@@ -188,8 +188,8 @@ private:
     gert::Stride keyOutStride_;
     gert::Stride valueOutStride_;
 
-    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
-    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
 
     bool isKCacheContiguous_ = true;
     bool isVCacheContiguous_ = true;

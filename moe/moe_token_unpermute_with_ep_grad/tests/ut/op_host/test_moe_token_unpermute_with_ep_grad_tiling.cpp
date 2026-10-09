@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_moe_token_unpermute_with_ep_grad_tiling.cpp
@@ -33,10 +33,10 @@ using namespace std;
 using namespace ge;
 
 namespace {
-void InitParsePlatformInfo(fe::PlatFormInfos &platformInfo)
+void InitParsePlatformInfo(fe::PlatFormInfos& platformInfo)
 {
     platformInfo.Init();
-    const char *compileJson =
+    const char* compileJson =
         R"({"hardware_info": {"UB_SIZE": 262144, "CORE_NUM": 64, "L2_SIZE": 33554432, "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, "BT_SIZE": 0, "load3d_constraints": "1", "socVersion":"Ascend910B"}})";
     nlohmann::json compileInfoJson = nlohmann::json::parse(compileJson);
     map<string, string> socInfos;
@@ -740,7 +740,7 @@ TEST_F(MoeTokenUnpermuteWithEpGradTiling, test_tiling_parse)
     MoeTokenUnpermuteWithEpGradCompileInfo compileInfo = {};
     fe::PlatFormInfos platformInfo;
     InitParsePlatformInfo(platformInfo);
-    const char *compileJson =
+    const char* compileJson =
         R"({"hardware_info": {"UB_SIZE": 262144, "CORE_NUM": 64, "L2_SIZE": 33554432, "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, "BT_SIZE": 0, "load3d_constraints": "1", "socVersion":"Ascend910B"}})";
 
     gert::OpTilingParseContextBuilder builder;
@@ -755,9 +755,9 @@ TEST_F(MoeTokenUnpermuteWithEpGradTiling, test_tiling_parse)
                       .OutputTensorDesc(1, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
                       .CompiledJson(compileJson)
                       .CompiledInfo(&compileInfo)
-                      .PlatformInfo(reinterpret_cast<char *>(&platformInfo))
+                      .PlatformInfo(reinterpret_cast<char*>(&platformInfo))
                       .Build();
-    auto *parseContext = holder.GetContext();
+    auto* parseContext = holder.GetContext();
     ASSERT_NE(parseContext, nullptr);
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
@@ -766,6 +766,6 @@ TEST_F(MoeTokenUnpermuteWithEpGradTiling, test_tiling_parse)
     ASSERT_NE(opImpl, nullptr);
     ASSERT_NE(opImpl->tiling_parse, nullptr);
 
-    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext *>(parseContext));
+    auto ret = opImpl->tiling_parse(reinterpret_cast<gert::KernelContext*>(parseContext));
     EXPECT_EQ(ret, ge::GRAPH_SUCCESS);
 }

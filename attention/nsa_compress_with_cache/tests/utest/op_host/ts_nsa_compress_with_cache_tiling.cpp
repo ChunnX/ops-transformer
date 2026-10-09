@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file ts_nsa_compress_with_cache_tiling.cpp
@@ -22,7 +22,6 @@ TEST_P(Ts_NsaCompressWithCache_WithParam_Ascend910B1, Tc_Tiling_NsaCompressWithC
     ASSERT_TRUE(case_->Init());
     ASSERT_EQ(case_->Run(), case_->mOpInfo.mExp.mSuccess);
 }
-
 
 const auto Tc_NsaCompressWithCache_Tiling_Case = ::testing::Values(
     // 检查batchSize>2048
@@ -220,7 +219,7 @@ const auto Tc_NsaCompressWithCache_Tiling_Case = ::testing::Values(
                                                48)),                          /* ExpectTilingBlockDim */
                              NsaCompressWithCacheParam(4, 66, 16,             /* batchSize, headNum, headDim */
                                                        ge::DataType::DT_BF16, /* Dtype */
-                                                       {144, 192, 1, 1},  /* ActualSeqLenList */
+                                                       {144, 192, 1, 1},      /* ActualSeqLenList */
                                                        LayoutType::TND,       /* Layout */
                                                        32,                    /*CompressBlockSize*/
                                                        16,                    /*CompressStride*/

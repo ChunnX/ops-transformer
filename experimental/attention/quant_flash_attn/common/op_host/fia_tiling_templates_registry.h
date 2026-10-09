@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_templates_registry.h
@@ -26,18 +26,18 @@
 namespace optiling {
 
 template <typename T>
-std::unique_ptr<FiaTilingBase> TILING_CLASS(gert::TilingContext *context)
+std::unique_ptr<FiaTilingBase> TILING_CLASS(gert::TilingContext* context)
 {
     return std::unique_ptr<T>(new (std::nothrow) T(context));
 }
 
-using FiaTilingClassCase = std::unique_ptr<FiaTilingBase> (*)(gert::TilingContext *);
+using FiaTilingClassCase = std::unique_ptr<FiaTilingBase> (*)(gert::TilingContext*);
 
 class FiaTilingCases {
 public:
-    explicit FiaTilingCases(std::string op_type) : op_type_(std::move(op_type))
-    {
-    }
+    explicit FiaTilingCases(std::string op_type)
+        : op_type_(std::move(op_type))
+    {}
 
     template <typename T>
     void AddTiling(int32_t priority)
@@ -51,7 +51,7 @@ public:
             return);
     }
 
-    const std::map<int32_t, FiaTilingClassCase> &GetTilingCases()
+    const std::map<int32_t, FiaTilingClassCase>& GetTilingCases()
     {
         return cases_;
     }
@@ -66,13 +66,13 @@ class FiaTilingRegistry {
 public:
     FiaTilingRegistry() = default;
 
-    static FiaTilingRegistry &GetInstance()
+    static FiaTilingRegistry& GetInstance()
     {
         static FiaTilingRegistry registry_impl_;
         return registry_impl_;
     }
 
-    std::shared_ptr<FiaTilingCases> RegisterOp(const std::string &op_type, int32_t soc_version)
+    std::shared_ptr<FiaTilingCases> RegisterOp(const std::string& op_type, int32_t soc_version)
     {
         auto soc_iter = registry_map_.find(soc_version);
         if (soc_iter == registry_map_.end()) {
@@ -91,11 +91,11 @@ public:
         return registry_map_[soc_version][op_type];
     }
 
-    ge::graphStatus DoTilingImpl(gert::TilingContext *context, TilingInfo *tilingInfo)
+    ge::graphStatus DoTilingImpl(gert::TilingContext* context, TilingInfo* tilingInfo)
     {
         int32_t npuArch = static_cast<int32_t>(NpuArch::DAV_RESV);
-        const char *op_type = context->GetNodeType();
-        fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
+        const char* op_type = context->GetNodeType();
+        fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
         if (platformInfoPtr == nullptr) {
             OPS_REPORT_VECTOR_INNER_ERR(op_type, "Do op tiling failed, platformInfoPtr is nullptr.");
             return ge::GRAPH_FAILED;
@@ -125,7 +125,7 @@ public:
         return ge::GRAPH_FAILED;
     }
 
-    const std::map<int32_t, FiaTilingClassCase> &GetTilingTemplates(const std::string &op_type, int32_t soc_version)
+    const std::map<int32_t, FiaTilingClassCase>& GetTilingTemplates(const std::string& op_type, int32_t soc_version)
     {
         auto soc_iter = registry_map_.find(soc_version);
         OP_CHECK_IF(soc_iter == registry_map_.end(),
@@ -146,12 +146,12 @@ private:
 
 class FiaRegister {
 public:
-    explicit FiaRegister(std::string op_type) : op_type_(std::move(op_type))
-    {
-    }
+    explicit FiaRegister(std::string op_type)
+        : op_type_(std::move(op_type))
+    {}
 
     template <typename T>
-    FiaRegister &tiling(int32_t priority, int32_t soc_version)
+    FiaRegister& tiling(int32_t priority, int32_t soc_version)
     {
         auto tilingCases = FiaTilingRegistry::GetInstance().RegisterOp(op_type_, soc_version);
         OP_CHECK_IF(tilingCases == nullptr,
@@ -162,7 +162,7 @@ public:
     }
 
     template <typename T>
-    FiaRegister &tiling(int32_t priority, const std::vector<int32_t> &soc_versions)
+    FiaRegister& tiling(int32_t priority, const std::vector<int32_t>& soc_versions)
     {
         for (int32_t soc_version : soc_versions) {
             auto tilingCases = FiaTilingRegistry::GetInstance().RegisterOp(op_type_, soc_version);
@@ -180,8 +180,8 @@ private:
 
 // op_type: 算子名称， class_name: 注册的 tiling 类, soc_version：芯片版本号
 // priority: tiling 类的优先级, 越小表示优先级越高, 即会优先选择这个tiling类
-#define REGISTER_TILING_TEMPLATE_FIA(op_type, class_name, soc_versions, priority)                                      \
-    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;                            \
-    static FiaRegister VAR_UNUSED##op_type##class_name##priority_register =                                            \
+#define REGISTER_TILING_TEMPLATE_FIA(op_type, class_name, soc_versions, priority) \
+    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority; \
+    static FiaRegister VAR_UNUSED##op_type##class_name##priority_register = \
         FiaRegister(#op_type).tiling<class_name>(priority, soc_versions)
 } // namespace optiling

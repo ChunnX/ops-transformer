@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "aclnn_fused_infer_attention_score_inner.h"
 #include "opdev/op_log.h"
@@ -22,7 +22,8 @@ namespace {
 
 const uint64_t INT4_NUMS_IN_INT32 = 8;
 
-void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *&tensorListValue) {
+void TensorPreProcess(const aclTensorList*& tensorListKey, const aclTensorList*& tensorListValue)
+{
     if (tensorListKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
         return;
@@ -39,7 +40,7 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
         OP_LOGD("The conversion of kv's from OriginalShape is completed.");
         return;
     }
-    auto tempKey = const_cast<aclTensorList *>(tensorListKey);
+    auto tempKey = const_cast<aclTensorList*>(tensorListKey);
     for (uint64_t i = 0; i < tempKey->Size(); i++) {
         if ((*tempKey)[i] != nullptr) {
             op::Shape viewShape = (*tempKey)[i]->GetViewShape();
@@ -52,7 +53,7 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
         }
     }
 
-    auto tempValue = const_cast<aclTensorList *>(tensorListValue);
+    auto tempValue = const_cast<aclTensorList*>(tensorListValue);
     for (uint64_t i = 0; i < tempValue->Size(); i++) {
         if ((*tempValue)[i] != nullptr) {
             op::Shape viewShape = (*tempValue)[i]->GetViewShape();
@@ -68,8 +69,8 @@ void TensorPreProcess(const aclTensorList *&tensorListKey, const aclTensorList *
     OP_LOGD("The conversion of kv from int32 to int4 is completed.");
 }
 
-
-void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tensorValue) {
+void PrefixTensorPreProcess(const aclTensor*& tensorKey, const aclTensor*& tensorValue)
+{
     if (tensorKey == nullptr) {
         OP_LOGD("TensorListKey is nullptr,TensorPreProcess exit.");
         return;
@@ -86,14 +87,14 @@ void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tenso
         OP_LOGD("The conversion of kvPrefix's from OriginalShape is completed.");
         return;
     }
-    auto tempKey = const_cast<aclTensor *>(tensorKey);
+    auto tempKey = const_cast<aclTensor*>(tensorKey);
     op::Shape viewKeyShape = tempKey->GetViewShape();
     auto viewKeyShapeDim = viewKeyShape.GetDimNum();
     viewKeyShape[viewKeyShapeDim - 1] = viewKeyShape[viewKeyShapeDim - 1] * INT4_NUMS_IN_INT32;
     tempKey->SetViewShape(viewKeyShape);
     tempKey->SetDataType(DataType::DT_INT4);
 
-    auto tempValue = const_cast<aclTensor *>(tensorValue);
+    auto tempValue = const_cast<aclTensor*>(tensorValue);
     op::Shape viewValueShape = tempValue->GetViewShape();
     auto viewValueShapeDim = viewValueShape.GetDimNum();
     viewValueShape[viewValueShapeDim - 1] = viewValueShape[viewValueShapeDim - 1] * INT4_NUMS_IN_INT32;
@@ -103,14 +104,15 @@ void PrefixTensorPreProcess(const aclTensor *&tensorKey, const aclTensor *&tenso
     OP_LOGD("The conversion of kvPrefix from int32 to int4 is completed.");
 }
 
-aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
+aclnnStatus FakeArray(const aclIntArray* inArray, aclTensor*& outTensor)
+{
     OP_LOGD("start fake tensor");
     if (inArray != nullptr) {
         OP_LOGD("input array is not nullptr");
         int64_t size = static_cast<int64_t>(inArray->Size());
         std::vector<int64_t> shape = {size};
-        outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr,
-                                    0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
+        outTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT64, nullptr, 0, ACL_FORMAT_ND,
+                                    shape.data(), shape.size(), nullptr);
         if (outTensor == nullptr) {
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc tensor failed");
             return ACLNN_ERR_INNER_NULLPTR;
@@ -120,8 +122,8 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
     return ACLNN_SUCCESS;
 }
 
-void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTensor *softmaxLse,
-                                               const aclTensor *&tempTensor, const aclTensor *&placeHolder)
+void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTensor* softmaxLse,
+                                               const aclTensor*& tempTensor, const aclTensor*& placeHolder)
 {
     if (softmaxLseFlag == false) {
         std::vector<int64_t> shape = {0};

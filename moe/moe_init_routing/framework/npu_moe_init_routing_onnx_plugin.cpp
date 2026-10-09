@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <cstdint>
 #include <limits>
@@ -16,7 +16,7 @@
 #include "register/register.h"
 
 namespace domi {
-static Status ParseParamsNpuMoeInitRouting(const ge::Operator &op_src, ge::Operator &op_dest)
+static Status ParseParamsNpuMoeInitRouting(const ge::Operator& op_src, ge::Operator& op_dest)
 {
     int64_t parsed_value = 0;
     bool found = false;
@@ -32,11 +32,11 @@ static Status ParseParamsNpuMoeInitRouting(const ge::Operator &op_src, ge::Opera
                 return FAILED;
             }
             if (root.contains("attribute")) {
-                const auto &attrs = root.at("attribute");
+                const auto& attrs = root.at("attribute");
                 if (!attrs.is_array()) {
                     return FAILED;
                 }
-                for (const auto &attr : attrs) {
+                for (const auto& attr : attrs) {
                     if (!attr.is_object()) {
                         return FAILED;
                     }
@@ -53,7 +53,7 @@ static Status ParseParamsNpuMoeInitRouting(const ge::Operator &op_src, ge::Opera
                         parsed_value = 0;
                         continue;
                     }
-                    const auto &value = attr.at("i");
+                    const auto& value = attr.at("i");
                     if (!value.is_number_integer() ||
                         (value.is_number_unsigned() &&
                          value.get<uint64_t>() > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))) {
@@ -62,7 +62,7 @@ static Status ParseParamsNpuMoeInitRouting(const ge::Operator &op_src, ge::Opera
                     parsed_value = value.get<int64_t>();
                 }
             }
-        } catch (const nlohmann::json::exception &) {
+        } catch (const nlohmann::json::exception&) {
             return FAILED;
         }
     }

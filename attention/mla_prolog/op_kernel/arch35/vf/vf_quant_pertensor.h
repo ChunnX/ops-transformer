@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file vf_quant_pertensor.h
@@ -19,7 +19,7 @@
 
 namespace MlaProlog {
 template <typename T, typename U>
-__simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T *inputBuf, __ubuf__ T *quantScaleBuf, __ubuf__ U *outputBuf,
+__simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T* inputBuf, __ubuf__ T* quantScaleBuf, __ubuf__ U* outputBuf,
                                       uint32_t cnt, const uint16_t floatRepSize, uint16_t repeatTimes)
 {
     Reg::MaskReg pregAll = Reg::CreateMask<T, Reg::MaskPattern::ALL>();
@@ -72,16 +72,16 @@ __simd_vf__ void QuantPerTensorVFImpl(__ubuf__ T *inputBuf, __ubuf__ T *quantSca
  * @param col 处理数据的列数
  */
 template <typename T, typename U>
-__aicore__ inline void QuantPerTensorVF(const LocalTensor<U> &outputLocal, const LocalTensor<T> &inputLocal,
-                                        const LocalTensor<T> &quantScaleLocal, const uint32_t row, const uint32_t col)
+__aicore__ inline void QuantPerTensorVF(const LocalTensor<U>& outputLocal, const LocalTensor<T>& inputLocal,
+                                        const LocalTensor<T>& quantScaleLocal, const uint32_t row, const uint32_t col)
 {
     uint32_t cnt = row * col;
     const uint16_t floatRepSize = 64;                               // 一个寄存器能够存放64个FP32
     uint16_t repeatTimes = (cnt + floatRepSize - 1) / floatRepSize; // 对尾块处理的扩展，循环处理的次数
 
-    __ubuf__ T *inputBuf = (__ubuf__ T *)inputLocal.GetPhyAddr();
-    __ubuf__ T *quantScaleBuf = (__ubuf__ T *)quantScaleLocal.GetPhyAddr();
-    __ubuf__ U *outputBuf = (__ubuf__ U *)outputLocal.GetPhyAddr();
+    __ubuf__ T* inputBuf = (__ubuf__ T*)inputLocal.GetPhyAddr();
+    __ubuf__ T* quantScaleBuf = (__ubuf__ T*)quantScaleLocal.GetPhyAddr();
+    __ubuf__ U* outputBuf = (__ubuf__ U*)outputLocal.GetPhyAddr();
 
     QuantPerTensorVFImpl<T, U>(inputBuf, quantScaleBuf, outputBuf, cnt, floatRepSize, repeatTimes);
 }

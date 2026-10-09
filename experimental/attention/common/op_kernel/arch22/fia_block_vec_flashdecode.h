@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_block_vec_flashdecode.h
@@ -24,7 +24,6 @@
 #include "../vector_common.h"
 #include "../memory_copy.h"
 
-
 using namespace AttentionCommon;
 using namespace fa_base_vector;
 struct TaskInfo {
@@ -34,45 +33,48 @@ struct TaskInfo {
     uint32_t actualCombineLoopSize;
 };
 
-template <typename FIAT> 
+template <typename FIAT>
 class FiaBlockVecFlashDecode {
 public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     using T = float;
-    using OUT_T = typename FIAT::outputType;  
-    static constexpr FIA_LAYOUT LAYOUT_T = FIAT::layout; 
+    using OUT_T = typename FIAT::outputType;
+    static constexpr FIA_LAYOUT LAYOUT_T = FIAT::layout;
     using SINK_T = bfloat16_t;
     static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
 
-    __aicore__ inline void InitGlobalTensor(GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm, GlobalTensor<T> accumOutGm, 
-         GlobalTensor<OUT_T> attentionOutGm, GlobalTensor<uint64_t> actualSeqLengthsGmQ, GlobalTensor<uint64_t> actualSeqLengthsGm,
-         __gm__ uint8_t *key, __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
+    __aicore__ inline void InitGlobalTensor(GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm,
+                                            GlobalTensor<T> accumOutGm, GlobalTensor<OUT_T> attentionOutGm,
+                                            GlobalTensor<uint64_t> actualSeqLengthsGmQ,
+                                            GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t* key,
+                                            __gm__ uint8_t* quantScale2, __gm__ uint8_t* quantOffset2);
     __aicore__ inline void InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm);
-    __aicore__ inline void InitParams(const AttentionCommon::ConstInfo &constInfo);
+    __aicore__ inline void InitParams(const AttentionCommon::ConstInfo& constInfo);
     __aicore__ inline void InitDecodeParams();
-    __aicore__ inline void InitBuffers(TPipe *pipe);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
     __aicore__ inline void AllocEventID();
-    __aicore__ inline void FreeEventID();   
-    __aicore__ inline void FlashDecode(FDparams &fd);
+    __aicore__ inline void FreeEventID();
+    __aicore__ inline void FlashDecode(FDparams& fd);
+
 protected:
-    __aicore__ inline void CopyAccumOutIn(LocalTensor<T> &accumOutLocal, uint32_t splitKVIndex, uint32_t startRow,
-                                          uint32_t dealRowCount);                            
+    __aicore__ inline void CopyAccumOutIn(LocalTensor<T>& accumOutLocal, uint32_t splitKVIndex, uint32_t startRow,
+                                          uint32_t dealRowCount);
     __aicore__ inline void CopyLseIn(uint32_t startRow, uint32_t dealRowCount, uint64_t baseOffset, uint32_t cntM);
-    __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseExp, uint32_t startRow, uint32_t dealRowCount,
+    __aicore__ inline void ComputeScaleValue(LocalTensor<T>& lseExp, uint32_t startRow, uint32_t dealRowCount,
                                              uint32_t cntM);
-    __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
-                                                 uint32_t dealRowCount, uint32_t columnCount);
-    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
+    __aicore__ inline void Bmm2DataCopyOutTrans(LocalTensor<OUT_T>& attenOutUb, uint32_t startRow,
+                                                uint32_t dealRowCount, uint32_t columnCount);
+    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T>& attenOutUb, uint32_t startRow,
                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void ReduceFinalRes(LocalTensor<T> &reduceOut, LocalTensor<T> &mm2Res, LocalTensor<T> &lseLocal, 
+    __aicore__ inline void ReduceFinalRes(LocalTensor<T>& reduceOut, LocalTensor<T>& mm2Res, LocalTensor<T>& lseLocal,
                                           uint32_t cntKV, uint32_t dealRowCount);
-    __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
+    __aicore__ inline void CopyFinalResOut(LocalTensor<T>& accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
                                            uint32_t cntM);
     __aicore__ inline void CalcPreNextTokens();
-    
+
 private:
-// =================================常量区=================================
+    // =================================常量区=================================
     static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF1_FLAG = 8;
     static constexpr uint64_t SYNC_LSE_MAX_SUM_BUF2_FLAG = 9;
     static constexpr uint64_t SYNC_MM2RES_BUF1_FLAG = 10;
@@ -99,17 +101,17 @@ protected:
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<LAYOUT_T>();
     static constexpr ActualSeqLensMode KV_MODE = GetKvActSeqMode<LAYOUT_T, PAGE_ATTENTION>();
     // tensorlist
-    __gm__ uint8_t *keyPtr = nullptr;
+    __gm__ uint8_t* keyPtr = nullptr;
     ActualSeqLensParser<Q_MODE> qActSeqLensParser;
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
-    
+
     int64_t preTokensPerBatch = 0;
     int64_t nextTokensPerBatch = 0;
-    
+
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
-    uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
+    uint32_t negativeIntScalar = *((uint32_t*)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     bool learnableSinkFlag = false;
 
     static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
@@ -123,21 +125,22 @@ protected:
     uint32_t blockIdx = 0U;
     AttentionCommon::ConstInfo constInfo{};
     TaskInfo taskInfo{};
-private:    
- // ================================FD Local Buffer区====================================
-    TBuf<> fdSumBuf1;    // 1.5k: 16*24*4
-    TBuf<> fdSumBuf2;    // 1.5k: 16*24*4
-    TBuf<> fdMaxBuf1;    // 1.5k: 16*24*4
-    TBuf<> fdMaxBuf2;    // 1.5k: 16*24*4
-    TBuf<> fdLseExpBuf;  // 1.5k: 16*24*4
-    TBuf<> fdMm2ResBuf1; // 32k: 16*512*4
-    TBuf<> fdMm2ResBuf2; // 32k: 16*512*4
-    TBuf<> fdReduceBuf;  // 32k: 16*512*4
-    TBuf<> fdOutputBuf;  // 32k: 16*512*4
-    TBuf<> fdSinkCopyInBuf;   // 2*1k: 2*128*8
-    TBuf<> fdSinkValueBuf;    // 2k
-    TBuf<> fdSinkExpBuf;      // 256B
-    TBuf<> fdSinkTmpBuf;      // 2k
+
+private:
+    // ================================FD Local Buffer区====================================
+    TBuf<> fdSumBuf1;       // 1.5k: 16*24*4
+    TBuf<> fdSumBuf2;       // 1.5k: 16*24*4
+    TBuf<> fdMaxBuf1;       // 1.5k: 16*24*4
+    TBuf<> fdMaxBuf2;       // 1.5k: 16*24*4
+    TBuf<> fdLseExpBuf;     // 1.5k: 16*24*4
+    TBuf<> fdMm2ResBuf1;    // 32k: 16*512*4
+    TBuf<> fdMm2ResBuf2;    // 32k: 16*512*4
+    TBuf<> fdReduceBuf;     // 32k: 16*512*4
+    TBuf<> fdOutputBuf;     // 32k: 16*512*4
+    TBuf<> fdSinkCopyInBuf; // 2*1k: 2*128*8
+    TBuf<> fdSinkValueBuf;  // 2k
+    TBuf<> fdSinkExpBuf;    // 256B
+    TBuf<> fdSinkTmpBuf;    // 2k
 
     TBuf<> fdLseMaxUbBuf1; // 64B: 16*4
     TBuf<> fdLseMaxUbBuf2; // 64B: 16*4
@@ -147,63 +150,63 @@ private:
     TBuf<> quant2TmpBuf2;
     TBuf<> fdLseMaxUbBuf; // 64B: 16*4
     TBuf<> fdLseSumUbBuf; // 64B: 16*4
-    TBuf<> fdLseUbBuf; // 64B: 16*4
+    TBuf<> fdLseUbBuf;    // 64B: 16*4
 };
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::InitGlobalTensor(GlobalTensor<T> lseMaxFdGm, 
-                                                        GlobalTensor<T> lseSumFdGm, 
-                                                        GlobalTensor<T> accumOutGm,
-                                                        GlobalTensor<OUT_T> attentionOutGm,
-                                                        GlobalTensor<uint64_t> actualSeqLengthsGmQ,
-                                                        GlobalTensor<uint64_t> actualSeqLengthsGm,
-                                                        __gm__ uint8_t *key,
-                                                        __gm__ uint8_t *quantScale2,
-                                                        __gm__ uint8_t *quantOffset2)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitGlobalTensor(
+    GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm, GlobalTensor<T> accumOutGm,
+    GlobalTensor<OUT_T> attentionOutGm, GlobalTensor<uint64_t> actualSeqLengthsGmQ,
+    GlobalTensor<uint64_t> actualSeqLengthsGm, __gm__ uint8_t* key, __gm__ uint8_t* quantScale2,
+    __gm__ uint8_t* quantOffset2)
 {
-   this->lseMaxFdGm = lseMaxFdGm;
-   this->lseSumFdGm = lseSumFdGm;
-   this->accumOutGm = accumOutGm;
-   this->attentionOutGm = attentionOutGm;
-   this->actualSeqLengthsGmQ = actualSeqLengthsGmQ;
-   this->actualSeqLengthsGm = actualSeqLengthsGm;
-   this->keyPtr = key;
+    this->lseMaxFdGm = lseMaxFdGm;
+    this->lseSumFdGm = lseSumFdGm;
+    this->accumOutGm = accumOutGm;
+    this->attentionOutGm = attentionOutGm;
+    this->actualSeqLengthsGmQ = actualSeqLengthsGmQ;
+    this->actualSeqLengthsGm = actualSeqLengthsGm;
+    this->keyPtr = key;
 
-   qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.actualLenQDims, constInfo.qSeqSize);
-   kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualLenDims, constInfo.kvSeqSize);
+    qActSeqLensParser.Init(this->actualSeqLengthsGmQ, constInfo.actualLenQDims, constInfo.qSeqSize);
+    kvActSeqLensParser.Init(this->actualSeqLengthsGm, constInfo.actualLenDims, constInfo.kvSeqSize);
 }
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitSoftmaxLseGm(GlobalTensor<float> softmaxLseGm)
 {
-   this->softmaxLseGm = softmaxLseGm;
+    this->softmaxLseGm = softmaxLseGm;
 }
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::InitParams(const AttentionCommon::ConstInfo &constInfo)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitParams(const AttentionCommon::ConstInfo& constInfo)
 {
-   this->constInfo = constInfo;
+    this->constInfo = constInfo;
 }
 
-
-template <typename FIAT>__aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::InitDecodeParams()
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitDecodeParams()
 {
     this->blockIdx = GetBlockIdx();
 }
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::InitBuffers(TPipe *pipe)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::InitBuffers(TPipe* pipe)
 {
     if ASCEND_IS_AIV {
         pipe->Reset();
         // InQue, DB, SYNC_LSE_MAX_SUM_BUF1_FLAG SYNC_LSE_MAX_SUM_BUF2_FLAG
-        pipe->InitBuffer(fdSumBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
-        pipe->InitBuffer(fdSumBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
-        pipe->InitBuffer(fdMaxBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
-        pipe->InitBuffer(fdMaxBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
+        pipe->InitBuffer(fdSumBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K +
+                                        AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
+        pipe->InitBuffer(fdSumBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K +
+                                        AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
+        pipe->InitBuffer(fdMaxBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K +
+                                        AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
+        pipe->InitBuffer(fdMaxBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K +
+                                        AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
         // TmpBuf
-        pipe->InitBuffer(fdLseExpBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K + AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
+        pipe->InitBuffer(fdLseExpBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_4K +
+                                          AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
         // InQue, DB, SYNC_MM2RES_BUF1_FLAG SYNC_MM2RES_BUF2_FLAG
         pipe->InitBuffer(fdMm2ResBuf1, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_16K);
         pipe->InitBuffer(fdMm2ResBuf2, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_16K);
@@ -230,11 +233,11 @@ void FiaBlockVecFlashDecode<FIAT>::InitBuffers(TPipe *pipe)
             pipe->InitBuffer(fdSinkExpBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_256B);
             pipe->InitBuffer(fdSinkTmpBuf, AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_2K);
         }
-     }
+    }
 }
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::AllocEventID()
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::AllocEventID()
 {
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG);
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF2_FLAG);
@@ -246,8 +249,8 @@ void FiaBlockVecFlashDecode<FIAT>::AllocEventID()
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF2_FLAG);
 }
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::FreeEventID()
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::FreeEventID()
 {
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_LSE_MAX_SUM_BUF2_FLAG);
@@ -259,9 +262,10 @@ void FiaBlockVecFlashDecode<FIAT>::FreeEventID()
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF2_FLAG);
 }
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::CopyAccumOutIn(LocalTensor<T> &accumOutLocal, uint32_t splitKVIndex,
-    uint32_t startRow, uint32_t dealRowCount)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::CopyAccumOutIn(LocalTensor<T>& accumOutLocal,
+                                                                    uint32_t splitKVIndex, uint32_t startRow,
+                                                                    uint32_t dealRowCount)
 {
     DataCopyExtParams copyInParams;
     DataCopyPadExtParams<T> copyInPadParams;
@@ -275,14 +279,14 @@ void FiaBlockVecFlashDecode<FIAT>::CopyAccumOutIn(LocalTensor<T> &accumOutLocal,
     copyInPadParams.rightPadding = (constInfo.headDimAlign - constInfo.headDim) % BLOCK_ELEMENT_NUM;
     copyInPadParams.paddingValue = 0;
     uint64_t combineAccumOutOffset = startRow * constInfo.headDim +                          // taskoffset + g轴offset
-                                      splitKVIndex * constInfo.mBaseSize * constInfo.headDim; // 份数offset
+                                     splitKVIndex * constInfo.mBaseSize * constInfo.headDim; // 份数offset
 
     DataCopyPad(accumOutLocal, accumOutGm[combineAccumOutOffset], copyInParams, copyInPadParams);
 }
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::CopyLseIn(uint32_t startRow,
-    uint32_t dealRowCount, uint64_t baseOffset, uint32_t cntM)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::CopyLseIn(uint32_t startRow, uint32_t dealRowCount,
+                                                               uint64_t baseOffset, uint32_t cntM)
 {
     LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1.Get<T>() : fdSumBuf2.Get<T>();
     LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1.Get<T>() : fdMaxBuf2.Get<T>();
@@ -298,11 +302,9 @@ void FiaBlockVecFlashDecode<FIAT>::CopyLseIn(uint32_t startRow,
     }
 }
 
-template <typename FIAT> __aicore__ inline void
-FiaBlockVecFlashDecode<FIAT>::ComputeScaleValue(LocalTensor<T> &lseExp, 
-                                                    uint32_t startRow,
-                                                    uint32_t dealRowCount, 
-                                                    uint32_t cntM)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::ComputeScaleValue(LocalTensor<T>& lseExp, uint32_t startRow,
+                                                                       uint32_t dealRowCount, uint32_t cntM)
 {
     LocalTensor<T> lseSum = cntM % 2 == 0 ? fdSumBuf1.Get<T>() : fdSumBuf2.Get<T>();
     LocalTensor<T> lseMax = cntM % 2 == 0 ? fdMaxBuf1.Get<T>() : fdMaxBuf2.Get<T>();
@@ -317,10 +319,12 @@ FiaBlockVecFlashDecode<FIAT>::ComputeScaleValue(LocalTensor<T> &lseExp,
     Duplicate(lseSumUb, AttentionCommon::ConstInfo::FLOAT_ZERO, dealRowCountAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
-    fa_base_vector::ColMax(lseMaxUb, lseMax, lseMaxUb, taskInfo.actualCombineLoopSize, dealRowCountAlign, dealRowCountAlign);
+    fa_base_vector::ColMax(lseMaxUb, lseMax, lseMaxUb, taskInfo.actualCombineLoopSize, dealRowCountAlign,
+                           dealRowCountAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
-    fa_base_vector::RowSub(lseExp, lseMax, lseMaxUb, taskInfo.actualCombineLoopSize, dealRowCountAlign, dealRowCountAlign);
+    fa_base_vector::RowSub(lseExp, lseMax, lseMaxUb, taskInfo.actualCombineLoopSize, dealRowCountAlign,
+                           dealRowCountAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
     Exp(lseExp, lseExp, taskInfo.actualCombineLoopSize * dealRowCountAlign);
@@ -329,18 +333,21 @@ FiaBlockVecFlashDecode<FIAT>::ComputeScaleValue(LocalTensor<T> &lseExp,
     Mul(lseExp, lseSum, lseExp, taskInfo.actualCombineLoopSize * dealRowCountAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
-    fa_base_vector::ColAdd(lseSumUb, lseExp, lseSumUb, taskInfo.actualCombineLoopSize, dealRowCountAlign, dealRowCountAlign);
+    fa_base_vector::ColAdd(lseSumUb, lseExp, lseSumUb, taskInfo.actualCombineLoopSize, dealRowCountAlign,
+                           dealRowCountAlign);
     AscendC::PipeBarrier<PIPE_V>();
 
-    fa_base_vector::MatDivsVec(lseExp, lseExp, lseSumUb, taskInfo.actualCombineLoopSize, dealRowCountAlign, dealRowCountAlign);
+    fa_base_vector::MatDivsVec(lseExp, lseExp, lseSumUb, taskInfo.actualCombineLoopSize, dealRowCountAlign,
+                               dealRowCountAlign);
     AscendC::PipeBarrier<PIPE_V>();
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOutTrans(LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
-                                                                      uint32_t dealRowCount, uint32_t columnCount)
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOutTrans(LocalTensor<OUT_T>& attenOutUb,
+                                                                          uint32_t startRow, uint32_t dealRowCount,
+                                                                          uint32_t columnCount)
 {
-    FaUbTensor<OUT_T> ubTensor {
+    FaUbTensor<OUT_T> ubTensor{
         .tensor = attenOutUb,
         .rowCount = dealRowCount,
         .colCount = columnCount,
@@ -357,7 +364,8 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOutTrans(LocalT
         FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
         outGmTensor.gmTensor = attentionOutGm;
         outGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize,
-                                          constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims, constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
+                                          constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims,
+                                          constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
         CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
         copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
     } else if (constInfo.outputLayout == FIA_LAYOUT::BNSD) {
@@ -365,39 +373,38 @@ __aicore__ inline void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOutTrans(LocalT
         FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
         outGmTensor.gmTensor = attentionOutGm;
         outGmTensor.offsetCalculator.Init(constInfo.batchSize, constInfo.kvHeadNum, constInfo.gSize, constInfo.qSeqSize,
-                                          constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims, constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
+                                          constInfo.headDim, actualSeqLengthsGmQ, constInfo.actualLenQDims,
+                                          constInfo.isQHasLeftPadding, constInfo.qLeftPaddingSize);
         CopyAttenOutUbToGm<OUT_T, OUT_FORMAT, GetOutUbFormat<LAYOUT_T>()> copyAttenOutUbToGm;
         copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
     }
 }
 
-template <typename FIAT>__aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb,
-                                                               uint32_t startRow, uint32_t dealRowCount,
-                                                               uint32_t columnCount, uint32_t actualColumnCount)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::Bmm2DataCopyOut(uint64_t attenOutOffset,
+                                                                     LocalTensor<OUT_T>& attenOutUb, uint32_t startRow,
+                                                                     uint32_t dealRowCount, uint32_t columnCount,
+                                                                     uint32_t actualColumnCount)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T);
     dataCopyParams.srcStride = (columnCount - actualColumnCount) / (fa_base_vector::BYTE_BLOCK / sizeof(OUT_T));
     dataCopyParams.dstStride = 0;
-    DataCopyPad(attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb,
-                dataCopyParams);
+    DataCopyPad(attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, dataCopyParams);
 }
 
-template <typename FIAT>__aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::ReduceFinalRes(LocalTensor<T> &reduceOut, 
-                                                      LocalTensor<T> &mm2Res, 
-                                                      LocalTensor<T> &lseLocal, 
-                                                      uint32_t cntKV, 
-                                                      uint32_t dealRowCount)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::ReduceFinalRes(LocalTensor<T>& reduceOut, LocalTensor<T>& mm2Res,
+                                                                    LocalTensor<T>& lseLocal, uint32_t cntKV,
+                                                                    uint32_t dealRowCount)
 {
     uint32_t dealRowCountAlign = dealRowCount * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
     LocalTensor<T> tmpRst =
         cntKV == 0 ? reduceOut : mm2Res; // 第一次mul结果直接写入reduceOut，否则在mm2Res原地进行mul，再加到reduceOut
 
-    fa_base_vector::RowMuls(tmpRst, mm2Res, lseLocal[cntKV * dealRowCountAlign], dealRowCount,
-        constInfo.headDimAlign, constInfo.headDim);
+    fa_base_vector::RowMuls(tmpRst, mm2Res, lseLocal[cntKV * dealRowCountAlign], dealRowCount, constInfo.headDimAlign,
+                            constInfo.headDim);
 
     if (cntKV != 0) {
         AscendC::PipeBarrier<PIPE_V>();
@@ -406,11 +413,9 @@ void FiaBlockVecFlashDecode<FIAT>::ReduceFinalRes(LocalTensor<T> &reduceOut,
     }
 }
 
-template <typename FIAT> __aicore__ inline 
-void FiaBlockVecFlashDecode<FIAT>::CopyFinalResOut(LocalTensor<T> &accumOutLocal, 
-                                                       uint32_t startRow,
-                                                       uint32_t dealRowCount,
-                                                       uint32_t cntM)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::CopyFinalResOut(LocalTensor<T>& accumOutLocal, uint32_t startRow,
+                                                                     uint32_t dealRowCount, uint32_t cntM)
 {
     AscendC::PipeBarrier<PIPE_V>();
 
@@ -422,7 +427,8 @@ void FiaBlockVecFlashDecode<FIAT>::CopyFinalResOut(LocalTensor<T> &accumOutLocal
     if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
         Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_RINT, dealRowCount * constInfo.headDimAlign);
     } else {
-        Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * constInfo.headDimAlign);
+        Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND,
+             dealRowCount * constInfo.headDimAlign);
     }
 
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_FDOUTPUT_BUF_FLAG);
@@ -431,8 +437,8 @@ void FiaBlockVecFlashDecode<FIAT>::CopyFinalResOut(LocalTensor<T> &accumOutLocal
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_FDOUTPUT_BUF_FLAG);
 }
 
-template <typename FIAT> __aicore__ inline void
-FiaBlockVecFlashDecode<FIAT>::CalcPreNextTokens()
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::CalcPreNextTokens()
 {
     actSeqLensQ = qActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
     actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(taskInfo.bIdx);
@@ -446,16 +452,16 @@ FiaBlockVecFlashDecode<FIAT>::CalcPreNextTokens()
     preTokensPerBatch = 0;
 }
 
-template <typename FIAT> __aicore__ inline void
-FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams &fd)
+template <typename FIAT>
+__aicore__ inline void FiaBlockVecFlashDecode<FIAT>::FlashDecode(FDparams& fd)
 {
     if (blockIdx >= fd.usedVecNumOfFd) {
         return;
     }
     uint32_t fdTaskPrevEnd = (blockIdx > 0) ? fd.gS1IdxEndOfFdHead[blockIdx - 1] : 0; // 上一个核末尾是第几个规约
     uint32_t fdS1gOuterMPrevEnd =
-        (blockIdx > 0) ? fd.gS1IdxEndOfFdHeadSplit[blockIdx - 1] : 0; //上一个核末尾是该规约的第几个base行
-    uint32_t fdTaskEnd = fd.gS1IdxEndOfFdHead[blockIdx];                 // 当前核的末尾是第几个规约任务
+        (blockIdx > 0) ? fd.gS1IdxEndOfFdHeadSplit[blockIdx - 1] : 0; // 上一个核末尾是该规约的第几个base行
+    uint32_t fdTaskEnd = fd.gS1IdxEndOfFdHead[blockIdx];              // 当前核的末尾是第几个规约任务
     uint32_t fdS1gOuterMEnd = fd.gS1IdxEndOfFdHeadSplit[blockIdx]; // 当前核的末尾是该规约的第几个base行
     uint32_t tmpFdS1gOuterMStart = (blockIdx > 0) ? fdS1gOuterMPrevEnd + 1 : 0; // 当前核从第几个base行开始
     uint32_t tmpFdS1gOuterMEnd = 0;

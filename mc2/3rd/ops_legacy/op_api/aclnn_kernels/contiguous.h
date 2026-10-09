@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef COMMON_INC_EXTERNAL_ACLNN_KERNELS_CONTIGUOUS_H
 #define COMMON_INC_EXTERNAL_ACLNN_KERNELS_CONTIGUOUS_H
@@ -56,7 +56,7 @@ typedef struct {
  * @param executor
  * @return aclTensor 转换后的tensor
  */
-const aclTensor *Contiguous(const aclTensor *x, aclOpExecutor *executor);
+const aclTensor* Contiguous(const aclTensor* x, aclOpExecutor* executor);
 
 /**
  * @brief 将连续tensor拷贝到非连续的tensor上
@@ -65,7 +65,7 @@ const aclTensor *Contiguous(const aclTensor *x, aclOpExecutor *executor);
  * @param executor
  * @return aclTensor 转换后的tensor
  */
-const aclTensor *ViewCopy(const aclTensor *x, const aclTensor *y, aclOpExecutor *executor);
+const aclTensor* ViewCopy(const aclTensor* x, const aclTensor* y, aclOpExecutor* executor);
 
 /**
  * @brief 对Tensor创建一个View，要求Tensor满足PickView的条件
@@ -73,15 +73,15 @@ const aclTensor *ViewCopy(const aclTensor *x, const aclTensor *y, aclOpExecutor 
  * @param executor
  * @return 输出Shape是一个连续Tensor
  */
-const aclTensor *PickViewAsContiguous(const aclTensor *x, aclOpExecutor *executor);
+const aclTensor* PickViewAsContiguous(const aclTensor* x, aclOpExecutor* executor);
 
-const aclTensor *ReViewToOut(const aclTensor *x, const aclTensor *y, aclOpExecutor *executor);
+const aclTensor* ReViewToOut(const aclTensor* x, const aclTensor* y, aclOpExecutor* executor);
 
 // ============内部接口=============
-bool CanOptimizeContiguous(const op::Shape &viewShape, const op::Strides &strides, int64_t offset, int64_t storageSize,
-                           ContiguousParam &param);
+bool CanOptimizeContiguous(const op::Shape& viewShape, const op::Strides& strides, int64_t offset, int64_t storageSize,
+                           ContiguousParam& param);
 
-bool CanOptimizeView(const op::Shape &viewShape, const op::Strides &strides, int64_t offset, ContiguousParam &param);
+bool CanOptimizeView(const op::Shape& viewShape, const op::Strides& strides, int64_t offset, ContiguousParam& param);
 // ============内部接口=============
 } // namespace l0op
 

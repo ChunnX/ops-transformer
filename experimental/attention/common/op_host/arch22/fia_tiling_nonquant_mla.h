@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_nonquant_mla.h
@@ -26,11 +26,13 @@ namespace optiling {
 
 class FiaTilingNonQuantMla : public FiaTilingBase {
 public:
-    explicit FiaTilingNonQuantMla(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FiaTilingNonQuantMla(gert::TilingContext* context)
+        : FiaTilingBase(context)
+    {}
     ~FiaTilingNonQuantMla() override = default;
 
 protected:
-    void InitTilingInfo(TilingInfo *tilingInfo) override;
+    void InitTilingInfo(TilingInfo* tilingInfo) override;
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
 
@@ -41,8 +43,8 @@ private:
 
     void InitParams();
 
-    void CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitParam) const;
-    void SetSplitOutput(SplitResult &res);
+    void CreateSplitInput(BaseInfo& baseInfo, SplitParam& splitParam) const;
+    void SetSplitOutput(SplitResult& res);
     void Split();
     void CalcInnerSize(uint32_t seqSize);
     void CalcMBaseSize();
@@ -59,7 +61,7 @@ private:
 
     uint32_t CalcFlashDecodeParamNums(const uint32_t coreNum) const;
     uint64_t CalcNormalWorkspaceSize(uint32_t coreNum, int64_t mm1ResSize, int64_t mm2ResSize,
-                                    uint32_t mBaseSize) const;
+                                     uint32_t mBaseSize) const;
     uint64_t CalcFlashDecodeWorkspace(const uint32_t coreNum) const;
     void CalcScheduleMode();
     void CalcWorkspaceSize();
@@ -97,7 +99,7 @@ private:
     uint32_t mFdBaseSize_ = 8;
 
     // Tiling Info
-    FiaTilingInfo *fiaInfo_ = nullptr;
+    FiaTilingInfo* fiaInfo_ = nullptr;
 };
 
 } // namespace optiling

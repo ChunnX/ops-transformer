@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_kernel_empty_tensor.h
@@ -37,14 +37,14 @@ template <typename T>
 class FiaKernelEmptyTensor {
 public:
     __aicore__ inline FiaKernelEmptyTensor(){};
-    __aicore__ inline void Init(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-                                const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
+                                const FusedInferAttentionScoreEmptyTensorTilingData* __restrict tiling, TPipe* tPipe);
     __aicore__ inline void Process();
 
 protected:
     // ==============================TilingData&TPipe==============================
-    const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tilingData = nullptr;
-    TPipe *pipe = nullptr;
+    const FusedInferAttentionScoreEmptyTensorTilingData* __restrict tilingData = nullptr;
+    TPipe* pipe = nullptr;
 
     // ================================Required Global Tensor=================================
     GlobalTensor<T> attentionOutGm;
@@ -93,18 +93,18 @@ __aicore__ inline void FiaKernelEmptyTensor<T>::Process()
 }
 
 template <typename T>
-__aicore__ inline void
-FiaKernelEmptyTensor<T>::Init(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-                              const FusedInferAttentionScoreEmptyTensorTilingData *__restrict tiling, TPipe *tPipe)
+__aicore__ inline void FiaKernelEmptyTensor<T>::Init(
+    __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
+    const FusedInferAttentionScoreEmptyTensorTilingData* __restrict tiling, TPipe* tPipe)
 {
     pipe = tPipe;
     // init tiling data
     tilingData = tiling;
 
     // init global buffer
-    attentionOutGm.SetGlobalBuffer((__gm__ T *)attentionOut);
+    attentionOutGm.SetGlobalBuffer((__gm__ T*)attentionOut);
     if (tilingData->softmaxLseFlag) {
-        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+        softmaxLseGm.SetGlobalBuffer((__gm__ float*)softmaxLse);
     }
 }
 

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_v3_apt.cpp
@@ -217,7 +217,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             int32_t expertCountElements = (t->expertTokensNumType == EXERPT_TOKENS_KEY_VALUE) ?
                                               static_cast<int32_t>(t->expertNum * EXERPT_TOKENS_KEY_VALUE) :
                                               static_cast<int32_t>(t->actualExpertNum);
-            expertTokensCountGm.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum, expertCountElements);
+            expertTokensCountGm.SetGlobalBuffer((__gm__ int64_t*)expertTokensCountOrCumsum, expertCountElements);
             pipe.InitBuffer(zeroBuf, AlignBytes(expertCountElements, sizeof(int64_t)));
 
             LocalTensor<int64_t> zeroLocal = zeroBuf.Get<int64_t>();

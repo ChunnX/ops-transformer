@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <vector>
 #include <array>
 #include <float.h>
@@ -72,8 +72,7 @@ TEST_F(l2_grouped_matmul_add_test, Ascend910B2_grouped_matmul_add_fp16_v2)
     for (int i = 0; i < groupListTypeMode; i++) {
         // groupListType = 0 or 1.
         auto ut = OP_API_UT(aclnnGroupedMatmulAddV2,
-                            INPUT(x, weight, groupList, yRef, transposeX, transposeWeight, groupType, i),
-                            OUTPUT());
+                            INPUT(x, weight, groupList, yRef, transposeX, transposeWeight, groupType, i), OUTPUT());
 
         aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSize(&workspaceSize);
     }

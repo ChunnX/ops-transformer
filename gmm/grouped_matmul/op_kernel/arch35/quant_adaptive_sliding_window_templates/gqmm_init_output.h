@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file gqmm_init_output.h
@@ -21,7 +21,7 @@ using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
 
 namespace AscendC {
 template <typename T>
-__aicore__ inline void GQmmEmptyTensor(GM_ADDR groupListPtr, GM_ADDR y, const GMMQuantParams *__restrict gmmQuantParams,
+__aicore__ inline void GQmmEmptyTensor(GM_ADDR groupListPtr, GM_ADDR y, const GMMQuantParams* __restrict gmmQuantParams,
                                        uint32_t m, uint32_t n)
 {
     if (GetSubBlockIdx() > 1) {
@@ -36,7 +36,7 @@ __aicore__ inline void GQmmEmptyTensor(GM_ADDR groupListPtr, GM_ADDR y, const GM
     GlobalTensor<int64_t> groupListGm;
     LocalTensor<T> initLocal;
     yGm.SetGlobalBuffer(GROUPED_MATMUL::GetTensorAddr<T>(0, y));
-    groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupListPtr);
+    groupListGm.SetGlobalBuffer((__gm__ int64_t*)groupListPtr);
     if (GetSubBlockIdx() == 0) {
         initLocal =
             LocalTensor<T>(TPosition::VECCALC, 0, QuantUtils::MAX_REPEAT_TIMES * QuantUtils::UB_ALIGN_SIZE / sizeof(T));

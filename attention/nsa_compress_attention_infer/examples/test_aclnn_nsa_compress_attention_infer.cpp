@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_nsa_compress_attention_infer_2.cpp
@@ -34,7 +34,7 @@ using namespace std;
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -43,7 +43,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
@@ -56,8 +56,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -114,18 +114,18 @@ int main()
     std::vector<int64_t> blockTableOptionalShape = {batchSize, maxNumBlocksPerSeq};
     std::vector<int64_t> outputShape = {batchSize, numHeads, headDimsV};
     std::vector<int64_t> topkIndicesShape = {batchSize, numKeyValueHeads, selectBlockCount};
-    void *queryDeviceAddr = nullptr;
-    void *keyDeviceAddr = nullptr;
-    void *valueDeviceAddr = nullptr;
-    void *blockTableOptionalDeviceAddr = nullptr;
-    void *outputDeviceAddr = nullptr;
-    void *topkIndicesDeviceAddr = nullptr;
-    aclTensor *queryTensor = nullptr;
-    aclTensor *keyTensor = nullptr;
-    aclTensor *valueTensor = nullptr;
-    aclTensor *blockTableOptionalTensor = nullptr;
-    aclTensor *outputTensor = nullptr;
-    aclTensor *topkIndicesTensor = nullptr;
+    void* queryDeviceAddr = nullptr;
+    void* keyDeviceAddr = nullptr;
+    void* valueDeviceAddr = nullptr;
+    void* blockTableOptionalDeviceAddr = nullptr;
+    void* outputDeviceAddr = nullptr;
+    void* topkIndicesDeviceAddr = nullptr;
+    aclTensor* queryTensor = nullptr;
+    aclTensor* keyTensor = nullptr;
+    aclTensor* valueTensor = nullptr;
+    aclTensor* blockTableOptionalTensor = nullptr;
+    aclTensor* outputTensor = nullptr;
+    aclTensor* topkIndicesTensor = nullptr;
     std::vector<op::fp16_t> queryHostData(batchSize * numHeads * headDimsQK, 1.0);
     std::vector<op::fp16_t> keyHostData(blockNum * pageBlockSize * numKeyValueHeads * headDimsQK, 1.0);
     std::vector<op::fp16_t> valueHostData(blockNum * pageBlockSize * numKeyValueHeads * headDimsV, 1.0);
@@ -159,7 +159,7 @@ int main()
 
     // 3. 调用CANN算子库API
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor;
+    aclOpExecutor* executor;
     // 调用第一段接口
     ret = aclnnNsaCompressAttentionInferGetWorkspaceSize(
         queryTensor, keyTensor, valueTensor, nullptr, blockTableOptionalTensor, nullptr, actualCmpKvSeqLen, nullptr,
@@ -168,7 +168,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaCompressAttentionInferGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
-    void *workspaceAddr = nullptr;
+    void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);

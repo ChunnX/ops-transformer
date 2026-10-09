@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_selected_attention_grad_basic.h
@@ -34,16 +34,16 @@ public:
                                    GM_ADDR attention_out_grad, GM_ADDR softmax_max, GM_ADDR softmax_sum,
                                    GM_ADDR topk_indices, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen,
                                    GM_ADDR atten_mask, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
-                                   const TILING_CLASS *__restrict tilingData);
+                                   const TILING_CLASS* __restrict tilingData);
 
 private:
-    __aicore__ inline void Init(const TILING_CLASS *__restrict tilingData);
-    __aicore__ inline void CubeCompute(CubeOp<NSAGT> &cubeOp);
-    __aicore__ inline void VecCompute(VecOp<NSAGT> &vecOp);
+    __aicore__ inline void Init(const TILING_CLASS* __restrict tilingData);
+    __aicore__ inline void CubeCompute(CubeOp<NSAGT>& cubeOp);
+    __aicore__ inline void VecCompute(VecOp<NSAGT>& vecOp);
     __aicore__ inline void UpdateGmOffset();
     __aicore__ inline void SaveLastInfo();
     __aicore__ inline void GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr, const GM_ADDR actual_seq_kvlen_addr,
-                                        const int64_t t1Idx, int64_t &bIdx);
+                                        const int64_t t1Idx, int64_t& bIdx);
 
     uint32_t cubeBlockIdx;
     uint32_t subBlockIdx;
@@ -99,7 +99,7 @@ private:
 };
 
 template <typename NSAGT>
-__aicore__ inline void SelectedAttentionGradBasic<NSAGT>::Init(const TILING_CLASS *__restrict tilingData)
+__aicore__ inline void SelectedAttentionGradBasic<NSAGT>::Init(const TILING_CLASS* __restrict tilingData)
 {
     dimG = tilingData->opInfo.G;
     dimN2 = tilingData->opInfo.N2;
@@ -131,7 +131,7 @@ template <typename NSAGT>
 __aicore__ inline void SelectedAttentionGradBasic<NSAGT>::Process(
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR softmax_max,
     GM_ADDR softmax_sum, GM_ADDR topk_indices, GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen, GM_ADDR atten_mask,
-    GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
+    GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS* __restrict tilingData)
 {
     Init(tilingData);
 
@@ -200,7 +200,7 @@ __aicore__ inline void SelectedAttentionGradBasic<NSAGT>::Process(
 }
 
 template <typename NSAGT>
-__aicore__ inline void SelectedAttentionGradBasic<NSAGT>::CubeCompute(CubeOp<NSAGT> &cubeOp)
+__aicore__ inline void SelectedAttentionGradBasic<NSAGT>::CubeCompute(CubeOp<NSAGT>& cubeOp)
 {
     if (unlikely(loopCnt == 0)) {
         SET_FLAG(M, MTE1, eventIdPing);
@@ -251,7 +251,7 @@ __aicore__ inline void SelectedAttentionGradBasic<NSAGT>::CubeCompute(CubeOp<NSA
 }
 
 template <typename NSAGT>
-__aicore__ inline void SelectedAttentionGradBasic<NSAGT>::VecCompute(VecOp<NSAGT> &vecOp)
+__aicore__ inline void SelectedAttentionGradBasic<NSAGT>::VecCompute(VecOp<NSAGT>& vecOp)
 {
     CrossCoreWaitFlag(VEC_WAIT_CUBE);
     if (subBlockIdx == 0) {
@@ -303,19 +303,19 @@ __aicore__ inline void SelectedAttentionGradBasic<NSAGT>::SaveLastInfo()
 template <typename NSAGT>
 __aicore__ inline void SelectedAttentionGradBasic<NSAGT>::GetTndSeqLen(const GM_ADDR actual_seq_qlen_addr,
                                                                        const GM_ADDR actual_seq_kvlen_addr,
-                                                                       const int64_t t1Idx, int64_t &bIdx)
+                                                                       const int64_t t1Idx, int64_t& bIdx)
 {
-    int64_t curT1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex];
+    int64_t curT1 = ((__gm__ int64_t*)actual_seq_qlen_addr)[bIndex];
     while (t1Idx >= curT1) {
-        curT1 = ((__gm__ int64_t *)actual_seq_qlen_addr)[++bIndex];
+        curT1 = ((__gm__ int64_t*)actual_seq_qlen_addr)[++bIndex];
     }
 
     if (unlikely(bIndex == 0)) {
         t1Offset = 0;
         t2Offset = 0;
     } else {
-        t1Offset = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIndex - 1];
-        t2Offset = ((__gm__ int64_t *)actual_seq_kvlen_addr)[bIndex - 1];
+        t1Offset = ((__gm__ int64_t*)actual_seq_qlen_addr)[bIndex - 1];
+        t2Offset = ((__gm__ int64_t*)actual_seq_kvlen_addr)[bIndex - 1];
     }
 
     s1Index = t1Idx - t1Offset;

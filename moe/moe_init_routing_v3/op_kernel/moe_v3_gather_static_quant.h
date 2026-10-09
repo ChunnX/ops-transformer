@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_gather_quant.h
@@ -28,8 +28,8 @@ class MoeGatherOutQuant {
 public:
     __aicore__ inline MoeGatherOutQuant(){};
     __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedRowIdx,
-                                GM_ADDR expandedX, GM_ADDR workspace, const MoeInitRoutingV3TilingData *tilingData,
-                                TPipe *tPipe);
+                                GM_ADDR expandedX, GM_ADDR workspace, const MoeInitRoutingV3TilingData* tilingData,
+                                TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -41,7 +41,7 @@ private:
     __aicore__ inline void GatherCopyOut(int64_t progress);
 
 private:
-    TPipe *pipe_;
+    TPipe* pipe_;
     TQue<QuePosition::VECIN, GATHER_OUT_QUANT_BUFFER_NUM> inputXCopyInQueue_;
     TQue<QuePosition::VECIN, GATHER_OUT_QUANT_BUFFER_NUM> expandRowIdxCopyInQueue_;
     TQue<QuePosition::VECOUT, GATHER_OUT_QUANT_BUFFER_NUM> inputXCopyOutQueue_;
@@ -55,7 +55,7 @@ private:
     GlobalTensor<float> offsetGm_;
     GlobalTensor<int32_t> expertTotalCountGm_;
 
-    const MoeV3GatherOutComputeTilingData *gatherOutTilingData_;
+    const MoeV3GatherOutComputeTilingData* gatherOutTilingData_;
 
     int64_t needCoreNum_;
     int64_t blockIdx_;
@@ -87,7 +87,7 @@ private:
 template <typename T, const int EP>
 __aicore__ inline void MoeGatherOutQuant<T, EP>::Init(GM_ADDR inputX, GM_ADDR scale, GM_ADDR offset,
                                                       GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR workspace,
-                                                      const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+                                                      const MoeInitRoutingV3TilingData* tilingData, TPipe* tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -105,9 +105,9 @@ __aicore__ inline void MoeGatherOutQuant<T, EP>::Init(GM_ADDR inputX, GM_ADDR sc
     int64_t actualExpertNum_ = tilingData->actualExpertNum;
 
     if constexpr (EP) {
-        expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                                Align(actualExpertNum_, sizeof(int32_t)),
-                                            1);
+        expertTotalCountGm_.SetGlobalBuffer(
+            (__gm__ int32_t*)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 + Align(actualExpertNum_, sizeof(int32_t)),
+            1);
         AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                                           AscendC::DcciDst::CACHELINE_OUT>(expertTotalCountGm_);
         expertTotalCount_ = expertTotalCountGm_.GetValue(0);
@@ -137,33 +137,33 @@ __aicore__ inline void MoeGatherOutQuant<T, EP>::Init(GM_ADDR inputX, GM_ADDR sc
     lastLoopCols_ = gatherOutTilingData_->lastLoopCols;
     colLoops_ = gatherOutTilingData_->colsLoops;
 
-    inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
-    expandedXGm_.SetGlobalBuffer((__gm__ int8_t *)expandedX);
+    inputXGm_.SetGlobalBuffer((__gm__ T*)inputX);
+    expandedXGm_.SetGlobalBuffer((__gm__ int8_t*)expandedX);
 
     if constexpr (EP) {
         // 获取scatter索引
         if (rowIdxType_ == SCATTER) {
-            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
+            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx + blockIdx_ * perCoreRow_,
                                               Align(coreRows_, sizeof(int32_t)));
         } else {
             expandedRowIdxGm_.SetGlobalBuffer(
-                (__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
+                (__gm__ int32_t*)workspace + Align(n_ * k_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
                 Align(coreRows_, sizeof(int32_t)));
         }
     } else {
         // 获取gather索引
         if (rowIdxType_ == GATHER) {
-            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreRow_,
+            expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx + blockIdx_ * perCoreRow_,
                                               Align(coreRows_, sizeof(int32_t)));
         } else {
             expandedRowIdxGm_.SetGlobalBuffer(
-                (__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
+                (__gm__ int32_t*)workspace + Align(n_ * k_, sizeof(int32_t)) + blockIdx_ * perCoreRow_,
                 Align(coreRows_, sizeof(int32_t)));
         }
     }
 
-    scaleGm_.SetGlobalBuffer((__gm__ float *)scale, 1);
-    offsetGm_.SetGlobalBuffer((__gm__ float *)offset, 1);
+    scaleGm_.SetGlobalBuffer((__gm__ float*)scale, 1);
+    offsetGm_.SetGlobalBuffer((__gm__ float*)offset, 1);
     scale_ = scaleGm_.GetValue(0);
     offset_ = offsetGm_.GetValue(0);
 

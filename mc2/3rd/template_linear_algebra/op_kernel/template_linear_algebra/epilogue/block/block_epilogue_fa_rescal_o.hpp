@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_RESACLE_O_HPP
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_RESACLE_O_HPP
@@ -46,7 +46,7 @@ public:
     static constexpr uint32_t MULTIPLIER = 2;
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    BlockEpilogue(Arch::Resource<ArchTag>& resource)
     {
         constexpr uint32_t LO_UB_TENSOR_OFFSET = 5 * UB_TILE_SIZE;
         constexpr uint32_t DM_UB_TENSOR_OFFSET = 7 * UB_TILE_SIZE + 4 * UB_LINE_SIZE;
@@ -93,7 +93,7 @@ public:
 
     CATLASS_DEVICE
     void subCoreCompute(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementInput> gInput,
-                        const LayoutOutput &layoutOutput, const LayoutInput &layoutInput, uint32_t nIdx,
+                        const LayoutOutput& layoutOutput, const LayoutInput& layoutInput, uint32_t nIdx,
                         uint32_t isLast)
     {
         uint32_t subM = layoutInput.shape(0);
@@ -234,7 +234,7 @@ public:
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementInput> gInput,
-                    const LayoutOutput &layoutOutput, const LayoutInput &layoutInput, GemmCoord actualBlockShape,
+                    const LayoutOutput& layoutOutput, const LayoutInput& layoutInput, GemmCoord actualBlockShape,
                     uint32_t nIdx, uint32_t isLast)
     {
         uint32_t mActual = actualBlockShape.m();

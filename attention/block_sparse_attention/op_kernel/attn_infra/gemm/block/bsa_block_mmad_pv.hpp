@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef BSA_BLOCK_MMAD_PV_HPP
 #define BSA_BLOCK_MMAD_PV_HPP
@@ -73,7 +73,7 @@ public:
     static_assert(std::is_same_v<LayoutC, layout::RowMajor>, "LayoutC only support RowMajor yet!");
 
     /// Construct
-    __aicore__ inline BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
+    __aicore__ inline BlockMmad(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart = 0)
     {
         // Allocate L1 memory space
         l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(l1BufAddrStart + L1A_SIZE * 2);
@@ -88,8 +88,8 @@ public:
     /// Destructor
     __aicore__ inline ~BlockMmad() {}
 
-    __aicore__ inline void getBlockShape(GemmCoord &actualShape, uint32_t &nowNIdx, uint32_t &nLoop,
-                                         uint32_t &stackSeqTile, uint32_t &blockSize)
+    __aicore__ inline void getBlockShape(GemmCoord& actualShape, uint32_t& nowNIdx, uint32_t& nLoop,
+                                         uint32_t& stackSeqTile, uint32_t& blockSize)
     {
         uint32_t nSplitSize = blockSize;
         if (nowNIdx == nLoop - 1) {
@@ -101,10 +101,10 @@ public:
     __aicore__ inline void operator()(AscendC::GlobalTensor<ElementA> gA, AscendC::GlobalTensor<ElementB> gB,
                                       AscendC::GlobalTensor<ElementC> gC, AscendC::GlobalTensor<int32_t> gBlockTable,
                                       AscendC::GlobalTensor<int32_t> gSelectIdx, LayoutA layoutA, LayoutB layoutB,
-                                      LayoutC layoutC, GemmCoord actualOriShape, uint32_t &nIdx, uint32_t &nLoop,
-                                      uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV, uint32_t blockStackNum,
-                                      Arch::CrossCoreFlag softmaxFlag, uint32_t &y, uint32_t &selectNum,
-                                      uint32_t &kvYBlockNum)
+                                      LayoutC layoutC, GemmCoord actualOriShape, uint32_t& nIdx, uint32_t& nLoop,
+                                      uint32_t& blockSize, uint32_t kvSeqlen, uint32_t strideKV, uint32_t blockStackNum,
+                                      Arch::CrossCoreFlag softmaxFlag, uint32_t& y, uint32_t& selectNum,
+                                      uint32_t& kvYBlockNum)
     {
         uint32_t rowNum = actualOriShape[0];
         uint32_t embed = actualOriShape[1];

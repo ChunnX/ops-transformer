@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rotary_position_embbeding_grad_a_dcos_dsin.h
@@ -24,7 +24,7 @@ using namespace AscendC;
 template <typename T>
 class ComputeADcosDsin {
 public:
-    __aicore__ inline ComputeADcosDsin(TPipe *pipe, const RotaryXParams *tiling)
+    __aicore__ inline ComputeADcosDsin(TPipe* pipe, const RotaryXParams* tiling)
         : pipe_(pipe),
           tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR grad, GM_ADDR xCos, GM_ADDR xSin, GM_ADDR cosGrad, GM_ADDR sinGrad);
@@ -32,8 +32,8 @@ public:
 
 private:
     constexpr static int32_t bufferNum = 2;
-    const RotaryXParams *tilingData_;
-    TPipe *pipe_;
+    const RotaryXParams* tilingData_;
+    TPipe* pipe_;
     int64_t blockIdx_ = 0;
     int64_t ubFactorN_ = 0;
     GlobalTensor<T> gradGm_;
@@ -60,11 +60,11 @@ __aicore__ inline void ComputeADcosDsin<T>::Init(GM_ADDR grad, GM_ADDR xCos, GM_
     blockIdx_ = GetBlockIdx();
     int64_t gmOffset = blockIdx_ * tilingData_->blockFactorN * tilingData_->d;
     ubFactorN_ = tilingData_->ubFactorN;
-    gradGm_.SetGlobalBuffer((__gm__ T *)grad + gmOffset);
-    xCosGm_.SetGlobalBuffer((__gm__ T *)xCos + gmOffset);
-    xSinGm_.SetGlobalBuffer((__gm__ T *)xSin + gmOffset);
-    cosGradGm_.SetGlobalBuffer((__gm__ T *)cosGrad + gmOffset);
-    sinGradGm_.SetGlobalBuffer((__gm__ T *)sinGrad + gmOffset);
+    gradGm_.SetGlobalBuffer((__gm__ T*)grad + gmOffset);
+    xCosGm_.SetGlobalBuffer((__gm__ T*)xCos + gmOffset);
+    xSinGm_.SetGlobalBuffer((__gm__ T*)xSin + gmOffset);
+    cosGradGm_.SetGlobalBuffer((__gm__ T*)cosGrad + gmOffset);
+    sinGradGm_.SetGlobalBuffer((__gm__ T*)sinGrad + gmOffset);
     pipe_->InitBuffer(gradInQue_, bufferNum, ubFactorN_ * tilingData_->d * sizeof(T));
     pipe_->InitBuffer(xInQue_, bufferNum, ubFactorN_ * tilingData_->d * sizeof(T));
     pipe_->InitBuffer(cosSinGradOutQue_, bufferNum, ubFactorN_ * tilingData_->d * sizeof(T));

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rotate_half_bf16.h
@@ -25,7 +25,7 @@ class RotateHalfBf16 : public RotateHalfBase<OriT, CmpT> {
 public:
     __aicore__ inline RotateHalfBf16(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y,
-                                const RotaryPositionEmbeddingTilingData &tilingData);
+                                const RotaryPositionEmbeddingTilingData& tilingData);
     __aicore__ inline void Process();
 
 protected:
@@ -51,7 +51,7 @@ protected:
     __aicore__ inline void RB1sdSingleStepProcessBf16(uint32_t progress, uint64_t sLines, uint64_t xBatchStartOffset,
                                                       uint64_t rBatchStartOffset, uint64_t copyLength,
                                                       uint64_t calcLength);
-    __aicore__ inline void Compute(LocalTensor<CmpT> &cos, LocalTensor<CmpT> &sin, uint32_t sLines,
+    __aicore__ inline void Compute(LocalTensor<CmpT>& cos, LocalTensor<CmpT>& sin, uint32_t sLines,
                                    uint32_t calcLength);
     __aicore__ inline void CopyInR(uint64_t rStartOffset, uint16_t sLines, uint32_t copyLength);
     __aicore__ inline void CopyInX(uint64_t xStartOffset, uint16_t sLines, uint32_t copyLength);
@@ -60,17 +60,17 @@ protected:
 
 template <typename OriT, typename CmpT>
 __aicore__ inline void RotateHalfBf16<OriT, CmpT>::Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y,
-                                                        const RotaryPositionEmbeddingTilingData &tilingData)
+                                                        const RotaryPositionEmbeddingTilingData& tilingData)
 {
     this->BaseMemberInit(tilingData);
 
-    xGm.SetGlobalBuffer((__gm__ OriT *)x + this->xOffset + this->xCoreOffset * this->coreRelativeIdx,
+    xGm.SetGlobalBuffer((__gm__ OriT*)x + this->xOffset + this->xCoreOffset * this->coreRelativeIdx,
                         this->xAllocLength);
-    yGm.SetGlobalBuffer((__gm__ OriT *)y + this->xOffset + this->xCoreOffset * this->coreRelativeIdx,
+    yGm.SetGlobalBuffer((__gm__ OriT*)y + this->xOffset + this->xCoreOffset * this->coreRelativeIdx,
                         this->xAllocLength);
-    cosGm.SetGlobalBuffer((__gm__ OriT *)cos + this->rOffset + this->rCoreOffset * this->coreRelativeIdx,
+    cosGm.SetGlobalBuffer((__gm__ OriT*)cos + this->rOffset + this->rCoreOffset * this->coreRelativeIdx,
                           this->rAllocLength);
-    sinGm.SetGlobalBuffer((__gm__ OriT *)sin + this->rOffset + this->rCoreOffset * this->coreRelativeIdx,
+    sinGm.SetGlobalBuffer((__gm__ OriT*)sin + this->rOffset + this->rCoreOffset * this->coreRelativeIdx,
                           this->rAllocLength);
 
     pipe.InitBuffer(inQueueX, DOUBLE_BUFFER, this->storePadDataLength * sizeof(OriT));
@@ -399,7 +399,7 @@ __aicore__ inline void RotateHalfBf16<OriT, CmpT>::CopyOut(uint64_t yOffset, uin
 }
 
 template <typename OriT, typename CmpT>
-__aicore__ inline void RotateHalfBf16<OriT, CmpT>::Compute(LocalTensor<CmpT> &cos, LocalTensor<CmpT> &sin,
+__aicore__ inline void RotateHalfBf16<OriT, CmpT>::Compute(LocalTensor<CmpT>& cos, LocalTensor<CmpT>& sin,
                                                            uint32_t sLines, uint32_t calcLength)
 {
     LocalTensor<OriT> xLocal = inQueueX.DeQue<OriT>();

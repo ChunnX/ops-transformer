@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_selected_attention_common.h
@@ -96,18 +96,18 @@ enum class SparseModeEnum : uint32_t {
 };
 
 template <typename T>
-__aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar)
+__aicore__ inline void GetExtremeValue(T& negativeScalar, T& positiveScalar)
 {
     if constexpr (AscendC::IsSameType<T, float>::value) {
         uint32_t tmp1 = NEGATIVE_MIN_VAULE_FP32;
         uint32_t tmp2 = POSITIVE_MAX_VALUE_FP32;
-        negativeScalar = *((float *)&tmp1);
-        positiveScalar = *((float *)&tmp2);
+        negativeScalar = *((float*)&tmp1);
+        positiveScalar = *((float*)&tmp2);
     } else {
         uint16_t tmp1 = NEGATIVE_MIN_VAULE_FP16;
         uint16_t tmp2 = POSITIVE_MAX_VALUE_FP16;
-        negativeScalar = *((half *)&tmp1);
-        positiveScalar = *((half *)&tmp2);
+        negativeScalar = *((half*)&tmp1);
+        positiveScalar = *((half*)&tmp2);
     }
 }
 

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file mc2_mat_mul_asw_block.h
@@ -31,12 +31,10 @@ using namespace Mc2MatmulV3Advanced;
 class MC2MatmulAswBlockDerive : public Mc2MatmulAswBlock {
 public:
     // constructor
-    __aicore__ inline MC2MatmulAswBlockDerive()
-    {
-    }
+    __aicore__ inline MC2MatmulAswBlockDerive() {}
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-    __aicore__ inline void Init(const void *tilingData);
-    __aicore__ inline void InitForMC2(const void *tilingData, const Mc2Tiling::RCSTiling &cfg, bool isTail,
+    __aicore__ inline void Init(const void* tilingData);
+    __aicore__ inline void InitForMC2(const void* tilingData, const Mc2Tiling::RCSTiling& cfg, bool isTail,
                                       bool isGather = false);
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void CalcGMOffset();
@@ -67,9 +65,9 @@ public:
 };
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
-__aicore__ inline void MC2MatmulAswBlockDerive::Init(const void *tilingData)
+__aicore__ inline void MC2MatmulAswBlockDerive::Init(const void* tilingData)
 {
-    matmulTilingData_ = static_cast<const Mc2MatMulV3TilingData *>(tilingData);
+    matmulTilingData_ = static_cast<const Mc2MatMulV3TilingData*>(tilingData);
 
     params_.index = 0;
     params_.singleCoreM = 0;
@@ -84,7 +82,7 @@ __aicore__ inline void MC2MatmulAswBlockDerive::Init(const void *tilingData)
     params_.totalSplitCnt = params_.mBaseSplitCnt * params_.nBaseSplitCnt;
 }
 
-__aicore__ inline void MC2MatmulAswBlockDerive::InitForMC2(const void *tilingData, const Mc2Tiling::RCSTiling &cfg,
+__aicore__ inline void MC2MatmulAswBlockDerive::InitForMC2(const void* tilingData, const Mc2Tiling::RCSTiling& cfg,
                                                            bool isTail, bool isGather)
 {
     cfg_ = cfg;

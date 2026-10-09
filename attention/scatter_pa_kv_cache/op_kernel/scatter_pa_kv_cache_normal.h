@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file scatter_pa_kv_cache_normal.h
  * \brief
@@ -23,7 +23,7 @@ using namespace AscendC;
 template <typename T1, typename T2, typename IndexDtype, bool NCT = false>
 class ScatterPaKvCacheNormal : public ScatterPaKvCacheNormalCommon {
 public:
-    __aicore__ inline ScatterPaKvCacheNormal(TPipe *pipe, const ScatterPaKvCacheTilingData *__restrict__ tilingData)
+    __aicore__ inline ScatterPaKvCacheNormal(TPipe* pipe, const ScatterPaKvCacheTilingData* __restrict__ tilingData)
         : ScatterPaKvCacheNormalCommon(pipe, tilingData)
     {}
 
@@ -35,11 +35,11 @@ public:
         curBlockFactor_ = (blockId == coreNums - 1) ? tilingData_->tailBlockFactor : tilingData_->blockFactor;
         startTaskId_ = blockId * tilingData_->blockFactor; // 当前核起始token
 
-        keyInGm_.SetGlobalBuffer((__gm__ T1 *)keyIn);
-        keyCacheOutGm_.SetGlobalBuffer((__gm__ T1 *)keyCacheOut);
-        slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)slotMapping);
-        valueInGm_.SetGlobalBuffer((__gm__ T2 *)valueIn);
-        valueCacheOutGm_.SetGlobalBuffer((__gm__ T2 *)valueCacheOut);
+        keyInGm_.SetGlobalBuffer((__gm__ T1*)keyIn);
+        keyCacheOutGm_.SetGlobalBuffer((__gm__ T1*)keyCacheOut);
+        slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype*)slotMapping);
+        valueInGm_.SetGlobalBuffer((__gm__ T2*)valueIn);
+        valueCacheOutGm_.SetGlobalBuffer((__gm__ T2*)valueCacheOut);
     }
 
     // 通用分支

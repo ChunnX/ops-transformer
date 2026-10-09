@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -15,12 +15,12 @@
 
 // 两段式接口
 extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV2GetWorkspaceSize(
-    const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional, const aclTensor *x1ScaleOptional,
-    const aclTensor *x2Scale, const aclTensor *commScaleOptional, const aclTensor *x1OffsetOptional,
-    const aclTensor *x2OffsetOptional, const char *group, const char *commMode, const aclIntArray *alltoAllAxesOptional,
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional, const aclTensor* x1ScaleOptional,
+    const aclTensor* x2Scale, const aclTensor* commScaleOptional, const aclTensor* x1OffsetOptional,
+    const aclTensor* x2OffsetOptional, const char* group, const char* commMode, const aclIntArray* alltoAllAxesOptional,
     int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype,
-    int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor *output,
-    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t groupSize, bool transposeX1, bool transposeX2, const aclTensor* output,
+    const aclTensor* alltoAllOutOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnAlltoAllQuantMatmulV2GetWorkspaceSize start");
     return aclnnAlltoAllQuantMatmulBaseGetWorkspaceSize(
@@ -29,7 +29,7 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV2GetWorkspaceSize(
         groupSize, transposeX1, transposeX2, output, alltoAllOutOptional, workspaceSize, executor);
 }
 
-extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+extern "C" aclnnStatus aclnnAlltoAllQuantMatmulV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                                   aclrtStream stream)
 {
     OP_LOGD("aclnnAlltoAllQuantMatmulV2 start");

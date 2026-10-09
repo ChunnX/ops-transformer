@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_permute_with_ep.cpp
@@ -29,26 +29,26 @@
 #endif
 using namespace AscendC;
 using namespace MoeTokenPermuteWithEp;
-#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...)                                       \
-    do {                                                                                                   \
-        sortClass1<DTYPE_INDICES> op;                                                                      \
-        op.Init(indices, sortedIndices, userWS, t, &sortPipe);                                             \
-        op.Process();                                                                                      \
-        sortPipe.Destroy();                                                                                \
-        sortClass2<int32_t> op2;                                                                           \
-        TPipe sortPipe2;                                                                                   \
-        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2);                                     \
-        op2.Process();                                                                                     \
-        sortPipe2.Destroy();                                                                               \
-        TPipe MoeindexCopyPipe;                                                                            \
-        indexCopyClass<__VA_ARGS__> indexCopyOp;                                                           \
+#define GENERAL_OP_IMPL(sortClass1, sortClass2, indexCopyClass, ...) \
+    do { \
+        sortClass1<DTYPE_INDICES> op; \
+        op.Init(indices, sortedIndices, userWS, t, &sortPipe); \
+        op.Process(); \
+        sortPipe.Destroy(); \
+        sortClass2<int32_t> op2; \
+        TPipe sortPipe2; \
+        op2.Init(sortedIndices, sortedIndices, userWS, t, &sortPipe2); \
+        op2.Process(); \
+        sortPipe2.Destroy(); \
+        TPipe MoeindexCopyPipe; \
+        indexCopyClass<__VA_ARGS__> indexCopyOp; \
         indexCopyOp.Init(tokens, probs, sortedIndices, permuteTokens, permuteProbs, t, &MoeindexCopyPipe); \
-        indexCopyOp.Process();                                                                             \
+        indexCopyOp.Process(); \
     } while (0)
 
-extern "C" __global__ __aicore__ void moe_token_permute_with_ep(
-    GM_ADDR tokens, GM_ADDR indices, GM_ADDR probs, GM_ADDR permuteTokens, GM_ADDR sortedIndices, GM_ADDR permuteProbs,
-    GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_token_permute_with_ep(GM_ADDR tokens, GM_ADDR indices, GM_ADDR probs,
+                                                                GM_ADDR permuteTokens, GM_ADDR sortedIndices,
+                                                                GM_ADDR permuteProbs, GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;

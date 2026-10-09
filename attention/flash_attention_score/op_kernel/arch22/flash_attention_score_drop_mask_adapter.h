@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_drop_mask_adapter.h
@@ -22,12 +22,12 @@
 class FlashAttentionScoreDropMaskAdapter {
 public:
     __aicore__ inline FlashAttentionScoreDropMaskAdapter() {}
-    __aicore__ inline void Init(__gm__ uint8_t *dropMask, __gm__ uint8_t *workspace,
-                                const FlashAttentionScoreGeneralTilingData *__restrict tiling, AscendC::TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* dropMask, __gm__ uint8_t* workspace,
+                                const FlashAttentionScoreGeneralTilingData* __restrict tiling, AscendC::TPipe* tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void CopyIn(int64_t offset, int32_t calSize);
-    __aicore__ inline void Compute(int32_t calSize, AscendC::LocalTensor<half> &dropMaskSelSrc,
-                                   const AscendC::BinaryRepeatParams &binaryRepeatParams);
+    __aicore__ inline void Compute(int32_t calSize, AscendC::LocalTensor<half>& dropMaskSelSrc,
+                                   const AscendC::BinaryRepeatParams& binaryRepeatParams);
     __aicore__ inline void CopyOut(int64_t offset, int32_t calSize);
     __aicore__ inline void SyncAllCores();
 
@@ -47,8 +47,8 @@ public:
     };
 
     int32_t blockIdx;
-    AscendC::TPipe *pipe;
-    const FlashAttentionScoreGeneralTilingData *__restrict tilingData;
+    AscendC::TPipe* pipe;
+    const FlashAttentionScoreGeneralTilingData* __restrict tilingData;
 
     AscendC::GlobalTensor<uint8_t> dropMaskGm;
     AscendC::GlobalTensor<uint8_t> outputGm;
@@ -64,8 +64,8 @@ public:
 };
 
 __aicore__ inline void FlashAttentionScoreDropMaskAdapter::Init(
-    __gm__ uint8_t *dropMask, __gm__ uint8_t *workspace, const FlashAttentionScoreGeneralTilingData *__restrict tiling,
-    AscendC::TPipe *tPipe)
+    __gm__ uint8_t* dropMask, __gm__ uint8_t* workspace, const FlashAttentionScoreGeneralTilingData* __restrict tiling,
+    AscendC::TPipe* tPipe)
 {
     pipe = tPipe;
     tilingData = tiling;
@@ -135,7 +135,7 @@ __aicore__ inline void FlashAttentionScoreDropMaskAdapter::CopyIn(int64_t offset
 }
 
 __aicore__ inline void FlashAttentionScoreDropMaskAdapter::Compute(
-    int32_t calSize, AscendC::LocalTensor<half> &dropMaskSelSrc, const AscendC::BinaryRepeatParams &binaryRepeatParams)
+    int32_t calSize, AscendC::LocalTensor<half>& dropMaskSelSrc, const AscendC::BinaryRepeatParams& binaryRepeatParams)
 {
     AscendC::LocalTensor<half> dropMaskSelRes = dropMaskSelResTBuf.template Get<half>();
     AscendC::LocalTensor<uint8_t> dropMaskUb = dropMaskInputQueue.template DeQue<uint8_t>();

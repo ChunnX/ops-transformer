@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_swiglu_quant_v2_a8w4_msd_pre.h
@@ -32,11 +32,11 @@ class GMMA8W4PreProcess {
 public:
     __aicore__ inline GMMA8W4PreProcess(){};
     __aicore__ inline void Init(const GMAddrParams gmAddrParams,
-                                const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParamsIN);
-    __aicore__ inline void CalculateTaskInfoEachCore(uint32_t &curCoreTaskNum_, uint32_t &curCoreStartOffset_);
-    __aicore__ inline void Process(WorkSpaceSplitConfig &workspaceSplitConfig, int64_t workspaceSplitLoopIdx,
-                                   TPipe *pipe);
-    __aicore__ inline void CustomInitBuffer(TPipe *pipe);
+                                const GMMSwigluQuantV2BaseParams* __restrict gmmSwigluQuantV2BaseParamsIN);
+    __aicore__ inline void CalculateTaskInfoEachCore(uint32_t& curCoreTaskNum_, uint32_t& curCoreStartOffset_);
+    __aicore__ inline void Process(WorkSpaceSplitConfig& workspaceSplitConfig, int64_t workspaceSplitLoopIdx,
+                                   TPipe* pipe);
+    __aicore__ inline void CustomInitBuffer(TPipe* pipe);
 
 private:
     TQue<QuePosition::VECIN, BUFFER_NUM_A8W4_PRE> vecInQueueX, vecInQueueXBak;
@@ -46,7 +46,7 @@ private:
     TQue<QuePosition::VECOUT, BUFFER_NUM_A8W4_PRE> vecOutQueue0F;
     TQue<QuePosition::VECOUT, BUFFER_NUM_A8W4_PRE> vecOutQueueRowSum;
     TBuf<TPosition::VECCALC> tempBuff;
-    const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParams;
+    const GMMSwigluQuantV2BaseParams* __restrict gmmSwigluQuantV2BaseParams;
     LocalTensor<int8_t> xTensor;
     LocalTensor<half> xHighHalfTensor;
     LocalTensor<float> xHighFloatTensor;
@@ -75,12 +75,12 @@ private:
 };
 
 __aicore__ inline void GMMA8W4PreProcess::Init(
-    const GMAddrParams gmAddrParams, const GMMSwigluQuantV2BaseParams *__restrict gmmSwigluQuantV2BaseParamsIN)
+    const GMAddrParams gmAddrParams, const GMMSwigluQuantV2BaseParams* __restrict gmmSwigluQuantV2BaseParamsIN)
 {
     if ASCEND_IS_AIV {
-        xGM.SetGlobalBuffer((__gm__ int8_t *)gmAddrParams.xGM);
-        yGm1.SetGlobalBuffer((__gm__ int8_t *)gmAddrParams.workSpaceGM);
-        yGm2.SetGlobalBuffer((__gm__ int8_t *)gmAddrParams.workSpaceGM + gmAddrParams.workSpaceOffset1);
+        xGM.SetGlobalBuffer((__gm__ int8_t*)gmAddrParams.xGM);
+        yGm1.SetGlobalBuffer((__gm__ int8_t*)gmAddrParams.workSpaceGM);
+        yGm2.SetGlobalBuffer((__gm__ int8_t*)gmAddrParams.workSpaceGM + gmAddrParams.workSpaceOffset1);
         gmmSwigluQuantV2BaseParams = gmmSwigluQuantV2BaseParamsIN;
         vK = gmmSwigluQuantV2BaseParams->K;
         groupNum = static_cast<uint32_t>(gmmSwigluQuantV2BaseParams->groupNum);
@@ -89,7 +89,7 @@ __aicore__ inline void GMMA8W4PreProcess::Init(
     }
 }
 
-__aicore__ inline void GMMA8W4PreProcess::CustomInitBuffer(TPipe *pipe)
+__aicore__ inline void GMMA8W4PreProcess::CustomInitBuffer(TPipe* pipe)
 {
     pipe->InitBuffer(vecInQueueX, BUFFER_NUM_A8W4_PRE, vK * sizeof(int8_t));    // K * 1B
     pipe->InitBuffer(vecOutQueueA1, BUFFER_NUM_A8W4_PRE, vK * sizeof(int4b_t)); // K * 0.5B
@@ -101,8 +101,8 @@ __aicore__ inline void GMMA8W4PreProcess::CustomInitBuffer(TPipe *pipe)
     pipe->InitBuffer(vecOutQueue0F, BUFFER_NUM_A8W4_PRE, BUFFER_SIZE_256B); // 256B
 }
 
-__aicore__ inline void GMMA8W4PreProcess::CalculateTaskInfoEachCore(uint32_t &curCoreTaskNum_,
-                                                                    uint32_t &curCoreStartOffset_)
+__aicore__ inline void GMMA8W4PreProcess::CalculateTaskInfoEachCore(uint32_t& curCoreTaskNum_,
+                                                                    uint32_t& curCoreStartOffset_)
 {
     // 均分任务数
     int64_t eachCoreTaskNum = (totalM + blockDim - 1) / blockDim; // 每个核处理的数据量
@@ -120,8 +120,8 @@ __aicore__ inline void GMMA8W4PreProcess::CalculateTaskInfoEachCore(uint32_t &cu
         curCoreId < tailCoreIdx ? eachCoreTaskNum * curCoreId : ((eachCoreTaskNum - 1) * curCoreId + tailCoreIdx);
 }
 
-__aicore__ inline void GMMA8W4PreProcess::Process(WorkSpaceSplitConfig &workspaceSplitConfig,
-                                                  int64_t workspaceSplitLoopIdx, TPipe *pipe)
+__aicore__ inline void GMMA8W4PreProcess::Process(WorkSpaceSplitConfig& workspaceSplitConfig,
+                                                  int64_t workspaceSplitLoopIdx, TPipe* pipe)
 {
     if ASCEND_IS_AIV {
         if (workspaceSplitLoopIdx >= workspaceSplitConfig.loopCount) {

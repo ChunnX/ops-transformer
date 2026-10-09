@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
@@ -18,11 +18,10 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(GroupedMatmulSwigluQuant);
 
-const std::tuple<aclTensor *, aclTensor *>
-GroupedMatmulSwigluQuant(const aclTensor *x, const aclTensor *weight, const aclTensor *perChannelScale,
-                         const aclTensor *perTokenScale, const aclTensor *groupList,
-                         const aclTensor *weightAssistanceMatrix, bool isEnableWeightAssistanceMatrix, int dequantMode,
-                         aclOpExecutor *executor)
+const std::tuple<aclTensor*, aclTensor*> GroupedMatmulSwigluQuant(
+    const aclTensor* x, const aclTensor* weight, const aclTensor* perChannelScale, const aclTensor* perTokenScale,
+    const aclTensor* groupList, const aclTensor* weightAssistanceMatrix, bool isEnableWeightAssistanceMatrix,
+    int dequantMode, aclOpExecutor* executor)
 {
     L0_DFX(GroupedMatmulSwigluQuant, x, weight, perChannelScale, perTokenScale, weightAssistanceMatrix, groupList,
            isEnableWeightAssistanceMatrix, dequantMode);

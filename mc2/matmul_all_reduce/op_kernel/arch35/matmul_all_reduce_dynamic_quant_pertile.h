@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_dynamic_quant_pertile.h
@@ -45,7 +45,7 @@ public:
     GlobalTensor<T> dequantInputGM_;
     GlobalTensor<U> dequantOutputGM_;
     GlobalTensor<float> scaleGM_;
-    TPipe *pipe_;
+    TPipe* pipe_;
     TQue<QuePosition::VECIN, 1> tilesQ_;
     TQue<QuePosition::VECOUT, 1> outTilesQ_;
     TQue<QuePosition::VECIN, 1> inScalesQ_;
@@ -58,7 +58,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR inputAddr, GM_ADDR outputAddr, uint32_t tileM, uint32_t tileN,
                                 uint32_t oneLineScaleCnt, uint32_t coreNum, uint32_t maxProcRows, bool isQuant,
-                                TPipe *tPipe)
+                                TPipe* tPipe)
     {
         if ASCEND_IS_AIC {
             return;
@@ -153,12 +153,12 @@ public:
             outputOffset = this->procRows_ * totalNandSLen * (outerIdx - 1) * coreNum;
             outputOffset += this->procRowsFirstTail_ * totalNandSLen * coreNum;
         }
-        quantInputGM_.SetGlobalBuffer((__gm__ float *)this->inputAddr_ + inputBlockSize * GetBlockIdx() + inputOffset,
+        quantInputGM_.SetGlobalBuffer((__gm__ float*)this->inputAddr_ + inputBlockSize * GetBlockIdx() + inputOffset,
                                       inputBlockSize);
-        quantOutputGM_.SetGlobalBuffer((__gm__ T *)(this->outputAddr_ + outputBlockLen * GetBlockIdx() + outputOffset),
+        quantOutputGM_.SetGlobalBuffer((__gm__ T*)(this->outputAddr_ + outputBlockLen * GetBlockIdx() + outputOffset),
                                        outputBlockSize);
         scaleGM_.SetGlobalBuffer(
-            (__gm__ float *)(this->outputAddr_ + outputBlockLen * GetBlockIdx() + outputOffset + tileN * sizeof(T)),
+            (__gm__ float*)(this->outputAddr_ + outputBlockLen * GetBlockIdx() + outputOffset + tileN * sizeof(T)),
             outputScaleSize);
         pipe_->InitBuffer(tilesQ_, DOUBLE_BUFFER, bufDataCnt * sizeof(float));
         pipe_->InitBuffer(outTilesQ_, DOUBLE_BUFFER, bufDataCnt * sizeof(T));
@@ -188,12 +188,12 @@ public:
             outputOffset = this->procRows_ * tileN * (outerIdx - 1) * coreNum;
             outputOffset += this->procRowsFirstTail_ * tileN * coreNum;
         }
-        dequantInputGM_.SetGlobalBuffer((__gm__ T *)(this->inputAddr_ + inputBlockLen * GetBlockIdx() + inputOffset),
+        dequantInputGM_.SetGlobalBuffer((__gm__ T*)(this->inputAddr_ + inputBlockLen * GetBlockIdx() + inputOffset),
                                         inputBlockSize);
-        dequantOutputGM_.SetGlobalBuffer((__gm__ U *)this->outputAddr_ + outputBlockSize * GetBlockIdx() + outputOffset,
+        dequantOutputGM_.SetGlobalBuffer((__gm__ U*)this->outputAddr_ + outputBlockSize * GetBlockIdx() + outputOffset,
                                          outputBlockSize);
         scaleGM_.SetGlobalBuffer(
-            (__gm__ float *)(this->inputAddr_ + inputBlockLen * GetBlockIdx() + inputOffset + tileN * sizeof(T)),
+            (__gm__ float*)(this->inputAddr_ + inputBlockLen * GetBlockIdx() + inputOffset + tileN * sizeof(T)),
             scaleBlockSize);
         pipe_->InitBuffer(tilesQ_, DOUBLE_BUFFER, bufDataCnt * sizeof(T));
         pipe_->InitBuffer(inScalesQ_, DOUBLE_BUFFER,
@@ -290,7 +290,7 @@ public:
         DataCopyExtParams gToLSCopyParams = {static_cast<uint16_t>(curRows),
                                              static_cast<uint32_t>(curRowScaleCnt * sizeof(float)), gToLSCopyStride, 0,
                                              0};
-        DataCopyPadExtParams<T> padParamsFp8 = {false, 0, 0, *(reinterpret_cast<T *>(uint8_t(0)))};
+        DataCopyPadExtParams<T> padParamsFp8 = {false, 0, 0, *(reinterpret_cast<T*>(uint8_t(0)))};
         LocalTensor<T> curTiles = tilesQ_.AllocTensor<T>();
         LocalTensor<float> curScales = inScalesQ_.AllocTensor<float>();
         DataCopyPad<T, PaddingMode::Normal>(curTiles, dequantInputGM_[innerIdx * this->procRowTileCnt_ * TILELEN],

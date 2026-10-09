@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "onnx_common.h"
 #include "op_transformer_proto_extend.h"
@@ -19,9 +19,9 @@ constexpr int INDEX_TWO = 2;
 constexpr int INDEX_THREE = 3;
 constexpr int ACL_FLOAT16 = 1;
 
-static Status ParseParamsNpuFusedAttentionScore(const Message *op_src, ge::Operator &op_dest)
+static Status ParseParamsNpuFusedAttentionScore(const Message* op_src, ge::Operator& op_dest)
 {
-    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
+    const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
     if (node == nullptr) {
         OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed.");
         return FAILED;
@@ -40,7 +40,7 @@ static Status ParseParamsNpuFusedAttentionScore(const Message *op_src, ge::Opera
     bool bmm_score_transpose_a = false;
     bool bmm_score_transpose_b = false;
 
-    for (const auto &attr : node->attribute()) {
+    for (const auto& attr : node->attribute()) {
         if (attr.name() == "scale" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
             scale = attr.f();
             required_attr_num++;
@@ -74,7 +74,7 @@ static Status ParseParamsNpuFusedAttentionScore(const Message *op_src, ge::Opera
 }
 
 namespace {
-static Status GetAttrFromPre3(const ge::Operator &op, float &scale, float &keep_prob, bool &query_transpose)
+static Status GetAttrFromPre3(const ge::Operator& op, float& scale, float& keep_prob, bool& query_transpose)
 {
     if (op.GetAttr("scale", scale) != SUCCESS) {
         OP_LOGE(GetOpName(op).c_str(), "get scale from op failed");
@@ -91,8 +91,8 @@ static Status GetAttrFromPre3(const ge::Operator &op, float &scale, float &keep_
     return SUCCESS;
 }
 
-static Status GetAttrFromLast3(const ge::Operator &op, bool &key_transpose, bool &bmm_score_transpose_a,
-                               bool &bmm_score_transpose_b)
+static Status GetAttrFromLast3(const ge::Operator& op, bool& key_transpose, bool& bmm_score_transpose_a,
+                               bool& bmm_score_transpose_b)
 {
     if (op.GetAttr("key_transpose", key_transpose) != SUCCESS) {
         OP_LOGE(GetOpName(op).c_str(), "get key_transpose from op failed");
@@ -110,7 +110,7 @@ static Status GetAttrFromLast3(const ge::Operator &op, bool &key_transpose, bool
 }
 } // namespace
 
-static Status ParseOpToGraphNpuFusedAttentionScore(const ge::Operator &op, ge::Graph &graph)
+static Status ParseOpToGraphNpuFusedAttentionScore(const ge::Operator& op, ge::Graph& graph)
 {
     std::string ori_name;
     if (op.GetAttr("name", ori_name) != SUCCESS) {

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_tiling_context.h
@@ -22,7 +22,7 @@
 #endif
 namespace optiling {
 struct RequiredParaInfo {
-    void *data = nullptr;
+    void* data = nullptr;
     at::IntArrayRef shape;
     at::ScalarType dType = at::ScalarType::Float;
 
@@ -41,7 +41,7 @@ struct RequiredParaInfo {
 
 struct OptionalTensorParaInfo {
     bool hasValue = false;                        // optional 是否有值
-    void *data = nullptr;                         // 无值时为 nullptr
+    void* data = nullptr;                         // 无值时为 nullptr
     at::IntArrayRef shape;                        // 无值时通常为空
     at::ScalarType dType = at::ScalarType::Float; // 无值时保留默认类型
 
@@ -58,9 +58,8 @@ struct OptionalTensorParaInfo {
     }
 };
 
-
 struct IFAContext {
-    const char *opName = nullptr;
+    const char* opName = nullptr;
     RequiredParaInfo query;
     RequiredParaInfo key;
     RequiredParaInfo value;
@@ -100,7 +99,7 @@ struct IFAContext {
     int64_t nextToken;
     float scaleValue;
     uint32_t kvHeadNums;
-    const char *layOut;
+    const char* layOut;
     uint32_t blockSize;
     uint32_t innerPrecise;
     int64_t antiquantMode;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file scatter_pa_kv_cache.cpp
  * \brief scatter_pa_kv_cache
@@ -67,11 +67,13 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
     }
     // nz
     else if (TILING_KEY_IS(NZ_FULLY_LOAD)) {
-        ScatterPaKvCache::ScatterPaKvCacheNormalNzFullyLoad<DTYPE_KEY, DTYPE_VALUE, DTYPE_SLOT_MAPPING> op(&pipe, &tilingData);
+        ScatterPaKvCache::ScatterPaKvCacheNormalNzFullyLoad<DTYPE_KEY, DTYPE_VALUE, DTYPE_SLOT_MAPPING> op(&pipe,
+                                                                                                           &tilingData);
         op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
         op.Process();
     } else if (TILING_KEY_IS(NZ_NOT_FULLY_LOAD)) {
-        ScatterPaKvCache::ScatterPaKvCacheNormalNzNotFullyLoad<DTYPE_KEY, DTYPE_VALUE, DTYPE_SLOT_MAPPING> op(&pipe, &tilingData);
+        ScatterPaKvCache::ScatterPaKvCacheNormalNzNotFullyLoad<DTYPE_KEY, DTYPE_VALUE, DTYPE_SLOT_MAPPING> op(
+            &pipe, &tilingData);
         op.Init(key, slot_mapping, value, key_cache_out, value_cache_out);
         op.Process();
     }
@@ -114,11 +116,13 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
     }
     // norm_nct
     else if TILING_KEY_IS (NORM_NCT_FULLY_LOAD) {
-        ScatterPaKvCache::ScatterPaKvCacheNormal<DTYPE_KEY, DTYPE_VALUE, DTYPE_SLOT_MAPPING, true> op(&pipe, &tilingData);
+        ScatterPaKvCache::ScatterPaKvCacheNormal<DTYPE_KEY, DTYPE_VALUE, DTYPE_SLOT_MAPPING, true> op(&pipe,
+                                                                                                      &tilingData);
         op.Init(key, value, slot_mapping, key_cache_out, value_cache_out);
         op.ProcessFullyLoad();
     } else if TILING_KEY_IS (NORM_NCT_NOT_FULLY_LOAD) {
-        ScatterPaKvCache::ScatterPaKvCacheNormal<DTYPE_KEY, DTYPE_VALUE, DTYPE_SLOT_MAPPING, true> op(&pipe, &tilingData);
+        ScatterPaKvCache::ScatterPaKvCacheNormal<DTYPE_KEY, DTYPE_VALUE, DTYPE_SLOT_MAPPING, true> op(&pipe,
+                                                                                                      &tilingData);
         op.Init(key, value, slot_mapping, key_cache_out, value_cache_out);
         op.Process();
     }

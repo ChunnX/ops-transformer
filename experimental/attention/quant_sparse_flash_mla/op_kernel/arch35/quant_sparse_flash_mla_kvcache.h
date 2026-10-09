@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_sparse_flash_mla_kvcache.h
@@ -26,11 +26,11 @@ using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 
 TEMPLATE_INTF
-__aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo &constInfo,
-    GlobalTensor<int32_t>& cuSeqlensQGm, GlobalTensor<int32_t>& cuSeqlensOriKvGm,
-    GlobalTensor<int32_t>& cuSeqlensCmpKvGm, GlobalTensor<int32_t>& actualSeqQlenGm,
-    GlobalTensor<int32_t>& actualSeqOriKvlenGm, GlobalTensor<int32_t>& actualSeqCmpKvlenGm,
-    GlobalTensor<int32_t>& cmpResidualKvGm, bool hasCuSeqlensOriKv,
+__aicore__ inline void GetSingleCoreParam(
+    RunParamStr& runParam, const ConstInfo& constInfo, GlobalTensor<int32_t>& cuSeqlensQGm,
+    GlobalTensor<int32_t>& cuSeqlensOriKvGm, GlobalTensor<int32_t>& cuSeqlensCmpKvGm,
+    GlobalTensor<int32_t>& actualSeqQlenGm, GlobalTensor<int32_t>& actualSeqOriKvlenGm,
+    GlobalTensor<int32_t>& actualSeqCmpKvlenGm, GlobalTensor<int32_t>& cmpResidualKvGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
     int32_t actualS1Size = 0;
@@ -39,10 +39,9 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     int32_t bIdx = runParam.boIdx;
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         actualS1Size = (!hasActualSeqQlen) ? (cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx)) :
-            actualSeqQlenGm.GetValue(bIdx);
+                                             actualSeqQlenGm.GetValue(bIdx);
     } else {
-        actualS1Size = (!hasActualSeqQlen) ? constInfo.s1Size :
-            actualSeqQlenGm.GetValue(bIdx);
+        actualS1Size = (!hasActualSeqQlen) ? constInfo.s1Size : actualSeqQlenGm.GetValue(bIdx);
     }
 
     if constexpr (KV_LAYOUT_T == QSMLA_LAYOUT::TND) {
@@ -52,8 +51,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             actualS2OriSize = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
         }
     } else {
-        actualS2OriSize = (!hasActualSeqOriKvlen) ? constInfo.s2Size :
-            actualSeqOriKvlenGm.GetValue(bIdx);
+        actualS2OriSize = (!hasActualSeqOriKvlen) ? constInfo.s2Size : actualSeqOriKvlenGm.GetValue(bIdx);
     }
 
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
@@ -66,8 +64,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
                 actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
             }
         } else {
-            actualS2CmpSize = (!hasActualSeqCmpKvlen) ? (actualS2OriSize / constInfo.cmpRatio) :
-                actualSeqCmpKvlenGm.GetValue(bIdx);
+            actualS2CmpSize =
+                (!hasActualSeqCmpKvlen) ? (actualS2OriSize / constInfo.cmpRatio) : actualSeqCmpKvlenGm.GetValue(bIdx);
         }
     }
 
@@ -76,8 +74,8 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runParam.actualS2CmpSize = actualS2CmpSize;
         runParam.cmpResidual = cmpResidualKvGm.GetValue(bIdx);
-        runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio +
-            runParam.cmpResidual - runParam.actualS1Size;
+        runParam.nextTokensPerBatchCmp =
+            (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio + runParam.cmpResidual - runParam.actualS1Size;
     }
     runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
     if (constInfo.oriWinLeft == -1) {
@@ -89,30 +87,29 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo &constInfo,
-    GlobalTensor<int32_t>& cuSeqlensQGm, GlobalTensor<int32_t>& cuSeqlensOriKvGm,
-    GlobalTensor<int32_t>& cuSeqlensCmpKvGm, GlobalTensor<int32_t>& actualSeqQlenGm,
-    GlobalTensor<int32_t>& actualSeqOriKvlenGm, GlobalTensor<int32_t>& actualSeqCmpKvlenGm,
-    GlobalTensor<int32_t>& cmpResidualKvGm, bool hasCuSeqlensOriKv,
+__aicore__ inline void ComputeParamBatch(
+    RunParamStr& runParam, const ConstInfo& constInfo, GlobalTensor<int32_t>& cuSeqlensQGm,
+    GlobalTensor<int32_t>& cuSeqlensOriKvGm, GlobalTensor<int32_t>& cuSeqlensCmpKvGm,
+    GlobalTensor<int32_t>& actualSeqQlenGm, GlobalTensor<int32_t>& actualSeqOriKvlenGm,
+    GlobalTensor<int32_t>& actualSeqCmpKvlenGm, GlobalTensor<int32_t>& cmpResidualKvGm, bool hasCuSeqlensOriKv,
     bool hasCuSeqlensCmpKv, bool hasActualSeqQlen, bool hasActualSeqOriKvlen, bool hasActualSeqCmpKvlen)
 {
-    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQGm, cuSeqlensOriKvGm,
-        cuSeqlensCmpKvGm, actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm,
-        cmpResidualKvGm, hasCuSeqlensOriKv, hasCuSeqlensCmpKv,
-        hasActualSeqQlen, hasActualSeqOriKvlen, hasActualSeqCmpKvlen);
+    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, cuSeqlensQGm, cuSeqlensOriKvGm, cuSeqlensCmpKvGm,
+                                           actualSeqQlenGm, actualSeqOriKvlenGm, actualSeqCmpKvlenGm, cmpResidualKvGm,
+                                           hasCuSeqlensOriKv, hasCuSeqlensCmpKv, hasActualSeqQlen, hasActualSeqOriKvlen,
+                                           hasActualSeqCmpKvlen);
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo, bool lastBN,
-    int64_t nextGs1Idx, int64_t gS1StartIdx)
+__aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo& constInfo, bool lastBN,
+                                         int64_t nextGs1Idx, int64_t gS1StartIdx)
 {
     // 计算每个基本块可以拷贝多少行s
-    runParam.qSNumInOneBlock = (constInfo.gSize <= 64) ? \
-        (constInfo.s1BaseSize / constInfo.gSize) : 1;
+    runParam.qSNumInOneBlock = (constInfo.gSize <= 64) ? (constInfo.s1BaseSize / constInfo.gSize) : 1;
     runParam.gs1LoopStartIdx = gS1StartIdx;
     if (runParam.nextTokensPerBatchOri < 0) {
-        int64_t gs1LoopStartIdx = runParam.nextTokensPerBatchOri * (-1) / runParam.qSNumInOneBlock *
-            runParam.qSNumInOneBlock;
+        int64_t gs1LoopStartIdx =
+            runParam.nextTokensPerBatchOri * (-1) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock;
         if (gs1LoopStartIdx > gS1StartIdx) {
             runParam.gs1LoopStartIdx = gs1LoopStartIdx;
         }
@@ -121,7 +118,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     int32_t gs1LoopEndIdx = 0;
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::SCFA_TEMPLATE_MODE) {
         gs1LoopEndIdx = runParam.actualS1Size; // 对于SCFA, 不切G轴, 每次拷贝一行的topk，只算一行的qs
-    } else { // SWA/CFA
+    } else {                                   // SWA/CFA
         // 不需要取topk, 每次计算gSize行, 循环qs次
         gs1LoopEndIdx = (runParam.actualS1Size + runParam.qSNumInOneBlock - 1) / runParam.qSNumInOneBlock;
     }
@@ -138,8 +135,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
 }
 
 TEMPLATE_INTF
-__aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo &constInfo,
-    uint32_t sOuterLoopIdx)
+__aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo& constInfo, uint32_t sOuterLoopIdx)
 {
     int64_t cubeSOuterOffset = sOuterLoopIdx * runParam.qSNumInOneBlock;
     if (runParam.actualS1Size == 0) {
@@ -175,8 +171,8 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
 }
 
 TEMPLATE_INTF
-__aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstInfo &constInfo,
-    int32_t sIdx, GlobalTensor<int32_t>& cuSeqlensQGm)
+__aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstInfo& constInfo, int32_t sIdx,
+                                            GlobalTensor<int32_t>& cuSeqlensQGm)
 {
     if ASCEND_IS_AIV {
         int64_t seqOffset = 0;
@@ -188,9 +184,8 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
 
         int64_t attentionOutSeqOffset = seqOffset * constInfo.n2GDv;
         if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND || LAYOUT_T == QSMLA_LAYOUT::TND) {
-            runParam.attentionOutOffset = attentionOutSeqOffset +
-                runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
-                runParam.goIdx * constInfo.dSizeV;
+            runParam.attentionOutOffset = attentionOutSeqOffset + runParam.sOuterOffset * constInfo.n2GDv +
+                                          runParam.n2oIdx * constInfo.gDv + runParam.goIdx * constInfo.dSizeV;
         }
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.halfMRealSize * constInfo.dSizeV;
@@ -199,12 +194,12 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &constInfo,
-    uint32_t sOuterLoopIdx, GlobalTensor<int32_t>& cuSeqlensQGm)
+__aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo& constInfo, uint32_t sOuterLoopIdx,
+                                      GlobalTensor<int32_t>& cuSeqlensQGm)
 {
     if (runParam.nextTokensPerBatchOri < 0) {
-        if (runParam.s1oIdx < (runParam.nextTokensPerBatchOri * (-1)) /
-            runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
+        if (runParam.s1oIdx <
+            (runParam.nextTokensPerBatchOri * (-1)) / runParam.qSNumInOneBlock * runParam.qSNumInOneBlock) {
             return true;
         }
     }
@@ -236,7 +231,7 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo)
+__aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo& constInfo)
 {
     if (runParam.actualS2OriSize == 0) {
         runParam.oriKvLoopEndIdx = 0;
@@ -254,8 +249,8 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
 
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         runParam.s2LineCmpEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
-            (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.nextTokensPerBatchCmp) / constInfo.cmpRatio,
-            0, runParam.actualS2CmpSize);
+            (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.nextTokensPerBatchCmp) / constInfo.cmpRatio, 0,
+            runParam.actualS2CmpSize);
         if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CFA_TEMPLATE_MODE) {
             runParam.s2CmpLineEndIdx = Min(runParam.s2LineCmpEndIdx, runParam.actualS2CmpSize);
             runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
@@ -273,7 +268,7 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
 }
 
 TEMPLATE_INTF
-__aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &runInfo)
+__aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo& runInfo)
 {
     runInfo.boIdx = runParam.boIdx;
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
@@ -291,4 +286,4 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
 }
 
-#endif  // QUANT_SPARSE_FLASH_MLA_KVCACHE_H
+#endif // QUANT_SPARSE_FLASH_MLA_KVCACHE_H

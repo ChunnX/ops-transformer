@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file npu_masked_softmax_with_relposbias_onnx_plugin.cpp
@@ -20,9 +20,9 @@ namespace domi {
 using NodeProto = ge::onnx::NodeProto;
 constexpr int OUTPUT_INDEX = 1;
 // x, atten_mask, relative_pos_bias, scale_value, inner_precision_mode float scale_value=1.0, int inner_precision_mode=0
-static Status ParseParamsNpuMaskedSoftmaxWithRelPosBias(const Message *op_src, ge::Operator &op_dest)
+static Status ParseParamsNpuMaskedSoftmaxWithRelPosBias(const Message* op_src, ge::Operator& op_dest)
 {
-    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
+    const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
     if (node == nullptr) {
         OP_LOGE("MaskedSoftmaxWithRelPosBias", "Dynamic cast op_src to NodeProto failed.");
         return FAILED;
@@ -35,7 +35,7 @@ static Status ParseParamsNpuMaskedSoftmaxWithRelPosBias(const Message *op_src, g
 
     float scale_value = 0;
     int inner_precision_mode = 1.0;
-    for (const auto &attr : node->attribute()) {
+    for (const auto& attr : node->attribute()) {
         if (attr.name() == "inner_precision_mode" && attr.type() == ge::onnx::AttributeProto::INT) {
             inner_precision_mode = attr.i();
         } else if (attr.name() == "scale_value" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
@@ -49,7 +49,7 @@ static Status ParseParamsNpuMaskedSoftmaxWithRelPosBias(const Message *op_src, g
     return SUCCESS;
 }
 
-static Status ParseOpToGraphNpuMaskedSoftmaxWithRelPosBias(const ge::Operator &op, ge::Graph &graph)
+static Status ParseOpToGraphNpuMaskedSoftmaxWithRelPosBias(const ge::Operator& op, ge::Graph& graph)
 {
     std::string ori_name;
     if (op.GetAttr("name", ori_name) != SUCCESS) {

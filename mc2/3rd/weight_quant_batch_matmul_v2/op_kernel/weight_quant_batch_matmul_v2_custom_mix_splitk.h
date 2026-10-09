@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file weight_quant_batch_matmul_v2_custom_mix_splitk.h
@@ -60,7 +60,7 @@ public:
     __aicore__ inline Mc2WeightQuantBatchMatmulV2MixSplitKKernel(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
                                 GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-                                const Mc2WeightQuantBatchMatmulV2TilingData *tilingData, TPipe *tPipe);
+                                const Mc2WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void UpdateGlobalAddr(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset,
                                             GM_ADDR quantScale, GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y,
                                             GM_ADDR workspace);
@@ -155,9 +155,9 @@ Mc2WeightQuantBatchMatmulV2MixSplitKKernel<xType, wType, biasType, yType, aTrans
 {
     // 当前cv绑核固定，需要四份
     uint64_t weithCacheSize = 4 * this->weightCacheSizeAlign_ * sizeof(xType);
-    this->weightCache_.SetGlobalBuffer(reinterpret_cast<__gm__ xType *>(workspace));
+    this->weightCache_.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(workspace));
 
-    this->matmulAtomicAddResult_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace + weithCacheSize));
+    this->matmulAtomicAddResult_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace + weithCacheSize));
 }
 
 template <typename xType, typename wType, typename biasType, typename yType, bool aTrans, bool bTrans,
@@ -166,7 +166,7 @@ __aicore__ inline void Mc2WeightQuantBatchMatmulV2MixSplitKKernel<
     xType, wType, biasType, yType, aTrans, bTrans, antiQuantType, hasAntiQuantOffset,
     quantType>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR quantScale,
                      GM_ADDR quantOffset, GM_ADDR bias, GM_ADDR y, GM_ADDR workspace,
-                     const Mc2WeightQuantBatchMatmulV2TilingData *tilingData, TPipe *tPipe)
+                     const Mc2WeightQuantBatchMatmulV2TilingData* tilingData, TPipe* tPipe)
 {
     this->BaseInit(tilingData, tPipe);
     this->InitInput(x, weight, antiquantScale, antiquantOffset, quantScale, quantOffset, bias, y);

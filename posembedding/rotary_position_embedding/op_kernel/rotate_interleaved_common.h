@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rotate_interleaved_common.h
@@ -30,7 +30,7 @@ constexpr int32_t ALIGN_32 = 8;
 
 // SD -> BSND
 template <typename T>
-__aicore__ inline void BroadCastTriToBsnd(LocalTensor<T> &tri, uint32_t batchSize, uint32_t calcLen, uint32_t numHeads,
+__aicore__ inline void BroadCastTriToBsnd(LocalTensor<T>& tri, uint32_t batchSize, uint32_t calcLen, uint32_t numHeads,
                                           uint32_t headDimAlign)
 {
     DataCopyParams intriParams;
@@ -55,7 +55,7 @@ __aicore__ inline void BroadCastTriToBsnd(LocalTensor<T> &tri, uint32_t batchSiz
 
 // D -> BND
 template <typename T>
-__aicore__ inline void BroadCastTriToB1nd(LocalTensor<T> &tri, uint32_t calcLen, uint32_t numHeads,
+__aicore__ inline void BroadCastTriToB1nd(LocalTensor<T>& tri, uint32_t calcLen, uint32_t numHeads,
                                           uint32_t headDimAlign)
 {
     using ElementType =
@@ -94,7 +94,7 @@ __aicore__ inline void BroadCastTriToB1nd(LocalTensor<T> &tri, uint32_t calcLen,
 }
 
 // The minimum amount of data set by offset is 8
-__aicore__ inline void SetGatherSrcOffset(LocalTensor<int32_t> &gatherOffset, int32_t count, int32_t srcSizeof)
+__aicore__ inline void SetGatherSrcOffset(LocalTensor<int32_t>& gatherOffset, int32_t count, int32_t srcSizeof)
 {
     for (int32_t i = 0; i < NUM_8; ++i) {
         gatherOffset.SetValue(i, i ^ 1); // XOR with 1 to swap even and odd indices
@@ -115,7 +115,7 @@ __aicore__ inline void SetGatherSrcOffset(LocalTensor<int32_t> &gatherOffset, in
 }
 
 // count < 256 * 64 and count % 8 == 0
-__aicore__ inline void InterleavedInversion(LocalTensor<float> &srcInversion, int32_t count, bool isOffset = false)
+__aicore__ inline void InterleavedInversion(LocalTensor<float>& srcInversion, int32_t count, bool isOffset = false)
 {
     SetMaskNorm();
 

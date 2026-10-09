@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tiling_info_parser.h
@@ -21,15 +21,15 @@
 namespace optiling {
 class FiaInfoParser {
 public:
-    explicit FiaInfoParser(const gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit FiaInfoParser(const gert::TilingContext* context)
+        : context_(context)
+    {}
     ~FiaInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
+    ge::graphStatus GetActualSeqLenQSize(uint32_t& size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     ge::graphStatus GetStrides();
@@ -48,8 +48,8 @@ public:
     void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetKvCache();
-    ge::graphStatus GetTensorListCache(uint32_t index, const std::string &name,
-                                       std::vector<gert::StorageShape *> &cache);
+    ge::graphStatus GetTensorListCache(uint32_t index, const std::string& name,
+                                       std::vector<gert::StorageShape*>& cache);
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetEmptyTensorFlag();
@@ -67,8 +67,8 @@ public:
     void GetQuantMode();
     ge::graphStatus GetKvLayout();
     void SetFiaShape();
-    ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FiaLayout layout,
-                                    int64_t &maxActualSeqLen);
+    ge::graphStatus GetMaxActualSeq(const gert::Tensor* actualSeqLensTensor, FiaLayout layout,
+                                    int64_t& maxActualSeqLen);
     ge::graphStatus GetS2SizeFromActualSeqLens();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetS2SizeForTensorList();
@@ -98,21 +98,21 @@ public:
     ge::graphStatus GetFullQuantMode();
     ge::graphStatus GetOldIfaGqaFlag();
     ge::graphStatus GetAntiQuantInfo();
-    TilingKeyLayout MapStringToLayout(FiaLayout &layoutString) const;
-    void GenerateAxisInfo(FiaTilingInfo &fiaInfo);
-    void GenerateDtypeInfo(FiaTilingInfo &fiaInfo);
-    void GenerateFeatureInfo(FiaTilingInfo &fiaInfo);
-    void GenerateLayoutInfo(FiaTilingInfo &fiaInfo);
-    void GenerateInfo(FiaTilingInfo &fiaInfo);
+    TilingKeyLayout MapStringToLayout(FiaLayout& layoutString) const;
+    void GenerateAxisInfo(FiaTilingInfo& fiaInfo);
+    void GenerateDtypeInfo(FiaTilingInfo& fiaInfo);
+    void GenerateFeatureInfo(FiaTilingInfo& fiaInfo);
+    void GenerateLayoutInfo(FiaTilingInfo& fiaInfo);
+    void GenerateInfo(FiaTilingInfo& fiaInfo);
     ge::graphStatus ParseAxisInfo();
     ge::graphStatus ParseFeatureInfo();
-    ge::graphStatus Parse(FiaTilingInfo &fiaInfo);
+    ge::graphStatus Parse(FiaTilingInfo& fiaInfo);
 
 public:
-    const gert::TilingContext *context_ = nullptr;
+    const gert::TilingContext* context_ = nullptr;
 
-    const char *opName_ = nullptr;
-    fe::PlatFormInfos *platformInfo_ = nullptr;
+    const char* opName_ = nullptr;
+    fe::PlatFormInfos* platformInfo_ = nullptr;
     FIAParaInfo opParamInfo_;
     enum class IfaPseType : int64_t {
         PSE_OUTER_MUL_ADD_TYPE = 0,
@@ -133,11 +133,11 @@ public:
     uint32_t queryTSize_ = 0; // 仅TND/NTD时生效
     uint32_t keyTSize_ = 0;
     // 增加strides参数，预计5个，k/v/krope/kscale/vscale
-    const gert::Stride *keyStrides_ = nullptr;
-    const gert::Stride *valueStrides_ = nullptr;
-    const gert::Stride *kRopeStrides_ = nullptr;
-    const gert::Stride *kScaleStrides_ = nullptr;
-    const gert::Stride *vScaleStrides_ = nullptr;
+    const gert::Stride* keyStrides_ = nullptr;
+    const gert::Stride* valueStrides_ = nullptr;
+    const gert::Stride* kRopeStrides_ = nullptr;
+    const gert::Stride* kScaleStrides_ = nullptr;
+    const gert::Stride* vScaleStrides_ = nullptr;
     bool isTensorV1_ = false;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
@@ -166,8 +166,8 @@ public:
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
 
     uint64_t l2CacheSize_ = 0;
-    std::vector<gert::StorageShape *> kCache_ = {};
-    std::vector<gert::StorageShape *> vCache_ = {};
+    std::vector<gert::StorageShape*> kCache_ = {};
+    std::vector<gert::StorageShape*> vCache_ = {};
     std::vector<int32_t> qSize_ = {};
     std::vector<int32_t> kvSize_ = {};
 

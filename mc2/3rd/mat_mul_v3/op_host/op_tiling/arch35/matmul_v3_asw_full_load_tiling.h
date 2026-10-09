@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_v3_asw_full_load_tiling.h
@@ -22,12 +22,12 @@ namespace optiling {
 namespace mc2_matmul_v3_advanced {
 class Mc2MatMulV3AswFullLoadTiling : public Mc2MatMulV3AswTiling {
 public:
-    Mc2MatMulV3AswFullLoadTiling(gert::TilingContext *context, Mc2MatMulTilingCfg &cfg)
+    Mc2MatMulV3AswFullLoadTiling(gert::TilingContext* context, Mc2MatMulTilingCfg& cfg)
         : Mc2MatMulV3AswTiling(context, cfg) {};
 
     ~Mc2MatMulV3AswFullLoadTiling() override {};
-    bool CheckBL1FullLoadDefault(bool &isKFullLoad, uint64_t kAlignedValue, uint64_t nAlignedValue) const;
-    bool CheckBL1FullLoad91095(bool &isKFullLoad, uint64_t kAlignedValue, uint64_t nAlignedValue);
+    bool CheckBL1FullLoadDefault(bool& isKFullLoad, uint64_t kAlignedValue, uint64_t nAlignedValue) const;
+    bool CheckBL1FullLoad91095(bool& isKFullLoad, uint64_t kAlignedValue, uint64_t nAlignedValue);
     void AdjustTiling91095Basic(uint64_t biasBatchDimAll);
 
 protected:
@@ -43,8 +43,8 @@ private:
     bool CheckABL1FullLoad() const;
     void DoABL1FullLoad();
     void CalcTailBasicBlockBL1Full();
-    bool CheckBL1FullLoad(bool &isKFullLoad);
-    bool CheckAL1FullLoad(bool &isKFullLoad) const;
+    bool CheckBL1FullLoad(bool& isKFullLoad);
+    bool CheckAL1FullLoad(bool& isKFullLoad) const;
     void AdjustTilingDefault(uint64_t biasBatchDimAll);
     void AdjustTilingCommon(uint64_t aBatchDimAll);
     bool ABL1FullLoadExtraCond(uint64_t al1SingleCoreSize, uint64_t bl1SingleCoreSize) const;

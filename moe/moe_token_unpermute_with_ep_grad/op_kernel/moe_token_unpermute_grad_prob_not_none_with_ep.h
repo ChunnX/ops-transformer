@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_unpermute_grad_prob_not_none_with_ep.h
@@ -25,7 +25,7 @@ public:
     __aicore__ inline MoeTokenUnpermuteGradProbNotNone(){};
     __aicore__ inline void Init(GM_ADDR permuted_tokens, GM_ADDR unpermuted_tokens_grad, GM_ADDR sorted_indices,
                                 GM_ADDR probs, GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad,
-                                const MoeTokenUnpermuteWithEpGradTilingData &tilingData);
+                                const MoeTokenUnpermuteWithEpGradTilingData& tilingData);
     __aicore__ inline void Process();
 
 protected:
@@ -78,7 +78,7 @@ protected:
 template <typename OriT, typename IdxT, typename ProbT>
 __aicore__ inline void MoeTokenUnpermuteGradProbNotNone<OriT, IdxT, ProbT>::Init(
     GM_ADDR permuted_tokens, GM_ADDR unpermuted_tokens_grad, GM_ADDR sorted_indices, GM_ADDR probs,
-    GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad, const MoeTokenUnpermuteWithEpGradTilingData &tilingData)
+    GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad, const MoeTokenUnpermuteWithEpGradTilingData& tilingData)
 {
     MoeTokenUnpermuteGradBase<OriT, IdxT, ProbT>::Init(permuted_tokens, unpermuted_tokens_grad, sorted_indices, probs,
                                                        permuted_tokens_grad, probs_grad, tilingData);

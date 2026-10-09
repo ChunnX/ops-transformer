@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -23,13 +23,13 @@ static constexpr size_t DIM_ONE = 1UL;
 static constexpr size_t BARRIER_INPUT_X_REF_INDEX = 1;
 static constexpr size_t BARRIER_OUTPUT_X_REF_INDEX = 0;
 
-static ge::graphStatus InferShapeDistributeBarrierExtend(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeDistributeBarrierExtend(gert::InferShapeContext* context)
 {
     OPS_LOG_D(context->GetNodeName(), "Begin to do InferShapeDistributeBarrierExtend.");
     // 获取输入shape
-    const gert::Shape *xRefInputShape = context->GetInputShape(BARRIER_INPUT_X_REF_INDEX);
+    const gert::Shape* xRefInputShape = context->GetInputShape(BARRIER_INPUT_X_REF_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xRefInputShape);
-    gert::Shape *xRefOutputShape = context->GetOutputShape(BARRIER_OUTPUT_X_REF_INDEX);
+    gert::Shape* xRefOutputShape = context->GetOutputShape(BARRIER_OUTPUT_X_REF_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xRefOutputShape);
 
     // 这里要获取输入的dim，然后循环给输出赋值
@@ -41,7 +41,7 @@ static ge::graphStatus InferShapeDistributeBarrierExtend(gert::InferShapeContext
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeDistributeBarrierExtend(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeDistributeBarrierExtend(gert::InferDataTypeContext* context)
 {
     OPS_LOG_D(context->GetNodeName(), "Begin to do InferDataTypeDistributeBarrierExtend.");
     auto xRefDtype = context->GetInputDataType(BARRIER_INPUT_X_REF_INDEX);

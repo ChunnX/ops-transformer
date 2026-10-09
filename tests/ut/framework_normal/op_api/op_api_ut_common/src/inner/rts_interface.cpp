@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <cstdlib>
 #include <iostream>
@@ -51,7 +51,7 @@ using namespace std;
 //   }
 // }
 
-void *MallocDeviceMemory(unsigned long size)
+void* MallocDeviceMemory(unsigned long size)
 {
     return nullptr;
     //  if (size <= 0) {
@@ -66,14 +66,14 @@ void *MallocDeviceMemory(unsigned long size)
     //  return dev_mem;
 }
 
-void FreeDeviceMemory(void *device_mem_ptr)
+void FreeDeviceMemory(void* device_mem_ptr)
 {
     if (device_mem_ptr != nullptr) {
         //    (void)rtFree(device_mem_ptr);
     }
 }
 
-int MemcpyToDevice(const void *host_mem, void *dev_mem, unsigned long size)
+int MemcpyToDevice(const void* host_mem, void* dev_mem, unsigned long size)
 {
     return 0;
     //  rtError_t ret = rtMemcpy(dev_mem, size, host_mem, size, RT_MEMCPY_HOST_TO_DEVICE);
@@ -83,7 +83,7 @@ int MemcpyToDevice(const void *host_mem, void *dev_mem, unsigned long size)
     //  return ret == RT_ERROR_NONE ? 0 : 1;
 }
 
-int MemcpyFromDevice(void *host_mem, const void *dev_mem, unsigned long size)
+int MemcpyFromDevice(void* host_mem, const void* dev_mem, unsigned long size)
 {
     return 0;
     //  rtError_t ret = rtMemcpy(host_mem, size, dev_mem, size, RT_MEMCPY_DEVICE_TO_HOST);
@@ -93,7 +93,7 @@ int MemcpyFromDevice(void *host_mem, const void *dev_mem, unsigned long size)
     //  return ret == RT_ERROR_NONE ? 0 : 1;
 }
 
-bool IsFileExistsAccessable(string &name)
+bool IsFileExistsAccessable(string& name)
 {
     return (access(name.c_str(), F_OK) != -1);
 }

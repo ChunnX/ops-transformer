@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_finalize_routing_utils.h
@@ -55,7 +55,7 @@ struct SyncConfig {
     uint64_t baseN = 0;      // Finalize Routing BaseN
 };
 
-template <class AT_, class BT_, class CT_, class BiasT_, const auto &MM_CFG = CFG_MDL, bool groupListType_ = false,
+template <class AT_, class BT_, class CT_, class BiasT_, const auto& MM_CFG = CFG_MDL, bool groupListType_ = false,
           bool sharedInputIsNone_ = false>
 struct MMImplType {
     using AT = AT_;
@@ -136,7 +136,7 @@ __aicore__ inline T AlignDown(T a, T base)
     return a / base * base;
 }
 
-__aicore__ inline void MNBlockIdxCompute(MNConfig &mnConfig, const uint32_t curBlock, const uint32_t count,
+__aicore__ inline void MNBlockIdxCompute(MNConfig& mnConfig, const uint32_t curBlock, const uint32_t count,
                                          const uint32_t thresholdMDimN, const uint32_t deterministicFlag)
 {
     if (mnConfig.blockDimM <= thresholdDimM || thresholdDimM == 1 || deterministicFlag == 1) {
@@ -162,8 +162,8 @@ __aicore__ inline void MNBlockIdxCompute(MNConfig &mnConfig, const uint32_t curB
 }
 
 template <typename T>
-__aicore__ inline void DataCopyPad2DA8W4(const LocalTensor<T> &dst, const GlobalTensor<T> &src,
-                                         const DataCopy2DDimParams &copyDimParams)
+__aicore__ inline void DataCopyPad2DA8W4(const LocalTensor<T>& dst, const GlobalTensor<T>& src,
+                                         const DataCopy2DDimParams& copyDimParams)
 {
     DataCopyExtParams datacopyParams;
     datacopyParams.blockCount = copyDimParams.dim1;
@@ -177,8 +177,8 @@ __aicore__ inline void DataCopyPad2DA8W4(const LocalTensor<T> &dst, const Global
 }
 
 template <typename T>
-__aicore__ inline void DataCopyPad2DA8W4ND(const LocalTensor<T> &dst, const GlobalTensor<T> &src,
-                                           const DataCopy2DDimParams &copyDimParams)
+__aicore__ inline void DataCopyPad2DA8W4ND(const LocalTensor<T>& dst, const GlobalTensor<T>& src,
+                                           const DataCopy2DDimParams& copyDimParams)
 {
     DataCopyExtParams params;
     params.blockCount = copyDimParams.dim1;
@@ -192,8 +192,8 @@ __aicore__ inline void DataCopyPad2DA8W4ND(const LocalTensor<T> &dst, const Glob
 }
 
 template <typename T>
-__aicore__ inline void DataCopyPad2DA8W4(const GlobalTensor<T> &dst, const LocalTensor<T> &src,
-                                         const DataCopy2DDimParams &copyDimParams, uint32_t dstDim0)
+__aicore__ inline void DataCopyPad2DA8W4(const GlobalTensor<T>& dst, const LocalTensor<T>& src,
+                                         const DataCopy2DDimParams& copyDimParams, uint32_t dstDim0)
 {
     DataCopyExtParams params;
     params.blockCount = copyDimParams.dim1;

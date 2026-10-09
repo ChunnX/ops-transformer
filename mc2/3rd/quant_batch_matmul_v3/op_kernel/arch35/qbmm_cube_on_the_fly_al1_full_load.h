@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file qbmm_cube_on_the_fly_al1_full_load.h
@@ -30,7 +30,7 @@ class MatmulAswKernelAL1FullLoad : public MatMulASWKernel<LOCAL_TEMPLATE_FUNC_PA
 public:
     __aicore__ inline MatmulAswKernelAL1FullLoad() {}
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR scale, GM_ADDR perTokenScale,
-                                GM_ADDR cGM, GM_ADDR workspace, const void *tilingData, TPipe *pipe);
+                                GM_ADDR cGM, GM_ADDR workspace, const void* tilingData, TPipe* pipe);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessWithoutBatch();
     __aicore__ inline void SetScaleTensor();
@@ -56,7 +56,7 @@ protected:
         matmul::MatmulImpl<aType, bType, cType, biasMatmulType, MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>>::type;
     MmType mm_;
     TQue<QuePosition::A1, 1> InQueueAL1_;
-    TPipe *pipe_;
+    TPipe* pipe_;
     LocalTensor<x1Type> al1Local_;
     TQue<QuePosition::A1, 1> InQueueScaleA_;
     LocalTensor<fp8_e8m0_t> scaleALocal_;
@@ -69,14 +69,14 @@ __aicore__ inline void MatmulAswKernelAL1FullLoad<LOCAL_TEMPLATE_FUNC_PARAMS>::I
                                                                                     GM_ADDR bias, GM_ADDR scale,
                                                                                     GM_ADDR perTokenScale, GM_ADDR cGM,
                                                                                     GM_ADDR workSpace,
-                                                                                    const void *tilingData, TPipe *pipe)
+                                                                                    const void* tilingData, TPipe* pipe)
 {
     if ASCEND_IS_AIV {
         return;
     }
     pipe_ = pipe;
     this->blockIdx_ = GetBlockIdx();
-    this->quantBmmTilingData_ = static_cast<const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *>(tilingData);
+    this->quantBmmTilingData_ = static_cast<const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams*>(tilingData);
     this->UpdateGlobalAddr(aGM, bGM, bias, scale, perTokenScale, cGM, workSpace);
 }
 

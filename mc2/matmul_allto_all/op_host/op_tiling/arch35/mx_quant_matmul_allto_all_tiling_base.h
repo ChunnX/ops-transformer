@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mx_quant_matmul_allto_all_tiling_base.h
@@ -46,7 +46,7 @@ class MxQuantMatmulAllToAllTilingBase : public MatmulAllToAllTilingBase {
     friend class MxQuantMatmulAlltoAllHelper;
 
 public:
-    explicit MxQuantMatmulAllToAllTilingBase(gert::TilingContext *context);
+    explicit MxQuantMatmulAllToAllTilingBase(gert::TilingContext* context);
     ~MxQuantMatmulAllToAllTilingBase() override = default;
 
 protected:
@@ -59,50 +59,50 @@ protected:
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoMxQuantMMTiling();
     ge::graphStatus SetHcclTiling();
-    ge::graphStatus CheckMxQuantTensorDataType(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckX2Transpose(const gert::TilingContext *context, const char *opName,
-                                     const OpAttrIndexSchema &indexSchema);
-    ge::graphStatus CheckMxTensorFormat(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckMxQuantShapeInfo(const gert::TilingContext *context, const char *opName,
-                                          const OpAttrIndexSchema &indexSchema);
-    ge::graphStatus CheckMxQuantMatrixMulShapes(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckMxQuantScaleShapes(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckMxQuantInputShapesValid(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus CheckQuantGroupSize(const gert::TilingContext *context, const char *opName);
-    ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName,
-                                      TilingContextInfo &contextInfo);
-    ge::graphStatus CheckMxQuantScaleDataType(const gert::TilingContext *context, const char *opName);
-    void SetTilingInfo(MatmulAlltoAllTilingInfo &tilingInfo) const;
-    void PrintMxQuantMatmulAlltoAllTilingData(QuantMatmulAlltoAllTilingData &outTilingData);
+    ge::graphStatus CheckMxQuantTensorDataType(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus CheckX2Transpose(const gert::TilingContext* context, const char* opName,
+                                     const OpAttrIndexSchema& indexSchema);
+    ge::graphStatus CheckMxTensorFormat(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus CheckMxQuantShapeInfo(const gert::TilingContext* context, const char* opName,
+                                          const OpAttrIndexSchema& indexSchema);
+    ge::graphStatus CheckMxQuantMatrixMulShapes(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus CheckMxQuantScaleShapes(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus CheckMxQuantInputShapesValid(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus CheckQuantGroupSize(const gert::TilingContext* context, const char* opName);
+    ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext* context, const char* opName,
+                                      TilingContextInfo& contextInfo);
+    ge::graphStatus CheckMxQuantScaleDataType(const gert::TilingContext* context, const char* opName);
+    void SetTilingInfo(MatmulAlltoAllTilingInfo& tilingInfo) const;
+    void PrintMxQuantMatmulAlltoAllTilingData(QuantMatmulAlltoAllTilingData& outTilingData);
 
 private:
     QuantMatmulAlltoAllTilingData localTilingData_;
     uint64_t mmMvalueLen_ = 0;
     bool isMxfp4_ = false;
-    void PrintMxQuantMatmulAlltoAllTilingInfo(const std::string &opName, MatmulAlltoAllTilingInfo &tilingInfo);
-    void PrintMxQuantMMV3TilingData(const std::string &opName,
-                                    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
-    void PrintExtendMatmulTiling(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
+    void PrintMxQuantMatmulAlltoAllTilingInfo(const std::string& opName, MatmulAlltoAllTilingInfo& tilingInfo);
+    void PrintMxQuantMMV3TilingData(const std::string& opName,
+                                    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& tiling);
+    void PrintExtendMatmulTiling(const std::string& opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& tiling);
 };
 
 class MxQuantMatmulAlltoAllHelper : public Mc2AdaptiveSlidingWindowTiling {
 public:
-    MxQuantMatmulAlltoAllHelper(MxQuantMatmulAllToAllTilingBase &mxQuantMatmulAllToAllTilingBase,
-                                DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, uint64_t &mmMvalueLen);
+    MxQuantMatmulAlltoAllHelper(MxQuantMatmulAllToAllTilingBase& mxQuantMatmulAllToAllTilingBase,
+                                DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams& out, uint64_t& mmMvalueLen);
     const gert::Shape GetX1Shape(const size_t index) override;
-    const gert::StorageShape *GetPertokenShape(const size_t index) override;
+    const gert::StorageShape* GetPertokenShape(const size_t index) override;
     const gert::Shape GetX2Shape(const size_t index) override;
-    const gert::Shape &GetScaleShape(const size_t index) override;
-    const gert::StorageShape *GetBiasShape(const size_t index) override;
-    const gert::StorageShape *GetOffsetShape(const size_t index);
+    const gert::Shape& GetScaleShape(const size_t index) override;
+    const gert::StorageShape* GetBiasShape(const size_t index) override;
+    const gert::StorageShape* GetOffsetShape(const size_t index);
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus PostTiling() override;
-    void PrintTilingInputParam(Mc2QuantBatchMatmulInfo &quantMatmulInfo);
+    void PrintTilingInputParam(Mc2QuantBatchMatmulInfo& quantMatmulInfo);
 
 private:
     uint64_t mmLen_ = 0;
-    MxQuantMatmulAllToAllTilingBase &tilingProcesser_;
+    MxQuantMatmulAllToAllTilingBase& tilingProcesser_;
 };
 } // namespace MC2Tiling
 #endif

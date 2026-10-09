@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <unordered_set>
@@ -21,10 +21,10 @@ namespace DistributeBarrierUT {
 constexpr uint64_t g_mc2TilingDataReservedLen = sizeof(Mc2InitTiling) + sizeof(Mc2CcTiling);
 
 template <typename T>
-static string ToString(void *buf, size_t size, unordered_set<size_t> mask = {})
+static string ToString(void* buf, size_t size, unordered_set<size_t> mask = {})
 {
     string result;
-    const T *data = reinterpret_cast<const T *>(buf);
+    const T* data = reinterpret_cast<const T*>(buf);
     size_t len = size / sizeof(T);
     for (size_t i = 0; i < len; i++) {
         result += mask.find(i) == mask.end() ? std::to_string(data[i]) : "*";

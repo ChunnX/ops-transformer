@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file basic_block_config.h
@@ -88,7 +88,7 @@ struct UbBufferInfo {
     uint32_t antiQuantScaleMaskBufferSize;
 };
 
-template <const VecAntiQuantConfig &vecConfig>
+template <const VecAntiQuantConfig& vecConfig>
 __aicore__ constexpr UbBufferInfo GetNzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
@@ -105,7 +105,7 @@ __aicore__ constexpr UbBufferInfo GetNzBufferInfo()
             .antiQuantScaleMaskBufferSize = 0};
 }
 
-template <const VecAntiQuantConfig &vecConfig>
+template <const VecAntiQuantConfig& vecConfig>
 __aicore__ constexpr UbBufferInfo GetS8S4NzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
@@ -122,7 +122,7 @@ __aicore__ constexpr UbBufferInfo GetS8S4NzBufferInfo()
             .antiQuantScaleMaskBufferSize = 32 / sizeof(uint64_t)};                            // 32B (4个uint64)
 }
 
-template <const VecAntiQuantConfig &vecConfig>
+template <const VecAntiQuantConfig& vecConfig>
 __aicore__ constexpr UbBufferInfo GetNdBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = DOUBLE_BUFFER_NUM,
@@ -139,7 +139,7 @@ __aicore__ constexpr UbBufferInfo GetNdBufferInfo()
             .antiQuantScaleMaskBufferSize = 0};
 }
 
-template <const VecAntiQuantConfig &vecConfig>
+template <const VecAntiQuantConfig& vecConfig>
 __aicore__ constexpr UbBufferInfo GetMxFp4NdBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = DOUBLE_BUFFER_NUM,
@@ -156,7 +156,7 @@ __aicore__ constexpr UbBufferInfo GetMxFp4NdBufferInfo()
             .antiQuantScaleMaskBufferSize = 0};
 }
 
-template <const VecAntiQuantConfig &vecConfig>
+template <const VecAntiQuantConfig& vecConfig>
 __aicore__ constexpr UbBufferInfo GetMxFp4NzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
@@ -173,7 +173,7 @@ __aicore__ constexpr UbBufferInfo GetMxFp4NzBufferInfo()
             .antiQuantScaleMaskBufferSize = 0};
 }
 
-template <typename xType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
+template <typename xType, const WqmmConfig& wqmmConfig, const VecAntiQuantConfig& vecConfig>
 __aicore__ constexpr UbBufferInfo GetBufferConfig()
 {
     if constexpr (wqmmConfig.antiQuantType == Mc2QuantType::MX) {
@@ -200,7 +200,7 @@ struct VfConfig {
     uint64_t vfKStandardLen;
 };
 
-template <typename xType, const WqmmConfig &wqmmConfig, const VecAntiQuantConfig &vecConfig>
+template <typename xType, const WqmmConfig& wqmmConfig, const VecAntiQuantConfig& vecConfig>
 __aicore__ constexpr VfConfig GetVfConfig()
 {
     if constexpr (wqmmConfig.weightFormat != CubeFormat::NZ && wqmmConfig.bTrans) {

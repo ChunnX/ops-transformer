@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file ffn_worker_batching_infershape.cpp
@@ -50,12 +50,12 @@ static constexpr int64_t TOKEN_DTYPE_E4M3 = 4;
 static constexpr int64_t TOKEN_DTYPE_E2M1 = 5;
 static constexpr int64_t MXFP_SCALE_GROUP = 32;
 
-static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context)
+static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext* context)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const int64_t *expertNumPtr = attrs->GetAttrPointer<int64_t>(EXPERT_NUM_ATTR);
+    const int64_t* expertNumPtr = attrs->GetAttrPointer<int64_t>(EXPERT_NUM_ATTR);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertNumPtr);
     auto expertNum = *expertNumPtr;
     if (expertNum <= 0) {
@@ -70,7 +70,7 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
         return ge::GRAPH_FAILED;
     }
 
-    const int64_t *maxOutShapeArray = reinterpret_cast<const int64_t *>(maxOutShapePtr->GetData());
+    const int64_t* maxOutShapeArray = reinterpret_cast<const int64_t*>(maxOutShapePtr->GetData());
     const int64_t A = maxOutShapeArray[INDEX_ZERO];
     const int64_t BS = maxOutShapeArray[INDEX_ONE];
     const int64_t K = maxOutShapeArray[INDEX_TWO];
@@ -102,28 +102,28 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
         return ge::GRAPH_FAILED);
     const int64_t Y = aBs * K;
 
-    gert::Shape *yShape = context->GetOutputShape(Y_OUT);
+    gert::Shape* yShape = context->GetOutputShape(Y_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
 
-    gert::Shape *groupList = context->GetOutputShape(GROUP_LIST_OUT);
+    gert::Shape* groupList = context->GetOutputShape(GROUP_LIST_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, groupList);
 
-    gert::Shape *sessionIds = context->GetOutputShape(SESSION_IDS_OUT);
+    gert::Shape* sessionIds = context->GetOutputShape(SESSION_IDS_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, sessionIds);
 
-    gert::Shape *microBatchIds = context->GetOutputShape(MICRO_BATCH_IDS_OUT);
+    gert::Shape* microBatchIds = context->GetOutputShape(MICRO_BATCH_IDS_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, microBatchIds);
 
-    gert::Shape *tokenIds = context->GetOutputShape(TOKEN_IDS_OUT);
+    gert::Shape* tokenIds = context->GetOutputShape(TOKEN_IDS_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, tokenIds);
 
-    gert::Shape *expertOffsets = context->GetOutputShape(EXPERT_OFFSETS_OUT);
+    gert::Shape* expertOffsets = context->GetOutputShape(EXPERT_OFFSETS_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertOffsets);
 
-    gert::Shape *dynamicScale = context->GetOutputShape(DYNAMIC_SCALE_OUT);
+    gert::Shape* dynamicScale = context->GetOutputShape(DYNAMIC_SCALE_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, dynamicScale);
 
-    gert::Shape *actualTokenNum = context->GetOutputShape(ACTUAL_TOKEN_NUM_OUT);
+    gert::Shape* actualTokenNum = context->GetOutputShape(ACTUAL_TOKEN_NUM_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, actualTokenNum);
 
     *yShape = {Y, H};
@@ -132,7 +132,7 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     *microBatchIds = {Y};
     *tokenIds = {Y};
     *expertOffsets = {Y};
-    const int64_t *tokenDtypePtr = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
+    const int64_t* tokenDtypePtr = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
     const int64_t tokenDtype = tokenDtypePtr == nullptr ? TOKEN_KIND_ZERO : *tokenDtypePtr;
     if (tokenDtype == TOKEN_DTYPE_E2M1 && H % EVEN_ALIGN != 0) {
         OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "max_out_shape[3]", std::to_string(H),
@@ -149,11 +149,11 @@ static graphStatus InferShape4FfnWorkerBatching(gert::InferShapeContext *context
     return GRAPH_SUCCESS;
 }
 
-static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext *context)
+static graphStatus InferDataType4FfnWorkerBatching(gert::InferDataTypeContext* context)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *tokenDtypePtr = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
+    const int64_t* tokenDtypePtr = attrs->GetAttrPointer<int64_t>(TOKEN_DTYPE_ATTR);
     int64_t tokenDtype = TOKEN_KIND_ZERO;
     if (tokenDtypePtr != nullptr) {
         tokenDtype = *tokenDtypePtr;

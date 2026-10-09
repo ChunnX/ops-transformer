@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file cube_op_bn2.h
@@ -75,7 +75,7 @@ private:
 public:
     __aicore__ inline CubeOp(){};
 
-    __aicore__ inline void Init(TPipe *pipe, const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict tiling_data)
+    __aicore__ inline void Init(TPipe* pipe, const FlashAttentionScoreGradTilingDataS1s2Bn2* __restrict tiling_data)
     {
         AsdopsBuffer<ArchType::ASCEND_V220> asdopsBuf;
         uint64_t config = 0x1;
@@ -164,10 +164,10 @@ public:
     }
 
     template <uint32_t CUBE_TYPE>
-    __aicore__ inline __attribute__((always_inline)) void
-    ComputeMM12(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
-                const uint32_t realM, const uint32_t realN, const uint32_t pingpong_left, const uint32_t pingpong_right,
-                const bool reuse_left, const bool reuse_right)
+    __aicore__ inline __attribute__((always_inline)) void ComputeMM12(
+        GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
+        const uint32_t realM, const uint32_t realN, const uint32_t pingpong_left, const uint32_t pingpong_right,
+        const bool reuse_left, const bool reuse_right)
     {
         int32_t mLoop = CeilDiv(realM, SIZE_128);
         int32_t nLoop = CeilDiv(realN, SIZE_128);
@@ -274,7 +274,6 @@ public:
         }
     };
 
-
     __aicore__ inline __attribute__((always_inline)) void MM345_SET_FLAG()
     {
         SET_FLAG(M, MTE1, aEventIDPing);
@@ -295,9 +294,9 @@ public:
         WAIT_FLAG(FIX, M, bEventIDPong);
     }
 
-    __aicore__ inline __attribute__((always_inline)) void
-    ComputeMMDQ(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
-                const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atomicAdd)
+    __aicore__ inline __attribute__((always_inline)) void ComputeMMDQ(
+        GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
+        const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atomicAdd)
     {
         int32_t mLoop = CeilDiv(realM, SIZE_128);
         int32_t nLoop = CeilDiv(realN, SIZE_128);
@@ -410,9 +409,9 @@ public:
     }
 
     template <uint32_t CUBE_TYPE>
-    __aicore__ inline __attribute__((always_inline)) void
-    ComputeMMDKV(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
-                 const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atomicAdd)
+    __aicore__ inline __attribute__((always_inline)) void ComputeMMDKV(
+        GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
+        const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atomicAdd)
     {
         int32_t mLoop = CeilDiv(realM, SIZE_128);
         int32_t nLoop = CeilDiv(realN, SIZE_128);
@@ -587,11 +586,12 @@ private:
     }
 
     template <bool A_MATRIX, bool NZ>
-    __aicore__ inline void
-    load_data_gm_2_l0_trans(LocalTensor<INPUT_TYPE> dstL0Tensor, LocalTensor<INPUT_TYPE> dstL1Tensor,
-                            GlobalTensor<INPUT_TYPE> srcGmTensor, const int32_t mSize, const int32_t kSize,
-                            const int32_t srcKSize, const int32_t mSizeAlign, const int32_t kSizeAlign,
-                            const bool mte2Copy)
+    __aicore__ inline void load_data_gm_2_l0_trans(LocalTensor<INPUT_TYPE> dstL0Tensor,
+                                                   LocalTensor<INPUT_TYPE> dstL1Tensor,
+                                                   GlobalTensor<INPUT_TYPE> srcGmTensor, const int32_t mSize,
+                                                   const int32_t kSize, const int32_t srcKSize,
+                                                   const int32_t mSizeAlign, const int32_t kSizeAlign,
+                                                   const bool mte2Copy)
     {
         if (mte2Copy) {
             load_data_gm_2_l1<NZ>(dstL1Tensor, srcGmTensor, mSize, kSize, mSizeAlign, kSizeAlign, srcKSize);

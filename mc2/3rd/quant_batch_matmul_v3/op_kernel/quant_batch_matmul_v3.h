@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_batch_matmul_v3.h
@@ -35,7 +35,7 @@ constexpr MatmulConfig BMM_DEQUANT_PRELOAD_CFG = GetMDLConfig(false, false, 2);
 #endif
 
 template <typename xType, typename wType, int32_t fFormat, int32_t wFormat, typename biasType, typename scaleType,
-          typename yType, bool aTrans, bool bTrans, const MatmulConfig &BMM_DEQUANT_CFG = BMM_DEQUANT_MDL_CFG>
+          typename yType, bool aTrans, bool bTrans, const MatmulConfig& BMM_DEQUANT_CFG = BMM_DEQUANT_MDL_CFG>
 class BmmDequant {
 public:
     __aicore__ inline BmmDequant(){};
@@ -48,7 +48,7 @@ public:
     }
 
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scale, GM_ADDR y, GM_ADDR workSpace,
-                                const Mc2QuantBatchMatmulV3TilingData *tilingData, TPipe *tPipe)
+                                const Mc2QuantBatchMatmulV3TilingData* tilingData, TPipe* tPipe)
     {
         InitTilingData(tilingData);
 
@@ -71,19 +71,19 @@ public:
                                             GM_ADDR workSpace)
     {
         if (isPerTensor_) {
-            scaleScalar_ = *((__gm__ scaleType *)scale);
+            scaleScalar_ = *((__gm__ scaleType*)scale);
         }
         // update global buffer
-        xGm_.SetGlobalBuffer((__gm__ xType *)x1);
-        weightGm_.SetGlobalBuffer((__gm__ wType *)x2);
+        xGm_.SetGlobalBuffer((__gm__ xType*)x1);
+        weightGm_.SetGlobalBuffer((__gm__ wType*)x2);
         if (m_ <= baseM_) {
             weightGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         }
         if (hasBias_ != 0U) {
-            biasGm_.SetGlobalBuffer((__gm__ biasType *)bias);
+            biasGm_.SetGlobalBuffer((__gm__ biasType*)bias);
         }
-        yGm_.SetGlobalBuffer((__gm__ yType *)y);
-        scaleGm_.SetGlobalBuffer((__gm__ scaleType *)scale);
+        yGm_.SetGlobalBuffer((__gm__ yType*)y);
+        scaleGm_.SetGlobalBuffer((__gm__ scaleType*)scale);
     }
 
     /** main logical function
@@ -178,7 +178,7 @@ protected:
 
     /** init function for TilingData of mm1 and mm2.
      */
-    __aicore__ inline void InitTilingData(const Mc2QuantBatchMatmulV3TilingData *tilingData)
+    __aicore__ inline void InitTilingData(const Mc2QuantBatchMatmulV3TilingData* tilingData)
     {
         hasBias_ = tilingData->matmulTiling.isBias;
         batchA_ = tilingData->params.batchA;

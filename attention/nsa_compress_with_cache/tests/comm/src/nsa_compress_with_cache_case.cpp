@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_compress_with_cache_case.cpp
@@ -32,7 +32,7 @@ extern "C" __global__ __aicore__ void nsa_compress_with_cache_fp16 NSA_COMPRESS_
 extern "C" __global__ __aicore__ void nsa_compress_with_cache_bf16 NSA_COMPRESS_WITH_CACHE_KERNEL_PARAM;
 
 namespace optiling {
-ASCENDC_EXTERN_C ge::graphStatus NsaCompressWithCache(gert::TilingContext *context);
+ASCENDC_EXTERN_C ge::graphStatus NsaCompressWithCache(gert::TilingContext* context);
 } // namespace optiling
 
 using Case = ops::adv::tests::utils::Case;
@@ -45,19 +45,19 @@ const size_t NSA_COMPRESS_WITH_CACHE_SLOT_MAPPING_INPUT_INDEX = 2UL;
 const size_t NSA_COMPRESS_WITH_CACHE_ACT_SEQ_LENGTH_INPUT_INDEX = 4UL;
 const size_t NSA_COMPRESS_WITH_CACHE_BLOCK_TABLE_INPUT_INDEX = 5UL;
 
-ASCENDC_EXTERN_C ge::graphStatus TilingForNsaCompressWithCacheStub(gert::TilingContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingForNsaCompressWithCacheStub(gert::TilingContext* context)
 {
-    auto *nsaCompressWithCacheCase = static_cast<NsaCompressWithCacheCase *>(Case::GetCurrentCase());
+    auto* nsaCompressWithCacheCase = static_cast<NsaCompressWithCacheCase*>(Case::GetCurrentCase());
     if (nsaCompressWithCacheCase != nullptr) {
         NsaCompressWithCacheCase::DoTilingParam p;
         p.ctx = context;
         p.ret = ge::GRAPH_SUCCESS;
-        p.actSeqLenTensor = const_cast<gert::Tensor *>(
+        p.actSeqLenTensor = const_cast<gert::Tensor*>(
             context->GetOptionalInputTensor(NSA_COMPRESS_WITH_CACHE_ACT_SEQ_LENGTH_INPUT_INDEX));
-        p.slotMappingTensor = const_cast<gert::Tensor *>(
+        p.slotMappingTensor = const_cast<gert::Tensor*>(
             context->GetOptionalInputTensor(NSA_COMPRESS_WITH_CACHE_SLOT_MAPPING_INPUT_INDEX));
-        p.blockTableTensor = const_cast<gert::Tensor *>(
-            context->GetOptionalInputTensor(NSA_COMPRESS_WITH_CACHE_BLOCK_TABLE_INPUT_INDEX));
+        p.blockTableTensor =
+            const_cast<gert::Tensor*>(context->GetOptionalInputTensor(NSA_COMPRESS_WITH_CACHE_BLOCK_TABLE_INPUT_INDEX));
         if (!nsaCompressWithCacheCase->DoOpTiling(p)) {
             return p.ret;
         }
@@ -82,8 +82,8 @@ enum class KernelParams : uint32_t {
     BLOCK_TABLE
 };
 
-bool RunNsaCompressWithCache(void *func, uint64_t tilingKey, int64_t blockDim, std::vector<TensorIntf *> &inputs,
-                             std::vector<TensorIntf *> &outputs, uint8_t *workspace, uint8_t *tilingData)
+bool RunNsaCompressWithCache(void* func, uint64_t tilingKey, int64_t blockDim, std::vector<TensorIntf*>& inputs,
+                             std::vector<TensorIntf*>& outputs, uint8_t* workspace, uint8_t* tilingData)
 {
     (void)blockDim;
     // Kernel 运行
@@ -102,17 +102,18 @@ bool RunNsaCompressWithCache(void *func, uint64_t tilingKey, int64_t blockDim, s
 
 NsaCompressWithCacheCase::NsaCompressWithCacheCase()
     : NsaCompressWithCacheCase("Undefined", true, "", OpInfo(), NsaCompressWithCacheParam(), 0)
-{
-}
+{}
 
-NsaCompressWithCacheCase::NsaCompressWithCacheCase(const char *name, bool enable, const char *dbgInfo, OpInfo opinfo,
+NsaCompressWithCacheCase::NsaCompressWithCacheCase(const char* name, bool enable, const char* dbgInfo, OpInfo opinfo,
                                                    NsaCompressWithCacheParam param, int32_t tilingTemplatePriority)
-    : Case(name, enable, dbgInfo, tilingTemplatePriority), mOpInfo(std::move(opinfo)), mParam(std::move(param))
+    : Case(name, enable, dbgInfo, tilingTemplatePriority),
+      mOpInfo(std::move(opinfo)),
+      mParam(std::move(param))
 {
     mOpInfo.mName = "NsaCompressWithCache";
     mNsaCompressWithCacheOriginTilingFuncName = "NsaCompressWithCache";
 
-    mNsaCompressWithCacheKernelFunc = (void *)nsa_compress_with_cache_fp16;
+    mNsaCompressWithCacheKernelFunc = (void*)nsa_compress_with_cache_fp16;
 }
 
 bool NsaCompressWithCacheCase::Run()
@@ -166,14 +167,14 @@ bool NsaCompressWithCacheCase::InitOpInfoCtx()
                                 {"pageBlockSize", mParam.mPageBlockSize}});
 
     rst = rst && mCtx.SetKernelRunCbf(RunNsaCompressWithCache);
-    rst = rst && mCtx.SetKernelMainFunc((void *)mNsaCompressWithCacheKernelFunc);
+    rst = rst && mCtx.SetKernelMainFunc((void*)mNsaCompressWithCacheKernelFunc);
     rst = rst && mOpInfo.SetContext(&mCtx);
     return rst;
 }
 
 bool NsaCompressWithCacheCase::InitOriginTilingFunc()
 {
-    auto *platform = Platform::GetGlobalPlatform();
+    auto* platform = Platform::GetGlobalPlatform();
     if (platform == nullptr) {
         LOG_ERR("Global Platform is null");
         return false;
@@ -194,7 +195,7 @@ bool NsaCompressWithCacheCase::InitCurrentCasePtr()
     return true;
 }
 
-bool NsaCompressWithCacheCase::DoOpTiling(DoTilingParam &tilingParam)
+bool NsaCompressWithCacheCase::DoOpTiling(DoTilingParam& tilingParam)
 {
     if (tilingParam.ctx == nullptr) {
         return false;

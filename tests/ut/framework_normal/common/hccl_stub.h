@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef LIB_HCCL_HCCL_H
 #define LIB_HCCL_HCCL_H
@@ -19,7 +19,7 @@
 
 #define __gm__
 
-#define GM_ADDR uint8_t *
+#define GM_ADDR uint8_t*
 
 namespace AscendC {
 
@@ -97,7 +97,7 @@ constexpr uint32_t HCCL_MAX_RANK_NUM = 32U;
 
 static constexpr HcclServerConfig DEFAULT_CFG = {CoreType::DEFAULT, 0};
 
-template <HcclServerType serverType = HcclServerType::HCCL_SERVER_TYPE_AICPU, const auto &config = DEFAULT_CFG>
+template <HcclServerType serverType = HcclServerType::HCCL_SERVER_TYPE_AICPU, const auto& config = DEFAULT_CFG>
 class Hccl {
 public:
     template <bool commit = false>
@@ -122,8 +122,8 @@ public:
     }
 
     template <bool commit = false>
-    __aicore__ HcclHandle AlltoAllV(GM_ADDR sendBuf, void *sendCounts, void *sdispls, HcclDataType sendType,
-                                    GM_ADDR recvBuf, void *recvCounts, void *rdispls, HcclDataType recvType,
+    __aicore__ HcclHandle AlltoAllV(GM_ADDR sendBuf, void* sendCounts, void* sdispls, HcclDataType sendType,
+                                    GM_ADDR recvBuf, void* recvCounts, void* rdispls, HcclDataType recvType,
                                     uint8_t repeat = 1)
     {
         return 0;
@@ -149,11 +149,11 @@ public:
         return 0;
     }
 
-    __aicore__ void Init(GM_ADDR context, __gm__ void *initTiling = nullptr) {}
+    __aicore__ void Init(GM_ADDR context, __gm__ void* initTiling = nullptr) {}
 
-    __aicore__ void InitV2(GM_ADDR context, const void *initTiling) {}
+    __aicore__ void InitV2(GM_ADDR context, const void* initTiling) {}
 
-    __aicore__ int32_t SetCcTiling(__gm__ void *ccOpTilingData)
+    __aicore__ int32_t SetCcTiling(__gm__ void* ccOpTilingData)
     {
         return 0;
     }
@@ -182,7 +182,7 @@ public:
     {}
 
     template <bool sync = true>
-    __aicore__ int32_t Iterate(HcclHandle handleId, uint16_t *seqSlices, uint16_t seqSliceLen)
+    __aicore__ int32_t Iterate(HcclHandle handleId, uint16_t* seqSlices, uint16_t seqSliceLen)
     {
         return 0;
     }

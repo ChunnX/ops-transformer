@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_finalize_routing_v2_grad_base_arch35.h
@@ -34,20 +34,20 @@ public:
 
 protected:
     __aicore__ inline void SubInit(GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR gradExpandedX,
-                                   const MoeFinalizeRoutingV2GradTilingData *tilingData, TPipe *pipe);
+                                   const MoeFinalizeRoutingV2GradTilingData* tilingData, TPipe* pipe);
     __aicore__ inline void GetInitOutBatches();
     __aicore__ inline void GetSubProcessBatches();
     __aicore__ inline void InitOutCutH();
     __aicore__ inline void InitOutNotCutH();
     __aicore__ inline void Mte3ToMte2();
     __aicore__ inline void WaitMte2ToVec();
-    __aicore__ inline void ReduceCalc(LocalTensor<float> &inputUb, LocalTensor<float> &tempUb,
+    __aicore__ inline void ReduceCalc(LocalTensor<float>& inputUb, LocalTensor<float>& tempUb,
                                       int64_t innerLoopCopyNum);
     __aicore__ inline void CopyInWithBias(int64_t batchIdx, int64_t innerOffset, int64_t innerLoopCopyNum);
     __aicore__ inline void CopyInWithOutBias(int64_t batchIdx, int64_t innerOffset, int64_t innerLoopCopyNum);
-    __aicore__ inline void ComputeGradExpandedX(LocalTensor<T1> &gradYUb, LocalTensor<T1> &tempUb,
-                                                LocalTensor<T1> &gradExpandedXUb, int64_t innerLoopCopyNum);
-    __aicore__ inline void DoComputeOnlyWithBias(LocalTensor<float> &gradYUb, LocalTensor<float> &biasUb,
+    __aicore__ inline void ComputeGradExpandedX(LocalTensor<T1>& gradYUb, LocalTensor<T1>& tempUb,
+                                                LocalTensor<T1>& gradExpandedXUb, int64_t innerLoopCopyNum);
+    __aicore__ inline void DoComputeOnlyWithBias(LocalTensor<float>& gradYUb, LocalTensor<float>& biasUb,
                                                  int64_t innerLoopCopyNum);
     __aicore__ inline void ComputeWithOutBias(int64_t innerOffset, int64_t innerLoopCopyNum);
     __aicore__ inline void ComputeWithBias(int64_t innerOffset, int64_t innerLoopCopyNum);
@@ -65,9 +65,9 @@ protected:
     GlobalTensor<T1> gradExpandedXInitGm_;
     GlobalTensor<T1> gradScalesGm_;
 
-    const MoeFinalizeRoutingV2GradTilingData *tilingData_;
+    const MoeFinalizeRoutingV2GradTilingData* tilingData_;
 
-    TPipe *pipe_;
+    TPipe* pipe_;
     TQue<QuePosition::VECIN, 1> gradYInQueue_;
     TQue<QuePosition::VECIN, 1> expandedRowIdxInQueue_;
     TQue<QuePosition::VECIN, 1> expandedXInQueue_;
@@ -92,12 +92,12 @@ protected:
 
 template <typename T1, typename T2>
 __aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::SubInit(
-    GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR gradExpandedX, const MoeFinalizeRoutingV2GradTilingData *tilingData,
-    TPipe *pipe)
+    GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR gradExpandedX, const MoeFinalizeRoutingV2GradTilingData* tilingData,
+    TPipe* pipe)
 {
-    gradYGm_.SetGlobalBuffer((__gm__ T1 *)gradY);
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ T2 *)expandedRowIdx);
-    gradExpandedXGm_.SetGlobalBuffer((__gm__ T1 *)gradExpandedX);
+    gradYGm_.SetGlobalBuffer((__gm__ T1*)gradY);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ T2*)expandedRowIdx);
+    gradExpandedXGm_.SetGlobalBuffer((__gm__ T1*)gradExpandedX);
     tilingData_ = tilingData;
     pipe_ = pipe;
     blockIdx_ = GetBlockIdx();
@@ -252,9 +252,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::CopyInWithOutBias(i
 }
 
 template <typename T1, typename T2>
-__aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::ComputeGradExpandedX(LocalTensor<T1> &gradYUb,
-                                                                                  LocalTensor<T1> &tempUb,
-                                                                                  LocalTensor<T1> &gradExpandedXUb,
+__aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::ComputeGradExpandedX(LocalTensor<T1>& gradYUb,
+                                                                                  LocalTensor<T1>& tempUb,
+                                                                                  LocalTensor<T1>& gradExpandedXUb,
                                                                                   int64_t innerLoopCopyNum)
 {
     auto gradYUbF32 = gradYUb.template ReinterpretCast<float>();
@@ -276,8 +276,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::ComputeGradExpanded
 }
 
 template <typename T1, typename T2>
-__aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::ReduceCalc(LocalTensor<float> &inputUb,
-                                                                        LocalTensor<float> &tempUb,
+__aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::ReduceCalc(LocalTensor<float>& inputUb,
+                                                                        LocalTensor<float>& tempUb,
                                                                         int64_t innerLoopCopyNum)
 {
     int32_t repeat = innerLoopCopyNum / MASK_FLOAT_ONE_REPEAT;
@@ -345,8 +345,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::ComputeWithOutBias(
 }
 
 template <typename T1, typename T2>
-__aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::DoComputeOnlyWithBias(LocalTensor<float> &gradYUb,
-                                                                                   LocalTensor<float> &biasUb,
+__aicore__ inline void MoeFinalizeRoutingV2GradBase<T1, T2>::DoComputeOnlyWithBias(LocalTensor<float>& gradYUb,
+                                                                                   LocalTensor<float>& biasUb,
                                                                                    int64_t innerLoopCopyNum)
 {
     Mul(biasUb, biasUb, gradYUb, innerLoopCopyNum);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_compress_attention_infer_tiling.cpp
@@ -31,11 +31,11 @@ namespace optiling {
 ge::graphStatus NCAITiling::GetNpuInfo()
 {
     OP_CHECK_IF(ncaiContext_->platformInfo == nullptr,
-        OPS_REPORT_VECTOR_INNER_ERR("NsaCompressAttentionInfer",
-            "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR("NsaCompressAttentionInfer", "GetPlatformInfo is nullptr."),
+                return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(this->ncaiContext_->platformInfo);
     OP_CHECK_IF(ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P,
-        OP_LOGE(ncaiContext_->opName, "does not support Atlas300I platform"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "does not support Atlas300I platform"), return ge::GRAPH_FAILED);
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
     aicNum_ = ascendcPlatform.GetCoreNumAic();
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize_);
@@ -52,22 +52,23 @@ ge::graphStatus NCAITiling::CheckQkv()
     auto kDimNum = ncaiContext_->key.shape->GetStorageShape().GetDimNum();
     auto vDimNum = ncaiContext_->value.shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(qDtype != ge::DataType::DT_FLOAT16 && qDtype != ge::DataType::DT_BF16,
-        OP_LOGE(ncaiContext_->opName, "datatype of q must be fp16 or bf16"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "datatype of q must be fp16 or bf16"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(kDtype != qDtype || vDtype != qDtype,
-        OP_LOGE(ncaiContext_->opName, "datatype of q, k, v are inconsistent"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "datatype of q, k, v are inconsistent"), return ge::GRAPH_FAILED);
     if (strcmp(ncaiContext_->layOut, "TND") == 0) {
-        OP_CHECK_IF(qDimNum != 3U,
-            OP_LOGE(ncaiContext_->opName, "q DimNum must be 3 in TND format"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(qDimNum != 3U, OP_LOGE(ncaiContext_->opName, "q DimNum must be 3 in TND format"),
+                    return ge::GRAPH_FAILED);
     } else if (strcmp(ncaiContext_->layOut, "BSND") == 0) {
-        OP_CHECK_IF(qDimNum != 4U,
-            OP_LOGE(ncaiContext_->opName, "q DimNum must be 4 in BSND format"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(qDimNum != 4U, OP_LOGE(ncaiContext_->opName, "q DimNum must be 4 in BSND format"),
+                    return ge::GRAPH_FAILED);
     } else {
         OP_LOGE(ncaiContext_->opName, "q format only supports 'TND' and 'BSND'");
         return ge::GRAPH_FAILED;
     }
     if (pagedAttentionFlag_ == true) {
         OP_CHECK_IF(kDimNum != 3U || vDimNum != 3U,
-            OP_LOGE(ncaiContext_->opName, "k and v DimNum must be 3 for paged attention"), return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName, "k and v DimNum must be 3 for paged attention"),
+                    return ge::GRAPH_FAILED);
     } else {
         OP_LOGE(ncaiContext_->opName, "only supports paged kv cache");
         return ge::GRAPH_FAILED;
@@ -83,54 +84,54 @@ ge::graphStatus NCAITiling::CheckQkvShape()
     uint64_t batchSizeInCmpKvSeqLen = ncaiContext_->actualCmpKvSeqLengths.tensor->GetStorageShape().GetDim(DIM_0);
     if (this->isWorkspace_) {
         OP_CHECK_IF(queryDim0 != batchSizeInBlockTable,
-            OP_LOGE(ncaiContext_->opName, "batchSize in q, blockTable must be equal"), return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName, "batchSize in q, blockTable must be equal"), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(qSeqSize_ == 1 && queryDim0 != batchSizeInBlockTable,
-            OP_LOGE(ncaiContext_->opName,
-                "when qSeqLen = 1, batchSize in query, blockTable must be equal"), return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName, "when qSeqLen = 1, batchSize in query, blockTable must be equal"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(batchSizeInBlockTable != batchSizeInCmpKvSeqLen,
-            OP_LOGE(ncaiContext_->opName,
-                "batchSize in blockTable, actualCmpKvSeqLengths must be equal"), return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName, "batchSize in blockTable, actualCmpKvSeqLengths must be equal"),
+                    return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(batchSizeInBlockTable <= 0U,
-        OP_LOGE(ncaiContext_->opName, "batchSize should be greater than 0"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(batchSizeInBlockTable <= 0U, OP_LOGE(ncaiContext_->opName, "batchSize should be greater than 0"),
+                return ge::GRAPH_FAILED);
 
     // query第二维是否等于 attr中的qHeadNum_
     uint32_t headNumInQ = 0;
     if (strcmp(ncaiContext_->layOut, "TND") == 0) {
         headNumInQ = ncaiContext_->query.shape->GetStorageShape().GetDim(DIM_1);
         OP_CHECK_IF(qSeqSize_ > 1 && queryDim0 != qSeqLenCumSum_,
-            OP_LOGE(ncaiContext_->opName,
-                "when layOut is TND and qSeqLen > 1, queryDim0 must be equal to qSeqLenCumSum"),
-                return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName,
+                            "when layOut is TND and qSeqLen > 1, queryDim0 must be equal to qSeqLenCumSum"),
+                    return ge::GRAPH_FAILED);
     } else if (strcmp(ncaiContext_->layOut, "BSND") == 0) {
         headNumInQ = ncaiContext_->query.shape->GetStorageShape().GetDim(DIM_2);
         uint32_t qSeqLen = ncaiContext_->query.shape->GetStorageShape().GetDim(DIM_1);
         OP_CHECK_IF(qSeqLen != qSeqSize_,
-            OP_LOGE(ncaiContext_->opName, "when layOut is BSND, queryDim1 must be equal to qSeqMaxLen"),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName, "when layOut is BSND, queryDim1 must be equal to qSeqMaxLen"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(qSeqSize_ > 1 && queryDim0 != batchSizeInBlockTable,
-            OP_LOGE(ncaiContext_->opName,
-                "when layOut is BSND, batchSize in query, blockTable must be equal"), return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName, "when layOut is BSND, batchSize in query, blockTable must be equal"),
+                    return ge::GRAPH_FAILED);
     }
-    OP_CHECK_IF(headNumInQ != qHeadNum_,
-        OP_LOGE(ncaiContext_->opName, "headNum in query, attr must be euqal"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(headNumInQ <= 0,
-        OP_LOGE(ncaiContext_->opName, "headNum should be greater than 0"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(headNumInQ != qHeadNum_, OP_LOGE(ncaiContext_->opName, "headNum in query, attr must be euqal"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(headNumInQ <= 0, OP_LOGE(ncaiContext_->opName, "headNum should be greater than 0"),
+                return ge::GRAPH_FAILED);
 
     // key的第一维 和 value的第一维是否相同
     uint32_t numBlocksInK = ncaiContext_->key.shape->GetStorageShape().GetDim(DIM_0);
     uint32_t numBlocksInV = ncaiContext_->value.shape->GetStorageShape().GetDim(DIM_0);
-    OP_CHECK_IF(numBlocksInK != numBlocksInV,
-        OP_LOGE(ncaiContext_->opName, "numBlocks in k, v must be euqal"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(numBlocksInK <= 0,
-        OP_LOGE(ncaiContext_->opName, "numBlocks should be greater than 0"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(numBlocksInK != numBlocksInV, OP_LOGE(ncaiContext_->opName, "numBlocks in k, v must be euqal"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(numBlocksInK <= 0, OP_LOGE(ncaiContext_->opName, "numBlocks should be greater than 0"),
+                return ge::GRAPH_FAILED);
 
     // key的第2维 和 value的第2维 和 参数中的pageBlockSize是否相同
     uint32_t blockSizeInK = ncaiContext_->key.shape->GetStorageShape().GetDim(DIM_1);
     uint32_t blockSizeInV = ncaiContext_->value.shape->GetStorageShape().GetDim(DIM_1);
     OP_CHECK_IF(blockSizeInK != blockSizeInV || blockSizeInV != *ncaiContext_->blockSize,
-        OP_LOGE(ncaiContext_->opName, "pageBlockSize in k, v, attr must be equal"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "pageBlockSize in k, v, attr must be equal"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -141,46 +142,49 @@ ge::graphStatus NCAITiling::CheckTopK()
     uint32_t selectBlockNumMax = (selectKvSeqlenMax + selectSize_ - ONE) / selectSize_;
     uint32_t selectKvSeqlenMin = (sMin_ - ONE) * compStrideD_ + compSizeL_;
     uint32_t selectBlockNumMin = (selectKvSeqlenMin + selectSize_ - ONE) / selectSize_;
-    OP_CHECK_IF(selectBlockNumMax > 4096U,
-        OP_LOGE(ncaiContext_->opName, "selectBlockNum must be within (0, 4096]"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(selectBlockNumMin < *ncaiContext_->selectNum,
+    OP_CHECK_IF(selectBlockNumMax > 4096U, OP_LOGE(ncaiContext_->opName, "selectBlockNum must be within (0, 4096]"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        selectBlockNumMin < *ncaiContext_->selectNum,
         OP_LOGE(ncaiContext_->opName, "selectBlockCount should be smaller than the total candidate select blocks"),
-                  return ge::GRAPH_FAILED);
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus NCAITiling::CheckAttr()
 {
-    OP_CHECK_IF(compSizeL_ % 16U != 0,
-        OP_LOGE(ncaiContext_->opName, "compressBlockSize must be a multiple of 16"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(compStrideD_ % 16U != 0,
-        OP_LOGE(ncaiContext_->opName, "compressStride must be a multiple of 16"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(selectSize_ % 16U != 0,
-        OP_LOGE(ncaiContext_->opName, "selectBlockSize must be a multiple of 16"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compSizeL_ % 16U != 0, OP_LOGE(ncaiContext_->opName, "compressBlockSize must be a multiple of 16"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(compStrideD_ % 16U != 0, OP_LOGE(ncaiContext_->opName, "compressStride must be a multiple of 16"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(selectSize_ % 16U != 0, OP_LOGE(ncaiContext_->opName, "selectBlockSize must be a multiple of 16"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(compSizeL_ < compStrideD_,
-        OP_LOGE(ncaiContext_->opName, "compressStride can not be greater than compressBlockSize"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "compressStride can not be greater than compressBlockSize"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(compSizeL_ > selectSize_,
-        OP_LOGE(ncaiContext_->opName, "compressBlockSize can not be greater than selectBlockSize"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "compressBlockSize can not be greater than selectBlockSize"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(selectSize_ % compStrideD_ != 0,
-        OP_LOGE(ncaiContext_->opName, "selectBlockSize must be divisible by compressStride"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(compSizeL_ < 16U || compSizeL_ > 128U || compSizeL_ % 16U != 0,
+                OP_LOGE(ncaiContext_->opName, "selectBlockSize must be divisible by compressStride"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        compSizeL_ < 16U || compSizeL_ > 128U || compSizeL_ % 16U != 0,
         OP_LOGE(ncaiContext_->opName,
-        "compressBlockSize must be a multiple of 16 and compressBlockSize must not be greater than 128"),
+                "compressBlockSize must be a multiple of 16 and compressBlockSize must not be greater than 128"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(compStrideD_ < 16U || compStrideD_ > 64U || compStrideD_ % 16U != 0,
-        OP_LOGE(ncaiContext_->opName, "compressStride must be 16 or 32 or 48 or 64"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "compressStride must be 16 or 32 or 48 or 64"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(selectSize_ < 16U || selectSize_ > 128U || selectSize_ % 16U != 0,
-        OP_LOGE(ncaiContext_->opName,
-        "selectBlockSize must be a multiple of 16 and selectBlockSize must not be greater than 128"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName,
+                        "selectBlockSize must be a multiple of 16 and selectBlockSize must not be greater than 128"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(*ncaiContext_->blockSize <= 0 || *ncaiContext_->blockSize > 128U,
-        OP_LOGE(ncaiContext_->opName, "pageBlockSize must be within (0, 128]"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "pageBlockSize must be within (0, 128]"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*ncaiContext_->blockSize % 16U != 0,
-        OP_LOGE(ncaiContext_->opName, "pageBlockSize must be a multiple of 16"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "pageBlockSize must be a multiple of 16"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*this->ncaiContext_->numHeads % *this->ncaiContext_->kvHeadNums != 0,
-        OP_LOGE(ncaiContext_->opName, "numHeads must be a multiple of kvHeadNums"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "numHeads must be a multiple of kvHeadNums"), return ge::GRAPH_FAILED);
     if (CheckTopK() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -230,21 +234,22 @@ ge::graphStatus NCAITiling::ParamsPostCheck()
 {
     groupSize_ = qHeadNum_ / kvHeadNum_;
     OP_CHECK_IF(groupSize_ <= 0 || groupSize_ > 128U,
-        OP_LOGE(ncaiContext_->opName, "groupSize_ must be within (0, 128]"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(128 % groupSize_ != 0,
-        OP_LOGE(ncaiContext_->opName, "groupSize_ must be divisible by 128"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "groupSize_ must be within (0, 128]"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(128 % groupSize_ != 0, OP_LOGE(ncaiContext_->opName, "groupSize_ must be divisible by 128"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockSize_ <= 0 || blockSize_ > 128U,
-        OP_LOGE(ncaiContext_->opName, "blockSize must be within (0, 128]"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(blockSize_ % 16U != 0,
-        OP_LOGE(ncaiContext_->opName, "blockSize must be a multiple of 16"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "blockSize must be within (0, 128]"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(blockSize_ % 16U != 0, OP_LOGE(ncaiContext_->opName, "blockSize must be a multiple of 16"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(headSizeQk_ <= 0 || headSizeQk_ > 192U,
-        OP_LOGE(ncaiContext_->opName, "headSizeQK must be within (0, 192]"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "headSizeQK must be within (0, 192]"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(headSizeVo_ <= 0 || headSizeVo_ > 128U,
-        OP_LOGE(ncaiContext_->opName, "headSizeVO must be within (0, 128]"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "headSizeVO must be within (0, 128]"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(headSizeVo_ > headSizeQk_,
-        OP_LOGE(ncaiContext_->opName, "headSizeVo_ can not be greater than headSizeQk_"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(sMax_ <= 0 || sMax_ > SEQLEN_LIMIT,
-        OP_LOGE(ncaiContext_->opName, "maxSeqlen must be within (0, 8192]"), return ge::GRAPH_FAILED);
+                OP_LOGE(ncaiContext_->opName, "headSizeVo_ can not be greater than headSizeQk_"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sMax_ <= 0 || sMax_ > SEQLEN_LIMIT, OP_LOGE(ncaiContext_->opName, "maxSeqlen must be within (0, 8192]"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -268,11 +273,11 @@ ge::graphStatus NCAITiling::ProcessQkv()
         blockSize_ = ncaiContext_->value.shape->GetStorageShape().GetDim(DIM_1);
         maxBlockNumPerBatch_ = ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_1);
         OP_CHECK_IF(GetMaxMinSeqlen() != ge::GRAPH_SUCCESS,
-            OP_LOGE(ncaiContext_->opName, "get max/min kv seqlen failed"), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(GetMaxQSeqlen() != ge::GRAPH_SUCCESS,
-            OP_LOGE(ncaiContext_->opName, "get max/min q seqlen failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName, "get max/min kv seqlen failed"), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(GetMaxQSeqlen() != ge::GRAPH_SUCCESS, OP_LOGE(ncaiContext_->opName, "get max/min q seqlen failed"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(CheckSelKvSeqlen() != ge::GRAPH_SUCCESS,
-            OP_LOGE(ncaiContext_->opName, "Check selectKvSeqlen failed"), return ge::GRAPH_FAILED);
+                    OP_LOGE(ncaiContext_->opName, "Check selectKvSeqlen failed"), return ge::GRAPH_FAILED);
     } else {
         return ge::GRAPH_FAILED;
     }
@@ -293,8 +298,7 @@ ge::graphStatus NCAITiling::ProcessEpilogue()
 
 ge::graphStatus NCAITiling::ProcessInput()
 {
-    if (ProcessEpilogue() != ge::GRAPH_SUCCESS ||
-        ProcessQkv() != ge::GRAPH_SUCCESS) {
+    if (ProcessEpilogue() != ge::GRAPH_SUCCESS || ProcessQkv() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (CheckAttr() != ge::GRAPH_SUCCESS) {
@@ -323,7 +327,7 @@ ge::graphStatus NCAITiling::SplitBN()
     int64_t actQSeqLen = 0;
     for (uint32_t i = 0; i < batchSize_; i++) {
         if (ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>() != nullptr && qSeqSize_ != 1U) {
-            const int64_t *actualQSeqLenData = ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>();
+            const int64_t* actualQSeqLenData = ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>();
             actQSeqLen = actualQSeqLenData[i];
         } else {
             actQSeqLen = 1;
@@ -334,7 +338,8 @@ ge::graphStatus NCAITiling::SplitBN()
             qSeqLenSplitSize_ = qSeqLenSplitSizeLimit;
         } else {
             qSeqLenSplitSize_ = (static_cast<uint32_t>(actQSeqLen) > qSeqLenSplitSize_) ?
-                                static_cast<uint32_t>(actQSeqLen): qSeqLenSplitSize_;
+                                    static_cast<uint32_t>(actQSeqLen) :
+                                    qSeqLenSplitSize_;
         }
         totalQSplitNum += qSeqLenSplitNum;
     }
@@ -431,9 +436,9 @@ ge::graphStatus NCAITiling::CalcWorkSpace()
     workSpaceElemNum_ = rowNumSp * colNumSp;
     mm1ResWorkSpaceSize_ = workSpaceElemNum_ * mm1ResElemSize * bufferNum * blockDim_;
 
-    mm2InWorkSpaceSize_ = workSpaceElemNum_ * mm2InElemSize * bufferNum * blockDim_;  // mm2In开db
+    mm2InWorkSpaceSize_ = workSpaceElemNum_ * mm2InElemSize * bufferNum * blockDim_; // mm2In开db
     scoreInWorkSpaceSize_ = workSpaceElemNum_ * scoreInElemSize * blockDim_;
-    topKInWorkSpaceSize_  = workSpaceElemNum_ * scoreInElemSize * blockDim_ / groupSize_;
+    topKInWorkSpaceSize_ = workSpaceElemNum_ * scoreInElemSize * blockDim_ / groupSize_;
 
     impScoreResultEleNum_ = rowNumSp * impScoreResultColPad_;
     impScoreWorkSpaceSize_ = impScoreResultEleNum_ * sizeof(float) * blockDim_;
@@ -472,15 +477,15 @@ ge::graphStatus NCAITiling::TopKTiling()
     // 调用topk接口
     uint32_t maxsize = 0;
     uint32_t minsize = 0;
-    uint32_t dtypesize = 4;  // float类型
+    uint32_t dtypesize = 4; // float类型
     uint32_t selectKvSeqlen = (sMax_ - ONE) * compStrideD_ + compSizeL_;
     uint32_t selectBlockNum = (selectKvSeqlen + selectSize_ - ONE) / selectSize_;
     uint32_t alignedTopkIn = (selectBlockNum + ALIGNED_32 - ONE) / ALIGNED_32 * ALIGNED_32;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(this->ncaiContext_->platformInfo);
     AscendC::TopKTilingFunc(ascendcPlatform, alignedTopkIn, 1, selectNum_, dtypesize, true,
-        AscendC::TopKMode::TOPK_NORMAL, true, tilingData_->topkTilingData);
-    AscendC::GetTopKMaxMinTmpSize(ascendcPlatform, alignedTopkIn, 1, false, true, AscendC::TopKMode::TOPK_NORMAL,
-        true, dtypesize, maxsize, minsize);
+                            AscendC::TopKMode::TOPK_NORMAL, true, tilingData_->topkTilingData);
+    AscendC::GetTopKMaxMinTmpSize(ascendcPlatform, alignedTopkIn, 1, false, true, AscendC::TopKMode::TOPK_NORMAL, true,
+                                  dtypesize, maxsize, minsize);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -519,7 +524,7 @@ ge::graphStatus NCAITiling::CalcTilingKey()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus NCAITiling::ConvertContext(gert::TilingContext &context, NsaCompressAttentionInferContext &ncaiContext)
+ge::graphStatus NCAITiling::ConvertContext(gert::TilingContext& context, NsaCompressAttentionInferContext& ncaiContext)
 {
     if (context.GetNodeName() == nullptr) {
         OP_LOGE("NsaCompressAttentionInfer", "opName got from TilingContext is nullptr");
@@ -554,7 +559,7 @@ ge::graphStatus NCAITiling::ConvertContext(gert::TilingContext &context, NsaComp
 
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from GE is nullptr"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     ncaiContext.numHeads = attrs->GetAttrPointer<uint32_t>(NUM_HEADS_ATTR_INDEX);
     ncaiContext.kvHeadNums = attrs->GetAttrPointer<uint32_t>(KV_NUM_HEADS_ATTR_INDEX);
     ncaiContext.selectSize = attrs->GetAttrPointer<uint32_t>(SELECT_SIZE_ATTR_INDEX);
@@ -567,14 +572,14 @@ ge::graphStatus NCAITiling::ConvertContext(gert::TilingContext &context, NsaComp
     ncaiContext.sparseMode = attrs->GetAttrPointer<uint32_t>(SPARSE_MODE_ATTR_INDEX);
 
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
-               OPS_REPORT_VECTOR_INNER_ERR("NsaCompressAttentionInfer", "workSpaceSize got from GE is nullptr"),
-               return ge::GRAPH_FAILED);
+                OPS_REPORT_VECTOR_INNER_ERR("NsaCompressAttentionInfer", "workSpaceSize got from GE is nullptr"),
+                return ge::GRAPH_FAILED);
     ncaiContext.workSpaces = context.GetWorkspaceSizes(1);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus NCAITiling::GetNCAITiling(NsaCompressAttentionInferContext &ncaiContext,
-                                          NsaCompressAttentionInferTilingData &tilingData, bool isWorkspace)
+ge::graphStatus NCAITiling::GetNCAITiling(NsaCompressAttentionInferContext& ncaiContext,
+                                          NsaCompressAttentionInferTilingData& tilingData, bool isWorkspace)
 {
     this->ncaiContext_ = &ncaiContext;
     this->tilingData_ = &tilingData;
@@ -587,13 +592,9 @@ ge::graphStatus NCAITiling::GetNCAITiling(NsaCompressAttentionInferContext &ncai
         OP_LOGI(ncaiContext_->opName, "NSA compress attention infer aclgraph mode activate.");
     }
 
-    if (GetNpuInfo() != ge::GRAPH_SUCCESS ||
-        ProcessInput() != ge::GRAPH_SUCCESS ||
-        Split() != ge::GRAPH_SUCCESS ||
-        ParamsPostCheck() != ge::GRAPH_SUCCESS ||
-        SoftmaxTiling() != ge::GRAPH_SUCCESS ||
-        TopKTiling() != ge::GRAPH_SUCCESS ||
-        CalcWorkSpace() != ge::GRAPH_SUCCESS ||
+    if (GetNpuInfo() != ge::GRAPH_SUCCESS || ProcessInput() != ge::GRAPH_SUCCESS || Split() != ge::GRAPH_SUCCESS ||
+        ParamsPostCheck() != ge::GRAPH_SUCCESS || SoftmaxTiling() != ge::GRAPH_SUCCESS ||
+        TopKTiling() != ge::GRAPH_SUCCESS || CalcWorkSpace() != ge::GRAPH_SUCCESS ||
         FillTilingData() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -611,7 +612,7 @@ ge::graphStatus NCAITiling::GetMaxMinSeqlen()
         sMax_ = SEQLEN_LIMIT;
         sMin_ = SEQLEN_LIMIT;
     } else {
-        const int64_t *actualLenData = ncaiContext_->actualCmpKvSeqLengths.tensor->GetData<int64_t>();
+        const int64_t* actualLenData = ncaiContext_->actualCmpKvSeqLengths.tensor->GetData<int64_t>();
         sMin_ = static_cast<uint32_t>(actualLenData[0]);
         for (uint32_t i = 0; i < batchSize_; i++) {
             int64_t actLen = actualLenData[i];
@@ -625,7 +626,7 @@ ge::graphStatus NCAITiling::GetMaxMinSeqlen()
 ge::graphStatus NCAITiling::GetMaxQSeqlen()
 {
     if (ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>() != nullptr) {
-        const int64_t *actualQSeqLenData = ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>();
+        const int64_t* actualQSeqLenData = ncaiContext_->actualQSeqLengths.tensor->GetData<int64_t>();
         int64_t batchSizeInQSeqLen = ncaiContext_->actualQSeqLengths.tensor->GetStorageShape().GetDim(DIM_0);
         if (ncaiContext_->blockTable.tensor->GetStorageShape().GetDim(DIM_0) != batchSizeInQSeqLen) {
             OP_LOGW(ncaiContext_->opName, "batchSize in blockTable, actualQSeqLengths must be equal");
@@ -664,8 +665,8 @@ ge::graphStatus NCAITiling::CheckSelKvSeqlen()
             qSeqSize_ = 1U;
             return ge::GRAPH_SUCCESS;
         }
-        const int64_t *actualKvSeqLenData = ncaiContext_->actualCmpKvSeqLengths.tensor->GetData<int64_t>();
-        const int64_t *actualSelKvSeqLenData = ncaiContext_->actualSelKvSeqLengths.tensor->GetData<int64_t>();
+        const int64_t* actualKvSeqLenData = ncaiContext_->actualCmpKvSeqLengths.tensor->GetData<int64_t>();
+        const int64_t* actualSelKvSeqLenData = ncaiContext_->actualSelKvSeqLengths.tensor->GetData<int64_t>();
         for (uint32_t i = 0; i < batchSize_; i++) {
             int64_t actKvSeqLen = actualKvSeqLenData[i];
             int64_t actSelKvSeqLen = actualSelKvSeqLenData[i];
@@ -673,7 +674,8 @@ ge::graphStatus NCAITiling::CheckSelKvSeqlen()
                 (actSelKvSeqLen - static_cast<int64_t>(compSizeL_)) / static_cast<int64_t>(compStrideD_) +
                 static_cast<int64_t>(ONE);
             if (actKvSeqLen != validKvSeqLen) {
-                OP_LOGW(ncaiContext_->opName,
+                OP_LOGW(
+                    ncaiContext_->opName,
                     "actualCmpKvSeqLen must equal '(actualSelKvSeqLen - compressBlockSize)/compressBlockStride + 1'");
                 qSeqLenCumSum_ = batchSize_;
                 qSeqSize_ = 1U;
@@ -684,22 +686,22 @@ ge::graphStatus NCAITiling::CheckSelKvSeqlen()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus NCAITiling::NSICASetTilingData(gert::TilingContext &context,
-                                               NsaCompressAttentionInferTilingData &tilingData)
+ge::graphStatus NCAITiling::NSICASetTilingData(gert::TilingContext& context,
+                                               NsaCompressAttentionInferTilingData& tilingData)
 {
-    OP_CHECK_IF(context.GetRawTilingData() == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(
-                "NsaCompressAttentionInfer", "RawTilingData got from GE context is nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        context.GetRawTilingData() == nullptr,
+        OPS_REPORT_VECTOR_INNER_ERR("NsaCompressAttentionInfer", "RawTilingData got from GE context is nullptr."),
+        return ge::GRAPH_FAILED);
     tilingData.SaveToBuffer(context.GetRawTilingData()->GetData(), context.GetRawTilingData()->GetCapacity());
     context.GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingNsaCompressAttentionInfer(gert::TilingContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingNsaCompressAttentionInfer(gert::TilingContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("NsaCompressAttentionInfer",
-               "Context is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("NsaCompressAttentionInfer", "Context is nullptr."),
+                return ge::GRAPH_FAILED);
     NsaCompressAttentionInferTilingData tilingData;
     NsaCompressAttentionInferContext ncaiContext{.opName = nullptr,
                                                  .platformInfo = nullptr,
@@ -745,13 +747,14 @@ ASCENDC_EXTERN_C ge::graphStatus TilingNsaCompressAttentionInfer(gert::TilingCon
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForNsaCompressAttentionInfer(gert::TilingParseContext* context)
 {
-    (void) context;
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
 IMPL_OP_OPTILING(NsaCompressAttentionInfer)
     .Tiling(TilingNsaCompressAttentionInfer)
     .TilingInputsDataDependency({5, 6, 7},
-        {gert::TilingPlacement::TILING_ON_HOST, gert::TilingPlacement::TILING_ON_AICPU})
-    .TilingParse<NsaCompressAttentionInferCompileInfo>(TilingPrepareForNsaCompressAttentionInfer); // 向框架注册入口函数;
+                                {gert::TilingPlacement::TILING_ON_HOST, gert::TilingPlacement::TILING_ON_AICPU})
+    .TilingParse<NsaCompressAttentionInferCompileInfo>(
+        TilingPrepareForNsaCompressAttentionInfer); // 向框架注册入口函数;
 } // namespace optiling

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_MLA_QK_TP1_SPEC_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_MLA_QK_TP1_SPEC_HPP
@@ -76,7 +76,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
+    BlockMmad(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart = 0)
     {
         // Allocate L1 memory space
         l1ATensor = resource.l1Buf.template GetBufferByByte<ElementA>(l1BufAddrStart);
@@ -100,7 +100,7 @@ public:
                     AscendC::GlobalTensor<ElementB> gB, AscendC::GlobalTensor<ElementB> gBRope,
                     AscendC::GlobalTensor<int32_t> gblockTable, AscendC::GlobalTensor<ElementC> gC, LayoutA layoutA,
                     LayoutA layoutARope, LayoutB layoutB, LayoutB layoutBRope, LayoutC layoutC, GemmCoord actualShape,
-                    uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen)
+                    uint32_t& nIdx, uint32_t& nLoop, uint32_t& blockSize, uint32_t kvSeqlen)
     {
         uint32_t rowNum = actualShape.m();
         uint32_t stackSeqTile = actualShape.n();

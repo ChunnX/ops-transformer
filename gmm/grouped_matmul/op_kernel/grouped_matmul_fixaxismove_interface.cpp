@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_fixaxismove_interface.cpp
@@ -17,12 +17,13 @@
 
 namespace Catlass {
 
-template <typename XDType,
-          typename WeightDType, typename CDType, typename ScaleDType, typename GrouplistDType,
+template <typename XDType, typename WeightDType, typename CDType, typename ScaleDType, typename GrouplistDType,
           typename PerTokenScaleDType, typename YDType>
-CATLASS_DEVICE void grouped_matmul_fixaxismove(uint32_t m, uint32_t k, uint32_t n, uint32_t groupNum, 
-                                        GM_ADDR gmA, GM_ADDR gmB, GM_ADDR gmScale, GM_ADDR group_list, 
-                                        GM_ADDR per_token_scale, GM_ADDR y, GM_ADDR workspace, uint32_t aicCoreNum) {
+CATLASS_DEVICE void grouped_matmul_fixaxismove(uint32_t m, uint32_t k, uint32_t n, uint32_t groupNum, GM_ADDR gmA,
+                                               GM_ADDR gmB, GM_ADDR gmScale, GM_ADDR group_list,
+                                               GM_ADDR per_token_scale, GM_ADDR y, GM_ADDR workspace,
+                                               uint32_t aicCoreNum)
+{
     using LayoutA = Catlass::layout::RowMajor;
     using LayoutB = Catlass::layout::zN;
     using LayoutD = Catlass::layout::RowMajor;
@@ -48,11 +49,10 @@ CATLASS_DEVICE void grouped_matmul_fixaxismove(uint32_t m, uint32_t k, uint32_t 
     constexpr uint32_t MAX_GROUP_NUM = 512;
     constexpr uint32_t MAX_CORE_NUM = 24;
     constexpr uint32_t MAX_TILE_NUM = 5000;
-    using DispatchPolicy = Gemm::MmadAtlasA2PreloadAsyncFixAxisMoveWithCallback<
-        preloadStages,
-        l1ABufferNum, l1AStages, l1ATileNum, l1BStages, l0AStages, l0BStages, l0CStages,
-        enableUnitFlag, enableRiffleShuffle
-    >;
+    using DispatchPolicy =
+        Gemm::MmadAtlasA2PreloadAsyncFixAxisMoveWithCallback<preloadStages, l1ABufferNum, l1AStages, l1ATileNum,
+                                                             l1BStages, l0AStages, l0BStages, l0CStages, enableUnitFlag,
+                                                             enableRiffleShuffle>;
     using L1TileShape = GemmShape<128, 256, 512>;
     using L0TileShape = GemmShape<128, 256, 128>;
 
@@ -91,31 +91,26 @@ CATLASS_DEVICE void grouped_matmul_fixaxismove(uint32_t m, uint32_t k, uint32_t 
 
     using EpilogueTileShape = MatrixShape<32, 256>;
     using TileRowBroadcastMul = Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
-    using TileBroadcastOneBlk = Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType,
-        EpilogueTileShape::ROW>;
-    using TileOneBlkColumnBroadcastMul = Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag,
-        OneBlkColumnBroadcastMulType, EpilogueTileShape>;
+    using TileBroadcastOneBlk =
+        Epilogue::Tile::TileBroadcastOneBlk<ArchTag, BroadcastOneBlkType, EpilogueTileShape::ROW>;
+    using TileOneBlkColumnBroadcastMul =
+        Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
     using TileCopy = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, DType>;
     using TileScheduler = Epilogue::Tile::EpilogueHorizontalTileSwizzle;
 
     using BlockEpilogue = Epilogue::Block::BlockEpilogue<EpilogueDispatchPolicy, CType, ScaleType, PerTokenScaleType,
-        DType, TileRowBroadcastMul, TileBroadcastOneBlk, TileOneBlkColumnBroadcastMul, TileCopy, TileScheduler>;
+                                                         DType, TileRowBroadcastMul, TileBroadcastOneBlk,
+                                                         TileOneBlkColumnBroadcastMul, TileCopy, TileScheduler>;
 
     using BlockScheduler = typename Gemm::Block::SplitkInOneCoreGemmIdentityBlockSwizzle<1, 0>;
 
-    using MatmulKernel = GroupedMatmulSliceMPerTokenDequantFixAxisMove<BlockMmad, BlockEpilogue, BlockScheduler,
-        int64_t>;
-    
+    using MatmulKernel =
+        GroupedMatmulSliceMPerTokenDequantFixAxisMove<BlockMmad, BlockEpilogue, BlockScheduler, int64_t>;
+
     typename MatmulKernel::Params params{
-        m, k, n, groupNum, workspaceStages,
-        group_list,
-        gmA, layoutA,
-        gmB, layoutB,
-        gmScale, layoutScale,
-        per_token_scale, layoutPerTokenScale,
-        y, layoutD, workspace
-    };
+        m,       k,       n,           groupNum,        workspaceStages,     group_list, gmA,     layoutA,  gmB,
+        layoutB, gmScale, layoutScale, per_token_scale, layoutPerTokenScale, y,          layoutD, workspace};
     MatmulKernel matmul;
     matmul(params);
 }
-}  // namespace Catlass
+} // namespace Catlass

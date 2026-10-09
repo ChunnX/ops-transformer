@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file block_scheduler_aswt.h
@@ -76,16 +76,16 @@ public:
     using ProblemShape = ProblemShape_;
 
     struct Params {
-        const Mc2MatMulV3BasicTilingData *tilingData;
+        const Mc2MatMulV3BasicTilingData* tilingData;
     };
 
     struct BatchMatMulParams {
-        const Mc2BatchMatMulV3BasicTilingData *tilingData;
+        const Mc2BatchMatMulV3BasicTilingData* tilingData;
     };
 
 public:
-    __aicore__ inline Mc2BlockSchedulerAswtBuiltIn(const ProblemShape &shape, int64_t blockIdx, int64_t blockNum,
-                                                   const Params &params)
+    __aicore__ inline Mc2BlockSchedulerAswtBuiltIn(const ProblemShape& shape, int64_t blockIdx, int64_t blockNum,
+                                                   const Params& params)
         : blockIdx_(blockIdx),
           blockNum_(blockNum)
     {

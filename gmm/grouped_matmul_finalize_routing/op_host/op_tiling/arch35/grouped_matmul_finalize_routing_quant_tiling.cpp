@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_finalize_routing_quant_tiling.cpp
@@ -47,11 +47,11 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetShapeAttrsInfo()
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalAttr()
 {
-    auto *attrs = context_->GetAttrs();
-    const int64_t *shareInputOffsetPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SHARE_INPUT_OFFSET);
-    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
-    const int64_t *outputBSPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_OUTPUT_BS);
-    const int64_t *outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DTYPE);
+    auto* attrs = context_->GetAttrs();
+    const int64_t* shareInputOffsetPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SHARE_INPUT_OFFSET);
+    const int64_t* groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
+    const int64_t* outputBSPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_OUTPUT_BS);
+    const int64_t* outputDtypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_DTYPE);
     OP_CHECK_IF(outputBSPtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "output_bs", "nullptr",
                                                       "attr batch cannot be nullptr"),
@@ -103,9 +103,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeAttrs()
                     inputParams_.opType, "attrs", std::to_string(attrs->GetAttrNum()),
                     BuildErrorMsgStr("the num of attrs must be greater than ", ATTR_INDEX_TUNING_CONFIG + 1)),
                 return false);
-    const float *shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
-    const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
-    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_W);
+    const float* shareInputWeightPtr = attrs->GetAttrPointer<float>(ATTR_INDEX_SHARE_INPUT_WEIGHT);
+    const bool* transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_X);
+    const bool* transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_W);
     OP_CHECK_IF(shareInputWeightPtr == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "residual_scale", "nullptr",
                                                       "attr residualScale cannot be nullptr"),
@@ -232,7 +232,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
     return true;
 }
 
-bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptional(uint32_t index, const char *paramName,
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptional(uint32_t index, const char* paramName,
                                                             ge::DataType targetDtype) const
 {
     auto optionalDesc = context_->GetOptionalInputDesc(index);
@@ -320,9 +320,9 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDtype() const
     return true;
 }
 
-bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDim(const gert::Shape &xShape, const gert::Shape &wShape,
-                                                       const gert::StorageShape *pertokenScaleStorageShape,
-                                                       const gert::Shape &scaleShape, const gert::Shape &yShape) const
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDim(const gert::Shape& xShape, const gert::Shape& wShape,
+                                                       const gert::StorageShape* pertokenScaleStorageShape,
+                                                       const gert::Shape& scaleShape, const gert::Shape& yShape) const
 {
     auto xDimNum = xShape.GetDimNum();
     OP_CHECK_IF(
@@ -346,7 +346,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckDim(const gert::Shape &xShape
 }
 
 bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
-    const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape) const
+    const gert::StorageShape* pertokenScaleStorageShape, const gert::Shape& scaleShape) const
 {
     auto scaleDimNum = scaleShape.GetDimNum();
     if (IsMicroScaling()) {
@@ -358,7 +358,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "perTokenScale", "nullptr",
                                                           "input pertokenScaleStorageShape cannot be nullptr"),
                     return false);
-        const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
+        const gert::Shape& pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
         auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
         OP_CHECK_IF(
             pertokenScaleDimNum != DIM_NUM_MX_PERTOKENSCALE,
@@ -371,7 +371,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
                                                  std::to_string(DIM_NUM_SCALE)),
                     return false);
         if (pertokenScaleStorageShape != nullptr) {
-            const gert::Shape &pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
+            const gert::Shape& pertokenScaleShape = pertokenScaleStorageShape->GetOriginShape();
             auto pertokenScaleDimNum = pertokenScaleShape.GetDimNum();
             OP_CHECK_IF(
                 pertokenScaleDimNum != DIM_NUM_PERTOKENSCALE,
@@ -383,7 +383,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckScaleAndPerTokenDims(
     return true;
 }
 
-bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape(const gert::Shape &xShape, const gert::Shape &wShape) const
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckFp4Shape(const gert::Shape& xShape, const gert::Shape& wShape) const
 {
     bool a4w4 = IsFp4Dtype(inputParams_.aDtype) && IsFp4Dtype(inputParams_.bDtype);
     if (!a4w4) {
@@ -458,13 +458,13 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsShape()
     return true;
 }
 
-bool GroupedMatmulFinalizeRoutingQuantTiling::CheckInputsShape(const gert::Shape &xShape,
-                                                               const gert::StorageShape *wStorageShape,
-                                                               const gert::StorageShape *pertokenScaleStorageShape,
-                                                               const gert::Shape &scaleShape,
-                                                               const gert::Shape &yShape) const
+bool GroupedMatmulFinalizeRoutingQuantTiling::CheckInputsShape(const gert::Shape& xShape,
+                                                               const gert::StorageShape* wStorageShape,
+                                                               const gert::StorageShape* pertokenScaleStorageShape,
+                                                               const gert::Shape& scaleShape,
+                                                               const gert::Shape& yShape) const
 {
-    const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape& wShape = wStorageShape->GetOriginShape();
     OP_CHECK_IF(!CheckDim(xShape, wShape, pertokenScaleStorageShape, scaleShape, yShape),
                 OP_LOGE(context_->GetNodeName(), "CheckDim failed."), return false);
     if (IsMicroScaling()) {
@@ -481,21 +481,21 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x", "nullptr",
                                                       "input xStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &xShape = xStorageShape->GetOriginShape();
+    const gert::Shape& xShape = xStorageShape->GetOriginShape();
 
     auto wStorageShape = context_->GetInputShape(W_INDEX);
     OP_CHECK_IF(wStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "weight", "nullptr",
                                                       "input wStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape& wShape = wStorageShape->GetOriginShape();
 
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
     OP_CHECK_IF(scaleStorageShape == nullptr,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "scale", "nullptr",
                                                       "input scaleStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &scaleShape = scaleStorageShape->GetOriginShape();
+    const gert::Shape& scaleShape = scaleStorageShape->GetOriginShape();
 
     auto pertokenScaleStorageShape = context_->GetOptionalInputShape(PERTOKEN_SCALE_INDEX);
 
@@ -504,7 +504,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "y", "nullptr",
                                                       "output yStorageShape cannot be nullptr"),
                 return false);
-    const gert::Shape &yShape = yStorageShape->GetOriginShape();
+    const gert::Shape& yShape = yStorageShape->GetOriginShape();
 
     if (IsMicroScaling()) {
         bool isFullMx = (IsFp8Dtype(inputParams_.aDtype) && IsFp8Dtype(inputParams_.bDtype)) ||
@@ -669,7 +669,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::PostTiling()
                 OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8", tilingDataSize),
                 return ge::GRAPH_FAILED);
     error_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-                           reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+                           reinterpret_cast<void*>(&tilingData_), tilingDataSize);
     if (ret != EOK) {
         OP_LOGE(inputParams_.opName, "Memcpy_s failed, ret = %d", ret);
         return ge::GRAPH_FAILED;
@@ -734,7 +734,7 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::GetWorkspaceSize()
         return ret;
     }
     if (tilingData_.gmmFinalizeRoutingDataParams.deterministicFlag == 1) {
-        size_t *workspaces = context_->GetWorkspaceSizes(1);
+        size_t* workspaces = context_->GetWorkspaceSizes(1);
         OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
         workspaces[0] = SYS_WORKSPACE_SIZE + deterWorkspaceSize_;
         OP_LOGD(context_->GetNodeName(), "GetWorkspaceSize: deterministic workspace %u bytes, total=%zu bytes",

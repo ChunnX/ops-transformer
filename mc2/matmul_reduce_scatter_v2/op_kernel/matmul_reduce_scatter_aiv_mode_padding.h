@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef MATMUL_REDUCE_SCATTER_AIV_MODE_PADDING_H
 #define MATMUL_REDUCE_SCATTER_AIV_MODE_PADDING_H
@@ -33,7 +33,7 @@ public:
     using ArchTag = ArchTag_;
 
     CATLASS_DEVICE
-    explicit Bf16BiasCaster(Arch::Resource<ArchTag> &resource_)
+    explicit Bf16BiasCaster(Arch::Resource<ArchTag>& resource_)
         : resource(resource_)
     {}
 
@@ -52,8 +52,8 @@ public:
 
         AscendC::GlobalTensor<bfloat16_t> gmSrc;
         AscendC::GlobalTensor<float> gmDst;
-        gmSrc.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(ptrSrc));
-        gmDst.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(ptrDst));
+        gmSrc.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(ptrSrc));
+        gmDst.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ptrDst));
 
         auto srcLocal = resource.ubBuf.template GetBufferByByte<bfloat16_t>(0);
         auto dstLocal = resource.ubBuf.template GetBufferByByte<float>(BIAS_CAST_TILE_ELEMENTS * sizeof(bfloat16_t));
@@ -90,7 +90,7 @@ public:
     }
 
 private:
-    Arch::Resource<ArchTag> &resource;
+    Arch::Resource<ArchTag>& resource;
 };
 
 template <class ArchTag_, class AType_, class BType_>
@@ -129,10 +129,10 @@ public:
     TemplatePadder() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const& params);
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const& params)
     {
         Mc2MatmulAivPadding::PadMatmulInputs<ArchTag, AType_, BType_>(resource, params.matmul);
         if (params.castBias) {

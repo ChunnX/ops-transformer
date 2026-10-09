@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_combine_tiling_a5.h
@@ -21,12 +21,12 @@
 namespace optiling {
 class MoeDistributeCombineTilingA5 : public MoeDistributeCombineTilingBase {
 public:
-    explicit MoeDistributeCombineTilingA5(gert::TilingContext *context)
+    explicit MoeDistributeCombineTilingA5(gert::TilingContext* context)
         : MoeDistributeCombineTilingBase(context) {};
-    ge::graphStatus MoeDistributeCombineA5TilingCheckAttr(gert::TilingContext *context, uint32_t &commQuantMode);
-    ge::graphStatus MoeDistributeCombineA5TilingFuncImpl(gert::TilingContext *context);
-    ge::graphStatus MoeDistributeCombineTilingFuncImpl(std::string &socVersion, gert::TilingContext *context) override;
-    bool CheckEpWorldSize(const char *nodeName, uint32_t epWorldSize) override;
+    ge::graphStatus MoeDistributeCombineA5TilingCheckAttr(gert::TilingContext* context, uint32_t& commQuantMode);
+    ge::graphStatus MoeDistributeCombineA5TilingFuncImpl(gert::TilingContext* context);
+    ge::graphStatus MoeDistributeCombineTilingFuncImpl(std::string& socVersion, gert::TilingContext* context) override;
+    bool CheckEpWorldSize(const char* nodeName, uint32_t epWorldSize) override;
 };
 } // namespace optiling
 

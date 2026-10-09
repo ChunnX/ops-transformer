@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_batch_matmul_v3_tiling_cache.h
@@ -34,10 +34,10 @@ struct Mc2QuantBatchMatmulV3BitField {
 
 class Mc2QuantBatchMatmulV3HashInput {
 public:
-    explicit Mc2QuantBatchMatmulV3HashInput(const Mc2QuantBatchMatmulInfo &params,
-                                            const Ops::Transformer::OpTiling::AiCoreParams &aicoreParams);
+    explicit Mc2QuantBatchMatmulV3HashInput(const Mc2QuantBatchMatmulInfo& params,
+                                            const Ops::Transformer::OpTiling::AiCoreParams& aicoreParams);
     ~Mc2QuantBatchMatmulV3HashInput() = default;
-    bool operator==(const Mc2QuantBatchMatmulV3HashInput &params) const
+    bool operator==(const Mc2QuantBatchMatmulV3HashInput& params) const
     {
         return memcmp(this, &params, sizeof(params)) == 0;
     }
@@ -70,19 +70,19 @@ private:
 
 class Mc2QuantBatchMatmulV3HashItem {
 public:
-    explicit Mc2QuantBatchMatmulV3HashItem(const Mc2QuantBatchMatmulInfo &params,
-                                           const Ops::Transformer::OpTiling::AiCoreParams &aicoreParams)
+    explicit Mc2QuantBatchMatmulV3HashItem(const Mc2QuantBatchMatmulInfo& params,
+                                           const Ops::Transformer::OpTiling::AiCoreParams& aicoreParams)
         : hashKey_(params, aicoreParams)
     {}
-    const Mc2QuantBatchMatmulV3HashInput &input() const
+    const Mc2QuantBatchMatmulV3HashInput& input() const
     {
         return hashKey_;
     }
-    const BasicTiling &GetTiling() const
+    const BasicTiling& GetTiling() const
     {
         return tiling_;
     }
-    void SetTiling(const BasicTiling &tiling)
+    void SetTiling(const BasicTiling& tiling)
     {
         tiling_ = tiling;
     }

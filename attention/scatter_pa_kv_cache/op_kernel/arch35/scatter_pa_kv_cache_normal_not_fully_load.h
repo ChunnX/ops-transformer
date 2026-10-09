@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 /*!
  * \file scatter_pa_kv_cache_normal_not_fully_load.h
  * \brief
@@ -24,8 +24,8 @@ using namespace AscendC;
 template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT = false>
 class ScatterPaKvCacheNormalNotFullyLoad {
 public:
-    __aicore__ inline ScatterPaKvCacheNormalNotFullyLoad(TPipe *pipe,
-                                                         const ScatterPaKvCacheTilingData *__restrict tiling)
+    __aicore__ inline ScatterPaKvCacheNormalNotFullyLoad(TPipe* pipe,
+                                                         const ScatterPaKvCacheTilingData* __restrict tiling)
         : pipe_(pipe),
           tilingData_(tiling){};
     __aicore__ inline void Init(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value,
@@ -41,10 +41,10 @@ private:
     __aicore__ inline int64_t RoundUp(int64_t x);
 
 private:
-    TPipe *pipe_;
+    TPipe* pipe_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> keyQueue_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> valueQueue_;
-    const ScatterPaKvCacheTilingData *tilingData_;
+    const ScatterPaKvCacheTilingData* tilingData_;
 
     GlobalTensor<T> keyGm_;
     GlobalTensor<T> valueGm_;
@@ -65,17 +65,17 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
 {
     blockIdx_ = GetBlockIdx();
     blockFactorOffset_ = blockIdx_ * tilingData_->blockFactor;
-    keyGm_.SetGlobalBuffer((__gm__ T *)(key));
-    slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping) + GetBlockIdx() * tilingData_->blockFactor);
-    keyCacheOutGm_.SetGlobalBuffer((__gm__ T *)(key_cache_out));
+    keyGm_.SetGlobalBuffer((__gm__ T*)(key));
+    slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype*)(slot_mapping) + GetBlockIdx() * tilingData_->blockFactor);
+    keyCacheOutGm_.SetGlobalBuffer((__gm__ T*)(key_cache_out));
     int64_t kMaxHandleNumPerLoop = tilingData_->kHandleNumPerLoop > tilingData_->kTailHandleNum ?
                                        tilingData_->kHandleNumPerLoop :
                                        tilingData_->kTailHandleNum;
     pipe_->InitBuffer(keyQueue_, 1, RoundUp(kMaxHandleNumPerLoop) * sizeof(T));
 
     if constexpr (InOutMode == DUAL_IN_OUT) {
-        valueGm_.SetGlobalBuffer((__gm__ T *)(value));
-        valueCacheOutGm_.SetGlobalBuffer((__gm__ T *)(value_cache_out));
+        valueGm_.SetGlobalBuffer((__gm__ T*)(value));
+        valueCacheOutGm_.SetGlobalBuffer((__gm__ T*)(value_cache_out));
         int64_t vMaxHandleNumPerLoop = tilingData_->vHandleNumPerLoop > tilingData_->vTailHandleNum ?
                                            tilingData_->vHandleNumPerLoop :
                                            tilingData_->vTailHandleNum;

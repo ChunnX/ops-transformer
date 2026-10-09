@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_full_load_unquantized.h
@@ -26,7 +26,7 @@ public:
     __aicore__ inline MoeV3FullLoadUnquantized(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
                                 GM_ADDR expertTokensCountOrCumsum, GM_ADDR expandedScale, GM_ADDR workspace,
-                                const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingV3TilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 
 protected:
@@ -49,16 +49,16 @@ template <typename T>
 __aicore__ inline void MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR expandedX,
                                                          GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum,
                                                          GM_ADDR expandedScale, GM_ADDR workspace,
-                                                         const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
+                                                         const MoeInitRoutingV3TilingData* tilingData, TPipe* tPipe)
 {
     MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace, tilingData, tPipe);
-    xGm_.SetGlobalBuffer((__gm__ T *)x);
+    xGm_.SetGlobalBuffer((__gm__ T*)x);
     if (this->isInputScale_) {
-        scaleGm_.SetGlobalBuffer((__gm__ float *)scale);
-        expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
+        scaleGm_.SetGlobalBuffer((__gm__ float*)scale);
+        expandedScaleGm_.SetGlobalBuffer((__gm__ float*)expandedScale);
     }
 
-    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX);
+    expandedXGm_.SetGlobalBuffer((__gm__ T*)expandedX);
     int64_t buffSize = this->sortNum_ * sizeof(int32_t);
     int64_t row_length =
         (this->curIndexStart_ + this->coreIndicesElements_ - 1) / this->k_ - this->curIndexStart_ / this->k_ + 1;

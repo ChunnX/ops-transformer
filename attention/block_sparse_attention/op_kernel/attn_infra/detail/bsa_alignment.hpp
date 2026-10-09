@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef BSA_ALIGNMENT_HPP
 #define BSA_ALIGNMENT_HPP
@@ -24,7 +24,7 @@ HOST_DEVICE constexpr T RoundDown(const T val)
 }
 
 template <class T, class U>
-HOST_DEVICE constexpr auto RoundDown(T const &val, U const &align)
+HOST_DEVICE constexpr auto RoundDown(T const& val, U const& align)
 {
     if constexpr (tla::is_static<T>::value && tla::is_static<U>::value) { // Int, Int
         constexpr uint32_t res = T::value / U::value * U::value;
@@ -50,7 +50,7 @@ HOST_DEVICE constexpr T RoundUp(const T val)
 }
 
 template <class T, class U>
-HOST_DEVICE constexpr auto RoundUp(T const &val, U const &align)
+HOST_DEVICE constexpr auto RoundUp(T const& val, U const& align)
 {
     if constexpr (tla::is_static<T>::value && tla::is_static<U>::value) { // Int, Int
         constexpr uint32_t res = (T::value + U::value - 1) / U::value * U::value;
@@ -85,7 +85,7 @@ HOST_DEVICE constexpr T CeilDiv(const T dividend, const T divisor)
 }
 
 template <class T, class U>
-HOST_DEVICE constexpr auto CeilDiv(T const &dividend, U const &divisor)
+HOST_DEVICE constexpr auto CeilDiv(T const& dividend, U const& divisor)
 {
     if constexpr (tla::is_static<T>::value && tla::is_static<U>::value) { // Int, Int
         constexpr uint32_t res = (T::value + U::value - 1) / U::value;
@@ -100,7 +100,7 @@ HOST_DEVICE constexpr auto CeilDiv(T const &dividend, U const &divisor)
 }
 
 template <class T, class U>
-HOST_DEVICE constexpr auto Max(T const &a, U const &b)
+HOST_DEVICE constexpr auto Max(T const& a, U const& b)
 {
     if (a > b) {
         return a;
@@ -110,7 +110,7 @@ HOST_DEVICE constexpr auto Max(T const &a, U const &b)
 }
 
 template <class T, class U>
-HOST_DEVICE constexpr auto Min(T const &a, U const &b)
+HOST_DEVICE constexpr auto Min(T const& a, U const& b)
 {
     if (a < b) {
         return a;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "aclnn_prompt_flash_attention_v3.h"
 #include "prompt_flash_attention_inner.h"
@@ -28,55 +28,39 @@ extern "C" {
 
 namespace {
 aclnnStatus aclnnPromptFlashAttentionV3GetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *pseShift,
-    const aclTensor *attenMask,
-    const aclIntArray *actualSeqLengths,
-    const aclIntArray *actualSeqLengthsKv,
-    const aclTensor *deqScale1,
-    const aclTensor *quantScale1, // quantScale1 of V3
-    const aclTensor *deqScale2,
-    const aclTensor *quantScale2,
-    const aclTensor *quantOffset2,
-    int64_t numHeads,
-    double scaleValue,
-    int64_t preTokens,
-    int64_t nextTokens,
-    char *inputLayout, // inputLayout of V3
-    int64_t numKeyValueHeads,
-    int64_t sparseMode,
-    int64_t innerPrecise,
-    const aclTensor *attentionOut,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
-            return ACLNN_ERR_RUNTIME_ERROR;
-        }
-        return InnerPromptFlashAttentionGetWorkspaceSize(query, key, value, pseShift, attenMask,
-                                                              actualSeqLengths, actualSeqLengthsKv,
-                                                              deqScale1, quantScale1, deqScale2,
-                                                              quantScale2, quantOffset2,
-                                                              numHeads, scaleValue, preTokens, nextTokens,
-                                                              inputLayout, numKeyValueHeads, sparseMode,
-                                                              innerPrecise, attentionOut, workspaceSize, executor);
+    const aclTensor* query, const aclTensor* key, const aclTensor* value, const aclTensor* pseShift,
+    const aclTensor* attenMask, const aclIntArray* actualSeqLengths, const aclIntArray* actualSeqLengthsKv,
+    const aclTensor* deqScale1,
+    const aclTensor* quantScale1, // quantScale1 of V3
+    const aclTensor* deqScale2, const aclTensor* quantScale2, const aclTensor* quantOffset2, int64_t numHeads,
+    double scaleValue, int64_t preTokens, int64_t nextTokens,
+    char* inputLayout, // inputLayout of V3
+    int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise, const aclTensor* attentionOut,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
+{
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
+        return ACLNN_ERR_RUNTIME_ERROR;
     }
-
-aclnnStatus aclnnPromptFlashAttentionV3(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    const aclrtStream stream) { // V3 call aclnn inner
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
-            return ACLNN_ERR_RUNTIME_ERROR;
-        }
-        return InnerPromptFlashAttention(workspace, workspaceSize, executor, stream);
-    }
-
+    return InnerPromptFlashAttentionGetWorkspaceSize(
+        query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKv, deqScale1, quantScale1, deqScale2,
+        quantScale2, quantOffset2, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
+        sparseMode, innerPrecise, attentionOut, workspaceSize, executor);
 }
+
+aclnnStatus aclnnPromptFlashAttentionV3(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                        const aclrtStream stream)
+{ // V3 call aclnn inner
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        OP_LOGE(ACLNN_ERR_RUNTIME_ERROR,
+                "Interface aclnnPromptFlashAttention versions V1 to V3 are no longer supported on Ascend950.");
+        return ACLNN_ERR_RUNTIME_ERROR;
+    }
+    return InnerPromptFlashAttention(workspace, workspaceSize, executor, stream);
+}
+
+} // namespace
 
 #ifdef __cplusplus
 }

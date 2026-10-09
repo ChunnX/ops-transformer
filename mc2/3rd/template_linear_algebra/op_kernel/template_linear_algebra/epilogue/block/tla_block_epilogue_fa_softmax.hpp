@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_SOFTMAX_HPP
 #define CATLASS_EPILOGUE_BLOCK_BLOCK_EPILOGUE_FA_SOFTMAX_HPP
@@ -50,7 +50,7 @@ public:
     static constexpr uint32_t MULTIPLIER = 2;
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, half tor_)
+    BlockEpilogue(Arch::Resource<ArchTag>& resource, half tor_)
     {
         constexpr uint32_t LS32_UB_TENSOR_OFFSET = 2 * UB_TILE_SIZE;
         constexpr uint32_t MASK_UB_TENSOR_OFFSET = 4 * UB_TILE_SIZE;
@@ -119,8 +119,8 @@ public:
 
     CATLASS_DEVICE
     void subCoreCompute(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementInput> gInput,
-                        AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput &layoutOutput,
-                        const LayoutInput &layoutInput, const LayoutMask &layoutMask, uint32_t nIdx,
+                        AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput& layoutOutput,
+                        const LayoutInput& layoutInput, const LayoutMask& layoutMask, uint32_t nIdx,
                         Arch::CrossCoreFlag qkReady)
     {
         uint32_t subM = layoutInput.shape(0);
@@ -267,8 +267,8 @@ public:
 
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<ElementInput> gInput,
-                    AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput &layoutOutput,
-                    const LayoutInput &layoutInput, const LayoutMask &layoutMask, GemmCoord actualBlockShape,
+                    AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput& layoutOutput,
+                    const LayoutInput& layoutInput, const LayoutMask& layoutMask, GemmCoord actualBlockShape,
                     uint32_t nIdx, Arch::CrossCoreFlag qkReady)
     {
         uint32_t mActual = actualBlockShape.m();

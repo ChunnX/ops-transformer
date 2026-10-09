@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mararn_rms_norm_base.h
@@ -37,8 +37,8 @@ __aicore__ inline T CeilDiv(T x, T y)
     return y == 0 ? x : (x + y - 1) / y;
 }
 
-__aicore__ inline void ReduceSumFP32(const LocalTensor<float> &dst_local, const LocalTensor<float> &src_local,
-                                     const LocalTensor<float> &work_local, int32_t count)
+__aicore__ inline void ReduceSumFP32(const LocalTensor<float>& dst_local, const LocalTensor<float>& src_local,
+                                     const LocalTensor<float>& work_local, int32_t count)
 {
     // count need smaller than 255 repeat
     uint64_t mask = NUM_PER_REP_FP32;
@@ -73,14 +73,14 @@ __aicore__ inline void ReduceSumFP32(const LocalTensor<float> &dst_local, const 
     PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void ReduceSumCustom(const LocalTensor<float> &dst_local, const LocalTensor<float> &src_local,
-                                       const LocalTensor<float> &work_local, int32_t count)
+__aicore__ inline void ReduceSumCustom(const LocalTensor<float>& dst_local, const LocalTensor<float>& src_local,
+                                       const LocalTensor<float>& work_local, int32_t count)
 {
     ReduceSumFP32(dst_local, src_local, work_local, count);
 }
 
-__aicore__ inline void ReduceSumFP32ToBlock(const LocalTensor<float> &dst_local, const LocalTensor<float> &src_local,
-                                            const LocalTensor<float> &work_local, int32_t count)
+__aicore__ inline void ReduceSumFP32ToBlock(const LocalTensor<float>& dst_local, const LocalTensor<float>& src_local,
+                                            const LocalTensor<float>& work_local, int32_t count)
 {
     // count need smaller than 255 repeat
     uint64_t mask = NUM_PER_REP_FP32;
@@ -108,7 +108,7 @@ __aicore__ inline void ReduceSumFP32ToBlock(const LocalTensor<float> &dst_local,
     PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void BlockReduceSumFP32(const LocalTensor<float> &dst_local, const LocalTensor<float> &src_local,
+__aicore__ inline void BlockReduceSumFP32(const LocalTensor<float>& dst_local, const LocalTensor<float>& src_local,
                                           int32_t count)
 {
     // count need multiple of 8
@@ -127,7 +127,7 @@ __aicore__ inline void BlockReduceSumFP32(const LocalTensor<float> &dst_local, c
 }
 
 template <typename T, typename U, typename R>
-__aicore__ inline void DataCopyCustom(const U &dstTensor, const R &srcTensor, const uint32_t count)
+__aicore__ inline void DataCopyCustom(const U& dstTensor, const R& srcTensor, const uint32_t count)
 {
 #if __CCE_AICORE__ == 220
     DataCopyParams copyParams;
@@ -166,7 +166,7 @@ __aicore__ inline void DataCopyCustom(const U &dstTensor, const R &srcTensor, co
 }
 
 template <typename T>
-__aicore__ inline void DataCopyCustom(const LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
+__aicore__ inline void DataCopyCustom(const LocalTensor<T>& dstTensor, const GlobalTensor<T>& srcTensor,
                                       const uint32_t numRow, const uint32_t numCol)
 {
 #if __CCE_AICORE__ == 220
@@ -179,7 +179,7 @@ __aicore__ inline void DataCopyCustom(const LocalTensor<T> &dstTensor, const Glo
 }
 
 template <typename T>
-__aicore__ inline void DataCopyCustom(const GlobalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor,
+__aicore__ inline void DataCopyCustom(const GlobalTensor<T>& dstTensor, const LocalTensor<T>& srcTensor,
                                       const uint32_t numRow, const uint32_t numCol)
 {
 #if __CCE_AICORE__ == 220

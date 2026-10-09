@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <gtest/gtest.h>
@@ -78,8 +78,8 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_1)
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
-    int64_t *actual_seq_qlist = nullptr;
-    int64_t *actual_seq_kvlist = nullptr;
+    int64_t* actual_seq_qlist = nullptr;
+    int64_t* actual_seq_kvlist = nullptr;
     gert::TilingContextPara tilingContextPara(
         "PromptFlashAttention",
         {
@@ -280,8 +280,8 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_6)
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
-    int64_t *actual_seq_qlist = nullptr;
-    int64_t *actual_seq_kvlist = nullptr;
+    int64_t* actual_seq_qlist = nullptr;
+    int64_t* actual_seq_kvlist = nullptr;
     gert::TilingContextPara tilingContextPara(
         "PromptFlashAttention",
         {
@@ -317,8 +317,8 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_7)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
-    int64_t *actual_seq_qlist = nullptr;
-    int64_t *actual_seq_kvlist = nullptr;
+    int64_t* actual_seq_qlist = nullptr;
+    int64_t* actual_seq_kvlist = nullptr;
     gert::TilingContextPara tilingContextPara(
         "PromptFlashAttention",
         {
@@ -1389,7 +1389,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_37)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
-    int64_t *actual_seq_qlist = nullptr;
+    int64_t* actual_seq_qlist = nullptr;
     int64_t actual_seq_kvlist[] = {64};
     gert::TilingContextPara tilingContextPara(
         "PromptFlashAttention",
@@ -1425,8 +1425,8 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_38)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
-    int64_t *actual_seq_qlist = nullptr;
-    int64_t *actual_seq_kvlist = nullptr;
+    int64_t* actual_seq_qlist = nullptr;
+    int64_t* actual_seq_kvlist = nullptr;
     gert::TilingContextPara tilingContextPara(
         "PromptFlashAttention",
         {{{{1, 16384, 2048}, {1, 16384, 2048}}, ge::DT_FLOAT16, ge::FORMAT_ND},

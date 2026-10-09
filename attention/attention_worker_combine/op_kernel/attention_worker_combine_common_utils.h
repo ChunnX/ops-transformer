@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file common_utils.h
@@ -16,9 +16,9 @@
 #ifndef OP_KERNEL_ATTENTION_WORKER_COMBINE_COMMON_UTILS_H
 #define OP_KERNEL_ATTENTION_WORKER_COMBINE_COMMON_UTILS_H
 
-#define GET_OFFSET_BYTE(_type, member) ((unsigned long)(&((_type *)0)->member))
-#define GET_OFFSET_B32(_type, member) ((unsigned long)(&((_type *)0)->member) / 4)
-#define GET_OFFSET_B64(_type, member) ((unsigned long)(&((_type *)0)->member) / 8)
+#define GET_OFFSET_BYTE(_type, member) ((unsigned long)(&((_type*)0)->member))
+#define GET_OFFSET_B32(_type, member) ((unsigned long)(&((_type*)0)->member) / 4)
+#define GET_OFFSET_B64(_type, member) ((unsigned long)(&((_type*)0)->member) / 8)
 
 struct ScheduleContext {
     struct CommonArea {

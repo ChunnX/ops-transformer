@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_attention_grad_common.h
@@ -44,7 +44,7 @@ constexpr uint8_t DV_IDX = 2;
 
 template <typename T, bool IS_WRITE_UB>
 struct DqkvResPos {
-    using PosType = typename std::conditional<IS_WRITE_UB, LocalTensor<T> &, GlobalTensor<T> &>::type;
+    using PosType = typename std::conditional<IS_WRITE_UB, LocalTensor<T>&, GlobalTensor<T>&>::type;
 };
 
 // max(mm1, mm2, mm3) + mm4 + mm5
@@ -53,7 +53,7 @@ struct DqkvResPos {
      ((CUBE_BASEN) > (HEAD_DIM_ALIGN) ? (CUBE_BASEM) * (CUBE_BASEN) * sizeof(float) : \
                                         (CUBE_BASEM) * (HEAD_DIM_ALIGN) * sizeof(float))) <= L0C_MAX_SIZE
 
-#define SFagTilingType const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase *__restrict
+#define SFagTilingType const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase* __restrict
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(INPUT_TYPE) \

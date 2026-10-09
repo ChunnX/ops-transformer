@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rain_fusion_attention_kernel.h
@@ -75,10 +75,10 @@ public:
     // Methods
     __aicore__ inline RainFusionAttentionKernel() {}
 
-    __aicore__ inline void operator()(RainFusionAttentionKernelParams const &params)
+    __aicore__ inline void operator()(RainFusionAttentionKernelParams const& params)
     {
-        __gm__ RainFusionAttentionTilingData *rainFusionAttentionTilingData =
-            reinterpret_cast<__gm__ RainFusionAttentionTilingData *>(params.tiling);
+        __gm__ RainFusionAttentionTilingData* rainFusionAttentionTilingData =
+            reinterpret_cast<__gm__ RainFusionAttentionTilingData*>(params.tiling);
         uint64_t mm1OutSize = rainFusionAttentionTilingData->mm1OutSize;
         uint64_t smOnlineOutSize = rainFusionAttentionTilingData->smOnlineOutSize;
         uint64_t mm2OutSize = rainFusionAttentionTilingData->mm2OutSize;
@@ -106,33 +106,33 @@ public:
 
         // Initialize global tensors
         AscendC::GlobalTensor<ElementQ> gQ;
-        gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
+        gQ.SetGlobalBuffer((__gm__ ElementQ*)params.q);
         AscendC::GlobalTensor<ElementK> gK;
-        gK.SetGlobalBuffer((__gm__ ElementK *)params.k);
+        gK.SetGlobalBuffer((__gm__ ElementK*)params.k);
         AscendC::GlobalTensor<ElementK> gV;
-        gV.SetGlobalBuffer((__gm__ ElementK *)params.v);
+        gV.SetGlobalBuffer((__gm__ ElementK*)params.v);
         AscendC::GlobalTensor<int32_t> gBlockTable;
-        gBlockTable.SetGlobalBuffer((__gm__ int32_t *)(params.blockTables));
+        gBlockTable.SetGlobalBuffer((__gm__ int32_t*)(params.blockTables));
         AscendC::GlobalTensor<int64_t> gActualQseqlen;
-        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
+        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualQseqlen);
         AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
+        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualKvseqlen);
         AscendC::GlobalTensor<int64_t> gSelectIdx;
-        gSelectIdx.SetGlobalBuffer((__gm__ int64_t *)params.selectIdx);
+        gSelectIdx.SetGlobalBuffer((__gm__ int64_t*)params.selectIdx);
         AscendC::GlobalTensor<int64_t> gSelectNumIdx;
-        gSelectNumIdx.SetGlobalBuffer((__gm__ int64_t *)params.selectNumIdx);
+        gSelectNumIdx.SetGlobalBuffer((__gm__ int64_t*)params.selectNumIdx);
         AscendC::GlobalTensor<ElementO> gO;
-        gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        gO.SetGlobalBuffer((__gm__ ElementO*)params.o);
         AscendC::GlobalTensor<ElementLse> gLse;
-        gLse.SetGlobalBuffer((__gm__ ElementLse *)params.lse);
+        gLse.SetGlobalBuffer((__gm__ ElementLse*)params.lse);
         AscendC::GlobalTensor<ElementS> gS;
-        gS.SetGlobalBuffer((__gm__ ElementS *)params.workspace);
+        gS.SetGlobalBuffer((__gm__ ElementS*)params.workspace);
         AscendC::GlobalTensor<ElementP> gP;
-        gP.SetGlobalBuffer((__gm__ ElementP *)(params.workspace + mm1OutSize));
+        gP.SetGlobalBuffer((__gm__ ElementP*)(params.workspace + mm1OutSize));
         AscendC::GlobalTensor<ElementOTmp> gOTmp;
-        gOTmp.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workspace + mm1OutSize + smOnlineOutSize));
+        gOTmp.SetGlobalBuffer((__gm__ ElementOTmp*)(params.workspace + mm1OutSize + smOnlineOutSize));
         AscendC::GlobalTensor<ElementOTmp> gOUpdate;
-        gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workspace + mm1OutSize + smOnlineOutSize + mm2OutSize));
+        gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp*)(params.workspace + mm1OutSize + smOnlineOutSize + mm2OutSize));
 
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();

@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef TLA_MSA_SPLIT_KV_TLA_TENSOR_HPP
 #define TLA_MSA_SPLIT_KV_TLA_TENSOR_HPP
@@ -30,7 +30,7 @@ struct Tensor {
 
     HOST_DEVICE constexpr Tensor() {}
 
-    HOST_DEVICE constexpr Tensor(BuiltinTensor const &builtinTensor, Layout const &layout, Coord const &coord = {})
+    HOST_DEVICE constexpr Tensor(BuiltinTensor const& builtinTensor, Layout const& layout, Coord const& coord = {})
         : rep_(builtinTensor, layout, coord)
     {}
 
@@ -79,21 +79,21 @@ struct Tensor {
 };
 
 template <class BuiltinTensor, class Layout, class PositionType>
-HOST_DEVICE constexpr auto MakeTensor(BuiltinTensor const &builtinTensor, Layout const &layout, PositionType)
+HOST_DEVICE constexpr auto MakeTensor(BuiltinTensor const& builtinTensor, Layout const& layout, PositionType)
 {
     using Coord = detail::MakeZeroTuple<Layout::rank>;
     return Tensor<BuiltinTensor, Layout, Coord, PositionType::value>(builtinTensor, layout);
 }
 
 template <class BuiltinTensor, class Layout, class Coord, class PositionType>
-HOST_DEVICE constexpr auto MakeTensor(BuiltinTensor const &builtinTensor, Layout const &layout, Coord const &coord,
+HOST_DEVICE constexpr auto MakeTensor(BuiltinTensor const& builtinTensor, Layout const& layout, Coord const& coord,
                                       PositionType)
 {
     return Tensor<BuiltinTensor, Layout, Coord, PositionType::value>(builtinTensor, layout, coord);
 }
 
 template <class Tensor, class Coord, class Shape>
-__aicore__ inline constexpr auto GetTile(Tensor const &tensor, Coord const &coord, Shape const &shape)
+__aicore__ inline constexpr auto GetTile(Tensor const& tensor, Coord const& coord, Shape const& shape)
 {
     auto layout = tensor.layout();
     auto builtinTensor = tensor.data();

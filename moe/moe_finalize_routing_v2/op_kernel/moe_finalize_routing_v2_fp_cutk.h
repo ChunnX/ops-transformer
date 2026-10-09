@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_finalize_routing_fp_cutk.h
@@ -25,7 +25,7 @@ using namespace AscendC;
 template <typename T, const bool ISBIASEXIST>
 class MoeFinalizeRoutingV2FpCutK {
 public:
-    __aicore__ inline MoeFinalizeRoutingV2FpCutK(const MoeFinalizeRoutingV2TilingData &tilingData, TPipe &pipe)
+    __aicore__ inline MoeFinalizeRoutingV2FpCutK(const MoeFinalizeRoutingV2TilingData& tilingData, TPipe& pipe)
         : tilingData_(tilingData),
           pipe_(pipe){};
     __aicore__ inline void Init(GM_ADDR expandedPermutedRows, GM_ADDR expandedSrcToDstRow, GM_ADDR skip1, GM_ADDR skip2,
@@ -42,8 +42,8 @@ private:
     __aicore__ inline int64_t PadProcessT(int64_t param);
 
 private:
-    TPipe &pipe_;
-    const MoeFinalizeRoutingV2TilingData &tilingData_;
+    TPipe& pipe_;
+    const MoeFinalizeRoutingV2TilingData& tilingData_;
     TQue<QuePosition::VECIN, 1> skip1Queue_;
     TQue<QuePosition::VECIN, 1> skip2Queue_;
     TQue<QuePosition::VECOUT, 1> outQueue_;
@@ -155,35 +155,35 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCutK<T, ISBIASEXIST>::Init(GM_ADDR 
     // gmInput分核 && 输入偏移量初始化
     inputSkipIdx_ = biasInCore_ * tilingData_.H;
     if (tilingData_.skip1IsNull == 0) {
-        gmSkip1_.SetGlobalBuffer((__gm__ T *)skip1 + inputSkipIdx_, tilingData_.normalCoreHandleNum * tilingData_.H);
+        gmSkip1_.SetGlobalBuffer((__gm__ T*)skip1 + inputSkipIdx_, tilingData_.normalCoreHandleNum * tilingData_.H);
     }
     pipe_.InitBuffer(skip1Queue_, 1,
                      tilingData_.normalCoreHandleNumPerLoop * AlignmentProcess(tilingData_.normalH) * sizeof(T));
     if (tilingData_.skip2IsNull == 0) {
-        gmSkip2_.SetGlobalBuffer((__gm__ T *)skip2 + inputSkipIdx_, tilingData_.normalCoreHandleNum * tilingData_.H);
+        gmSkip2_.SetGlobalBuffer((__gm__ T*)skip2 + inputSkipIdx_, tilingData_.normalCoreHandleNum * tilingData_.H);
         pipe_.InitBuffer(skip2Queue_, 1,
                          tilingData_.normalCoreHandleNumPerLoop * AlignmentProcess(tilingData_.normalH) * sizeof(T));
     }
 
     inputScalesAndExpertIdx_ = biasInCore_ * tilingData_.K;
     if (tilingData_.scalesIsNull == 0) {
-        gmScales_.SetGlobalBuffer((__gm__ T *)scales + inputScalesAndExpertIdx_,
+        gmScales_.SetGlobalBuffer((__gm__ T*)scales + inputScalesAndExpertIdx_,
                                   tilingData_.normalCoreHandleNum * tilingData_.K);
         pipe_.InitBuffer(scalesBuf_, AlignmentProcess(tilingData_.normalK) * sizeof(T));
     }
 
-    gmExpandedSrcToDstRow_.SetGlobalBuffer((__gm__ int32_t *)expandedSrcToDstRow,
+    gmExpandedSrcToDstRow_.SetGlobalBuffer((__gm__ int32_t*)expandedSrcToDstRow,
                                            tilingData_.totalRowNum * tilingData_.K);
 
     outputIdx_ = biasInCore_ * tilingData_.H;
-    gmOut_.SetGlobalBuffer((__gm__ T *)out + outputIdx_, tilingData_.normalCoreHandleNum * tilingData_.H);
+    gmOut_.SetGlobalBuffer((__gm__ T*)out + outputIdx_, tilingData_.normalCoreHandleNum * tilingData_.H);
 
-    gmExpandedPermutedRows_.SetGlobalBuffer((__gm__ T *)expandedPermutedRows,
+    gmExpandedPermutedRows_.SetGlobalBuffer((__gm__ T*)expandedPermutedRows,
                                             tilingData_.totalRowNum * tilingData_.K * tilingData_.H);
     if constexpr (ISBIASEXIST) {
-        gmBias_.SetGlobalBuffer((__gm__ T *)bias, tilingData_.biasRowNum * tilingData_.H);
+        gmBias_.SetGlobalBuffer((__gm__ T*)bias, tilingData_.biasRowNum * tilingData_.H);
         pipe_.InitBuffer(biasBufDb0_, AlignmentProcess(tilingData_.normalH) * sizeof(T));
-        gmExpertForSourceRow_.SetGlobalBuffer((__gm__ int32_t *)expertForSourceRow + inputScalesAndExpertIdx_,
+        gmExpertForSourceRow_.SetGlobalBuffer((__gm__ int32_t*)expertForSourceRow + inputScalesAndExpertIdx_,
                                               tilingData_.normalCoreHandleNum * tilingData_.K);
         pipe_.InitBuffer(expertForSourceRowBuf_, Int32AlignmentProcess(tilingData_.normalK) * sizeof(int32_t));
     }

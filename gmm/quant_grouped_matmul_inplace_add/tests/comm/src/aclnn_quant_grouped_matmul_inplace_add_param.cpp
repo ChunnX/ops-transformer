@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_quant_grouped_matmul_inplace_add_param.cpp
@@ -31,7 +31,7 @@ AclnnQGMMInplaceAddParam::AclnnQGMMInplaceAddParam(std::vector<Tensor> inputs, s
                                                    int32_t groupListType, int32_t groupSize)
     : Param({}, Tensor(), Tensor(), std::move(groupListData), groupListType, groupSize)
 {
-    for (auto &tensor : inputs) {
+    for (auto& tensor : inputs) {
         mTensors[tensor.Name()] = tensor;
     }
 }
@@ -76,16 +76,15 @@ bool AclnnQGMMInplaceAddParam::Init()
     aclnnScale1 = ops::adv::tests::utils::AclnnTensor(mTensors["scale1"]);
     auto ret = InitGroupList();
     LOG_IF_EXPR(ret == false, LOG_ERR("InitGroupList failed"), return false);
-    auto *cs = static_cast<ops::adv::tests::utils::Case *>(ops::adv::tests::utils::Case::GetCurrentCase());
+    auto* cs = static_cast<ops::adv::tests::utils::Case*>(ops::adv::tests::utils::Case::GetCurrentCase());
     LOG_IF_EXPR(cs == nullptr, LOG_ERR("Can't get current case"), return false);
-    for (auto *t :
-         std::vector<TensorIntf *>{&aclnnX1, &aclnnX2, &aclnnScale2, &aclnnGroupList, &aclnnY, &aclnnScale1}) {
+    for (auto* t : std::vector<TensorIntf*>{&aclnnX1, &aclnnX2, &aclnnScale2, &aclnnGroupList, &aclnnY, &aclnnScale1}) {
         t->FreeDevData();
         auto tFormat = t->GetFormat();
         if (t->GetExpDataSize() <= 0) {
             continue;
         }
-        uint8_t *devData = nullptr;
+        uint8_t* devData = nullptr;
         if (tFormat == ge::Format::FORMAT_FRACTAL_NZ) {
             devData = t->AllocDevDataNz(0, 0);
         } else {

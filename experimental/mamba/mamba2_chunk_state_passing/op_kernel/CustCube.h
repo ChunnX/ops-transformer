@@ -1,13 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #pragma once
 #include "tensorutils.h"
 
@@ -17,7 +17,7 @@ namespace Mambav2ChunkStatePassing {
 constexpr int CBASEM = 64;
 constexpr int CBASEN = 64;
 
-struct CustCubeShapeInfo{
+struct CustCubeShapeInfo {
     int BASEM;
     int BASEK;
     int BASEN;
@@ -42,8 +42,9 @@ struct CustCubeShapeInfo{
     int out_strideH;
 };
 
-
-__aicore__ inline void tilingShapeCustCube(int B, int H, int S, int C, int L, int G, int N, int P, int Z, CustCubeShapeInfo &shape){
+__aicore__ inline void tilingShapeCustCube(int B, int H, int S, int C, int L, int G, int N, int P, int Z,
+                                           CustCubeShapeInfo& shape)
+{
     shape.BASEM = CBASEM;
     shape.BASEK = N;
     shape.BASEN = CBASEN;
@@ -56,7 +57,7 @@ __aicore__ inline void tilingShapeCustCube(int B, int H, int S, int C, int L, in
     shape.G = G;
     shape.Z = Z;
     shape.groupsize = ((int)H / (int)G);
-    shape.headPerCore = CeilDiv((B * H),GetBlockNum());
+    shape.headPerCore = CeilDiv((B * H), GetBlockNum());
     shape.cmtx_strideB = (((C * L) * G) * N);
     shape.cmtx_strideC = ((L * G) * N);
     shape.cmtx_strideL = (G * N);
@@ -68,20 +69,20 @@ __aicore__ inline void tilingShapeCustCube(int B, int H, int S, int C, int L, in
     shape.out_strideH = (L * P);
 }
 
-
-class CustCube{
+class CustCube {
 public:
-    __aicore__ inline CustCube(){}
-    __aicore__ inline void Init(GM_ADDR cmtx_, GM_ADDR state_fp16_, GM_ADDR out_bmm_, CustCubeShapeInfo shape_){
+    __aicore__ inline CustCube() {}
+    __aicore__ inline void Init(GM_ADDR cmtx_, GM_ADDR state_fp16_, GM_ADDR out_bmm_, CustCubeShapeInfo shape_)
+    {
         shape = shape_;
         // Reset tpipe. Start resource distribution
         TPipe* pipe_ptr = GetTPipePtr();
         pipe_ptr->Reset();
         OccupyMMTE1Events();
         // Global Tensors
-        cmtx.SetGlobalBuffer((__gm__ half*) cmtx_);
-        state_fp16.SetGlobalBuffer((__gm__ half*) state_fp16_);
-        out_bmm.SetGlobalBuffer((__gm__ float*) out_bmm_);
+        cmtx.SetGlobalBuffer((__gm__ half*)cmtx_);
+        state_fp16.SetGlobalBuffer((__gm__ half*)state_fp16_);
+        out_bmm.SetGlobalBuffer((__gm__ float*)out_bmm_);
         // L1 Buffers
         l1a.Init((shape.BASEM * shape.BASEK));
         l1b.Init((shape.BASEN * shape.BASEK));
@@ -100,21 +101,24 @@ public:
         out_empty.Init();
         out_ready.Init();
     }
-    
-    __aicore__ inline void Compute(){
+
+    __aicore__ inline void Compute()
+    {
         l1_empty.setall();
         l0_empty.setall();
         out_empty.setall();
         input_cnt = 0;
         output_cnt = 0;
         ws_cnt = 0;
-        len_h = ((shape.headPerCore)<(((shape.B * shape.H) - (get_block_idx() * shape.headPerCore)))) ? (shape.headPerCore) : (((shape.B * shape.H) - (get_block_idx() * shape.headPerCore)));
+        len_h = ((shape.headPerCore) < (((shape.B * shape.H) - (get_block_idx() * shape.headPerCore)))) ?
+                    (shape.headPerCore) :
+                    (((shape.B * shape.H) - (get_block_idx() * shape.headPerCore)));
 
         CUBE_READY(0, PIPE_FIX);
         CUBE_READY(0, PIPE_FIX);
         CUBE_READY(0, PIPE_FIX);
 
-        for (int chunk_id=0; chunk_id<shape.C; chunk_id+=1){
+        for (int chunk_id = 0; chunk_id < shape.C; chunk_id += 1) {
             Process_cube(chunk_id);
         }
 
@@ -123,12 +127,13 @@ public:
         out_empty.release();
     }
 
-    __aicore__ inline void Process_cube(int chunk_id){
+    __aicore__ inline void Process_cube(int chunk_id)
+    {
         int bh_index = (get_block_idx() * shape.headPerCore);
         int base_b = 0;
         int base_h = 0;
         int base_g = 0;
-        for (int head_id=0; head_id<len_h; head_id+=1){
+        for (int head_id = 0; head_id < len_h; head_id += 1) {
             base_b = ((int)bh_index / (int)shape.H);
             base_h = (bh_index % shape.H);
             base_g = ((int)base_h / (int)shape.groupsize);
@@ -140,13 +145,24 @@ public:
         }
     }
 
-    __aicore__ inline void Process_calc(int chunk_id, int base_b, int base_h, int base_g){
-        for (int m=0; m<shape.CUBEM; m+=shape.BASEM){
-            for (int n=0; n<shape.CUBEN; n+=shape.BASEN){
-                for (int k=0; k<shape.CUBEK; k+=shape.BASEK){
+    __aicore__ inline void Process_calc(int chunk_id, int base_b, int base_h, int base_g)
+    {
+        for (int m = 0; m < shape.CUBEM; m += shape.BASEM) {
+            for (int n = 0; n < shape.CUBEN; n += shape.BASEN) {
+                for (int k = 0; k < shape.CUBEK; k += shape.BASEK) {
                     l1_empty.wait();
-                    L1ND2NZ(l1a.get(input_cnt), cmtx[(((((base_b * shape.cmtx_strideB) + (chunk_id * shape.cmtx_strideC)) + (m * shape.cmtx_strideL)) + (base_g * shape.CUBEK)) + k)], shape.BASEM, shape.BASEK, (shape.G * shape.CUBEK), shape.BASEM);
-                    L1ND2NZ(l1b.get(input_cnt), state_fp16[((((((ws_cnt % THREE) * GetBlockNum()) * shape.Z) + (get_block_idx() * shape.Z)) + (k * shape.CUBEN)) + n)], shape.BASEK, shape.BASEN, shape.CUBEN, shape.BASEK);
+                    L1ND2NZ(l1a.get(input_cnt),
+                            cmtx[(((((base_b * shape.cmtx_strideB) + (chunk_id * shape.cmtx_strideC)) +
+                                    (m * shape.cmtx_strideL)) +
+                                   (base_g * shape.CUBEK)) +
+                                  k)],
+                            shape.BASEM, shape.BASEK, (shape.G * shape.CUBEK), shape.BASEM);
+                    L1ND2NZ(
+                        l1b.get(input_cnt),
+                        state_fp16[((((((ws_cnt % THREE) * GetBlockNum()) * shape.Z) + (get_block_idx() * shape.Z)) +
+                                     (k * shape.CUBEN)) +
+                                    n)],
+                        shape.BASEK, shape.BASEN, shape.CUBEN, shape.BASEK);
                     l1_ready.set();
 
                     l0_empty.wait();
@@ -157,14 +173,19 @@ public:
                     l0_ready.set();
                     out_empty.wait();
                     l0_ready.wait();
-                    MMAD(l0c.get(output_cnt), l0a.get(input_cnt), l0b.get(input_cnt), shape.BASEM, shape.BASEK, shape.BASEN, (k == 0), 0);
+                    MMAD(l0c.get(output_cnt), l0a.get(input_cnt), l0b.get(input_cnt), shape.BASEM, shape.BASEK,
+                         shape.BASEN, (k == 0), 0);
                     out_ready.set();
                     l0_empty.set();
                     input_cnt = (input_cnt + 1);
 
                     out_ready.wait();
-                    if (((k + shape.BASEK) >= shape.CUBEK)){
-                        L0C2GM_NZ2ND(out_bmm[(((((base_b * shape.out_strideB) + (chunk_id * shape.out_strideC)) + (base_h * shape.out_strideH)) + (m * shape.CUBEN)) + n)], l0c.get(output_cnt), shape.BASEM, shape.BASEN, shape.CUBEN, shape.BASEM, 0);
+                    if (((k + shape.BASEK) >= shape.CUBEK)) {
+                        L0C2GM_NZ2ND(out_bmm[(((((base_b * shape.out_strideB) + (chunk_id * shape.out_strideC)) +
+                                                (base_h * shape.out_strideH)) +
+                                               (m * shape.CUBEN)) +
+                                              n)],
+                                     l0c.get(output_cnt), shape.BASEM, shape.BASEN, shape.CUBEN, shape.BASEM, 0);
                         output_cnt = (output_cnt + 1);
                     }
                     out_empty.set();
@@ -172,7 +193,7 @@ public:
             }
         }
     }
-    
+
 private:
     CustCubeShapeInfo shape;
     // Global Params
@@ -190,7 +211,7 @@ private:
     DBuff<half, TPosition::A2> l0a;
     DBuff<half, TPosition::B2> l0b;
     DBuff<float, TPosition::CO1> l0c;
-    
+
     // Events
     DEvent<PIPE_MTE1, PIPE_MTE2> l1_empty;
     DEvent<PIPE_MTE2, PIPE_MTE1> l1_ready;

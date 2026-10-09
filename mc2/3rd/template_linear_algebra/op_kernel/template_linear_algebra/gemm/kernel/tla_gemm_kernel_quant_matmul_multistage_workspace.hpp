@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_GEMM_KERNEL_QUANT_MATMUL_MULTISTAGE_WORKSPACE_HPP
 #define CATLASS_GEMM_KERNEL_QUANT_MATMUL_MULTISTAGE_WORKSPACE_HPP
@@ -51,15 +51,15 @@ public:
     struct Params {
         // Data members
         GemmCoord problemShape;
-        __gm__ ElementA *ptrA;
+        __gm__ ElementA* ptrA;
         LayoutA layoutA;
-        __gm__ ElementB *ptrB;
+        __gm__ ElementB* ptrB;
         LayoutB layoutB;
-        __gm__ ElementScale *ptrScale;
+        __gm__ ElementScale* ptrScale;
         LayoutScale layoutScale;
-        __gm__ ElementPerTokenScale *ptrPerTokenScale;
+        __gm__ ElementPerTokenScale* ptrPerTokenScale;
         LayoutPerTokenScale layoutPerTokenScale;
-        __gm__ ElementD *ptrD;
+        __gm__ ElementD* ptrD;
         LayoutD layoutD;
         GM_ADDR ptrWorkspace;
 
@@ -72,15 +72,15 @@ public:
                GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPerTokenScale_,
                LayoutPerTokenScale layoutPerTokenScale_, GM_ADDR ptrD_, LayoutD layoutD_, GM_ADDR ptrWorkspace_)
             : problemShape(problemShape_),
-              ptrA(reinterpret_cast<__gm__ ElementA *>(ptrA_)),
+              ptrA(reinterpret_cast<__gm__ ElementA*>(ptrA_)),
               layoutA(layoutA_),
-              ptrB(reinterpret_cast<__gm__ ElementB *>(ptrB_)),
+              ptrB(reinterpret_cast<__gm__ ElementB*>(ptrB_)),
               layoutB(layoutB_),
-              ptrScale(reinterpret_cast<__gm__ ElementScale *>(ptrScale_)),
+              ptrScale(reinterpret_cast<__gm__ ElementScale*>(ptrScale_)),
               layoutScale(layoutScale_),
-              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
+              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale*>(ptrPerTokenScale_)),
               layoutPerTokenScale(layoutPerTokenScale_),
-              ptrD(reinterpret_cast<__gm__ ElementD *>(ptrD_)),
+              ptrD(reinterpret_cast<__gm__ ElementD*>(ptrD_)),
               layoutD(layoutD_),
               ptrWorkspace(ptrWorkspace_)
         {}
@@ -100,10 +100,10 @@ public:
     }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const& params);
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const& params)
     {
         BlockScheduler blockScheduler;
         blockScheduler.Update(params.problemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
@@ -121,7 +121,7 @@ public:
         uint32_t coreNum = AscendC::GetBlockNum();
 
         AscendC::GlobalTensor<ElementC> gmC;
-        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(params.ptrWorkspace));
+        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(params.ptrWorkspace));
         auto layoutC = layout::RowMajor{L1TileShape::M * coreNum * WORKSPACE_STAGES, L1TileShape::N};
 
         uint32_t stageId = 0;
@@ -176,7 +176,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const& params)
     {
         BlockScheduler blockScheduler;
         BlockEpilogue blockEpilogue(resource);
@@ -185,7 +185,7 @@ public:
         uint32_t coreNum = AscendC::GetBlockNum();
 
         AscendC::GlobalTensor<ElementC> gmC;
-        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(params.ptrWorkspace));
+        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(params.ptrWorkspace));
         auto layoutC = layout::RowMajor{L1TileShape::M * coreNum * WORKSPACE_STAGES, L1TileShape::N};
 
         uint32_t stageId = 0;
@@ -236,7 +236,7 @@ private:
             Arch::CrossCoreWaitFlag(ptr->flagAivFinishComputeList[stageId]);
         }
 
-        MatmulKernel *ptr{nullptr};
+        MatmulKernel* ptr{nullptr};
         uint32_t stageId;
     };
 
@@ -252,7 +252,7 @@ private:
             Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(ptr->flagAicFinishStoreList[stageId]);
         }
 
-        MatmulKernel *ptr{nullptr};
+        MatmulKernel* ptr{nullptr};
         uint32_t stageId;
     };
 

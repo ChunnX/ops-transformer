@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_without_group.h
@@ -26,7 +26,7 @@ public:
     __aicore__ inline MoeGatingTopKWithoutGroup(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds, GM_ADDR tid2eid, GM_ADDR y,
                                 GM_ADDR expertIdx, GM_ADDR out, GM_ADDR workspace,
-                                const MoeGatingTopKTilingData *tilingData, TPipe *tPipe);
+                                const MoeGatingTopKTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -40,7 +40,7 @@ private:
     __aicore__ inline void CopyOut(int64_t row);
 
 private:
-    TPipe *pipe_;
+    TPipe* pipe_;
     TQue<QuePosition::VECIN, 1> xInQueue_;
     TQue<QuePosition::VECOUT, 1> yOutQueue_;
     TQue<QuePosition::VECOUT, 1> expertIdxOutQueue_;
@@ -72,7 +72,7 @@ private:
     int64_t renorm_ = 0;
     int64_t normType_ = 0;
     int64_t expertCountAlign_ = 0;
-    const MoeGatingTopKTilingData *tilingData_;
+    const MoeGatingTopKTilingData* tilingData_;
 };
 
 template <typename T, typename U1, typename U2>
@@ -315,8 +315,8 @@ template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKWithoutGroup<T, U1, U2>::Init(GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds,
                                                                   GM_ADDR tid2eid, GM_ADDR y, GM_ADDR expertIdx,
                                                                   GM_ADDR out, GM_ADDR workspace,
-                                                                  const MoeGatingTopKTilingData *tilingData,
-                                                                  TPipe *tPipe)
+                                                                  const MoeGatingTopKTilingData* tilingData,
+                                                                  TPipe* tPipe)
 {
     tilingData_ = tilingData;
     pipe_ = tPipe;
@@ -337,17 +337,17 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T, U1, U2>::Init(GM_ADDR x, GM_
     expertCountAlign_ = Ceil(expertCount_, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
 
     // init input gm buf
-    xGm_.SetGlobalBuffer((__gm__ T *)x + perCoreRowCount_ * expertCount_ * blockIdx_, expertCount_);
-    biasGm_.SetGlobalBuffer((__gm__ T *)bias, expertCount_);
+    xGm_.SetGlobalBuffer((__gm__ T*)x + perCoreRowCount_ * expertCount_ * blockIdx_, expertCount_);
+    biasGm_.SetGlobalBuffer((__gm__ T*)bias, expertCount_);
     if (hashFlag_) {
-        inputIdsGm_.SetGlobalBuffer((__gm__ U1 *)inputIds);
-        tid2eidGm_.SetGlobalBuffer((__gm__ U2 *)tid2eid);
+        inputIdsGm_.SetGlobalBuffer((__gm__ U1*)inputIds);
+        tid2eidGm_.SetGlobalBuffer((__gm__ U2*)tid2eid);
     }
 
     // init output gm buf
-    yGm_.SetGlobalBuffer((__gm__ T *)y + perCoreRowCount_ * k_ * blockIdx_, k_);
-    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx + perCoreRowCount_ * k_ * blockIdx_, k_);
-    outGm_.SetGlobalBuffer((__gm__ float *)out + perCoreRowCount_ * expertCount_ * blockIdx_, expertCount_);
+    yGm_.SetGlobalBuffer((__gm__ T*)y + perCoreRowCount_ * k_ * blockIdx_, k_);
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expertIdx + perCoreRowCount_ * k_ * blockIdx_, k_);
+    outGm_.SetGlobalBuffer((__gm__ float*)out + perCoreRowCount_ * expertCount_ * blockIdx_, expertCount_);
 
     // init que
     pipe_->InitBuffer(xInQueue_, 1, expertCountAlign_ * sizeof(float) * (sizeof(float) / sizeof(T)));

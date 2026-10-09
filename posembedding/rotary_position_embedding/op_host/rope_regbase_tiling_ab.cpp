@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rope_regbase_tiling_ab.cc
@@ -28,9 +28,9 @@ constexpr int64_t TILING_KEY_AB = 20030;
 
 class RopeRegBaseTilingClassAB : public RopeRegBaseTilingClass {
 public:
-    explicit RopeRegBaseTilingClassAB(gert::TilingContext *context) : RopeRegBaseTilingClass(context)
-    {
-    }
+    explicit RopeRegBaseTilingClassAB(gert::TilingContext* context)
+        : RopeRegBaseTilingClass(context)
+    {}
 
 protected:
     bool IsCapable() override;
@@ -86,7 +86,8 @@ ge::graphStatus RopeRegBaseTilingClassAB::DoOpTiling()
 
     int64_t baseBufferSize = dAlign_ * typeSize;
     int64_t baseBlockInUb =
-        Ops::Base::FloorAlign(static_cast<int64_t>(aicoreParams_.ubSize / CONST_TWO / DB_FLAG), blockSize_) / baseBufferSize;
+        Ops::Base::FloorAlign(static_cast<int64_t>(aicoreParams_.ubSize / CONST_TWO / DB_FLAG), blockSize_) /
+        baseBufferSize;
     OP_CHECK_IF(baseBlockInUb < 1, OP_LOGD(context_->GetNodeName(), "ubSize can't load 8 d size, d = %ld.", d_),
                 return ge::GRAPH_FAILED);
 
@@ -120,7 +121,7 @@ ge::graphStatus RopeRegBaseTilingClassAB::PostTiling()
 
     context_->SetTilingKey(GetTilingKey());
     context_->SetBlockDim(blockNumBS_ * blockNumN_);
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = RESERVERD_WORKSPACE_SIZE;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

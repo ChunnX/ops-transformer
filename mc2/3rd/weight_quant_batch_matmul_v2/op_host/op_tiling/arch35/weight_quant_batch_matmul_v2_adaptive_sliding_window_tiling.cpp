@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_adaptive_sliding_window_tiling.cpp
@@ -53,7 +53,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::InstantiateTilingData()
         try {
             // make_unique不会返回空指针，只会返回异常，无需在后面加空指针校验
             tilingData_ = std::make_unique<WeightQuantBatchMatmulV2ASWTilingData>();
-        } catch (std::bad_alloc &) {
+        } catch (std::bad_alloc&) {
             OP_LOGE(opName_, "tiling data memory allocation failed");
             return ge::GRAPH_FAILED;
         }
@@ -152,8 +152,8 @@ void Mc2WeightQuantBatchMatmulV2TilingASW::CalcTailBasicBlock()
     uint64_t nTile = 1UL;
     uint64_t preSplit = 1UL;
     uint64_t secSplit = 1UL;
-    auto &preSplitValid = adaptiveWin_.mTail >= adaptiveWin_.nTail ? mTile : nTile;
-    auto &secSplitValid = adaptiveWin_.mTail >= adaptiveWin_.nTail ? nTile : mTile;
+    auto& preSplitValid = adaptiveWin_.mTail >= adaptiveWin_.nTail ? mTile : nTile;
+    auto& secSplitValid = adaptiveWin_.mTail >= adaptiveWin_.nTail ? nTile : mTile;
     while (CalUsedCoreNum(preSplit + 1, secSplit) <= compileInfoPtr_->aicNum) {
         preSplit += 1UL;
         if (IsValidWeighNzTailSplit(preSplit, true)) {
@@ -311,7 +311,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::DoLibApiTiling()
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::GetWorkspaceSize()
 {
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "failed to get workspace size"), return ge::GRAPH_FAILED);
     workspaces[0] = WORKSPACE_SIZE; // asc要求workspace最低需要16 * 1024 * 1024 Byte
     return ge::GRAPH_SUCCESS;
@@ -326,7 +326,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::PostTiling()
                     return ge::GRAPH_FAILED);
     errno_t ret =
         memcpy_s(context_->GetTilingData<WeightQuantBatchMatmulV2ASWTilingData>(),
-                 context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+                 context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void*>(&tilingData_), tilingDataSize);
     if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;

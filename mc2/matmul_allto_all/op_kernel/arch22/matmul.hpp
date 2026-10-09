@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul.hpp
@@ -87,7 +87,7 @@ public:
         Params() {}
 
         CATLASS_HOST_DEVICE
-        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
+        Params(GemmCoord const& problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
                GM_ADDR ptrBias_, GM_ADDR ptrC_, LayoutC layoutC_, int32_t pValue_, int32_t rankSize_,
                int32_t pipeDepth_, bool transB_)
             : problemShape(problemShape_),
@@ -110,10 +110,10 @@ public:
     MatmulAlltoAllKernel() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const& params);
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const& params)
     {
         if constexpr (!std::is_void_v<PrologueA> || !std::is_void_v<PrologueB>) {
             Catlass::Arch::CrossCoreWaitFlag(flagAivFinishPadding);
@@ -121,14 +121,14 @@ public:
 
         // Represent the full gm
         AscendC::GlobalTensor<ElementA> gmA;
-        gmA.SetGlobalBuffer((__gm__ ElementA *)params.ptrA);
+        gmA.SetGlobalBuffer((__gm__ ElementA*)params.ptrA);
         AscendC::GlobalTensor<ElementB> gmB;
-        gmB.SetGlobalBuffer((__gm__ ElementB *)params.ptrB);
+        gmB.SetGlobalBuffer((__gm__ ElementB*)params.ptrB);
         AscendC::GlobalTensor<ElementC> gmC;
-        gmC.SetGlobalBuffer((__gm__ ElementC *)params.ptrC);
+        gmC.SetGlobalBuffer((__gm__ ElementC*)params.ptrC);
         AscendC::GlobalTensor<ElementBias> gmBias;
         if constexpr (HasBias) {
-            gmBias.SetGlobalBuffer((__gm__ ElementBias *)params.ptrBias);
+            gmBias.SetGlobalBuffer((__gm__ ElementBias*)params.ptrBias);
         }
 
         BlockMmad blockMmad(resource);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_add_x3.h
@@ -23,7 +23,7 @@ template <class T>
 class MatmulAllReduceAddX3 {
 public:
     __aicore__ inline MatmulAllReduceAddX3() {}
-    __aicore__ inline void Init(GM_ADDR mmOutput, GM_ADDR add, uint64_t totalCnt, uint64_t tileCnt, TPipe *tPipe,
+    __aicore__ inline void Init(GM_ADDR mmOutput, GM_ADDR add, uint64_t totalCnt, uint64_t tileCnt, TPipe* tPipe,
                                 uint32_t coreNum)
     {
         pipe = tPipe;
@@ -35,8 +35,8 @@ public:
         this->tileNum = Ceil(this->blockCnt, tileCnt);
         this->tileCnt = tileCnt;
 
-        mmOutGm.SetGlobalBuffer((__gm__ T *)mmOutput + blockAddr, this->blockCnt);
-        addGm.SetGlobalBuffer((__gm__ T *)add + blockAddr, this->blockCnt);
+        mmOutGm.SetGlobalBuffer((__gm__ T*)mmOutput + blockAddr, this->blockCnt);
+        addGm.SetGlobalBuffer((__gm__ T*)add + blockAddr, this->blockCnt);
         pipe->InitBuffer(inQueueX, DOUBLE_BUFFER, tileCnt * sizeof(T));
         pipe->InitBuffer(inQueueY, DOUBLE_BUFFER, tileCnt * sizeof(T));
         pipe->InitBuffer(outQueueZ, DOUBLE_BUFFER, tileCnt * sizeof(T));
@@ -91,7 +91,7 @@ public:
         outQueueZ.FreeTensor(zLocal);
     }
 
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueX;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueY;
     TQue<QuePosition::VECOUT, DOUBLE_BUFFER> outQueueZ;
@@ -106,7 +106,7 @@ public:
 
 template <class T>
 __aicore__ inline void Matmul_All_Reduce_Add_X3(GM_ADDR mmOutput, GM_ADDR add, uint64_t totalCnt, uint64_t tileCnt,
-                                                TPipe *tPipe)
+                                                TPipe* tPipe)
 {
     uint32_t coreNum = GetBlockNum() * GetTaskRation();
     if (g_coreType == AIC || (GetBlockIdx() >= coreNum)) {

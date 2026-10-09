@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file gather_pa_kv_cache_nd.h
@@ -26,11 +26,11 @@ constexpr int32_t VEC_SUBDIM = 2;
 template <typename T>
 class GatherPaKvCacheNd {
 public:
-    __aicore__ inline GatherPaKvCacheNd(AscendC::TPipe *p)
+    __aicore__ inline GatherPaKvCacheNd(AscendC::TPipe* p)
         : pipe(p){};
     __aicore__ inline void Init(GM_ADDR keyCacheInGm, GM_ADDR valueCacheInGm, GM_ADDR blockTablesInGm,
                                 GM_ADDR seqLensInGm, GM_ADDR seqOffsetInGm, GM_ADDR keyOutGm, GM_ADDR valueOutGm,
-                                const GatherPaKvCacheTilingData *__restrict tilingData);
+                                const GatherPaKvCacheTilingData* __restrict tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -42,7 +42,7 @@ private:
         }
         return static_cast<int64_t>(blockID) * blockDataSize;
     }
-    AscendC::TPipe *pipe;
+    AscendC::TPipe* pipe;
 
     // input
 
@@ -85,7 +85,7 @@ template <typename T>
 __aicore__ inline void GatherPaKvCacheNd<T>::Init(GM_ADDR keyCacheInGm, GM_ADDR valueCacheInGm, GM_ADDR blockTablesInGm,
                                                   GM_ADDR seqLensInGm, GM_ADDR seqOffsetInGm, GM_ADDR keyOutGm,
                                                   GM_ADDR valueOutGm,
-                                                  const GatherPaKvCacheTilingData *__restrict tilingData)
+                                                  const GatherPaKvCacheTilingData* __restrict tilingData)
 {
     blockSize = tilingData->blockSize;
     numBatchs = tilingData->numTokens;
@@ -98,14 +98,14 @@ __aicore__ inline void GatherPaKvCacheNd<T>::Init(GM_ADDR keyCacheInGm, GM_ADDR 
     kCacheBlockStride = tilingData->kCacheBlockStride;
     vCacheBlockStride = tilingData->vCacheBlockStride;
     // input
-    inKeyCacheGM.SetGlobalBuffer((__gm__ T *)keyCacheInGm);
-    inValueCacheGM.SetGlobalBuffer((__gm__ T *)valueCacheInGm);
-    inBlockTableGM.SetGlobalBuffer((__gm__ int32_t *)blockTablesInGm);
-    inContextLenGM.SetGlobalBuffer((__gm__ int32_t *)seqLensInGm);
-    inseqOffsetGM.SetGlobalBuffer((__gm__ int32_t *)seqOffsetInGm);
+    inKeyCacheGM.SetGlobalBuffer((__gm__ T*)keyCacheInGm);
+    inValueCacheGM.SetGlobalBuffer((__gm__ T*)valueCacheInGm);
+    inBlockTableGM.SetGlobalBuffer((__gm__ int32_t*)blockTablesInGm);
+    inContextLenGM.SetGlobalBuffer((__gm__ int32_t*)seqLensInGm);
+    inseqOffsetGM.SetGlobalBuffer((__gm__ int32_t*)seqOffsetInGm);
     // output
-    outKeyGM.SetGlobalBuffer((__gm__ T *)keyOutGm);
-    outValueGM.SetGlobalBuffer((__gm__ T *)valueOutGm);
+    outKeyGM.SetGlobalBuffer((__gm__ T*)keyOutGm);
+    outValueGM.SetGlobalBuffer((__gm__ T*)valueOutGm);
 
     pipe->InitBuffer(tmpBuf, UB_BUF_SIZE); // ensure the size of one token less than 148kb
     tmpTensor = tmpBuf.Get<T>();

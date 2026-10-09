@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_init_routing_v2_grad_split_h.h
@@ -21,7 +21,7 @@ namespace MoeInitRoutingV2Grad {
 template <typename T, int64_t Mode = 0>
 class MoeInitRoutingV2GradSplitHCompute {
 public:
-    __aicore__ inline MoeInitRoutingV2GradSplitHCompute(const MoeInitRoutingV2GradRegbaseSplitHTilingData *tilingData)
+    __aicore__ inline MoeInitRoutingV2GradSplitHCompute(const MoeInitRoutingV2GradRegbaseSplitHTilingData* tilingData)
     {
         this->n = tilingData->n;
         this->kUbFactor = tilingData->kUbFactor;
@@ -33,14 +33,14 @@ public:
         this->numBlocks = tilingData->numBlocks;
     }
 
-    __aicore__ inline void Init(GM_ADDR gradExpandedX, GM_ADDR expandedRowIdx, GM_ADDR gradX, TPipe *tPipe)
+    __aicore__ inline void Init(GM_ADDR gradExpandedX, GM_ADDR expandedRowIdx, GM_ADDR gradX, TPipe* tPipe)
     {
         this->blockIdx = GetBlockIdx();
 
         int64_t outputGmOffset = this->hBlockFactor * this->blockIdx; // 输出stride = H
-        inputGm.SetGlobalBuffer((__gm__ T *)gradExpandedX);
-        indexGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
-        outputGm.SetGlobalBuffer((__gm__ T *)gradX + outputGmOffset);
+        inputGm.SetGlobalBuffer((__gm__ T*)gradExpandedX);
+        indexGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+        outputGm.SetGlobalBuffer((__gm__ T*)gradX + outputGmOffset);
         auto hUbAlignFactor = Ops::Base::CeilAlign(static_cast<int64_t>(this->hUbFactor * sizeof(T)), BLOCK_SIZE);
         tPipe->InitBuffer(inputQueue, DOUBLE_BUFFER, this->kUbFactor * this->k * hUbAlignFactor);
         tPipe->InitBuffer(outputQueue, 1, this->kUbFactor * hUbAlignFactor);
@@ -120,8 +120,8 @@ private:
     {
         LocalTensor<T> inputUb = inputQueue.template DeQue<T>();
         LocalTensor<T> outputUb = outputQueue.AllocTensor<T>();
-        __ubuf__ T *inputUbAddr = (__ubuf__ T *)inputUb.GetPhyAddr();
-        __ubuf__ T *outputUbAddr = (__ubuf__ T *)outputUb.GetPhyAddr();
+        __ubuf__ T* inputUbAddr = (__ubuf__ T*)inputUb.GetPhyAddr();
+        __ubuf__ T* outputUbAddr = (__ubuf__ T*)outputUb.GetPhyAddr();
         SequenceReduceSum<T, T, true>(inputUbAddr, outputUbAddr, currkUbFactor, this->k, currSubhLen, currSubhAlign,
                                       this->k);
         inputQueue.FreeTensor(inputUb);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attn_kernel_dn.h
@@ -67,7 +67,7 @@ public:
     SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool_;
     SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool_;
 
-    __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tilingData_;
+    __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tilingData_;
 
     // block define
     CubeBlockType cubeBlock_;
@@ -111,22 +111,22 @@ public:
           vecFaBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
           vecFdBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_){};
 
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *relH,
-                                __gm__ uint8_t *relW, __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ,
-                                __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                __gm__ uint8_t *learnableSink, __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tiling)
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* relH,
+                                __gm__ uint8_t* relW, __gm__ uint8_t* blockTable, __gm__ uint8_t* cuSeqLensQ,
+                                __gm__ uint8_t* cuSeqLensKv, __gm__ uint8_t* seqUsedQ, __gm__ uint8_t* seqUsedKv,
+                                __gm__ uint8_t* learnableSink, __gm__ uint8_t* attenMask, __gm__ uint8_t* fiaMetaData,
+                                __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
+                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tiling)
     {
         tilingData_ = tiling;
 
         InitConstInfo();
 
-        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[0];
-        constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[1]);
+        sectionNum_ = ((__gm__ uint32_t*)fiaMetaData)[0];
+        constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t*)fiaMetaData)[1]);
         constInfo_.learnableSinkFlag = (learnableSink != nullptr);
 
-        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t*)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                       FA_AIC_CORE_NUM * 16U * sectionNum_);
 
         qSeqLensTool_.Init(cuSeqLensQ, constInfo_.cuSeqLensQSize, seqUsedQ, constInfo_.seqUsedQSize, constInfo_.s1Size);
@@ -141,8 +141,8 @@ public:
             vecFaBlock_.ClearOutput();
             if (constInfo_.enableFlashDecode) {
                 fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                        FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+                    (__gm__ uint32_t*)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                       FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
                     FA_AIV_CORE_NUM * 16U * sectionNum_);
                 vecFdBlock_.InitBlock(learnableSink, softmaxLse, attentionOut);
                 vecFdBlock_.InitGlobalTensor(vecFaBlock_.softmaxFDMaxGm_, vecFaBlock_.softmaxFDSumGm_,
@@ -332,8 +332,8 @@ public:
         return TASK_DEAL_MODE::CREATE_TASK;
     }
 
-    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
-                                                 int64_t &nextTokenLeftUp)
+    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t& preTokenLeftUp,
+                                                 int64_t& nextTokenLeftUp)
     {
         preTokenLeftUp = constInfo_.preTokens;
         nextTokenLeftUp = constInfo_.nextTokens;
@@ -433,7 +433,7 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+        RunInfoX& runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
 
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
@@ -443,7 +443,7 @@ public:
             }
         }
         if (loop >= PRELOAD_N) {
-            RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
+            RunInfoX& runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
@@ -455,22 +455,22 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1(RunInfoX& runInfo)
     {
         cubeBlock_.IterateBmm1(runInfo);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm2(RunInfoX& runInfo)
     {
         cubeBlock_.IterateBmm2(runInfo);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec1(RunInfoX& runInfo)
     {
         vecFaBlock_.ProcessVec1(runInfo);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec2(RunInfoX& runInfo)
     {
         vecFaBlock_.ProcessVec2(runInfo);
     }
@@ -478,12 +478,12 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+        RunInfoX& runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX& info)
     {
         info.loop = loop;
         info.mloop = mloop_;
@@ -546,8 +546,8 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
-                                          uint32_t &s2Cur)
+    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t& bN2Cur, uint32_t& gS1Cur,
+                                          uint32_t& s2Cur)
     {
         uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ_ * constInfo_.gSize;

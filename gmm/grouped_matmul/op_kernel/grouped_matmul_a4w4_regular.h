@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_a4w4_regular.h
@@ -75,14 +75,14 @@ public:
         uint32_t n;
         uint32_t problemCount;
         uint64_t quantGroupNum;
-        __gm__ ElementGroupList *ptrGroupList;
+        __gm__ ElementGroupList* ptrGroupList;
         GM_ADDR ptrA;
         LayoutA layoutA;
         GM_ADDR ptrB;
         LayoutB layoutB;
         GM_ADDR ptrScale;
         LayoutScale layoutScale;
-        __gm__ ElementPerTokenScale *ptrPerTokenScale;
+        __gm__ ElementPerTokenScale* ptrPerTokenScale;
         LayoutPerTokenScale layoutPerTokenScale;
         GM_ADDR ptrD;
         LayoutD layoutD;
@@ -102,14 +102,14 @@ public:
               n(n_),
               problemCount(problemCount_),
               quantGroupNum(quantGroupNum_),
-              ptrGroupList(reinterpret_cast<__gm__ ElementGroupList *>(ptrGroupList_)),
+              ptrGroupList(reinterpret_cast<__gm__ ElementGroupList*>(ptrGroupList_)),
               ptrA(ptrA_),
               layoutA(layoutA_),
               ptrB(ptrB_),
               layoutB(layoutB_),
               ptrScale(ptrScale_),
               layoutScale(layoutScale_),
-              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale *>(ptrPerTokenScale_)),
+              ptrPerTokenScale(reinterpret_cast<__gm__ ElementPerTokenScale*>(ptrPerTokenScale_)),
               layoutPerTokenScale(layoutPerTokenScale_),
               ptrD(ptrD_),
               layoutD(layoutD_),
@@ -131,20 +131,20 @@ public:
     }
 
     template <typename T>
-    CATLASS_DEVICE __gm__ T *GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
+    CATLASS_DEVICE __gm__ T* GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
     {
-        __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorPtr);
+        __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(tensorPtr);
         uint64_t tensorPtrOffset = *dataAddr; // The offset of the data address from the first address.
         // Moving 3 bits to the right means dividing by sizeof(uint64 t).
-        __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
-        return reinterpret_cast<__gm__ T *>(*(retPtr + index));
+        __gm__ uint64_t* retPtr = dataAddr + (tensorPtrOffset >> 3);
+        return reinterpret_cast<__gm__ T*>(*(retPtr + index));
     }
 
     template <int32_t CORE_TYPE = g_coreType>
-    CATLASS_DEVICE void operator()(Params const &params);
+    CATLASS_DEVICE void operator()(Params const& params);
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIC>(Params const& params)
     {
         AscendC::ICachePreLoad(1);
         BlockScheduler blockScheduler;
@@ -166,7 +166,7 @@ public:
         int64_t gmGroupOffsetScale = 0;
 
         AscendC::GlobalTensor<ElementC> gmC;
-        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(params.ptrWorkspace));
+        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(params.ptrWorkspace));
         auto layoutC = layout::RowMajor{L1TileShape::M * coreNum * WORKSPACE_STAGES, L1TileShape::N};
         LayoutScale layoutScale = params.layoutScale;
 
@@ -263,7 +263,7 @@ public:
     }
 
     template <>
-    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const &params)
+    CATLASS_DEVICE void operator()<AscendC::AIV>(Params const& params)
     {
         AscendC::ICachePreLoad(1);
         BlockScheduler blockScheduler;
@@ -279,7 +279,7 @@ public:
         groupList.SetGlobalBuffer(params.ptrGroupList);
 
         AscendC::GlobalTensor<ElementC> gmC;
-        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC *>(params.ptrWorkspace));
+        gmC.SetGlobalBuffer(reinterpret_cast<__gm__ ElementC*>(params.ptrWorkspace));
         auto layoutC = layout::RowMajor{L1TileShape::M * coreNum * WORKSPACE_STAGES, L1TileShape::N};
 
         uint32_t stageId = 0;
@@ -354,7 +354,7 @@ private:
             Arch::CrossCoreWaitFlag(ptr->flagAivFinishComputeList[stageId]);
         }
 
-        MatmulKernel *ptr{nullptr};
+        MatmulKernel* ptr{nullptr};
         uint32_t stageId;
     };
 
@@ -372,7 +372,7 @@ private:
             Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(ptr->flagAicFinishStoreList[stageId]);
         }
 
-        MatmulKernel *ptr{nullptr};
+        MatmulKernel* ptr{nullptr};
         uint32_t stageId;
     };
 

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_mla_softmax_l1_norm_metadata_aicpu.cpp
@@ -23,7 +23,7 @@ using namespace optiling;
 
 namespace aicpu {
 
-uint32_t SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::Compute(CpuKernelContext& ctx)
 {
     if (!Prepare(ctx)) {
         return KERNEL_STATUS_PARAM_INVALID;
@@ -36,7 +36,7 @@ uint32_t SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::Compute(CpuKernelContext 
     return KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::Prepare(CpuKernelContext& ctx)
 {
     cuSeqLensQuery_ = ctx.Input(0);
     cuSeqLensKey_ = ctx.Input(1);
@@ -106,7 +106,7 @@ bool SparseFlashMlaSoftmaxL1NormMetadataCpuKernel::ParamsCheck()
 }
 
 namespace {
-static const char *kernelType = "SparseFlashMlaSoftmaxL1NormMetadata";
+static const char* kernelType = "SparseFlashMlaSoftmaxL1NormMetadata";
 REGISTER_CPU_KERNEL(kernelType, SparseFlashMlaSoftmaxL1NormMetadataCpuKernel);
 } // namespace
 } // namespace aicpu

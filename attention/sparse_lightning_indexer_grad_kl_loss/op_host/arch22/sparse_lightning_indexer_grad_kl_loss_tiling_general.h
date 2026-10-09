@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_lightning_indexer_grad_kl_loss_tiling_general.h
@@ -32,14 +32,14 @@ namespace optiling {
 
 class SparseLightningIndexerGradKLLossTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseLightningIndexerGradKLLossTilingBase(gert::TilingContext *context)
+    explicit SparseLightningIndexerGradKLLossTilingBase(gert::TilingContext* context)
         : TilingBaseClass(context)
     {
         Reset();
     }
     ~SparseLightningIndexerGradKLLossTilingBase() override = default;
 
-    void Reset(gert::TilingContext *context) override
+    void Reset(gert::TilingContext* context) override
     {
         TilingBaseClass::Reset(context);
         Reset();
@@ -73,7 +73,7 @@ protected:
         inputLayout = nullptr;
     }
 
-    [[nodiscard]] gert::TilingContext *GetContext()
+    [[nodiscard]] gert::TilingContext* GetContext()
     {
         return context_;
     }
@@ -96,24 +96,24 @@ protected:
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
 
-    void GetActualSeqLenData(int64_t inputIdx, std::vector<int64_t> &res, int64_t &actualLen) const;
+    void GetActualSeqLenData(int64_t inputIdx, std::vector<int64_t>& res, int64_t& actualLen) const;
     ge::graphStatus CheckContext();
     bool AnalyzeAttrs();
-    bool CrossShapeVerify(const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShap);
-    bool AnalyzeDimLayout(const gert::Shape &queryShape, const gert::Shape &keyShape,
-                          const gert::Shape &queryIndexShape, const gert::Shape &topKShape, size_t layoutLen,
-                          const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape);
+    bool CrossShapeVerify(const gert::Shape& queryRopeShape, const gert::Shape& keyRopeShap);
+    bool AnalyzeDimLayout(const gert::Shape& queryShape, const gert::Shape& keyShape,
+                          const gert::Shape& queryIndexShape, const gert::Shape& topKShape, size_t layoutLen,
+                          const gert::Shape& queryRopeShape, const gert::Shape& keyRopeShape);
     bool AnalyzeDtype();
     bool AnalyzeLayout();
     int64_t GetS2RealSize(int32_t sparseMode, int32_t s1Size, int32_t s2Size, int32_t s1Idx);
-    bool InitSparseValidArray(std::vector<int64_t> &sparseValidArray);
-    inline bool InitLoadValue(const std::vector<int64_t> &sparseValidArray, int64_t validAicNum, int64_t totalSize,
-                              const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue);
-    bool BalanceLoad(const std::vector<int64_t> &sparseValidArray, std::vector<int64_t> &localValue,
-                     std::vector<int64_t> &sparseStartIdx);
-    bool Balance4DLoad(std::vector<int64_t> &tmpSparseValue, const std::vector<int64_t> sparseValidArray,
+    bool InitSparseValidArray(std::vector<int64_t>& sparseValidArray);
+    inline bool InitLoadValue(const std::vector<int64_t>& sparseValidArray, int64_t validAicNum, int64_t totalSize,
+                              const std::vector<int64_t>& sparseStartIdx, std::vector<int64_t>& localValue);
+    bool BalanceLoad(const std::vector<int64_t>& sparseValidArray, std::vector<int64_t>& localValue,
+                     std::vector<int64_t>& sparseStartIdx);
+    bool Balance4DLoad(std::vector<int64_t>& tmpSparseValue, const std::vector<int64_t> sparseValidArray,
                        const int64_t balanceNum);
-    bool SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray, int64_t maxCoreNum);
+    bool SetSparseStartIdx(const std::vector<int64_t>& sparseValidArray, int64_t maxCoreNum);
     void SetSparseParamsRegbase(int64_t maxCoreNum);
     int64_t CalcTotalSize();
     void SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum);
@@ -136,7 +136,7 @@ protected:
     int32_t rsvd;
     float scaleValue;
 
-    const char *templateName = "slikbase";
+    const char* templateName = "slikbase";
 
     LayoutType tilingKeyLayout;
     TopKRange topkSize;
@@ -156,16 +156,16 @@ protected:
     bool deterministic;
     bool hasRope = false;
 
-    const char *opName;
-    const char *inputLayout;
+    const char* opName;
+    const char* inputLayout;
 
     std::vector<int64_t> actualSeqLenData;
     std::vector<int64_t> actualSeqLenKData;
 
-    SparseLightningIndexerGradKLLossTilingData *tilingData =
+    SparseLightningIndexerGradKLLossTilingData* tilingData =
         context_->GetTilingData<SparseLightningIndexerGradKLLossTilingData>();
-    SLIGradKLLossBaseParams *sliGradkllossBaseParams_ = &tilingData->baseParams;
-    SLIGradKLLossMultiCoreParams *sliGradkllossMultiCoreParams_ = &tilingData->multiCoreParams;
+    SLIGradKLLossBaseParams* sliGradkllossBaseParams_ = &tilingData->baseParams;
+    SLIGradKLLossMultiCoreParams* sliGradkllossMultiCoreParams_ = &tilingData->multiCoreParams;
 };
 
 } // namespace optiling

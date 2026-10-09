@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file ts.h
@@ -44,8 +44,8 @@ using Platform = ops::adv::tests::utils::Platform;
 template <class C>
 class Ts : public testing::Test {
 protected:
-    C *case_ = nullptr;
-    Platform *platform_ = nullptr;
+    C* case_ = nullptr;
+    Platform* platform_ = nullptr;
     Platform::SocVersion socVersion_ = Platform::SocVersion::Ascend910B2;
 
 protected:
@@ -134,7 +134,7 @@ class Ts_WithParam : public Ts<C>, public ::testing::WithParamInterface<C> {
 protected:
     void SetUp() override
     {
-        auto &p = ::testing::WithParamInterface<C>::GetParam();
+        auto& p = ::testing::WithParamInterface<C>::GetParam();
         Ts<C>::case_ = new C(p);
         ASSERT_NE(Ts<C>::case_, nullptr);
         Ts<C>::SetUp();

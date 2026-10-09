@@ -1,18 +1,17 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file cube_op.h
  * \brief
  */
-
 
 #ifndef _CUBE_OP_H_
 #define _CUBE_OP_H_
@@ -241,8 +240,8 @@ private:
 };
 
 template <typename TYPE>
-__aicore__ inline void
-CubeOp<TYPE>::Init(TPipe *pipe, uint64_t qHeadNumIn, uint64_t kvHeadNumIn, uint64_t headDimIn, uint64_t sparseMode)
+__aicore__ inline void CubeOp<TYPE>::Init(TPipe* pipe, uint64_t qHeadNumIn, uint64_t kvHeadNumIn, uint64_t headDimIn,
+                                          uint64_t sparseMode)
 {
     pipe->InitBuffer(L1Buffer, HardwareInfo<ArchType::ASCEND_V220>::l1Size);
     pipe->InitBuffer(L0CBuffer, HardwareInfo<ArchType::ASCEND_V220>::l0CSize);
@@ -253,8 +252,8 @@ CubeOp<TYPE>::Init(TPipe *pipe, uint64_t qHeadNumIn, uint64_t kvHeadNumIn, uint6
     sparseType = sparseMode;
     globalBlockOffset = GetBlockIdx() * 16 * 128 * 128;
 
-    temp_tensor_bf16.SetGlobalBuffer(reinterpret_cast<__gm__ TYPE *>(0));
-    temp_tensor_fp32.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(0));
+    temp_tensor_bf16.SetGlobalBuffer(reinterpret_cast<__gm__ TYPE*>(0));
+    temp_tensor_fp32.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(0));
 
     AscendC::SetLoadDataPaddingValue<uint64_t>(0);
     AscendC::SetNdParaImpl(0x1);
@@ -289,8 +288,9 @@ CubeOp<TYPE>::Init(TPipe *pipe, uint64_t qHeadNumIn, uint64_t kvHeadNumIn, uint6
 }
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void
-CubeOp<TYPE>::Cube1Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ TYPE *right, __gm__ float *out)
+__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::Cube1Process(const CubeAddrInfo& addrs,
+                                                                                 __gm__ TYPE* left, __gm__ TYPE* right,
+                                                                                 __gm__ float* out)
 {
     pingPongIdx = addrs.taskId % 2;
     globalBlockOffset = GetBlockIdx() * BLOCK_WORKSPACE * 2 + pingPongIdx * BLOCK_WORKSPACE;
@@ -301,8 +301,9 @@ CubeOp<TYPE>::Cube1Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ 
 }
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void
-CubeOp<TYPE>::Cube2Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ TYPE *right, __gm__ float *out)
+__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::Cube2Process(const CubeAddrInfo& addrs,
+                                                                                 __gm__ TYPE* left, __gm__ TYPE* right,
+                                                                                 __gm__ float* out)
 {
     pingPongIdx = addrs.taskId % 2;
     globalBlockOffset = GetBlockIdx() * BLOCK_WORKSPACE * 2 + pingPongIdx * BLOCK_WORKSPACE;
@@ -313,8 +314,9 @@ CubeOp<TYPE>::Cube2Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ 
 }
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void
-CubeOp<TYPE>::Cube3Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ TYPE *right, __gm__ float *out)
+__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::Cube3Process(const CubeAddrInfo& addrs,
+                                                                                 __gm__ TYPE* left, __gm__ TYPE* right,
+                                                                                 __gm__ float* out)
 {
     pingPongIdx = addrs.taskId % 2;
     globalBlockOffset = GetBlockIdx() * BLOCK_WORKSPACE * 2 + pingPongIdx * BLOCK_WORKSPACE;
@@ -325,8 +327,9 @@ CubeOp<TYPE>::Cube3Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ 
 }
 
 template <typename TYPE>
-__aicore__ inline __attribute__((always_inline)) void
-CubeOp<TYPE>::Cube23Process(const CubeAddrInfo &addrs, __gm__ TYPE *left, __gm__ TYPE *right1, __gm__ TYPE *right2, __gm__ float *out1, __gm__ float *out2)
+__aicore__ inline __attribute__((always_inline)) void CubeOp<TYPE>::Cube23Process(
+    const CubeAddrInfo& addrs, __gm__ TYPE* left, __gm__ TYPE* right1, __gm__ TYPE* right2, __gm__ float* out1,
+    __gm__ float* out2)
 {
     pingPongIdx = addrs.taskId % 2;
     globalBlockOffset = GetBlockIdx() * BLOCK_WORKSPACE * 2 + pingPongIdx * BLOCK_WORKSPACE;

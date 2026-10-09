@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef OP_API_INC_MOE_DISTRIBUTE_DISPATCH_TEARDOWN_
 #define OP_API_INC_MOE_DISTRIBUTE_DISPATCH_TEARDOWN_
@@ -54,12 +54,12 @@ extern "C" {
  *
  */
 ACLNN_API aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *y, const aclTensor *expertIds, const aclTensor *commCmdInfo,
-    const char *groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType,
+    const aclTensor* x, const aclTensor* y, const aclTensor* expertIds, const aclTensor* commCmdInfo,
+    const char* groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType,
     int64_t sharedExpertNum, int64_t sharedExpertRankNum, int64_t quantMode, int64_t globalBs,
-    int64_t expertTokenNumsType, int64_t commType, char *commAlg, aclTensor *expandXOut, aclTensor *dynamicScalesOut,
-    aclTensor *assistInfoForCombineOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    int64_t expertTokenNumsType, int64_t commType, char* commAlg, aclTensor* expandXOut, aclTensor* dynamicScalesOut,
+    aclTensor* assistInfoForCombineOut, aclTensor* expertTokenNumsOut, uint64_t* workspaceSize,
+    aclOpExecutor** executor);
 
 /**
  * @brief aclnnMoeDistributeDispatchTeardown的第二段接口，用于执行计算。
@@ -70,8 +70,8 @@ ACLNN_API aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeDispatchTeardown(void *workspace, uint64_t workspaceSize,
-                                                         aclOpExecutor *executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnMoeDistributeDispatchTeardown(void* workspace, uint64_t workspaceSize,
+                                                         aclOpExecutor* executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,6 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -44,7 +44,7 @@ static constexpr size_t COMBINE_INPUT_ATTR_COMM_QUANT_MODE_INDEX = 8;
 static constexpr size_t COMBINE_INPUT_ATTR_COMM_TYPE_INDEX = 9;
 
 template <typename T>
-std::string Shape2String(const T &shape)
+std::string Shape2String(const T& shape)
 {
     std::ostringstream oss;
     oss << "[";
@@ -67,23 +67,23 @@ inline int64_t Align(int64_t x, int64_t base)
     return ((x + base - 1) / base) * base;
 }
 
-static ge::graphStatus InferShapeMoeDistributeCombineSetup(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeMoeDistributeCombineSetup(gert::InferShapeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeMoeDistributeCombineSetup.");
     // 获取输入shape
-    const gert::Shape *expandXShape = context->GetInputShape(COMBINE_INPUT_EXPAND_X_INDEX);
+    const gert::Shape* expandXShape = context->GetInputShape(COMBINE_INPUT_EXPAND_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expandXShape);
 
-    const gert::Shape *expertIdsShape = context->GetInputShape(COMBINE_INPUT_EXPERT_IDS_INDEX);
+    const gert::Shape* expertIdsShape = context->GetInputShape(COMBINE_INPUT_EXPERT_IDS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertIdsShape);
 
-    const gert::Shape *assistInfoForCombineShape = context->GetInputShape(COMBINE_INPUT_ASSIST_INFO_FOR_COMBINE_INDEX);
+    const gert::Shape* assistInfoForCombineShape = context->GetInputShape(COMBINE_INPUT_ASSIST_INFO_FOR_COMBINE_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, assistInfoForCombineShape);
 
-    gert::Shape *quantExpandXShape = context->GetOutputShape(COMBINE_OUTPUT_QUANT_EXPAND_X_INDEX);
+    gert::Shape* quantExpandXShape = context->GetOutputShape(COMBINE_OUTPUT_QUANT_EXPAND_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, quantExpandXShape);
 
-    gert::Shape *commCmdInfoShape = context->GetOutputShape(COMBINE_OUTPUT_COMM_CMD_INFO_INDEX);
+    gert::Shape* commCmdInfoShape = context->GetOutputShape(COMBINE_OUTPUT_COMM_CMD_INFO_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, commCmdInfoShape);
 
     const auto attrs = context->GetAttrs();
@@ -135,7 +135,7 @@ static ge::graphStatus InferShapeMoeDistributeCombineSetup(gert::InferShapeConte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMoeDistributeCombineSetup(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeMoeDistributeCombineSetup(gert::InferDataTypeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferDataTypeMoeDistributeCombineSetup.");
     context->SetOutputDataType(COMBINE_OUTPUT_QUANT_EXPAND_X_INDEX, ge::DT_INT8);

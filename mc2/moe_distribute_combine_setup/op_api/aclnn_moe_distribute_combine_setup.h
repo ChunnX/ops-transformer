@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_moe_distribute_combine_setup.h
@@ -50,10 +50,10 @@ extern "C" {
  *
  */
 ACLNN_API aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
-    const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine, const char *groupEp,
+    const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine, const char* groupEp,
     int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
-    int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
-    aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut, uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char* commAlg,
+    aclTensor* quantExpandXOut, aclTensor* commCmdInfoOut, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * 算子功能：进行AlltoAllv通信，将数据写入对端GM。
@@ -79,10 +79,10 @@ ACLNN_API aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
  *
  */
 ACLNN_API aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
-    const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine, const char *groupEp,
+    const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine, const char* groupEp,
     int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
-    int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
-    uint64_t &tokenMsgSize, uint64_t &commCmdInfoOutSize);
+    int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char* commAlg,
+    uint64_t& tokenMsgSize, uint64_t& commCmdInfoOutSize);
 
 /**
  * @brief aclnnMoeDistributeCombineSetup的第二段接口，用于执行计算。
@@ -93,7 +93,7 @@ ACLNN_API aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码。
  */
-ACLNN_API aclnnStatus aclnnMoeDistributeCombineSetup(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+ACLNN_API aclnnStatus aclnnMoeDistributeCombineSetup(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                                      aclrtStream stream);
 
 #ifdef __cplusplus

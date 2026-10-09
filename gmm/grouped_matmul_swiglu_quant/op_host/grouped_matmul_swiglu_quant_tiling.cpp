@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_swiglu_quant_tiling.cpp
@@ -43,7 +43,7 @@ struct GMMSwigluCompileInfo {
     uint32_t baseN_ = 256;
 };
 
-static int64_t CalMaxRowInUb_A8W4(const gert::TilingContext *context, const uint64_t ubSize, const uint64_t n)
+static int64_t CalMaxRowInUb_A8W4(const gert::TilingContext* context, const uint64_t ubSize, const uint64_t n)
 {
     const uint64_t ALIGNMENT = 8;
     const float WEIGHT_FACTOR = 8.5;
@@ -79,7 +79,7 @@ static int64_t CalMaxRowInUb_A8W4(const gert::TilingContext *context, const uint
     return maxRowEstimate;
 }
 
-static int64_t CalMaxRowInUb(const gert::TilingContext *context, const uint64_t ubSize, const uint64_t n)
+static int64_t CalMaxRowInUb(const gert::TilingContext* context, const uint64_t ubSize, const uint64_t n)
 {
     uint64_t tmpBufSize = (n / SWIGLU_REDUCE_FACTOR) * FP32_DTYPE_SIZE;
     uint64_t perchannleBufSize = n * FP32_DTYPE_SIZE * DOUBLE_BUFFER;
@@ -103,7 +103,7 @@ static int64_t CalMaxRowInUb(const gert::TilingContext *context, const uint64_t 
     return maxRowInUb;
 }
 
-static void SetTilingKey(gert::TilingContext *context, bool isSplitWorkSpace, bool isA8W4MSD)
+static void SetTilingKey(gert::TilingContext* context, bool isSplitWorkSpace, bool isA8W4MSD)
 {
     if (isA8W4MSD) { // A8W4 MSD tiling_key使用4
         context->SetTilingKey(A8W4_MSD_TILING_KEY_MODE);
@@ -117,7 +117,7 @@ static void SetTilingKey(gert::TilingContext *context, bool isSplitWorkSpace, bo
     }
 }
 
-ASCENDC_EXTERN_C graphStatus TilingGMMSwigluQuant(gert::TilingContext *context)
+ASCENDC_EXTERN_C graphStatus TilingGMMSwigluQuant(gert::TilingContext* context)
 {
     // set info
     OP_LOGD(context->GetNodeName(), "Begin Run GMM Swiglu Tiling .");
@@ -256,10 +256,10 @@ ASCENDC_EXTERN_C graphStatus TilingGMMSwigluQuant(gert::TilingContext *context)
     return GRAPH_SUCCESS;
 }
 
-ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuant(gert::TilingParseContext *context)
+ASCENDC_EXTERN_C graphStatus TilingPrepareForGMMSwigluQuant(gert::TilingParseContext* context)
 {
     // get info
-    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
     auto compileInfoPtr = context->GetCompiledInfo<GMMSwigluCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);

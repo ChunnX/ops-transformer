@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file grouped_matmul_add_compile_info.h
@@ -27,7 +27,7 @@
 namespace optiling {
 namespace gmm_add_advanced {
 using namespace GroupedMatmulAdd;
-inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, GMMCompileInfo *compileInfoPtr)
+inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos* platformInfo, GMMCompileInfo* compileInfoPtr)
 {
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE("GroupedMatmulAdd", "InitCompileInfo platformInfo is null"),
                 return ge::GRAPH_FAILED);
@@ -54,11 +54,11 @@ inline ge::graphStatus InitCompileInfo(fe::PlatFormInfos *platformInfo, GMMCompi
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus InitCompileInfo(gert::TilingParseContext *context)
+inline ge::graphStatus InitCompileInfo(gert::TilingParseContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "InitCompileInfo context is null"),
                 return ge::GRAPH_FAILED);
-    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
+    fe::PlatFormInfos* platformInfo = context->GetPlatformInfo();
     auto compileInfoPtr = context->GetCompiledInfo<GMMCompileInfo>();
     return InitCompileInfo(platformInfo, compileInfoPtr);
 }

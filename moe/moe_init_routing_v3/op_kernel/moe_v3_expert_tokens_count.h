@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_expert_tokens_count.h
@@ -36,7 +36,7 @@ public:
     __aicore__ inline ExpertTokensCount(){};
     template <bool CALC_ACTUAL_EXPERT_NUM>
     __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount, GM_ADDR workspace,
-                                const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe);
+                                const MoeInitRoutingV3TilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -56,7 +56,7 @@ private:
     GlobalTensor<int32_t> expertTotalCountGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int32_t> expertIdxValueGm_;
-    TPipe *pipe_;
+    TPipe* pipe_;
 
     TQue<QuePosition::VECIN, 1> sortedExpertIdxInQueue_;
     TQue<QuePosition::VECOUT, 1> expertCountOutToTempQueue_;
@@ -64,7 +64,7 @@ private:
     TQue<QuePosition::VECOUT, 1> expertIdxCountOutQueue_;
     TQue<QuePosition::VECOUT, 1> expertTotalCountQueue_;
 
-    const MoeV3ExpertTokensCountTilingData *expertTokensCountTilingData_;
+    const MoeV3ExpertTokensCountTilingData* expertTokensCountTilingData_;
     int64_t coreNum_;
     int64_t blockIdx_;
     int64_t needCoreNum_;
@@ -91,8 +91,8 @@ template <const int HISTOGRAMTYPE>
 template <bool CALC_ACTUAL_EXPERT_NUM>
 __aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::Init(GM_ADDR expandedRowIdx, GM_ADDR expertTokensCount,
                                                               GM_ADDR workspace,
-                                                              const MoeInitRoutingV3TilingData *tilingData,
-                                                              TPipe *tPipe)
+                                                              const MoeInitRoutingV3TilingData* tilingData,
+                                                              TPipe* tPipe)
 {
     coreNum_ = tilingData->coreNum;
     pipe_ = tPipe;
@@ -125,7 +125,7 @@ __aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::Init(GM_ADDR expandedRo
         // key and value
         int64_t kvFactor = 2;
         GlobalTensor<int32_t> sortedNumGm;
-        sortedNumGm.SetGlobalBuffer((__gm__ int32_t *)workspace +
+        sortedNumGm.SetGlobalBuffer((__gm__ int32_t*)workspace +
                                     Align(tilingData->n * tilingData->k, sizeof(int32_t)) * kvFactor * kvFactor);
         int32_t totalSortedNum = 0;
         for (int32_t i = 0; i < 16; i++) {
@@ -150,20 +150,19 @@ __aicore__ inline void ExpertTokensCount<HISTOGRAMTYPE>::Init(GM_ADDR expandedRo
     } else {
         expertCountElements_ = actualExpertNum_;
     }
-    sortedexpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreElements_, curCoreElements_);
-    expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t *)expertTokensCount, expertCountElements_);
+    sortedexpertIdxGm_.SetGlobalBuffer((__gm__ int32_t*)workspace + blockIdx_ * perCoreElements_, curCoreElements_);
+    expertTokensCountGm_.SetGlobalBuffer((__gm__ int64_t*)expertTokensCount, expertCountElements_);
     expertCountTempGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2, actualExpertNum_);
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
+        (__gm__ int32_t*)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2, actualExpertNum_);
+    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t*)workspace +
                                             Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
                                             Align(actualExpertNum_, sizeof(int32_t)),
                                         actualExpertNum_);
     expertIdxValueGm_.SetGlobalBuffer(
-        (__gm__ int32_t *)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
+        (__gm__ int32_t*)workspace + Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
             Align((actualExpertNum_), sizeof(int32_t)) + Align((actualExpertNum_), sizeof(int32_t)),
         coreNum_ * 2);
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreElements_,
-                                      curCoreElements_);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx + blockIdx_ * perCoreElements_, curCoreElements_);
 
     if ((tilingData->rowIdxType == GATHER) && (blockIdx_ < needCoreNum_)) {
         InitGlobalMemory(expandedRowIdxGm_, curCoreElements_, -1);

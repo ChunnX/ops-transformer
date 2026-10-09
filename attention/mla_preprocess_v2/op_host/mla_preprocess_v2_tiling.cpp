@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mla_preprocess_v2_tiling.cpp
@@ -25,7 +25,7 @@ constexpr uint64_t ATTR_Q_DOWN_OUT_FLAG_IDX = 13;
 
 namespace optiling {
 
-ASCENDC_EXTERN_C ge::graphStatus TilingMLAPreprocessV2(gert::TilingContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingMLAPreprocessV2(gert::TilingContext* context)
 {
     MlaPreprocessTiling mlaTiling;
     auto status = mlaTiling.Init(context);
@@ -34,12 +34,13 @@ ASCENDC_EXTERN_C ge::graphStatus TilingMLAPreprocessV2(gert::TilingContext *cont
     }
     bool qDownOutFlag = *(context->GetAttrs()->GetAttrPointer<bool>(ATTR_Q_DOWN_OUT_FLAG_IDX));
     mlaTiling.mlaTilingData.set_qDownOutFlag(qDownOutFlag);
-    mlaTiling.mlaTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    mlaTiling.mlaTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(),
+                                         context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(mlaTiling.mlaTilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForMlaPreprocessV2(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForMlaPreprocessV2(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

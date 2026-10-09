@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file collective_comm_base.h
@@ -38,8 +38,8 @@ public:
     __aicore__ inline CollectiveCommBase() {}
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
-    __aicore__ inline void Init(__gm__ CommUdmaContext *udmaCtx, Barrier &barrier, const CommTilingData &tilingData,
-                                GM_ADDR localAddr, __ubuf__ uint8_t *commbuf, uint32_t totalJobs, uint32_t jobIndex,
+    __aicore__ inline void Init(__gm__ CommUdmaContext* udmaCtx, Barrier& barrier, const CommTilingData& tilingData,
+                                GM_ADDR localAddr, __ubuf__ uint8_t* commbuf, uint32_t totalJobs, uint32_t jobIndex,
                                 uint64_t winOffset = 0)
     {
         if (jobIndex >= totalJobs) {
@@ -84,7 +84,7 @@ public:
         tileByteOffset_ = 0;
         remainingChunkSize_ = chunkSize;
         chunkByteOffset_ = 0;
-        static_cast<Impl *>(this)->template PostInit<BarrierMode>();
+        static_cast<Impl*>(this)->template PostInit<BarrierMode>();
     }
 
     template <uint8_t BarrierMode = BARRIER_BOTH>
@@ -112,8 +112,8 @@ public:
 
             for (uint32_t i = 0; i < targetRankCnt; i++) {
                 uint32_t targetRankId = targetRankStart + i;
-                static_cast<Impl *>(this)->template DoCommit<BarrierMode>(targetRankId, currentTileByteSize,
-                                                                          bufferOffset);
+                static_cast<Impl*>(this)->template DoCommit<BarrierMode>(targetRankId, currentTileByteSize,
+                                                                         bufferOffset);
             }
         }
 
@@ -132,7 +132,7 @@ public:
         }
         for (uint32_t i = 0; i < targetRankCnt_; i++) {
             uint32_t targetRankId = targetRankStart_ + i;
-            static_cast<Impl *>(this)->template DoWait<BarrierMode>(targetRankId);
+            static_cast<Impl*>(this)->template DoWait<BarrierMode>(targetRankId);
         }
     }
 
@@ -144,17 +144,17 @@ public:
     template <uint8_t BarrierMode = BARRIER_BOTH>
     __aicore__ inline void Finalize()
     {
-        static_cast<Impl *>(this)->template DoFinalize<BarrierMode>();
+        static_cast<Impl*>(this)->template DoFinalize<BarrierMode>();
     }
 
 protected:
-    __gm__ CommUdmaContext *udmaCtx_;
-    const CommTilingData *tilingData_;
+    __gm__ CommUdmaContext* udmaCtx_;
+    const CommTilingData* tilingData_;
     Barrier barrier_;
 
     Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> comm_;
     GM_ADDR localAddr_;
-    __ubuf__ uint8_t *commBuf_;
+    __ubuf__ uint8_t* commBuf_;
     uint64_t winOffset_;
 
     uint64_t chunkBytes_;

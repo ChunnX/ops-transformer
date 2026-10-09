@@ -1,6 +1,6 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -42,7 +42,7 @@ static constexpr size_t COMBINE_INPUT_ATTR_COMM_QUANT_MODE_INDEX = 8;
 static constexpr size_t COMBINE_INPUT_ATTR_QUANT_TYPE_INDEX = 9;
 
 template <typename T>
-std::string Shape2String(const T &shape)
+std::string Shape2String(const T& shape)
 {
     std::ostringstream oss;
     oss << "[";
@@ -56,7 +56,7 @@ std::string Shape2String(const T &shape)
     return oss.str();
 }
 
-static ge::graphStatus InferShapeMoeDistributeCombineTeardown(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeMoeDistributeCombineTeardown(gert::InferShapeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -64,25 +64,25 @@ static ge::graphStatus InferShapeMoeDistributeCombineTeardown(gert::InferShapeCo
 
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeMoeDistributeCombineTeardown.");
     // 获取输入shape
-    const gert::Shape *expandXShape = context->GetInputShape(COMBINE_INPUT_EXPAND_X_INDEX);
+    const gert::Shape* expandXShape = context->GetInputShape(COMBINE_INPUT_EXPAND_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expandXShape);
 
-    const gert::Shape *quantExpandXShape = context->GetInputShape(COMBINE_INPUT_QUANT_EXPAND_X_INDEX);
+    const gert::Shape* quantExpandXShape = context->GetInputShape(COMBINE_INPUT_QUANT_EXPAND_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, quantExpandXShape);
 
-    const gert::Shape *expertIdsShape = context->GetInputShape(COMBINE_INPUT_EXPERT_IDS_INDEX);
+    const gert::Shape* expertIdsShape = context->GetInputShape(COMBINE_INPUT_EXPERT_IDS_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertIdsShape);
 
-    const gert::Shape *expandIdxShape = context->GetInputShape(COMBINE_INPUT_EXPAND_IDX_INDEX);
+    const gert::Shape* expandIdxShape = context->GetInputShape(COMBINE_INPUT_EXPAND_IDX_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expandIdxShape);
 
-    const gert::Shape *expertScalesShape = context->GetInputShape(COMBINE_INPUT_EXPERT_SCALES_INDEX);
+    const gert::Shape* expertScalesShape = context->GetInputShape(COMBINE_INPUT_EXPERT_SCALES_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertScalesShape);
 
-    const gert::Shape *commCmdInfoShape = context->GetInputShape(COMBINE_INPUT_COMM_CMD_INFO_INDEX);
+    const gert::Shape* commCmdInfoShape = context->GetInputShape(COMBINE_INPUT_COMM_CMD_INFO_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, commCmdInfoShape);
 
-    gert::Shape *xShape = context->GetOutputShape(COMBINE_OUTPUT_X_INDEX);
+    gert::Shape* xShape = context->GetOutputShape(COMBINE_OUTPUT_X_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, xShape);
 
     const auto attrs = context->GetAttrs();
@@ -127,7 +127,7 @@ static ge::graphStatus InferShapeMoeDistributeCombineTeardown(gert::InferShapeCo
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMoeDistributeCombineTeardown(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeMoeDistributeCombineTeardown(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

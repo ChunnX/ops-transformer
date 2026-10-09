@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file vf_reduce_sum_kl_loss_grad.h
@@ -35,19 +35,19 @@ __simd_vf__ inline void ReduceSumBasicVF(uint64_t dstLocalInt, uint64_t srcLocal
 
     Duplicate(vregDst, 0.0f);
     for (uint16_t k = 0; k < static_cast<uint16_t>(loopTimes); k++) {
-        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ float *&)srcLocalInt), 64);
+        LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ float*&)srcLocalInt), 64);
         Reduce<Reg::ReduceType::SUM>(vregReduceSum, vregSrc, pregFullExe);
         Add(vregDst, vregDst, vregReduceSum, pregAccu);
     }
-    LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float *&)srcLocalIntTail), 64);
+    LoadAlign<float, Reg::PostLiteral::POST_MODE_UPDATE>(vregSrcTail, ((__ubuf__ float*&)srcLocalIntTail), 64);
     Reduce<Reg::ReduceType::SUM>(vregReduceSum, vregSrcTail, pregTailExe);
     Add(vregDst, vregDst, vregReduceSum, pregAccu);
-    StoreUnAlign<T>(((__ubuf__ T *&)dstLocalInt), vregDst, uregRes, 1);
-    StoreUnAlignPost<T>(((__ubuf__ T *&)dstLocalInt), uregRes, 0);
+    StoreUnAlign<T>(((__ubuf__ T*&)dstLocalInt), vregDst, uregRes, 1);
+    StoreUnAlignPost<T>(((__ubuf__ T*&)dstLocalInt), uregRes, 0);
 }
 
 template <typename T, typename OUT_T>
-__aicore__ inline void ReduceSumVf(const LocalTensor<OUT_T> &dstTensor, const LocalTensor<T> &srcTensor, uint32_t realK)
+__aicore__ inline void ReduceSumVf(const LocalTensor<OUT_T>& dstTensor, const LocalTensor<T>& srcTensor, uint32_t realK)
 {
     const uint32_t fullExeSize = 64;
     uint32_t loopTimes = (realK + fullExeSize - 1) / fullExeSize - 1;

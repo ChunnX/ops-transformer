@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_fused_infer_attention_score.cpp
@@ -27,12 +27,12 @@ namespace {
 
 #define CHECK_RET(cond) ((cond) ? true : (false))
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -41,7 +41,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -62,8 +62,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -91,11 +91,12 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 } // namespace
 
-float fp16_to_float(uint16_t h) {
+float fp16_to_float(uint16_t h)
+{
     uint32_t sign = ((h >> 15) & 1);
     uint32_t exponent = ((h >> 10) & 0x1F);
     uint32_t mantissa = (h & 0x3FF);
-    
+
     uint32_t f32;
     if (exponent == 0x1F) {
         exponent = 0xFF;
@@ -112,7 +113,7 @@ float fp16_to_float(uint16_t h) {
     } else {
         exponent += (127 - 15);
     }
-    
+
     f32 = (sign << 31) | (exponent << 23) | (mantissa << 13);
     return *((float*)&f32);
 }
@@ -143,32 +144,32 @@ int main()
     std::vector<uint16_t> keyHostData(keyShapeSize, 0x3C00);
     std::vector<uint16_t> valueHostData(valueShapeSize, 0x3C00);
     std::vector<uint16_t> pseHostData(pseShapeSize, 0x3C00); // fp16 1.0
-    std::vector<uint8_t> attenHostData(attenShapeSize, 0); // bool 0 = attend (all positions valid)
+    std::vector<uint8_t> attenHostData(attenShapeSize, 0);   // bool 0 = attend (all positions valid)
     std::vector<uint16_t> outHostData(outShapeSize, 0);
     std::vector<uint16_t> resultData(outShapeSize, 0x3C00);
 
-    void *queryDeviceAddr = nullptr;
-    void *keyDeviceAddr = nullptr;
-    void *valueDeviceAddr = nullptr;
-    void *pseDeviceAddr = nullptr;
-    void *attenDeviceAddr = nullptr;
-    void *outDeviceAddr = nullptr;
-    void *workspaceAddr = nullptr;
-    aclTensor *queryTensor = nullptr;
-    aclTensor *keyTensor = nullptr;
-    aclTensor *valueTensor = nullptr;
-    aclTensor *pseTensor = nullptr;
-    aclTensor *attenTensor = nullptr;
-    aclTensor *outTensor = nullptr;
-    aclTensorList *tensorKeyList = nullptr;
-    aclTensorList *tensorValueList = nullptr;
-    aclIntArray *actualSeqLengths = nullptr;
-    aclOpExecutor *executor = nullptr;
+    void* queryDeviceAddr = nullptr;
+    void* keyDeviceAddr = nullptr;
+    void* valueDeviceAddr = nullptr;
+    void* pseDeviceAddr = nullptr;
+    void* attenDeviceAddr = nullptr;
+    void* outDeviceAddr = nullptr;
+    void* workspaceAddr = nullptr;
+    aclTensor* queryTensor = nullptr;
+    aclTensor* keyTensor = nullptr;
+    aclTensor* valueTensor = nullptr;
+    aclTensor* pseTensor = nullptr;
+    aclTensor* attenTensor = nullptr;
+    aclTensor* outTensor = nullptr;
+    aclTensorList* tensorKeyList = nullptr;
+    aclTensorList* tensorValueList = nullptr;
+    aclIntArray* actualSeqLengths = nullptr;
+    aclOpExecutor* executor = nullptr;
     uint64_t workspaceSize = 0;
 
     int kvTensorNum = 1;
-    aclTensor *tensorsOfKey[1] = {nullptr};
-    aclTensor *tensorsOfValue[1] = {nullptr};
+    aclTensor* tensorsOfKey[1] = {nullptr};
+    aclTensor* tensorsOfValue[1] = {nullptr};
     int64_t numHeads = 2;
     int64_t numKeyValueHeads = numHeads;
     double scaleValue = 1 / sqrt(16);

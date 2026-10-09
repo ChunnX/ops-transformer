@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_public_define_arch35.h
@@ -55,7 +55,6 @@ struct FDparams {
     uint32_t usedVecNumOfFd;
     uint32_t gS1BaseSizeOfFd;
 };
-
 
 #endif
 struct FDparamsX {
@@ -128,14 +127,14 @@ struct CommonConstInfo {
     uint64_t s2Size;             /* s2总大小 */
     uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
     uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
-    
+
     /* strides */
     StridesConstInfo keyStrides;
     StridesConstInfo valueStrides;
     StridesConstInfo kRopeStrides;
     StridesConstInfo kScaleStrides;
     StridesConstInfo vScaleStrides;
-    
+
     /* FA kernel meta */
     uint32_t bN2Start;
     uint32_t bN2End;
@@ -237,10 +236,7 @@ struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
                                               SysPrefixConstInfo {};
 
 template <>
-struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
-                                                PAConstInfo,
-                                                LseConstInfo,
-                                                TensorListConstInfo {};
+struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
 
 // struct FusedTransposeInfo {
 //     // 以下是FlashDecode分支区分的信息
@@ -292,7 +288,6 @@ struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
 //     sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
 //     return sInnerToken;
 // }
-
 
 } // namespace AttentionCommon
 

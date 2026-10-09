@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file all_gather_add.h
@@ -26,7 +26,7 @@ class AllGatherAdd {
 public:
     __aicore__ inline AllGatherAdd(){};
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR gatherGM,
-                                AllGatherAddTilingData *tilingData, TPipe *tPipe);
+                                AllGatherAddTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -38,7 +38,7 @@ private:
     __aicore__ inline void HcclFinalize();
 
 private:
-    AllGatherAddTilingData *tilingData_;
+    AllGatherAddTilingData* tilingData_;
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
 
@@ -65,7 +65,7 @@ private:
 };
 
 __aicore__ inline void AllGatherAdd::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR gatherGM,
-                                          AllGatherAddTilingData *tilingData, TPipe *tPipe)
+                                          AllGatherAddTilingData* tilingData, TPipe* tPipe)
 {
     aGM_ = aGM;
     bGM_ = bGM;
@@ -139,9 +139,9 @@ __aicore__ inline void AllGatherAdd::CalcAddGmAddr(int32_t commTurn)
     uint32_t totalOffset = commOffset + blockOffset +
                            (blockIdx_ % tilingData_->addCoresPerRank) *
                                blockElemNum_; // 3.最终偏移需要再加上当前核在所处理rank数据上的偏移
-    gatherOutGM.SetGlobalBuffer((__gm__ half *)gatherGM_ + totalOffset, blockElemNum_);
-    inputBGM.SetGlobalBuffer((__gm__ half *)bGM_ + totalOffset, blockElemNum_);
-    outputCGM.SetGlobalBuffer((__gm__ half *)cGM_ + totalOffset, blockElemNum_);
+    gatherOutGM.SetGlobalBuffer((__gm__ half*)gatherGM_ + totalOffset, blockElemNum_);
+    inputBGM.SetGlobalBuffer((__gm__ half*)bGM_ + totalOffset, blockElemNum_);
+    outputCGM.SetGlobalBuffer((__gm__ half*)cGM_ + totalOffset, blockElemNum_);
 }
 
 __aicore__ inline void AllGatherAdd::Process()

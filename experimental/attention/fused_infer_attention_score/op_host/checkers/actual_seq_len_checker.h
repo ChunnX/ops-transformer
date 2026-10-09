@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file actual_seq_len_checker.h
@@ -25,38 +25,39 @@ namespace optiling {
 
 class ActualSeqLenChecker : public BaseChecker {
 public:
-    ActualSeqLenChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    ActualSeqLenChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~ActualSeqLenChecker() override = default;
 
-    ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckParaExistence(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckCrossFeature(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo) override;
+    ge::graphStatus CheckSinglePara(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckParaExistence(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckCrossFeature(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo& fiaInfo) override;
 
 private:
     // 公共校验函数
     // singlepara
-    ge::graphStatus CheckActualSeqLenQDim(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckActualSeqLenQData(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckActualSeqLenKvDim(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckActualSeqLenKvData(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckActualSeqLenQDim(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckActualSeqLenQData(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckActualSeqLenKvDim(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckActualSeqLenKvData(const FiaTilingInfo& fiaInfo);
 
     // existence
-    ge::graphStatus CheckExistenceActualSeqLenQ(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckExistenceActualSeqLenKv(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckExistenceActualSeqLenQ(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckExistenceActualSeqLenKv(const FiaTilingInfo& fiaInfo);
 
     // feature
-    ge::graphStatus CheckFeatureAlibi(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureIFAMLA(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureAlibi(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckFeatureIFAMLA(const FiaTilingInfo& fiaInfo);
 
     // multipara
-    ge::graphStatus CheckActualSeqLenQTNDLastData(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckActualSeqLenKvTNDLastData(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckActualSeqLenQTNDLastData(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckActualSeqLenKvTNDLastData(const FiaTilingInfo& fiaInfo);
 
     // general
-    int64_t GetActualSeqLengthsQData(const FiaTilingInfo &fiaInfo, uint32_t bIdx);
-    int64_t GetActualSeqLengthsKvData(const FiaTilingInfo &fiaInfo, uint32_t bIdx);
+    int64_t GetActualSeqLengthsQData(const FiaTilingInfo& fiaInfo, uint32_t bIdx);
+    int64_t GetActualSeqLengthsKvData(const FiaTilingInfo& fiaInfo, uint32_t bIdx);
 };
 
 } // namespace optiling

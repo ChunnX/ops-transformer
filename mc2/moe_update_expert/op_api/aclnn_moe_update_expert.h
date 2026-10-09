@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef OP_API_INC_MOE_UPDATE_EXPERT_
 #define OP_API_INC_MOE_UPDATE_EXPERT_
@@ -38,13 +38,13 @@ extern "C" {
  * @return aclnnStatus: 返回值，返回状态码
  *
  */
-ACLNN_API aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(const aclTensor *expertIds, const aclTensor *eplbTable,
-                                                           const aclTensor *expertScalesOptional,
-                                                           const aclTensor *pruningThresholdOptional,
-                                                           const aclTensor *activeMaskOptional, int64_t localRankId,
+ACLNN_API aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(const aclTensor* expertIds, const aclTensor* eplbTable,
+                                                           const aclTensor* expertScalesOptional,
+                                                           const aclTensor* pruningThresholdOptional,
+                                                           const aclTensor* activeMaskOptional, int64_t localRankId,
                                                            int64_t worldSize, int64_t balanceMode,
-                                                           aclTensor *balancedExpertIds, aclTensor *balancedActiveMask,
-                                                           uint64_t *workspaceSize, aclOpExecutor **executor);
+                                                           aclTensor* balancedExpertIds, aclTensor* balancedActiveMask,
+                                                           uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnMoeUpdateExpert的第二段接口，用于执行计算。
@@ -55,7 +55,7 @@ ACLNN_API aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(const aclTensor *expe
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnMoeUpdateExpert(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+ACLNN_API aclnnStatus aclnnMoeUpdateExpert(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                            aclrtStream stream);
 
 #ifdef __cplusplus

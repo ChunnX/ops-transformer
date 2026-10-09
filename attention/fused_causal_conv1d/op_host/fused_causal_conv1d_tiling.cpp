@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_causal_conv1d_tiling.cpp
@@ -30,7 +30,7 @@ struct FusedCausalConv1dCompileInfo {
 };
 
 // Main tiling function that dispatches based on x shape and max_query_len
-static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext *context)
+static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext* context)
 {
     OP_LOGD(context->GetNodeName(), "FusedCausalConv1dTiling tiling start");
 
@@ -68,7 +68,7 @@ static ge::graphStatus TilingFusedCausalConv1d(gert::TilingContext *context)
     return status;
 }
 
-static ge::graphStatus TilingPrepareFusedCausalConv1d(gert::TilingParseContext *context)
+static ge::graphStatus TilingPrepareFusedCausalConv1d(gert::TilingParseContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("FusedCausalConv1d", "context is null"), return ge::GRAPH_FAILED);
 

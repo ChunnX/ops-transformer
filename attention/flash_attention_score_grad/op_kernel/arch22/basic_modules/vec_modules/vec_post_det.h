@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file vec_post_det.h
@@ -36,13 +36,13 @@ template <typename OUT_TYPE, class TILING_TYPE, bool DETERMINISTIC_ENABLE>
 class VectorPostDet {
 public:
     __aicore__ inline VectorPostDet(){};
-    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
-                                __gm__ uint8_t *workspace, const TILING_TYPE *__restrict ordTilingData);
+    __aicore__ inline void Init(TPipe* pipe_in, __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv,
+                                __gm__ uint8_t* workspace, const TILING_TYPE* __restrict ordTilingData);
     __aicore__ inline void Process();
 
     constexpr static uint32_t POST_BUFFER_NUM = 1;
 
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, POST_BUFFER_NUM> inQueue;
     TQue<QuePosition::VECOUT, POST_BUFFER_NUM> outQueue;
 
@@ -51,7 +51,7 @@ public:
     // output
     AscendC::GlobalTensor<OUT_TYPE> dqGm, dkGm, dvGm;
 
-    const TILING_TYPE *__restrict tilingData;
+    const TILING_TYPE* __restrict tilingData;
 
     int64_t cBlockIdx;
     // query
@@ -69,23 +69,23 @@ public:
 
 template <typename OUT_TYPE, class TILING_TYPE, bool DETERMINISTIC_ENABLE>
 __aicore__ inline void VectorPostDet<OUT_TYPE, TILING_TYPE, DETERMINISTIC_ENABLE>::Init(
-    TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *workspace,
-    const TILING_TYPE *__restrict ordTilingData)
+    TPipe* pipe_in, __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* workspace,
+    const TILING_TYPE* __restrict ordTilingData)
 {
     cBlockIdx = GetBlockIdx();
 
     tilingData = ordTilingData;
     pipe = pipe_in;
 
-    dqGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dq);
-    dkGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dk);
-    dvGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dv);
+    dqGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dq);
+    dkGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dk);
+    dvGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dv);
 
-    dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+    dqWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                   tilingData->basicDetTensorTilingData.dqWorkSpaceOffset / sizeof(float));
-    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                   tilingData->basicDetTensorTilingData.dkWorkSpaceOffset / sizeof(float));
-    dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+    dvWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                   tilingData->basicDetTensorTilingData.dvWorkSpaceOffset / sizeof(float));
 
     uint32_t coreNum = tilingData->basicDetTensorTilingData.coreNum;

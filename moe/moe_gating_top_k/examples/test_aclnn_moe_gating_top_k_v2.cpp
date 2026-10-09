@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
-  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-  * CANN Open Software License Agreement Version 2.0 (the "License").
-  * Please refer to the License for details. You may not use this file except in compliance with the License.
-  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-  * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_gating_top_k_v2.h"
@@ -14,19 +14,19 @@
 #include <vector>
 #include <random>
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shape_size = 1;
     for (auto i : shape) {
@@ -42,12 +42,12 @@ std::vector<float> GenerateRandomFloats(int64_t count)
     std::uniform_real_distribution<float> dist(0.0f, 10.0f);
 
     std::vector<float> result(count);
-    for (auto &num : result) {
+    for (auto& num : result) {
         num = dist(gen);
     }
     return result;
 }
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     // 固定写法，资源初始化
     auto ret = aclInit(nullptr);
@@ -60,8 +60,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
@@ -100,21 +100,21 @@ int main()
     std::vector<int64_t> expertIdOutShape = {3, 2};
     std::vector<int64_t> normOutShape = {3, 256};
 
-    void *inputAddr = nullptr;
-    void *biasAddr = nullptr;
-    void *inputIdsAddr = nullptr;
-    void *tid2eidAddr = nullptr;
-    void *outAddr = nullptr;
-    void *expertIdOutAddr = nullptr;
-    void *normOutAddr = nullptr;
+    void* inputAddr = nullptr;
+    void* biasAddr = nullptr;
+    void* inputIdsAddr = nullptr;
+    void* tid2eidAddr = nullptr;
+    void* outAddr = nullptr;
+    void* expertIdOutAddr = nullptr;
+    void* normOutAddr = nullptr;
 
-    aclTensor *input = nullptr;
-    aclTensor *bias = nullptr;
-    aclTensor *inputIds = nullptr;
-    aclTensor *tid2eid = nullptr;
-    aclTensor *out = nullptr;
-    aclTensor *expertIdOut = nullptr;
-    aclTensor *normOut = nullptr;
+    aclTensor* input = nullptr;
+    aclTensor* bias = nullptr;
+    aclTensor* inputIds = nullptr;
+    aclTensor* tid2eid = nullptr;
+    aclTensor* out = nullptr;
+    aclTensor* expertIdOut = nullptr;
+    aclTensor* normOut = nullptr;
 
     std::vector<float> inputHostData = GenerateRandomFloats(GetShapeSize(inputShape));
     std::vector<float> biasHostData = GenerateRandomFloats(GetShapeSize(biasShape));
@@ -149,7 +149,7 @@ int main()
 
     // 3.调用CANN算子库API，需要修改为具体的算子接口
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor;
+    aclOpExecutor* executor;
 
     // 调用aclnnMoeGatingTopKV2第一段接口
     ret = aclnnMoeGatingTopKV2GetWorkspaceSize(input, bias, inputIds, tid2eid, 2, 1, 1, 1, 0, 1, false, 1.0, 1e-20, out,
@@ -157,7 +157,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeGatingTopKV2GetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
-    void *workspaceAddr = nullptr;
+    void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);

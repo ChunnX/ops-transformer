@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_base_a2.h
@@ -257,7 +257,7 @@ struct HcclA2CombineOpParam {
                                                      // and others are cross-card mapping addresses.
     uint8_t res[8328];
     uint8_t multiFlag;
-    __gm__ AscendC::IbVerbsData *data;
+    __gm__ AscendC::IbVerbsData* data;
     uint64_t dataSize;
     // 追加字段
     uint64_t sizeOfAiRMAInfo; // sizeof(HcclAiRMAInfo)
@@ -309,12 +309,12 @@ struct hns_roce_lite_wqe_data_seg {
     uint64_t localVA;
 };
 
-__aicore__ inline void cacheWriteThrough(__gm__ uint8_t *sourceAddr, uint64_t length)
+__aicore__ inline void cacheWriteThrough(__gm__ uint8_t* sourceAddr, uint64_t length)
 {
-    __gm__ uint8_t *start =
-        (__gm__ uint8_t *)((uint64_t)sourceAddr / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
-    __gm__ uint8_t *end =
-        (__gm__ uint8_t *)(((uint64_t)sourceAddr + length) / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
+    __gm__ uint8_t* start =
+        (__gm__ uint8_t*)((uint64_t)sourceAddr / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
+    __gm__ uint8_t* end =
+        (__gm__ uint8_t*)(((uint64_t)sourceAddr + length) / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
     AscendC::GlobalTensor<uint8_t> global;
     global.SetGlobalBuffer(start);
     for (uint32_t i = 0; i <= end - start; i += AscendC::CACHE_LINE_SIZE) {

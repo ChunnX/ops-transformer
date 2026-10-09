@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mat_mul_unaligned_deterministic_splitk_kernel.h
@@ -22,10 +22,10 @@ template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE,
           FIXPIPE_OPT_SELECT FIXPIPE_OPT = FIXPIPE_OPT_SELECT::BASE>
 __aicore__ inline void Mc2MatMulUnAlignedKernelDeterministicSplitK(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM,
                                                                    GM_ADDR biasGM,
-                                                                   const Mc2MatmulV3TilingData &matmulTilingData,
+                                                                   const Mc2MatmulV3TilingData& matmulTilingData,
                                                                    GM_ADDR workspaceGM)
 {
-    const TCubeTiling &tiling = matmulTilingData.matmulTiling;
+    const TCubeTiling& tiling = matmulTilingData.matmulTiling;
     using A_T = typename A_TYPE::T;
     uint64_t c0Size = 8; // initial c0size as fp32's c0size
     GetSizeC0<A_T>(c0Size);

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_GEMM_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_GEMM_HPP
@@ -80,7 +80,7 @@ public:
     };
 
     CATLASS_DEVICE
-    BlockEpilogue(Arch::Resource<ArchTag> &resource, GemmCoord blockShape_, Params const &params_,
+    BlockEpilogue(Arch::Resource<ArchTag>& resource, GemmCoord blockShape_, Params const& params_,
                   uint32_t ubByteStart = 0)
         : blockShapeMNK(blockShape_),
           params(params_)
@@ -120,13 +120,13 @@ public:
     }
 
     CATLASS_DEVICE
-    void operator()(GemmCoord const &actualShapeMNK, GemmCoord const &blockCoordMNK,
-                    AscendC::GlobalTensor<ElementC> const &gmBlockC, LayoutC const &layoutC, uint64_t const &offset)
+    void operator()(GemmCoord const& actualShapeMNK, GemmCoord const& blockCoordMNK,
+                    AscendC::GlobalTensor<ElementC> const& gmBlockC, LayoutC const& layoutC, uint64_t const& offset)
     {
         AscendC::GlobalTensor<ElementX> gmBlockX;
-        gmBlockX.SetGlobalBuffer(reinterpret_cast<__gm__ ElementX *>(params.ptrX));
+        gmBlockX.SetGlobalBuffer(reinterpret_cast<__gm__ ElementX*>(params.ptrX));
         AscendC::GlobalTensor<ElementD> gmBlockD;
-        gmBlockD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD *>(params.ptrD));
+        gmBlockD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(params.ptrD));
         MatrixCoord blockShapeMN = blockShapeMNK.GetCoordMN();
         MatrixCoord blockCoordMN = blockCoordMNK.GetCoordMN();
         MatrixCoord actualShapeMN = actualShapeMNK.GetCoordMN();

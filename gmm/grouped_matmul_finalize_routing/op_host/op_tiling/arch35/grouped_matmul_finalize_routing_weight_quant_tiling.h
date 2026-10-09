@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -133,14 +133,14 @@ DataSize GetSizeByDataType(ge::DataType dType);
 
 class GMMFRWeightQuantTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit GMMFRWeightQuantTiling(gert::TilingContext *context)
+    explicit GMMFRWeightQuantTiling(gert::TilingContext* context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         Reset();
     }
     ~GMMFRWeightQuantTiling() override = default;
 
-    void Reset(gert::TilingContext *context) override
+    void Reset(gert::TilingContext* context) override
     {
         Ops::Transformer::OpTiling::TilingBaseClass::Reset(context);
         Reset();
@@ -167,10 +167,10 @@ protected:
     GMMFRWeightQuantInputParams inputParams_;
 
 private:
-    const GroupedMatmulFinalizeRoutingCompileInfo *compileInfoPtr_;
+    const GroupedMatmulFinalizeRoutingCompileInfo* compileInfoPtr_;
     ScenarioType scenarioType_ = ScenarioType::NONE;
-    std::vector<std::function<bool(gert::TilingContext *context)>> checkConditionFuncs_;
-    std::vector<std::function<void(gert::TilingContext *context, GMMFRWeightQuantInputParams &inputParams_)>>
+    std::vector<std::function<bool(gert::TilingContext* context)>> checkConditionFuncs_;
+    std::vector<std::function<void(gert::TilingContext* context, GMMFRWeightQuantInputParams& inputParams_)>>
         SetInputFuncs_;
     GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData tilingData_;
 

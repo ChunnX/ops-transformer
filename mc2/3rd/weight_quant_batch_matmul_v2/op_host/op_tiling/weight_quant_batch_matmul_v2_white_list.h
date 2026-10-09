@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_white_list.h
@@ -22,7 +22,7 @@ namespace optiling {
 
 class Mc2WhiteListShape {
 public:
-    bool operator<(const Mc2WhiteListShape &right) const
+    bool operator<(const Mc2WhiteListShape& right) const
     {
         return memcmp(this, &right, sizeof(Mc2WhiteListShape)) < 0;
     }
@@ -36,8 +36,8 @@ public:
     uint64_t aicNum_ : 40;
 };
 
-inline void Mc2SetMatmulTilingFromCacheData(WeightQuantBatchMatmulCacheTilingData &cacheTilingData,
-                                            AscendC::tiling::TCubeTiling &matmulTiling, uint64_t m, uint64_t n,
+inline void Mc2SetMatmulTilingFromCacheData(WeightQuantBatchMatmulCacheTilingData& cacheTilingData,
+                                            AscendC::tiling::TCubeTiling& matmulTiling, uint64_t m, uint64_t n,
                                             int32_t isBias)
 {
     matmulTiling.M = m;

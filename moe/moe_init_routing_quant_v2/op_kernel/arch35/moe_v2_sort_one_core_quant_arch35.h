@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_v2_sort_one_core_quant_arch35.h
@@ -26,8 +26,8 @@ public:
     __aicore__ inline MoeV2SortOneCore(){};
     template <typename TilingData>
     __aicore__ inline void Init(GM_ADDR expertIdx, GM_ADDR expertTokensCountOrCumsum,
-                                GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace, const TilingData *tilingData,
-                                TPipe *tPipe);
+                                GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace, const TilingData* tilingData,
+                                TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -105,7 +105,7 @@ __aicore__ inline void MoeV2SortOneCore::CopyOut()
 template <typename TilingData>
 __aicore__ inline void MoeV2SortOneCore::Init(GM_ADDR expertIdx, GM_ADDR expertTokensCountOrCumsum,
                                               GM_ADDR expertTokensBeforeCapacity, GM_ADDR workspace,
-                                              const TilingData *tilingData, TPipe *tPipe)
+                                              const TilingData* tilingData, TPipe* tPipe)
 {
     this->blockIdx = GetBlockIdx();
     this->tileLength = Align(tilingData->vbsComputeParamsOp.lastCorePerLoopElements, sizeof(int32_t));
@@ -119,19 +119,19 @@ __aicore__ inline void MoeV2SortOneCore::Init(GM_ADDR expertIdx, GM_ADDR expertT
     this->expertTokensCountOrCumsumFlag = tilingData->expertTokensCountOrCumsumFlag;
     this->expertTokensBeforeCapacityFlag = tilingData->expertTokensBeforeCapacityFlag;
 
-    expertIdxGm.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength);
-    sortedexpertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace), this->tileLength);
-    expandDstToSrcRowGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(workspace) + this->tileLength,
+    expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx, this->tileLength);
+    sortedexpertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspace), this->tileLength);
+    expandDstToSrcRowGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspace) + this->tileLength,
                                         this->tileLength);
 
     if (this->blockIdx == this->coreNum - 1) {
         if (this->expertTokensCountOrCumsumFlag > 0) {
-            expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum,
+            expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t*)expertTokensCountOrCumsum,
                                                         Align(this->expertNum, sizeof(int32_t)));
             InitOutput(expertTokensCountOrCumsumGm, this->expertNum, 0);
         }
         if (this->expertTokensBeforeCapacityFlag == 1) {
-            expertTokensBeforeCapacityGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensBeforeCapacity,
+            expertTokensBeforeCapacityGm.SetGlobalBuffer((__gm__ int32_t*)expertTokensBeforeCapacity,
                                                          Align(this->expertNum, sizeof(int32_t)));
             InitOutput(expertTokensBeforeCapacityGm, this->expertNum, 0);
         }

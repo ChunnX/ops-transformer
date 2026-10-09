@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_re_routing_re_regbase.h
@@ -27,7 +27,7 @@ using namespace AscendC;
 template <typename T, typename TIndex, typename TScale, bool hasScales>
 class MoeReRoutingReRegbase {
 public:
-    __aicore__ inline MoeReRoutingReRegbase(TPipe *pipe, const MoeReRoutingReTilingData *tiling)
+    __aicore__ inline MoeReRoutingReRegbase(TPipe* pipe, const MoeReRoutingReTilingData* tiling)
         : pipe_(pipe),
           tilingData_(tiling)
     {}
@@ -48,8 +48,8 @@ protected:
     __aicore__ inline void CopyOutIndex(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
     __aicore__ inline void CopyTopkWeight(const int64_t rows, const int64_t srcOffset, const int64_t dstOffset);
 
-    TPipe *pipe_ = nullptr;
-    const MoeReRoutingReTilingData *tilingData_;
+    TPipe* pipe_ = nullptr;
+    const MoeReRoutingReTilingData* tilingData_;
     constexpr static int64_t BLOCK_SIZE = static_cast<int64_t>(platform::GetUbBlockSize());
     GlobalTensor<T> srcTokenGm_;
     GlobalTensor<T> dstTokenGm_;
@@ -91,18 +91,18 @@ __aicore__ inline void MoeReRoutingReRegbase<T, TIndex, TScale, hasScales>::Init
     scaleSize_ = tilingData_->scaleSize;
     rankNum_ = tilingData_->rankNum;
     expertNum_ = tilingData_->expertNum;
-    srcTokenGm_.SetGlobalBuffer((__gm__ T *)tokens);
-    dstTokenGm_.SetGlobalBuffer((__gm__ T *)permuteTokens);
-    srcRankTokenGm_.SetGlobalBuffer((__gm__ TIndex *)expertTokenNumPerRank);
-    tokenIdxGm_.SetGlobalBuffer((__gm__ int32_t *)permuteTokenIdx);
-    dstExpertTokenGm_.SetGlobalBuffer((__gm__ TIndex *)expertTokenNum);
+    srcTokenGm_.SetGlobalBuffer((__gm__ T*)tokens);
+    dstTokenGm_.SetGlobalBuffer((__gm__ T*)permuteTokens);
+    srcRankTokenGm_.SetGlobalBuffer((__gm__ TIndex*)expertTokenNumPerRank);
+    tokenIdxGm_.SetGlobalBuffer((__gm__ int32_t*)permuteTokenIdx);
+    dstExpertTokenGm_.SetGlobalBuffer((__gm__ TIndex*)expertTokenNum);
     if constexpr (hasScales) {
-        srcScaleGm_.SetGlobalBuffer((__gm__ TScale *)perTokenScales);
-        dstScaleGm_.SetGlobalBuffer((__gm__ TScale *)permutePerTokenScales);
+        srcScaleGm_.SetGlobalBuffer((__gm__ TScale*)perTokenScales);
+        dstScaleGm_.SetGlobalBuffer((__gm__ TScale*)permutePerTokenScales);
     }
     if (tilingData_->hasTopkWeight == HAS_TOPK_WEIGHT) {
-        srcTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expertTopkWeight);
-        dstTopkWeightGm_.SetGlobalBuffer((__gm__ float *)permuteTopkWeight);
+        srcTopkWeightGm_.SetGlobalBuffer((__gm__ float*)expertTopkWeight);
+        dstTopkWeightGm_.SetGlobalBuffer((__gm__ float*)permuteTopkWeight);
     }
     this->pipe_->InitBuffer(queBind_, DOUBLE_BUFFER,
                             Ops::Base::CeilAlign(tilingData_->ubFactor, static_cast<int64_t>(BLOCK_SIZE / sizeof(T))));

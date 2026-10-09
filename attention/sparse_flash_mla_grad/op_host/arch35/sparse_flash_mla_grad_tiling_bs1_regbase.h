@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_mla_grad_tiling_bs1_regbase.h
@@ -77,12 +77,12 @@ struct AiCoreParams {
 
 class SparseFlashMlaGradTilingBs1Regbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit SparseFlashMlaGradTilingBs1Regbase(gert::TilingContext *context)
+    explicit SparseFlashMlaGradTilingBs1Regbase(gert::TilingContext* context)
         : TilingBaseClass(context) {};
-    SparseFlashMlaGradTilingDataRegbase *tilingData = context_->GetTilingData<SparseFlashMlaGradTilingDataRegbase>();
-    SparseFlashMlaGradBaseParamsRegbase *baseParams_ = &tilingData->baseParams;
-    PreParamsRegbase *preTilingData_ = &tilingData->preTilingData;
-    PostParamsRegbase *postTilingData_ = &tilingData->postTilingData;
+    SparseFlashMlaGradTilingDataRegbase* tilingData = context_->GetTilingData<SparseFlashMlaGradTilingDataRegbase>();
+    SparseFlashMlaGradBaseParamsRegbase* baseParams_ = &tilingData->baseParams;
+    PreParamsRegbase* preTilingData_ = &tilingData->preTilingData;
+    PostParamsRegbase* postTilingData_ = &tilingData->postTilingData;
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
@@ -95,8 +95,8 @@ protected:
     uint64_t GetTilingKey() const override;
 
 private:
-    ge::graphStatus CheckOutShapeInfo(const gert::Shape &inputshape, const char *inputName,
-                                      const gert::Shape &outputshape, const char *inputLayout);
+    ge::graphStatus CheckOutShapeInfo(const gert::Shape& inputshape, const char* inputName,
+                                      const gert::Shape& outputshape, const char* inputLayout);
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus GetOriWinToken(int64_t oriMaskMode);
     ge::graphStatus DoSftTiling();
@@ -104,7 +104,7 @@ private:
     ge::graphStatus DoCastTiling();
     TempParams tmpData;
 
-    const char *opName;
+    const char* opName;
 };
 } // namespace smlag
 } // namespace optiling

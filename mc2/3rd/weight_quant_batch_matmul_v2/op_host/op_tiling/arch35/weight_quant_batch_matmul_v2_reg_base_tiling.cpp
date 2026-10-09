@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_reg_base_tiling.cpp
@@ -140,11 +140,11 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2RegBase::PostTiling()
     context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     context_->SetBlockDim(tilingData_->cubeBlockDimM * tilingData_->cubeBlockDimN);
 
-    size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
+    size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
     workspaces[0] = workspaceSize_;
     errno_t ret =
         memcpy_s(context_->GetTilingData<Mc2WeightQuantBatchMatmulV2RegBaseTilingData>(),
-                 context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+                 context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void*>(&tilingData_), tilingDataSize);
     if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
@@ -171,7 +171,7 @@ void Mc2WeightQuantBatchMatmulV2RegBase::SetBubTiling()
 
 void Mc2WeightQuantBatchMatmulV2RegBase::SetMatmulTiling()
 {
-    const BasicBlockParam &tilingRes = tilingSolver_.GetTilingResult();
+    const BasicBlockParam& tilingRes = tilingSolver_.GetTilingResult();
     tilingData_->cubeBlockDimM = static_cast<uint8_t>(tilingRes.mDim);
     tilingData_->cubeBlockDimN = static_cast<uint8_t>(tilingRes.nDim);
 
@@ -233,9 +233,9 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2RegBase::InstantiateTilingData()
     return ge::GRAPH_SUCCESS;
 }
 
-void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W8NDPerGroup(int64_t &nBubSize, int64_t &kBubSize) const
+void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W8NDPerGroup(int64_t& nBubSize, int64_t& kBubSize) const
 {
-    const BasicBlockParam &tilingRes = tilingSolver_.GetTilingResult();
+    const BasicBlockParam& tilingRes = tilingSolver_.GetTilingResult();
     int64_t nBl1Size = std::min(tilingRes.singleN, tilingRes.l1Param.stepN * tilingRes.basicBlock.baseN);
     int64_t kBl1Size = std::min(tilingRes.singleK, tilingRes.l1Param.stepKb * tilingRes.basicBlock.baseK);
     if (matmulInfoPtr_->transB) {
@@ -249,9 +249,9 @@ void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W8NDPerGroup(int64_t &nB
     }
 }
 
-void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W4NZ(int64_t &nBubSize, int64_t &kBubSize) const
+void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W4NZ(int64_t& nBubSize, int64_t& kBubSize) const
 {
-    const BasicBlockParam &tilingRes = tilingSolver_.GetTilingResult();
+    const BasicBlockParam& tilingRes = tilingSolver_.GetTilingResult();
     int64_t kBl1Size = std::min(tilingRes.singleK, tilingRes.l1Param.stepKb * tilingRes.basicBlock.baseK);
     int64_t nBl1Size = std::min(tilingRes.singleN, tilingRes.l1Param.stepN * tilingRes.basicBlock.baseN);
     if (nBl1Size > BLOCK_CUBE) {
@@ -268,9 +268,9 @@ void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W4NZ(int64_t &nBubSize, 
     }
 }
 
-void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W4ND(int64_t &nBubSize, int64_t &kBubSize) const
+void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W4ND(int64_t& nBubSize, int64_t& kBubSize) const
 {
-    const BasicBlockParam &tilingRes = tilingSolver_.GetTilingResult();
+    const BasicBlockParam& tilingRes = tilingSolver_.GetTilingResult();
     int64_t kBl1Size = std::min(tilingRes.singleK, tilingRes.l1Param.stepKb * tilingRes.basicBlock.baseK);
     int64_t nBl1Size = std::min(tilingRes.singleN, tilingRes.l1Param.stepN * tilingRes.basicBlock.baseN);
     if (matmulInfoPtr_->transB) {
@@ -291,7 +291,7 @@ void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W4ND(int64_t &nBubSize, 
 
 void Mc2WeightQuantBatchMatmulV2RegBase::SetAdditionalParam()
 {
-    const BasicBlockParam &tilingRes = tilingSolver_.GetTilingResult();
+    const BasicBlockParam& tilingRes = tilingSolver_.GetTilingResult();
     tilingData_->vecCoreParallel = 0;
     if (tilingRes.l1Param.B1BufferNum == 1 &&
         ops::CeilDiv(

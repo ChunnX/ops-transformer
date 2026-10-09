@@ -1,13 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
- 
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
 /*!
  * \file nsa_selected_attention_infer_proto.h
  * \brief
@@ -19,34 +19,34 @@
 
 namespace ge {
 /**
-* @brief Function NsaSelectedAttentionInfer.
-*
-* @par Inputs:
-* @li query: A tensor. The type only support float16, bf16.
-* @li key: A tensor. The type only support float16, bf16.
-* @li value: A tensor. The type only support float16, bf16.
-* @li topk_indices: A tensor. The type only support int32.
-* @li atten_mask: A optional tensor. The type only support bool, uint8.
-* @li block_table: A optional tensor. The type only support int32.
-* @li actual_q_seq_lengths: A optional tensor. The type only support int64.
-* @li actual_kv_seq_lengths: A optional tensor. The type only support int64.
-*
-* @par Attributes:
-* @li input_layout: A required String.
-* @li num_heads: A required Int.
-* @li num_key_value_heads: A required Int.
-* @li selected_block_size: A required Int.
-* @li selected_block_count: A required Int.
-* @li block_size: A required Int.
-* @li scale_value: A required Float.
-* @li sparse_mode: A required Int.
-*
-* @par Outputs:
-* @li attention_out: A tensor. The type only support float16, bf16.
-*
-* @platform: KirinX90, Kirin9030
-*
-*/
+ * @brief Function NsaSelectedAttentionInfer.
+ *
+ * @par Inputs:
+ * @li query: A tensor. The type only support float16, bf16.
+ * @li key: A tensor. The type only support float16, bf16.
+ * @li value: A tensor. The type only support float16, bf16.
+ * @li topk_indices: A tensor. The type only support int32.
+ * @li atten_mask: A optional tensor. The type only support bool, uint8.
+ * @li block_table: A optional tensor. The type only support int32.
+ * @li actual_q_seq_lengths: A optional tensor. The type only support int64.
+ * @li actual_kv_seq_lengths: A optional tensor. The type only support int64.
+ *
+ * @par Attributes:
+ * @li input_layout: A required String.
+ * @li num_heads: A required Int.
+ * @li num_key_value_heads: A required Int.
+ * @li selected_block_size: A required Int.
+ * @li selected_block_count: A required Int.
+ * @li block_size: A required Int.
+ * @li scale_value: A required Float.
+ * @li sparse_mode: A required Int.
+ *
+ * @par Outputs:
+ * @li attention_out: A tensor. The type only support float16, bf16.
+ *
+ * @platform: KirinX90, Kirin9030
+ *
+ */
 REG_OP(NsaSelectedAttentionInfer)
     .INPUT(query, TensorType({DT_FLOAT16, DT_BF16}))
     .INPUT(key, TensorType({DT_FLOAT16, DT_BF16}))

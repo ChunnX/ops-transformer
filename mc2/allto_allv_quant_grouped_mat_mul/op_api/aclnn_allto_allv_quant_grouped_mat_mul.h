@@ -1,12 +1,12 @@
 /* *
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef OP_API_INC_QUANT_ALL_TO_ALLV_GROUPED_MATMUL_
 #define OP_API_INC_QUANT_ALL_TO_ALLV_GROUPED_MATMUL_
 
@@ -84,13 +84,13 @@ extern "C" {
  * A = recvCounts的累加和;
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
-    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale, const aclTensor *gmmWeightScale,
-    const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
-    const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
+    const aclTensor* gmmX, const aclTensor* gmmWeight, const aclTensor* gmmXScale, const aclTensor* gmmWeightScale,
+    const aclTensor* sendCountsTensorOptional, const aclTensor* recvCountsTensorOptional, const aclTensor* mmXOptional,
+    const aclTensor* mmWeightOptional, const aclTensor* mmXScaleOptional, const aclTensor* mmWeightScaleOptional,
     int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
-    const char *group, int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
-    bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag, aclTensor *gmmY,
-    aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const char* group, int64_t epWorldSize, const aclIntArray* sendCounts, const aclIntArray* recvCounts,
+    bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag, aclTensor* gmmY,
+    aclTensor* mmYOptional, aclTensor* permuteOutOptional, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /* *
  * @brief aclnnAlltoAllvGroupedMatMul的第二段接口，用于执行计算。
@@ -101,9 +101,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMat
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void *workspace,
+__attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void* workspace,
                                                                                     uint64_t workspaceSize,
-                                                                                    aclOpExecutor *executor,
+                                                                                    aclOpExecutor* executor,
                                                                                     aclrtStream stream);
 
 #ifdef __cplusplus

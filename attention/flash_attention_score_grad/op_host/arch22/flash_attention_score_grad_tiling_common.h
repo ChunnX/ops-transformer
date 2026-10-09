@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_tiling_common.h
@@ -30,11 +30,11 @@ constexpr int64_t BYTE_PER_BLOCK = 32; // 32 B in block
 constexpr int HIGH_PRECISION = 0;
 constexpr int HIGH_PERFORMANCE = 1;
 
-constexpr const char *BSH_STR = "BSH";
-constexpr const char *SBH_STR = "SBH";
-constexpr const char *BNSD_STR = "BNSD";
-constexpr const char *BSND_STR = "BSND";
-constexpr const char *TND_STR = "TND";
+constexpr const char* BSH_STR = "BSH";
+constexpr const char* SBH_STR = "SBH";
+constexpr const char* BNSD_STR = "BNSD";
+constexpr const char* BSND_STR = "BSND";
+constexpr const char* TND_STR = "TND";
 constexpr size_t DIM_0 = 0;
 constexpr size_t DIM_1 = 1;
 constexpr size_t DIM_2 = 2;
@@ -256,19 +256,19 @@ inline T AlignUp(T num1, T num2)
     }
     return (num1 + num2 - 1) / num2 * num2;
 }
-ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1);
-ge::graphStatus CheckTndSoftmaxMaxShape(gert::TilingContext *context, int64_t t1, int64_t n1);
-ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1);
-ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext *context, int64_t t1, int64_t n1);
-ge::graphStatus CheckAttentionInShape(gert::TilingContext *context);
-ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context);
-ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context);
-ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t n1, int64_t s1, int64_t d);
-ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d);
-ge::graphStatus CheckDtypeValid(gert::TilingContext *context);
-bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape);
-bool IsSameShapeButValueDLeEqD(const gert::StorageShape *aShape, const gert::StorageShape *bShape);
-bool isTndSABHit(const gert::TilingContext *context);
+ge::graphStatus CheckSoftmaxMaxShape(gert::TilingContext* context, int64_t b, int64_t n1, int64_t s1);
+ge::graphStatus CheckTndSoftmaxMaxShape(gert::TilingContext* context, int64_t t1, int64_t n1);
+ge::graphStatus CheckSoftmaxSumShape(gert::TilingContext* context, int64_t b, int64_t n1, int64_t s1);
+ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext* context, int64_t t1, int64_t n1);
+ge::graphStatus CheckAttentionInShape(gert::TilingContext* context);
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext* context);
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext* context);
+ge::graphStatus CheckShapeValid(gert::TilingContext* context, int64_t b, int64_t n1, int64_t s1, int64_t d);
+ge::graphStatus CheckTndShapeValid(gert::TilingContext* context, int64_t t1, int64_t n1, int64_t d);
+ge::graphStatus CheckDtypeValid(gert::TilingContext* context);
+bool IsSameShape(const gert::StorageShape* aShape, const gert::StorageShape* bShape);
+bool IsSameShapeButValueDLeEqD(const gert::StorageShape* aShape, const gert::StorageShape* bShape);
+bool isTndSABHit(const gert::TilingContext* context);
 
 // dq/dv/dk vdup and dropMask bit2bool
 BEGIN_TILING_DATA_DEF(PreParams)

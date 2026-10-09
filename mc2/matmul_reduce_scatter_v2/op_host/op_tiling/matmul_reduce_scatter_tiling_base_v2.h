@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_reduce_scatter_tiling_base_v2.h
@@ -49,12 +49,12 @@ constexpr static uint64_t REDUCE_SCATTER_V2_HCCL_NUM_LIMIT = 63;
 
 class MatmulReduceScatterTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MatmulReduceScatterTilingBase(gert::TilingContext *context)
+    explicit MatmulReduceScatterTilingBase(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
     ~MatmulReduceScatterTilingBase() override = default;
 
-    void Reset(gert::TilingContext *context) override
+    void Reset(gert::TilingContext* context) override
     {
         TilingBaseClass::Reset(context);
         Reset();
@@ -68,13 +68,13 @@ protected:
     uint64_t GetTilingKey() const override;
 
     // tiling
-    void DoFormulaticTiling(Mc2Tiling::RCSTiling &rcsCfg);
-    void SetStorageAWorkSpaceSize(Mc2Tiling::RCSTiling &rcsCfg);
-    void SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCfg);
-    uint32_t ReduceScatterSpliteM(mc2tiling::TilingArgs &args, uint32_t maxTileCnt = 64) const;
-    ge::graphStatus DoSplitMTiling(Mc2Tiling::RCSTiling &rcsCfg);
+    void DoFormulaticTiling(Mc2Tiling::RCSTiling& rcsCfg);
+    void SetStorageAWorkSpaceSize(Mc2Tiling::RCSTiling& rcsCfg);
+    void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
+    uint32_t ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64) const;
+    ge::graphStatus DoSplitMTiling(Mc2Tiling::RCSTiling& rcsCfg);
     virtual CutResult GetTilingResult();
-    uint32_t GetRankSize(const char *group) const;
+    uint32_t GetRankSize(const char* group) const;
     void Reset();
     bool ReduceScatterCheckShapeInfo();
     bool CheckInputScale() const;
@@ -94,19 +94,19 @@ protected:
     {
         return args_;
     };
-    void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling,
-                         uint32_t &debugMode, uint32_t &dataType);
-    void SetMsgDataInfo(const Mc2Tiling::RCSTiling &rcsCfg, const ::TCubeTiling &mmTiling,
-                        const ::TCubeTiling &tailTiling, uint32_t debugMode);
+    void SetTilingResult(Mc2Tiling::RCSTiling& rcsCfg, ::TCubeTiling& mmTiling, ::TCubeTiling& tailTiling,
+                         uint32_t& debugMode, uint32_t& dataType);
+    void SetMsgDataInfo(const Mc2Tiling::RCSTiling& rcsCfg, const ::TCubeTiling& mmTiling,
+                        const ::TCubeTiling& tailTiling, uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();
-    ge::graphStatus AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcsCfg, mc2tiling::Mc2QuantMode quantMmMode);
+    ge::graphStatus AdjustHCCLLimit(Mc2Tiling::RCSTiling& rcsCfg, mc2tiling::Mc2QuantMode quantMmMode);
     void BuildWorkspaceLayout();
 
     mc2tiling::TilingArgs args_;
     platform_ascendc::SocVersion socVersion_;
     NpuArch npuArch_;
     bool isA2APath_;
-    const char *opName_ = nullptr;
+    const char* opName_ = nullptr;
     int64_t rankSize_{0};
     uint8_t commMode_{0};
     bool isPeerOnly_{false};

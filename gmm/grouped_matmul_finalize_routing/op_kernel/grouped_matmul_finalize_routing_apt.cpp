@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_finalize_routing_apt.cpp
@@ -140,7 +140,7 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
     REGISTER_TILING_DEFAULT(GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData);
     GET_TILING_DATA_WITH_STRUCT(GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData, tilingData,
                                 tilingGM);
-    const GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData *tiling = &tilingData;
+    const GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData* tiling = &tilingData;
 
     // Use pre-defined MXA8W4_NZNK config for FP8+FP4 MX (Microscaling) format
     // Config values: aTrans=false, bTrans=true, antiQuantType=MX, hasAntiQuantOffset=false, quantType=NONE,

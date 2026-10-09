@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tilingkey.h
@@ -14,9 +14,7 @@
  */
 #pragma once
 
-
 #define FIA_FLAG_TILING 100000000000000000
-
 
 // MLA FP16 NonPA BNSD
 #define QF16_KVF16_OUTF16_BNSD_KVBNSD_MLA_TILING 105000000000000000
@@ -46,5 +44,3 @@
 // MLA BF16 NonPA BSH
 #define C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_MLA_TILING 105000000110022221
 #define C1V1_QBF16_KVBF16_OUTBF16_BSH_KVBSH_FLASHDECODING_MLA_TILING 105000000110122221
-
-

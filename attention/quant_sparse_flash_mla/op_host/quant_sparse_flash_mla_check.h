@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_sparse_flash_mla_check.h
@@ -108,26 +108,26 @@ struct QSMLAParaInfo {
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo softmaxLse = {nullptr, nullptr};
 
-    const int64_t *quantMode = nullptr;
-    const float *softmaxScale = nullptr;
-    const int64_t *oriKvStride = nullptr;
-    const int64_t *cmpKvStride = nullptr;
-    const int64_t *cmpRatio = nullptr;
-    const uint32_t *oriMaskMode = nullptr;
-    const uint32_t *cmpMaskMode = nullptr;
-    const int64_t *oriWinLeft = nullptr;
-    const int64_t *oriWinRight = nullptr;
-    const char *layoutQ = nullptr;
-    const char *layoutKv = nullptr;
-    const int64_t *topkValueMode = nullptr;
-    const bool *returnSoftmaxLse = nullptr;
+    const int64_t* quantMode = nullptr;
+    const float* softmaxScale = nullptr;
+    const int64_t* oriKvStride = nullptr;
+    const int64_t* cmpKvStride = nullptr;
+    const int64_t* cmpRatio = nullptr;
+    const uint32_t* oriMaskMode = nullptr;
+    const uint32_t* cmpMaskMode = nullptr;
+    const int64_t* oriWinLeft = nullptr;
+    const int64_t* oriWinRight = nullptr;
+    const char* layoutQ = nullptr;
+    const char* layoutKv = nullptr;
+    const int64_t* topkValueMode = nullptr;
+    const bool* returnSoftmaxLse = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
 class QSMLATilingInfo {
 public:
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     QSMLAParaInfo opParamInfo;
 
     // Base Param
@@ -197,7 +197,7 @@ public:
 
 class QSMLAInfoParser {
 public:
-    explicit QSMLAInfoParser(gert::TilingContext *context)
+    explicit QSMLAInfoParser(gert::TilingContext* context)
         : context_(context)
     {}
     ~QSMLAInfoParser() = default;
@@ -206,9 +206,9 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, QSMLALayout &layout,
-                                        const std::string &name) const;
-    ge::graphStatus GetActualSeqLenQSize(int64_t &size);
+    ge::graphStatus GetActualSeqLenSize(int64_t& size, const gert::Tensor* tensor, QSMLALayout& layout,
+                                        const std::string& name) const;
+    ge::graphStatus GetActualSeqLenQSize(int64_t& size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
@@ -238,18 +238,18 @@ public:
     ge::graphStatus GetDSizeQ();
     ge::graphStatus GetDSizeKV();
     ge::graphStatus GetKvstride();
-    void GenerateInfo(QSMLATilingInfo &qsmlaInfo);
-    ge::graphStatus Parse(QSMLATilingInfo &qsmlaInfo);
+    void GenerateInfo(QSMLATilingInfo& qsmlaInfo);
+    ge::graphStatus Parse(QSMLATilingInfo& qsmlaInfo);
 
 public:
-    gert::TilingContext *context_ = nullptr;
-    const char *qsmlaOpName_;
-    fe::PlatFormInfos *qsmlaPlatformInfo_;
+    gert::TilingContext* context_ = nullptr;
+    const char* qsmlaOpName_;
+    fe::PlatFormInfos* qsmlaPlatformInfo_;
     QSMLAParaInfo qsmlaParams_;
 
-    bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
-    int64_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    bool HasAxis(const QSMLAAxis& axis, const QSMLALayout& layout, const gert::Shape& shape) const;
+    size_t GetAxisIdx(const QSMLAAxis& axis, const QSMLALayout& layout) const;
+    int64_t GetAxisNum(const gert::Shape& shape, const QSMLAAxis& axis, const QSMLALayout& layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams

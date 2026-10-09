@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_MLA_PV_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_MLA_PV_HPP
@@ -75,7 +75,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
+    BlockMmad(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart = 0)
     {
         // Allocate L1 memory space
         l1ATensor = resource.l1Buf.template GetBufferByByte<ElementA>(l1BufAddrStart + L1A_SIZE + L1B_SIZE * STAGES);
@@ -94,7 +94,7 @@ public:
     /// Perform a block-scoped matrix multiply-accumulate
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementA> gA, AscendC::GlobalTensor<ElementC> gC, LayoutA layoutA,
-                    LayoutB layoutB, LayoutC layoutC, GemmCoord actualShape, uint32_t &nIdx,
+                    LayoutB layoutB, LayoutC layoutC, GemmCoord actualShape, uint32_t& nIdx,
                     Arch::CrossCoreFlag softmaxReady)
     {
         uint32_t rowNum = actualShape.m();

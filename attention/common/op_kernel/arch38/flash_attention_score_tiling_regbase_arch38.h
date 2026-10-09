@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_tiling_regbase_arch38.h
@@ -796,11 +796,11 @@ public:
     {
         this->splitFactorTailSize = splitFactorTailSizeParam;
     }
-    uint32_t *get_bnStartIdxPtr()
+    uint32_t* get_bnStartIdxPtr()
     {
         return bnStartIdx;
     }
-    int64_t *get_sparseStartIdxPtr()
+    int64_t* get_sparseStartIdxPtr()
     {
         return sparseStartIdx;
     }
@@ -880,7 +880,7 @@ public:
     {
         this->isOneN = isOneNParam;
     }
-    uint8_t *get_rsvdPtr()
+    uint8_t* get_rsvdPtr()
     {
         return rsvd;
     }

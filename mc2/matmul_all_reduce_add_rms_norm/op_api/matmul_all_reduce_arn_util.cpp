@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "matmul_all_reduce_arn_util.h"
 #include "common/utils/op_mc2_def.h"
@@ -23,7 +23,7 @@ using namespace op;
 extern "C" {
 #endif
 
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
+extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
 
 // 根据API定义，需要列出所能支持的所有dtype
 const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
@@ -43,7 +43,7 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_PERTOKEN = {
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST_DEQUANT_310P = {op::DataType::DT_UINT64,
                                                                                     op::DataType::DT_INT64};
 
-bool ArnCheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *residual, const aclTensor *gamma)
+bool ArnCheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual, const aclTensor* gamma)
 {
     OP_CHECK_NULL(x1, return false);
     OP_CHECK_NULL(x2, return false);
@@ -52,7 +52,7 @@ bool ArnCheckNotNull(const aclTensor *x1, const aclTensor *x2, const aclTensor *
     return true;
 }
 
-bool ArnCheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *residual)
+bool ArnCheckShape(const aclTensor* x1, const aclTensor* x2, const aclTensor* residual)
 {
     const size_t x1_len = x1->GetViewShape().GetDimNum();
     const size_t x2_len = x2->GetViewShape().GetDimNum();
@@ -82,17 +82,17 @@ bool ArnCheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor *re
 
 // AddRmsNorm Inner
 aclnnStatus InnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *antiquantScale,
-    const aclTensor *antiquantOffset, const aclTensor *dequant, const aclTensor *residual, const aclTensor *gamma,
-    double epsilon, const char *group, const char *reduceOp, int64_t commTurn, int64_t antiquantGroupSize,
-    const aclTensor *y, const aclTensor *normOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
+    const aclTensor* antiquantOffset, const aclTensor* dequant, const aclTensor* residual, const aclTensor* gamma,
+    double epsilon, const char* group, const char* reduceOp, int64_t commTurn, int64_t antiquantGroupSize,
+    const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     // 目前不支持x1进行transpose
     bool transposeX1 = false;
     bool transposeX2 = IsTransposeLastTwoDims(x2);
     aclnnStatus ret = aclnnInnerMatmulAllReduceAddRmsNormGetWorkspaceSize(
-        x1, x2, bias, residual, gamma, antiquantScale, antiquantOffset, dequant, const_cast<char *>(group),
-        const_cast<char *>(reduceOp), transposeX1, transposeX2, commTurn, antiquantGroupSize, epsilon, y, normOut,
+        x1, x2, bias, residual, gamma, antiquantScale, antiquantOffset, dequant, const_cast<char*>(group),
+        const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn, antiquantGroupSize, epsilon, y, normOut,
         workspaceSize, executor);
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, epsilon %lf, ret %d.", group, reduceOp, transposeX1, transposeX2,
             epsilon, ret);

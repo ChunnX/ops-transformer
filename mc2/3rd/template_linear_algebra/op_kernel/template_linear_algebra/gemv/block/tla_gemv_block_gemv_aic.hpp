@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_GEMV_BLOCK_BLOCK_AIC_HPP
 #define CATLASS_GEMV_BLOCK_BLOCK_AIC_HPP
@@ -79,7 +79,7 @@ public:
 
     /// Construct
     CATLASS_DEVICE
-    BlockGemv(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0)
+    BlockGemv(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart = 0)
     {
         uint32_t l1AOffset = l1BufAddrStart;
         uint32_t l1BOffset = l1BufAddrStart + L1A_SIZE * STAGES;
@@ -119,12 +119,12 @@ public:
 
     /// Perform a block-scoped vector-matrix multiply-accumulate
     CATLASS_DEVICE
-    void operator()(AscendC::GlobalTensor<ElementX> const &gmBlockX, LayoutX const &layoutX,
-                    AscendC::GlobalTensor<ElementA> const &gmBlockA, LayoutA const &layoutA,
-                    AscendC::GlobalTensor<ElementY> const &gmBlockY, LayoutY const &layoutY,
-                    AscendC::GlobalTensor<ElementX> const &gmNextBlockX,
-                    AscendC::GlobalTensor<ElementA> const &gmNextBlockA, GemvCoord const &actualShape,
-                    GemvCoord const &actualShapeNext, bool isFirstBlock, bool hasNextBlock, uint32_t singleIdx)
+    void operator()(AscendC::GlobalTensor<ElementX> const& gmBlockX, LayoutX const& layoutX,
+                    AscendC::GlobalTensor<ElementA> const& gmBlockA, LayoutA const& layoutA,
+                    AscendC::GlobalTensor<ElementY> const& gmBlockY, LayoutY const& layoutY,
+                    AscendC::GlobalTensor<ElementX> const& gmNextBlockX,
+                    AscendC::GlobalTensor<ElementA> const& gmNextBlockA, GemvCoord const& actualShape,
+                    GemvCoord const& actualShapeNext, bool isFirstBlock, bool hasNextBlock, uint32_t singleIdx)
     {
         auto layoutXInL1 = LayoutXInL1::template MakeLayout<ElementX>(L1XAlignHelper::M_ALIGNED, L1TileShape::N);
         auto layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::N);

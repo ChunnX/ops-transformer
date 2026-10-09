@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_finalize_routing_v2_h_full_load.h
@@ -28,7 +28,7 @@ public:
     __aicore__ inline void Init(GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,
                                 GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR x, GM_ADDR constExpertAlpha1,
                                 GM_ADDR constExpertAlpha2, GM_ADDR v, GM_ADDR y, GM_ADDR workspace,
-                                const MoeFinalizeRoutingV2RegbaseTilingData *tilingDataPtr, TPipe *pipePtr)
+                                const MoeFinalizeRoutingV2RegbaseTilingData* tilingDataPtr, TPipe* pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
@@ -41,19 +41,19 @@ public:
         hasX = x != nullptr;
         hasConstExpert = (constExpertAlpha1 != nullptr) && (constExpertAlpha2 != nullptr) && (v != nullptr);
 
-        expandedXGm.SetGlobalBuffer((__gm__ T *)expandedX);
-        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
-        x1Gm.SetGlobalBuffer((__gm__ T *)x1);
-        x2Gm.SetGlobalBuffer((__gm__ T *)x2);
+        expandedXGm.SetGlobalBuffer((__gm__ T*)expandedX);
+        expandedRowIdxGm.SetGlobalBuffer((__gm__ int32_t*)expandedRowIdx);
+        x1Gm.SetGlobalBuffer((__gm__ T*)x1);
+        x2Gm.SetGlobalBuffer((__gm__ T*)x2);
 
-        biasGm.SetGlobalBuffer((__gm__ T *)bias);
-        scalesGm.SetGlobalBuffer((__gm__ S *)scales);
-        expertIdxGm.SetGlobalBuffer((__gm__ int32_t *)expertIdx);
-        xGm.SetGlobalBuffer((__gm__ T *)x);
-        constExpertAlpha1Gm.SetGlobalBuffer((__gm__ T *)constExpertAlpha1);
-        constExpertAlpha2Gm.SetGlobalBuffer((__gm__ T *)constExpertAlpha2);
-        vGm.SetGlobalBuffer((__gm__ T *)v);
-        yGm.SetGlobalBuffer((__gm__ T *)y);
+        biasGm.SetGlobalBuffer((__gm__ T*)bias);
+        scalesGm.SetGlobalBuffer((__gm__ S*)scales);
+        expertIdxGm.SetGlobalBuffer((__gm__ int32_t*)expertIdx);
+        xGm.SetGlobalBuffer((__gm__ T*)x);
+        constExpertAlpha1Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha1);
+        constExpertAlpha2Gm.SetGlobalBuffer((__gm__ T*)constExpertAlpha2);
+        vGm.SetGlobalBuffer((__gm__ T*)v);
+        yGm.SetGlobalBuffer((__gm__ T*)y);
 
         int32_t rowFactorHAlignedT = RoundUp<T>(tilingData->rowFactor * tilingData->h);
         int32_t rowFactorHAlignedFloat = RoundUp<float>(tilingData->rowFactor * tilingData->h);
@@ -333,8 +333,8 @@ private:
     }
 
 private:
-    TPipe *pipe;
-    const MoeFinalizeRoutingV2RegbaseTilingData *tilingData;
+    TPipe* pipe;
+    const MoeFinalizeRoutingV2RegbaseTilingData* tilingData;
 
     int64_t expandedRowIdxOffset{0};
     int64_t expertIdxOffset{0};

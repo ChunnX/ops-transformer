@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_tiling_struct.h
@@ -14,7 +14,6 @@
  */
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_STRUCT_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_STRUCT_H_
-
 
 #ifdef ASCENDC_OP_TEST
 #define IFA_EXTERN_C extern "C"
@@ -30,7 +29,9 @@ struct ActualSeqInfo {
     std::vector<int64_t> actualSeqQ;
     int64_t maxActualseqkv;
 
-    ActualSeqInfo(uint32_t bSize, int64_t maxVal) : actualSeqQ(bSize), maxActualseqkv(maxVal) {};
+    ActualSeqInfo(uint32_t bSize, int64_t maxVal)
+        : actualSeqQ(bSize),
+          maxActualseqkv(maxVal) {};
     ActualSeqInfo() = delete;
 };
 
@@ -40,7 +41,9 @@ struct SeqTilingInfo {
     uint32_t lastValidBIdx = 0U;
     uint64_t avgS2Length = 1U;
 
-    explicit SeqTilingInfo(uint32_t bSize) : s1OuterNum(bSize), s2OuterNum(bSize) {};
+    explicit SeqTilingInfo(uint32_t bSize)
+        : s1OuterNum(bSize),
+          s2OuterNum(bSize) {};
     SeqTilingInfo() = delete;
 };
 
@@ -52,7 +55,8 @@ struct BalancedSplitTilingInfo {
     uint32_t maxKvSplitPart = 0U;
     uint32_t tndFDCoreArrLen = 0U;
 
-    explicit BalancedSplitTilingInfo(uint32_t coreNum) : coreLoad(coreNum) {};
+    explicit BalancedSplitTilingInfo(uint32_t coreNum)
+        : coreLoad(coreNum) {};
 
     BalancedSplitTilingInfo() = delete;
 };
@@ -78,12 +82,16 @@ struct TilingIndexes {
     uint32_t s1Idx;
     uint32_t s2Idx;
 
-    TilingIndexes() : bIdx(0U), s1Idx(0U), s2Idx(0U)
-    {
-    }
-    TilingIndexes(uint32_t b, uint32_t s1, uint32_t s2) : bIdx(b), s1Idx(s1), s2Idx(s2)
-    {
-    }
+    TilingIndexes()
+        : bIdx(0U),
+          s1Idx(0U),
+          s2Idx(0U)
+    {}
+    TilingIndexes(uint32_t b, uint32_t s1, uint32_t s2)
+        : bIdx(b),
+          s1Idx(s1),
+          s2Idx(s2)
+    {}
 };
 
 enum class KvCacheLayout : uint32_t {
@@ -124,7 +132,6 @@ enum class IfaSocVersion : uint32_t {
     SOC_ASCEND_310P = 1,
     SOC_ASCEND_950 = 2,
 };
-
 
 enum class IfaLayout : uint32_t {
     BSH_BSND = 0,

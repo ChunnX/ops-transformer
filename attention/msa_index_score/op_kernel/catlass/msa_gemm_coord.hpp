@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_MSA_GEMM_COORD_HPP
 #define CATLASS_MSA_GEMM_COORD_HPP
@@ -90,7 +90,7 @@ struct GemmCoord : public Coord<GEMM_COORD_RANK, uint32_t> {
 
     /// Constructs from Coord<GEMM_COORD_RANK> and a batch
     CATLASS_HOST_DEVICE
-    GemmCoord(Coord<GEMM_COORD_RANK, Index> const &coord)
+    GemmCoord(Coord<GEMM_COORD_RANK, Index> const& coord)
         : Base(coord)
     {}
 
@@ -102,42 +102,42 @@ struct GemmCoord : public Coord<GEMM_COORD_RANK, uint32_t> {
 
     /// Returns the Gemm M coordinate
     CATLASS_HOST_DEVICE
-    Index const &m() const
+    Index const& m() const
     {
         return this->At(M_INDEX);
     }
 
     /// Returns reference to the Gemm M coordinate
     CATLASS_HOST_DEVICE
-    Index &m()
+    Index& m()
     {
         return this->At(M_INDEX);
     }
 
     /// Returns the Gemm N coordinate
     CATLASS_HOST_DEVICE
-    Index const &n() const
+    Index const& n() const
     {
         return this->At(N_INDEX);
     }
 
     /// Returns reference to the Gemm N coordinate
     CATLASS_HOST_DEVICE
-    Index &n()
+    Index& n()
     {
         return this->At(N_INDEX);
     }
 
     /// Returns the Gemm K coordinate
     CATLASS_HOST_DEVICE
-    Index const &k() const
+    Index const& k() const
     {
         return this->At(K_INDEX);
     }
 
     /// Returns reference to the Gemm K coordinate
     CATLASS_HOST_DEVICE
-    Index &k()
+    Index& k()
     {
         return this->At(K_INDEX);
     }

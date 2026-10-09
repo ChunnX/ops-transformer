@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fp_matmul_allto_all_tiling_base.h
@@ -34,7 +34,7 @@ using namespace mc2_matmul_v3_advanced;
 
 class FpMatmulAllToAllTilingBase : public MatmulAllToAllTilingBase {
 public:
-    explicit FpMatmulAllToAllTilingBase(gert::TilingContext *context);
+    explicit FpMatmulAllToAllTilingBase(gert::TilingContext* context);
     ~FpMatmulAllToAllTilingBase() override = default;
 
 protected:
@@ -46,13 +46,13 @@ protected:
 
     ge::graphStatus CheckOpInputInfo();
     ge::graphStatus InitTilingContextParameters();
-    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
-                                     Mc2MatMulV3TilingData &tilingData);
+    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg, Mc2MMRegisterCfg& registerCfg,
+                                     Mc2MatMulV3TilingData& tilingData);
     ge::graphStatus DoMMTiling();
     ge::graphStatus SetHcclTiling();
-    void SetTilingInfo(MatmulAlltoAllTilingInfo &tilingInfo) const;
+    void SetTilingInfo(MatmulAlltoAllTilingInfo& tilingInfo) const;
     uint8_t ChooseAddBiasSplitMode() const;
-    void PrintMatmulAlltoAllTilingData(MatmulAlltoAllTilingData &outTilingData);
+    void PrintMatmulAlltoAllTilingData(MatmulAlltoAllTilingData& outTilingData);
 
 private:
     MatmulAlltoAllTilingData localTilingData_;
@@ -60,8 +60,8 @@ private:
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo compileInfo_;
 
-    void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling);
-    void PrintMatmulAlltoAllTilingInfo(const std::string &opName, MatmulAlltoAllTilingInfo &tilingInfo);
+    void PrintMMV3TilingData(const std::string& opName, Mc2MatMulV3TilingData& tiling);
+    void PrintMatmulAlltoAllTilingInfo(const std::string& opName, MatmulAlltoAllTilingInfo& tilingInfo);
 };
 } // namespace MC2Tiling
 #endif

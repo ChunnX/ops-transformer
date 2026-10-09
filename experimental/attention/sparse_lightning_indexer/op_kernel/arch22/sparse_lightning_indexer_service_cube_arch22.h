@@ -1,12 +1,12 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_lightning_indexer_service_cube_arch22.h
@@ -32,13 +32,13 @@ public:
     using K_T = typename LIT::keyType;
 
     __aicore__ inline SparseLightningIndexerServiceCube() {}
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm,
-                                               const GlobalTensor<Q_T> &queryGm, const GlobalTensor<float> &mm1ResGm);
-    __aicore__ inline void InitParams(const ConstInfo &constInfo);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<int32_t>& blkTableGm, const GlobalTensor<K_T>& keyGm,
+                                               const GlobalTensor<Q_T>& queryGm, const GlobalTensor<float>& mm1ResGm);
+    __aicore__ inline void InitParams(const ConstInfo& constInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void ComputeMm1(const SparseLICommon::RunInfo &runInfo);
+    __aicore__ inline void ComputeMm1(const SparseLICommon::RunInfo& runInfo);
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
     static constexpr uint64_t KEY_BUF_NUM = 3;
@@ -67,18 +67,18 @@ public:
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
-                                uint64_t s2L0RealSize, const SparseLICommon::RunInfo &runInfo);
+                                uint64_t s2L0RealSize, const SparseLICommon::RunInfo& runInfo);
     __aicore__ inline void ComputeL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
-                                      const SparseLICommon::RunInfo &runInfo);
+                                      const SparseLICommon::RunInfo& runInfo);
     __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
-                                        const SparseLICommon::RunInfo &runInfo);
+                                        const SparseLICommon::RunInfo& runInfo);
     __aicore__ inline void LoadQueryToL0a(uint64_t s1gL1Offset, uint64_t s1gL0Offset, uint64_t s1gL1RealSize,
-                                          uint64_t s1gL0RealSize, const SparseLICommon::RunInfo &runInfo);
+                                          uint64_t s1gL0RealSize, const SparseLICommon::RunInfo& runInfo);
     __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gL1Offset,
-                                      const SparseLICommon::RunInfo &runInfo);
-    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, const SparseLICommon::RunInfo &runInfo);
+                                      const SparseLICommon::RunInfo& runInfo);
+    __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset, const SparseLICommon::RunInfo& runInfo);
     __aicore__ inline void KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset,
-                                         const SparseLICommon::RunInfo &runInfo);
+                                         const SparseLICommon::RunInfo& runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -109,13 +109,13 @@ private:
 };
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerServiceCube<LIT>::InitParams(const ConstInfo &constInfo)
+__aicore__ inline void SparseLightningIndexerServiceCube<LIT>::InitParams(const ConstInfo& constInfo)
 {
     constInfo_ = constInfo;
 }
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerServiceCube<LIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void SparseLightningIndexerServiceCube<LIT>::InitBuffers(TPipe* pipe)
 {
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -133,8 +133,8 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::InitBuffers(TPipe
 
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::InitMm1GlobalTensor(
-    const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<K_T> &keyGm, const GlobalTensor<Q_T> &queryGm,
-    const GlobalTensor<float> &mm1ResGm)
+    const GlobalTensor<int32_t>& blkTableGm, const GlobalTensor<K_T>& keyGm, const GlobalTensor<Q_T>& queryGm,
+    const GlobalTensor<float>& mm1ResGm)
 {
     blkTableGm_ = blkTableGm;
     keyGm_ = keyGm;
@@ -143,7 +143,7 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::InitMm1GlobalTens
 }
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerServiceCube<LIT>::ComputeMm1(const SparseLICommon::RunInfo &runInfo)
+__aicore__ inline void SparseLightningIndexerServiceCube<LIT>::ComputeMm1(const SparseLICommon::RunInfo& runInfo)
 {
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
@@ -208,7 +208,7 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::ComputeMm1(const 
 
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s2GmOffset,
-                                                                        const SparseLICommon::RunInfo &runInfo)
+                                                                        const SparseLICommon::RunInfo& runInfo)
 {
     uint64_t s2L1Offset = 0;
     while (s2L1Offset < s2L1RealSize) {
@@ -245,7 +245,7 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::KeyNd2Nz(uint64_t
 // blkNum, blkSize, N2, D
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::KeyNd2NzForPA(uint64_t s2L1RealSize, uint64_t s2GmOffset,
-                                                                             const SparseLICommon::RunInfo &runInfo)
+                                                                             const SparseLICommon::RunInfo& runInfo)
 {
     uint64_t s2L1Offset = 0;
     while (s2L1Offset < s2L1RealSize) {
@@ -287,7 +287,7 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::KeyNd2NzForPA(uin
 // batch, s1, n2, g, d
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
-                                                                          const SparseLICommon::RunInfo &runInfo)
+                                                                          const SparseLICommon::RunInfo& runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -308,7 +308,7 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::LoadQueryToL0a(ui
                                                                               uint64_t s1gL1Offset,
                                                                               uint64_t s1gL1RealSize,
                                                                               uint64_t s1gL0RealSize,
-                                                                              const SparseLICommon::RunInfo &runInfo)
+                                                                              const SparseLICommon::RunInfo& runInfo)
 {
     LoadData3DParamsV2<Q_T> loadData3DParams;
     // SetFmatrixParams
@@ -345,7 +345,7 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::LoadQueryToL0a(ui
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t s2L1RealSize,
                                                                             uint64_t s2L0RealSize,
-                                                                            const SparseLICommon::RunInfo &runInfo)
+                                                                            const SparseLICommon::RunInfo& runInfo)
 {
     uint64_t keyL1Offset = s2L1Offset >= S2_BASIC_BLOCK_L0 ? S2_BASIC_BLOCK_L0 * D_BASIC_BLOCK_L0 : 0;
     LoadData2DParams loadData2DParams;
@@ -360,7 +360,7 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::LoadKeyToL0b(uint
 
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::ComputeL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
-                                                                          const SparseLICommon::RunInfo &runInfo)
+                                                                          const SparseLICommon::RunInfo& runInfo)
 {
     MmadParams mmadParams;
     mmadParams.m = CeilAlign(s1gL0RealSize, BLOCK_CUBE);
@@ -379,7 +379,7 @@ __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::ComputeL0c(uint64
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceCube<LIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset,
                                                                     uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
-                                                                    const SparseLICommon::RunInfo &runInfo)
+                                                                    const SparseLICommon::RunInfo& runInfo)
 {
     AscendC::DataCopyCO12DstParams intriParams;
     intriParams.mSize = CeilAlign(s1gL0RealSize, BLOCK_CUBE);

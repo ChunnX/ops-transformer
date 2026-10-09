@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_grouped_mat_mul_allto_allv_tiling_common.h
@@ -73,7 +73,7 @@ struct QuantGmmAlltoAllvParamsInfo {
     ge::DataType gmmYDtype = ge::DT_UNDEFINED;
     ge::DataType mmYDtype = ge::DT_UNDEFINED;
     ge::DataType yDtype = ge::DT_UNDEFINED;
-    const char *opName = "GMMALLTOALLV";
+    const char* opName = "GMMALLTOALLV";
 };
 
 struct TilingInferredInfo {
@@ -85,9 +85,9 @@ struct TilingInferredInfo {
 
 class QuantGroupedMatmulAllToAllvTilingCommon : public QuantGroupedMatmulAllToAllvTilingBase {
 public:
-    explicit QuantGroupedMatmulAllToAllvTilingCommon(gert::TilingContext *context)
+    explicit QuantGroupedMatmulAllToAllvTilingCommon(gert::TilingContext* context)
         : QuantGroupedMatmulAllToAllvTilingBase(context) {};
-    void Reset(gert::TilingContext *context) override
+    void Reset(gert::TilingContext* context) override
     {
         TilingBaseClass::Reset(context);
     }
@@ -98,8 +98,8 @@ protected:
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus GetPlatformInfo() override;
     bool IsCapable() override = 0;
-    virtual bool IsContains(const std::vector<uint32_t> &list, uint32_t value);
-    ge::graphStatus CheckShapeDimensions(const gert::StorageShape *shape, uint64_t dims, const char *shapeName);
+    virtual bool IsContains(const std::vector<uint32_t>& list, uint32_t value);
+    ge::graphStatus CheckShapeDimensions(const gert::StorageShape* shape, uint64_t dims, const char* shapeName);
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
@@ -111,8 +111,8 @@ protected:
     ge::graphStatus DoQuantGMMTiling(); // 按专家为粒度执行
     ge::graphStatus SetHcclTiling();
     virtual uint32_t GetCommModeIndex() const;
-    ge::graphStatus QuantGetAndConvertCommMode(gert::TilingContext *context, uint8_t &commMode) const;
-    void PrintQuantGmmA2avTilingData(QuantGmmA2avTilingData &outTilingData);
+    ge::graphStatus QuantGetAndConvertCommMode(gert::TilingContext* context, uint8_t& commMode) const;
+    void PrintQuantGmmA2avTilingData(QuantGmmA2avTilingData& outTilingData);
     uint32_t libApiWorkSpaceSize_{0};
     uint32_t workSpaceSize_{0};
     uint64_t expertNum_{1};

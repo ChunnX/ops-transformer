@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file op_info.cpp
@@ -19,33 +19,33 @@
 
 using namespace ops::adv::tests::utils;
 
-OpInfoWithSocversion::OpInfoWithSocversion() : OpInfoWithSocversion(ControlInfo(true, false))
-{
-}
+OpInfoWithSocversion::OpInfoWithSocversion()
+    : OpInfoWithSocversion(ControlInfo(true, false))
+{}
 
-OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr)
+OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo& ctr)
     : OpInfoWithSocversion(ctr, ExpectInfoWithSocversion())
-{
-}
+{}
 
-OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo &ctr, const ExpectInfoWithSocversion &exp)
+OpInfoWithSocversion::OpInfoWithSocversion(const ControlInfo& ctr, const ExpectInfoWithSocversion& exp)
     : OpInfoWithSocversion("Undefined", ctr, exp)
-{
-}
+{}
 
-OpInfoWithSocversion::OpInfoWithSocversion(const char *name, const ControlInfo &ctr,
-                                           const ExpectInfoWithSocversion &exp)
-    : mName(name), mCtr(ctr), mExp(exp), mCtx(nullptr)
-{
-}
+OpInfoWithSocversion::OpInfoWithSocversion(const char* name, const ControlInfo& ctr,
+                                           const ExpectInfoWithSocversion& exp)
+    : mName(name),
+      mCtr(ctr),
+      mExp(exp),
+      mCtx(nullptr)
+{}
 
-bool OpInfoWithSocversion::SetContext(ContextIntf *ctxParam)
+bool OpInfoWithSocversion::SetContext(ContextIntf* ctxParam)
 {
-    this->mCtx = static_cast<ContextIntf *>(ctxParam);
+    this->mCtx = static_cast<ContextIntf*>(ctxParam);
     return true;
 }
 
-bool OpInfoWithSocversion::ProcessTiling(std::string &caseName, int32_t socVersion)
+bool OpInfoWithSocversion::ProcessTiling(std::string& caseName, int32_t socVersion)
 {
     if (mCtr.mRunTiling) {
         if (!this->RunTiling(caseName)) {
@@ -58,7 +58,7 @@ bool OpInfoWithSocversion::ProcessTiling(std::string &caseName, int32_t socVersi
     return true;
 }
 
-bool OpInfoWithSocversion::ProcessKernel(std::string &caseName)
+bool OpInfoWithSocversion::ProcessKernel(std::string& caseName)
 {
     if (mCtr.mRunKernel) {
         if (!this->RunKernel(caseName)) {
@@ -71,7 +71,7 @@ bool OpInfoWithSocversion::ProcessKernel(std::string &caseName)
     return true;
 }
 
-bool OpInfoWithSocversion::RunTiling(std::string &caseName)
+bool OpInfoWithSocversion::RunTiling(std::string& caseName)
 {
     if (!mCtx->RunTiling(caseName, true)) {
         LOG_IF(mExp.mSuccess, LOG_ERR("Case[%s:%s] Run Tiling Failed.", caseName.c_str(), mName.c_str()));
@@ -80,7 +80,7 @@ bool OpInfoWithSocversion::RunTiling(std::string &caseName)
     return true;
 }
 
-bool OpInfoWithSocversion::ChkTiling(std::string &caseName, int32_t socVersion)
+bool OpInfoWithSocversion::ChkTiling(std::string& caseName, int32_t socVersion)
 {
     if (mExp.mTilingKeys[socVersion] != ExpectInfoWithSocversion::kInvalidTilingKey) {
         auto actTilingKey = mCtx->GetTilingKey();
@@ -93,7 +93,7 @@ bool OpInfoWithSocversion::ChkTiling(std::string &caseName, int32_t socVersion)
     if (mExp.mTilingBlockDims[socVersion] != ExpectInfoWithSocversion::kInvalidTilingBlockDim) {
         int64_t expTilingBlockDim = mExp.mTilingBlockDims[socVersion];
         if (expTilingBlockDim == ExpectInfoWithSocversion::kFullTilingBlockDim) {
-            auto *platform = Platform::GetGlobalPlatform();
+            auto* platform = Platform::GetGlobalPlatform();
             expTilingBlockDim = platform != nullptr ? platform->GetBlockDim() : expTilingBlockDim;
         }
         auto actTilingBlockDim = mCtx->GetTilingBlockDim();
@@ -106,7 +106,7 @@ bool OpInfoWithSocversion::ChkTiling(std::string &caseName, int32_t socVersion)
     return true;
 }
 
-bool OpInfoWithSocversion::RunKernel(std::string &caseName)
+bool OpInfoWithSocversion::RunKernel(std::string& caseName)
 {
     if (!mCtx->RunKernel(caseName)) {
         LOG_IF(mExp.mSuccess, LOG_ERR("Case[%s:%s] Run Kernel Failed.", caseName.c_str(), mName.c_str()));
@@ -115,7 +115,7 @@ bool OpInfoWithSocversion::RunKernel(std::string &caseName)
     return true;
 }
 
-bool OpInfoWithSocversion::ChkKernel(std::string &caseName)
+bool OpInfoWithSocversion::ChkKernel(std::string& caseName)
 {
     LOG_DBG("Case[%s:%s] Run Kernel Finish.", caseName.c_str(), mName.c_str());
     return true;

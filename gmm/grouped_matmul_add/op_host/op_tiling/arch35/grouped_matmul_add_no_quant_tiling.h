@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_add_no_quant_tiling.h
@@ -26,21 +26,21 @@ using namespace GroupedMatmulAdd;
 
 class GroupedMatmulAddNoQuantTiling {
 public:
-    bool SetTiling(gert::TilingContext *context);
+    bool SetTiling(gert::TilingContext* context);
 
 protected:
-    bool Init(const gert::TilingContext *context);
-    bool GetAttrs(const gert::TilingContext *context);
-    bool CalMatMulTiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
+    bool Init(const gert::TilingContext* context);
+    bool GetAttrs(const gert::TilingContext* context);
+    bool CalMatMulTiling(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr);
     void SetGMMTiling();
     void SetMatMulTiling();
-    void PrintTilingResult(const gert::TilingContext *context);
-    void FormulateBasicBlock(const GMMCompileInfo *compileInfoPtr, uint32_t remainCoreNum);
-    void CalAswtL1Tiling(const GMMCompileInfo *compileInfoPtr);
-    void CalcTailBasicBlock(const GMMCompileInfo *compileInfoPtr);
-    bool SetCustomParam(gert::TilingContext *context);
-    void SetTilingKey(gert::TilingContext *context) const;
-    bool SplitKSingleXSingleWeightSingleY(const gert::TilingContext *context, const gert::Shape xShape,
+    void PrintTilingResult(const gert::TilingContext* context);
+    void FormulateBasicBlock(const GMMCompileInfo* compileInfoPtr, uint32_t remainCoreNum);
+    void CalAswtL1Tiling(const GMMCompileInfo* compileInfoPtr);
+    void CalcTailBasicBlock(const GMMCompileInfo* compileInfoPtr);
+    bool SetCustomParam(gert::TilingContext* context);
+    void SetTilingKey(gert::TilingContext* context) const;
+    bool SplitKSingleXSingleWeightSingleY(const gert::TilingContext* context, const gert::Shape xShape,
                                           const gert::Shape wShape);
 
 private:

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_batch_matmul_v3_base.h
@@ -218,7 +218,7 @@ __aicore__ inline constexpr bool IsFp4()
 #endif
 
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-__aicore__ inline void CalcDequantParams(uint32_t curAivM, uint32_t curAivN, AscendC::DequantParams &dequantParams,
+__aicore__ inline void CalcDequantParams(uint32_t curAivM, uint32_t curAivN, AscendC::DequantParams& dequantParams,
                                          bool needUpdate = true)
 {
     if (!needUpdate) {
@@ -239,7 +239,7 @@ __aicore__ inline void CalcDequantParams(uint32_t curAivM, uint32_t curAivN, Asc
     }
 }
 
-__aicore__ inline void SetGm2UbParams(AscendC::DataCopyParams &gm2UbParams, uint32_t curAivM, uint32_t curAivN)
+__aicore__ inline void SetGm2UbParams(AscendC::DataCopyParams& gm2UbParams, uint32_t curAivM, uint32_t curAivN)
 {
     gm2UbParams.blockLen = curAivN * sizeof(int32_t);
     gm2UbParams.blockCount = curAivM;
@@ -247,7 +247,7 @@ __aicore__ inline void SetGm2UbParams(AscendC::DataCopyParams &gm2UbParams, uint
 }
 
 template <typename yType>
-__aicore__ inline void SetUb2GmParams(AscendC::DataCopyExtParams &ub2GmParams, uint32_t curAivM, uint32_t curAivN,
+__aicore__ inline void SetUb2GmParams(AscendC::DataCopyExtParams& ub2GmParams, uint32_t curAivM, uint32_t curAivN,
                                       uint32_t n)
 {
     ub2GmParams.blockLen = curAivN * sizeof(yType);
@@ -255,9 +255,9 @@ __aicore__ inline void SetUb2GmParams(AscendC::DataCopyExtParams &ub2GmParams, u
     ub2GmParams.dstStride = (n - curAivN) * sizeof(yType);
 }
 
-__aicore__ inline void CopyMmOutToLocal(AscendC::LocalTensor<int32_t> &srcLocal,
-                                        AscendC::GlobalTensor<int32_t> &curMmOutGm,
-                                        AscendC::DataCopyParams &gm2UbParams, AscendC::DataCopyPadParams &padParams,
+__aicore__ inline void CopyMmOutToLocal(AscendC::LocalTensor<int32_t>& srcLocal,
+                                        AscendC::GlobalTensor<int32_t>& curMmOutGm,
+                                        AscendC::DataCopyParams& gm2UbParams, AscendC::DataCopyPadParams& padParams,
                                         uint32_t curAicAivOffset)
 {
     DataCopyPad(srcLocal, curMmOutGm[curAicAivOffset], gm2UbParams, padParams);
@@ -266,17 +266,17 @@ __aicore__ inline void CopyMmOutToLocal(AscendC::LocalTensor<int32_t> &srcLocal,
 }
 
 template <typename yType>
-__aicore__ inline void CopyUbToGm(uint64_t yGmOffset, AscendC::DataCopyExtParams &ub2GmParams,
-                                  AscendC::LocalTensor<yType> &dstLocal, AscendC::GlobalTensor<yType> &yGm,
-                                  AscendC::TQue<AscendC::QuePosition::VECOUT, 1> &vecQueOut)
+__aicore__ inline void CopyUbToGm(uint64_t yGmOffset, AscendC::DataCopyExtParams& ub2GmParams,
+                                  AscendC::LocalTensor<yType>& dstLocal, AscendC::GlobalTensor<yType>& yGm,
+                                  AscendC::TQue<AscendC::QuePosition::VECOUT, 1>& vecQueOut)
 {
     DataCopyPad(yGm[yGmOffset], dstLocal, ub2GmParams);
     vecQueOut.FreeTensor(dstLocal);
 }
 
 template <typename scaleType>
-__aicore__ inline void Bf16ScaleGm2Ub(AscendC::LocalTensor<scaleType> &scaleLocal,
-                                      AscendC::GlobalTensor<scaleType> &scaleGm, AscendC::DataCopyPadParams &padParams,
+__aicore__ inline void Bf16ScaleGm2Ub(AscendC::LocalTensor<scaleType>& scaleLocal,
+                                      AscendC::GlobalTensor<scaleType>& scaleGm, AscendC::DataCopyPadParams& padParams,
                                       uint32_t curAivN, uint64_t offsetScale)
 {
     AscendC::DataCopyParams scale2UbParams{1, 0, 0, 0};

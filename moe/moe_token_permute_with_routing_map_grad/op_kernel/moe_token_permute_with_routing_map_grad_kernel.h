@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_permute_with_routing_map_grad_kernel.h
@@ -27,11 +27,11 @@ public:
     __aicore__ inline KernelMoeTokenPermuteWithRoutingMap() {}
 
     __aicore__ inline void Init(GM_ADDR permuted_probs, GM_ADDR sorted_indices, GM_ADDR probs_grad_out,
-                                const MoeTokenpermuteWithRoutingMapDropPadTilingData *__restrict tilingData);
+                                const MoeTokenpermuteWithRoutingMapDropPadTilingData* __restrict tilingData);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InitData(const MoeTokenpermuteWithRoutingMapDropPadTilingData &tilingData);
+    __aicore__ inline void InitData(const MoeTokenpermuteWithRoutingMapDropPadTilingData& tilingData);
 
 private:
     static constexpr uint64_t BLOCK_SIZE = 32;
@@ -52,7 +52,7 @@ private:
 
 template <typename T1, typename T2, typename T3>
 __aicore__ inline void KernelMoeTokenPermuteWithRoutingMap<T1, T2, T3>::InitData(
-    const MoeTokenpermuteWithRoutingMapDropPadTilingData &tilingData)
+    const MoeTokenpermuteWithRoutingMapDropPadTilingData& tilingData)
 {
     blockIdx_ = AscendC::GetBlockIdx();
     numBlocks_ = AscendC::GetBlockNum();
@@ -69,12 +69,12 @@ __aicore__ inline void KernelMoeTokenPermuteWithRoutingMap<T1, T2, T3>::InitData
 template <typename T1, typename T2, typename T3>
 __aicore__ inline void KernelMoeTokenPermuteWithRoutingMap<T1, T2, T3>::Init(
     GM_ADDR permuted_probs, GM_ADDR sorted_indices, GM_ADDR probs_grad_out,
-    const MoeTokenpermuteWithRoutingMapDropPadTilingData *__restrict tilingData)
+    const MoeTokenpermuteWithRoutingMapDropPadTilingData* __restrict tilingData)
 {
     InitData(*tilingData);
-    permutedProbsGM.SetGlobalBuffer((__gm__ T1 *)permuted_probs);
-    sortedIndicesGM.SetGlobalBuffer((__gm__ T2 *)sorted_indices);
-    probsGradOutGM.SetGlobalBuffer((__gm__ T3 *)probs_grad_out);
+    permutedProbsGM.SetGlobalBuffer((__gm__ T1*)permuted_probs);
+    sortedIndicesGM.SetGlobalBuffer((__gm__ T2*)sorted_indices);
+    probsGradOutGM.SetGlobalBuffer((__gm__ T3*)probs_grad_out);
 
     pipe_.InitBuffer(ProbGradOutQue, BUFFER_NUM, BLOCK_SIZE);
     return;

@@ -1,11 +1,11 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 /*!
@@ -27,16 +27,16 @@ public:
     __aicore__ inline RotateHalfRopeFullLoadXd(){};
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y,
-                                const RotaryPositionEmbeddingTilingData &tilingData);
+                                const RotaryPositionEmbeddingTilingData& tilingData);
     __aicore__ inline void Process();
 
 private:
     // ---- Helper methods ----
-    __aicore__ inline void CopyInRope(LocalTensor<CmpT> &cosFp32Out, LocalTensor<CmpT> &sinFp32Out);
+    __aicore__ inline void CopyInRope(LocalTensor<CmpT>& cosFp32Out, LocalTensor<CmpT>& sinFp32Out);
     __aicore__ inline void CopyInX();
-    __aicore__ inline void BroadcastMul(LocalTensor<CmpT> &xFp32, LocalTensor<CmpT> &rotL, LocalTensor<CmpT> &cosFp32,
-                                        LocalTensor<CmpT> &sinFp32);
-    __aicore__ inline void CopyOut(LocalTensor<CmpT> &result);
+    __aicore__ inline void BroadcastMul(LocalTensor<CmpT>& xFp32, LocalTensor<CmpT>& rotL, LocalTensor<CmpT>& cosFp32,
+                                        LocalTensor<CmpT>& sinFp32);
+    __aicore__ inline void CopyOut(LocalTensor<CmpT>& result);
 
     // ---- Data members (FullLoadXD-specific, base class provides the rest) ----
     TPipe pipe;
@@ -58,14 +58,14 @@ private:
 
 template <typename OriT, typename CmpT>
 __aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::Init(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR y,
-                                                                  const RotaryPositionEmbeddingTilingData &tilingData)
+                                                                  const RotaryPositionEmbeddingTilingData& tilingData)
 {
     this->FullLoadXDInit(tilingData);
 
-    xGm.SetGlobalBuffer((__gm__ OriT *)x + this->xGmBase);
-    yGm.SetGlobalBuffer((__gm__ OriT *)y + this->xGmBase);
-    cosGm.SetGlobalBuffer((__gm__ OriT *)cos + this->rGmBase);
-    sinGm.SetGlobalBuffer((__gm__ OriT *)sin + this->rGmBase);
+    xGm.SetGlobalBuffer((__gm__ OriT*)x + this->xGmBase);
+    yGm.SetGlobalBuffer((__gm__ OriT*)y + this->xGmBase);
+    cosGm.SetGlobalBuffer((__gm__ OriT*)cos + this->rGmBase);
+    sinGm.SetGlobalBuffer((__gm__ OriT*)sin + this->rGmBase);
 
     // LocalTensors aligned to 32 bytes
     if constexpr (!IsSameType<OriT, CmpT>::value) {
@@ -95,8 +95,8 @@ __aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::Init(GM_ADDR x, GM_
 // CopyInRope: load cos/sin → cosBufFp32 / sinBufFp32
 // ============================================================================
 template <typename OriT, typename CmpT>
-__aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::CopyInRope(LocalTensor<CmpT> &cosFp32Out,
-                                                                        LocalTensor<CmpT> &sinFp32Out)
+__aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::CopyInRope(LocalTensor<CmpT>& cosFp32Out,
+                                                                        LocalTensor<CmpT>& sinFp32Out)
 {
     if constexpr (IsSameType<OriT, CmpT>::value) {
         // FP32 path — DataCopy directly to TBuf, then wait MTE2→V
@@ -167,10 +167,10 @@ __aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::CopyInX()
 // Perform broadcast multiplication: x *= cos and rotL *= sin
 // ============================================================================
 template <typename OriT, typename CmpT>
-__aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::BroadcastMul(LocalTensor<CmpT> &xFp32,
-                                                                          LocalTensor<CmpT> &rotL,
-                                                                          LocalTensor<CmpT> &cosFp32,
-                                                                          LocalTensor<CmpT> &sinFp32)
+__aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::BroadcastMul(LocalTensor<CmpT>& xFp32,
+                                                                          LocalTensor<CmpT>& rotL,
+                                                                          LocalTensor<CmpT>& cosFp32,
+                                                                          LocalTensor<CmpT>& sinFp32)
 {
     const uint64_t N = this->axisLenX3;
     const uint32_t count = static_cast<uint32_t>(this->dPadLength);
@@ -248,7 +248,7 @@ __aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::BroadcastMul(LocalT
 // CopyOut: result (CmpT) → Cast to OriT → GM
 // ============================================================================
 template <typename OriT, typename CmpT>
-__aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::CopyOut(LocalTensor<CmpT> &result)
+__aicore__ inline void RotateHalfRopeFullLoadXd<OriT, CmpT>::CopyOut(LocalTensor<CmpT>& result)
 {
     if constexpr (IsSameType<OriT, CmpT>::value) {
         // FP32 path — write directly from outQueueY

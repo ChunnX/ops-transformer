@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file mc2_quant_batch_matmul_asw_block.h
@@ -69,7 +69,7 @@ __aicore__ inline uint64_t MMV3DivCeil(uint64_t a, uint64_t b)
 class QuantBatchMatmulAswBlock {
 public:
     __aicore__ inline QuantBatchMatmulAswBlock() {}
-    __aicore__ inline void Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx);
+    __aicore__ inline void Init(const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* tilingData, uint32_t blockIdx);
     __aicore__ inline bool UpdateBasicIndex(uint64_t roundIdx, uint64_t newBlockIdx);
     __aicore__ inline void UpdateBlockParams(uint64_t roundIdx, bool isLast);
     template <bool aTrans, bool bTrans, class x1Type, class scaleType = float, CubeFormat formatX2 = CubeFormat::ND>
@@ -78,12 +78,12 @@ public:
     __aicore__ inline void Update();
     template <class scaleType = float>
     __aicore__ inline void UpdateOffset(uint32_t idx, bool isTail);
-    __aicore__ inline void InitForMC2(const Mc2Tiling::RCSTiling &cfg, bool isTail, bool isGather, uint64_t preCoreNum);
+    __aicore__ inline void InitForMC2(const Mc2Tiling::RCSTiling& cfg, bool isTail, bool isGather, uint64_t preCoreNum);
 
 public:
     ASWOffsetParam offset_;
     ASWTilingParam params_;
-    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData_;
+    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* tilingData_;
     uint64_t offsetsA_[DEVICE_NUM] = {0};
     uint64_t offsetsC_[DEVICE_NUM] = {0};
     uint64_t offsetsScale_[DEVICE_NUM] = {0};
@@ -113,7 +113,7 @@ private:
 };
 
 __aicore__ inline void QuantBatchMatmulAswBlock::Init(
-    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *tilingData, uint32_t blockIdx)
+    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams* tilingData, uint32_t blockIdx)
 {
     params_.mSplitAddrOffset = 0;
     params_.nSplitAddrOffset = 0;
@@ -123,7 +123,7 @@ __aicore__ inline void QuantBatchMatmulAswBlock::Init(
     offset_.offsetBias = 0;
 }
 
-__aicore__ inline void QuantBatchMatmulAswBlock::InitForMC2(const Mc2Tiling::RCSTiling &cfg, bool isTail, bool isGather,
+__aicore__ inline void QuantBatchMatmulAswBlock::InitForMC2(const Mc2Tiling::RCSTiling& cfg, bool isTail, bool isGather,
                                                             uint64_t preCoreNum)
 {
     cfg_ = cfg;

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef ARCH35_CATLASS_PIPELINE_PIPELINE_STAGE_MIXCORE_H
 #define ARCH35_CATLASS_PIPELINE_PIPELINE_STAGE_MIXCORE_H
 
@@ -43,7 +43,7 @@ struct PipelineStageMixCore {
     static constexpr uint64_t FLAG_ID_MAX = 16;
 
     template <uint8_t Stages>
-    DEVICE static void ProducerWaitAfterStages(PipelineState<Stages> const &state)
+    DEVICE static void ProducerWaitAfterStages(PipelineState<Stages> const& state)
     {
         if (state.count() >= Stages) {
             CrossCoreWaitFlag<SyncMode, ProducerPipeline>(FlagId);
@@ -75,7 +75,7 @@ struct PipelineStageMixCore {
     }
 
     template <uint8_t Stages>
-    DEVICE static void Clear(PipelineState<Stages> const &state)
+    DEVICE static void Clear(PipelineState<Stages> const& state)
     {
         if ASCEND_IS_AIV {
             for (uint8_t i = 0; i < Min(static_cast<uint64_t>(Stages), state.count()); ++i) {

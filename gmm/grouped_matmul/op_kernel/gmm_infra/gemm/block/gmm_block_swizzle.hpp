@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef GMM_GEMM_BLOCK_BLOCK_SWIZZLE_HPP
 #define GMM_GEMM_BLOCK_BLOCK_SWIZZLE_HPP
@@ -35,7 +35,7 @@ struct GemmIdentityBlockSwizzle {
     GemmIdentityBlockSwizzle() {}
 
     CATLASS_DEVICE
-    GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
+    GemmIdentityBlockSwizzle(GemmCoord const& problemShape_, MatrixCoord const& tileMN_)
         : problemShape(problemShape_),
           tileMN(tileMN_)
     {
@@ -43,14 +43,14 @@ struct GemmIdentityBlockSwizzle {
     }
 
     CATLASS_DEVICE
-    GemmIdentityBlockSwizzle(GemmCoord const &problemShape_, MatrixCoord const &tileMN_, MatrixCoord const &loopsMN_)
+    GemmIdentityBlockSwizzle(GemmCoord const& problemShape_, MatrixCoord const& tileMN_, MatrixCoord const& loopsMN_)
         : problemShape(problemShape_),
           tileMN(tileMN_),
           loopsMN(loopsMN_)
     {}
 
     CATLASS_DEVICE
-    void Update(GemmCoord const &problemShape_, MatrixCoord const &tileMN_)
+    void Update(GemmCoord const& problemShape_, MatrixCoord const& tileMN_)
     {
         problemShape = problemShape_;
         tileMN = tileMN_;
@@ -59,7 +59,7 @@ struct GemmIdentityBlockSwizzle {
     }
 
     CATLASS_DEVICE
-    void Update(GemmCoord const &problemShape_, MatrixCoord const &tileMN_, MatrixCoord const &loopsMN_)
+    void Update(GemmCoord const& problemShape_, MatrixCoord const& tileMN_, MatrixCoord const& loopsMN_)
     {
         problemShape = problemShape_;
         tileMN = tileMN_;
@@ -143,7 +143,7 @@ struct SplitkGemmIdentityBlockSwizzle {
     SplitkGemmIdentityBlockSwizzle() {}
 
     CATLASS_DEVICE
-    SplitkGemmIdentityBlockSwizzle(GemmCoord const &problemShape_, GemmCoord const &tileShape_,
+    SplitkGemmIdentityBlockSwizzle(GemmCoord const& problemShape_, GemmCoord const& tileShape_,
                                    uint32_t splitkFactor_ = 1)
         : problemShape(problemShape_),
           tileShape(tileShape_),
@@ -270,7 +270,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
     SplitkInOneCoreGemmIdentityBlockSwizzle() {}
 
     CATLASS_DEVICE
-    SplitkInOneCoreGemmIdentityBlockSwizzle(GemmCoord const &problemShape_, GemmCoord const &tileShape_,
+    SplitkInOneCoreGemmIdentityBlockSwizzle(GemmCoord const& problemShape_, GemmCoord const& tileShape_,
                                             uint32_t splitkFactor_ = 1)
         : problemShape(problemShape_),
           tileShape(tileShape_),
@@ -393,7 +393,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
     }
 
     CATLASS_DEVICE
-    void Update(GemmCoord const &problemShape_, GemmCoord const &tileShape_, uint32_t splitkFactor_,
+    void Update(GemmCoord const& problemShape_, GemmCoord const& tileShape_, uint32_t splitkFactor_,
                 uint32_t maxKValue_)
     {
         problemShape = problemShape_;
@@ -501,7 +501,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
     }
 
     CATLASS_DEVICE
-    void Update(GemmCoord const &problemShape_, GemmCoord const &tileShape_, uint32_t splitkFactor_,
+    void Update(GemmCoord const& problemShape_, GemmCoord const& tileShape_, uint32_t splitkFactor_,
                 uint32_t maxKValue_, uint32_t groupIdx, uint32_t coreNum, uint32_t coreIdx)
     {
         problemShape = problemShape_;
@@ -523,7 +523,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
     }
 
     CATLASS_DEVICE
-    void UpdateEx(GemmCoord const &problemShape_, GemmCoord const &tileShape_, uint32_t splitkFactor_,
+    void UpdateEx(GemmCoord const& problemShape_, GemmCoord const& tileShape_, uint32_t splitkFactor_,
                   uint32_t maxKValue_, uint32_t groupIdx, uint32_t coreNum, uint32_t coreIdx)
     {
         problemShape = problemShape_;

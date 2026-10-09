@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_tiling_s1s2_bn2gs1s2_basic.h
@@ -43,7 +43,7 @@ struct MlaBaseInfoParams {
     int64_t dv; // the headdim of value
     uint32_t sparseMode;
     float keepProb;
-    const char *inputLayout;
+    const char* inputLayout;
     bool eaqualActSeqLen{true};
     bool pseEnable{false};
     bool dropMskEnable{false};
@@ -75,11 +75,10 @@ struct MultiHeadLatentAttentionGradCompileInfo {
 
 class FlashAttentionScoreGraTilingMla : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit FlashAttentionScoreGraTilingMla(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-        
-    }
-    FlashAttentionGradMlaTilingData *tilingData = context_->GetTilingData<FlashAttentionGradMlaTilingData>();
+    explicit FlashAttentionScoreGraTilingMla(gert::TilingContext* context)
+        : TilingBaseClass(context)
+    {}
+    FlashAttentionGradMlaTilingData* tilingData = context_->GetTilingData<FlashAttentionGradMlaTilingData>();
 
 protected:
     bool IsCapable() override;

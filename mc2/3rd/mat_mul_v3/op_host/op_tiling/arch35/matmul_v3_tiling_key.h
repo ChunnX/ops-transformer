@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_v3_tiling_key.h
@@ -63,7 +63,7 @@ enum class Mc2MatMulV3L0C2Out : std::uint8_t {
 
 class Mc2MatMulV3TilingKey {
 public:
-    Mc2MatMulV3TilingKey &SetTrans(bool aTrans, bool bTrans)
+    Mc2MatMulV3TilingKey& SetTrans(bool aTrans, bool bTrans)
     {
         trans_ = Mc2MatMulV3Trans::NO_TRANS;
         if (aTrans && bTrans) {
@@ -76,7 +76,7 @@ public:
         return *this;
     }
 
-    Mc2MatMulV3TilingKey &SetModel(Mc2MatMulV3Model model)
+    Mc2MatMulV3TilingKey& SetModel(Mc2MatMulV3Model model)
     {
         model_ = model;
         return *this;
@@ -92,7 +92,7 @@ public:
         return static_cast<Mc2MatMulV3Model>((tilingkey / divisor) % DECIMAL_DIVISOR);
     }
 
-    Mc2MatMulV3TilingKey &SetApiLevel(Mc2MatMulV3ApiLevel apiLevel)
+    Mc2MatMulV3TilingKey& SetApiLevel(Mc2MatMulV3ApiLevel apiLevel)
     {
         apiLevel_ = apiLevel;
         return *this;
@@ -108,25 +108,25 @@ public:
         return static_cast<Mc2MatMulV3ApiLevel>((tilingkey / divisor) % DECIMAL_DIVISOR);
     }
 
-    Mc2MatMulV3TilingKey &SetFullLoad(Mc2MatMulV3FullLoad fullLoad)
+    Mc2MatMulV3TilingKey& SetFullLoad(Mc2MatMulV3FullLoad fullLoad)
     {
         fullLoad_ = fullLoad;
         return *this;
     }
 
-    Mc2MatMulV3TilingKey &SetAGM2L1(Mc2MatMulV3GM2L1 aGm2L1)
+    Mc2MatMulV3TilingKey& SetAGM2L1(Mc2MatMulV3GM2L1 aGm2L1)
     {
         aGm2L1_ = aGm2L1;
         return *this;
     }
 
-    Mc2MatMulV3TilingKey &SetBGM2L1(Mc2MatMulV3GM2L1 bGm2L1)
+    Mc2MatMulV3TilingKey& SetBGM2L1(Mc2MatMulV3GM2L1 bGm2L1)
     {
         bGm2L1_ = bGm2L1;
         return *this;
     }
 
-    Mc2MatMulV3TilingKey &SetL0C2Out(Mc2MatMulV3L0C2Out out)
+    Mc2MatMulV3TilingKey& SetL0C2Out(Mc2MatMulV3L0C2Out out)
     {
         out_ = out;
         return *this;

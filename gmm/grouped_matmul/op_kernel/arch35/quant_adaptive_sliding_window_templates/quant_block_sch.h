@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file quant_block_sch.h
@@ -62,7 +62,7 @@ class QuantASWBlockSch {
 public:
     __aicore__ inline QuantASWBlockSch() {}
     template <bool isGmm>
-    __aicore__ inline void Init(const TCubeTiling *__restrict &tilingData, uint32_t blockIdx);
+    __aicore__ inline void Init(const TCubeTiling* __restrict& tilingData, uint32_t blockIdx);
     // 每一个group需要更新mm的group偏移和MNK
     template <bool aTrans, bool bTrans, class xType, class scaleType, CubeFormat wFormat = CubeFormat::ND>
     __aicore__ inline void UpdateGroupOffset(int32_t m, int32_t n, int32_t k, uint32_t groupIdx, int8_t groupType);
@@ -82,7 +82,7 @@ public:
 public:
     ASWTilingParam params_;
     ASWOffsetParam offset_;
-    const TCubeTiling *__restrict tilingData_;
+    const TCubeTiling* __restrict tilingData_;
 
 private:
     template <bool bTrans>
@@ -100,7 +100,7 @@ private:
 };
 
 template <bool isGmm>
-__aicore__ inline void QuantASWBlockSch::Init(const TCubeTiling *__restrict &tilingData, uint32_t blockIdx)
+__aicore__ inline void QuantASWBlockSch::Init(const TCubeTiling* __restrict& tilingData, uint32_t blockIdx)
 {
     blockIdx_ = blockIdx;
     tilingData_ = tilingData;

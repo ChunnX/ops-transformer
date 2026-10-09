@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_adaptive_split_tiling.cpp
@@ -63,7 +63,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingAS::PostTiling()
     context_->SetBlockDim(tilingData_->cubeBlockDimM * tilingData_->cubeBlockDimN);
     errno_t ret =
         memcpy_s(context_->GetTilingData<Mc2WeightQuantBatchMatmulV2ASTilingData>(),
-                 context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+                 context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void*>(&tilingData_), tilingDataSize);
     if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
@@ -109,7 +109,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingAS::InstantiateTilingData()
     if (tilingData_ == nullptr) {
         try {
             tilingData_ = std::make_unique<Mc2WeightQuantBatchMatmulV2ASTilingData>();
-        } catch (std::bad_alloc &) {
+        } catch (std::bad_alloc&) {
             tilingData_ = nullptr;
             OP_LOGE(opName_, "tiling data memory allocation failed");
             return ge::GRAPH_FAILED;
@@ -370,8 +370,8 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::EnlargeBaseK(uint64_t l0aMaxBaseK)
 }
 
 void Mc2WeightQuantBatchMatmulV2TilingAS::EnlargeBaseKInFullloadA(uint64_t maxBaseK, uint64_t minKL1, uint64_t maxL1,
-                                                                  const std::vector<uint64_t> &l0BaseKList,
-                                                                  const std::vector<uint64_t> &l1KList)
+                                                                  const std::vector<uint64_t>& l0BaseKList,
+                                                                  const std::vector<uint64_t>& l1KList)
 {
     tilingData_->matmulTiling.baseK = l0BaseKList.back(); // 初始化赋值
     for (auto baseK : l0BaseKList) {
@@ -400,8 +400,8 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::EnlargeBaseKInFullloadA(uint64_t maxBa
 }
 
 void Mc2WeightQuantBatchMatmulV2TilingAS::EnlargeBaseKNotFullloadA(uint64_t maxBaseK, uint64_t maxKL1,
-                                                                   const std::vector<uint64_t> &l0BaseKList,
-                                                                   const std::vector<uint64_t> &l1KList)
+                                                                   const std::vector<uint64_t>& l0BaseKList,
+                                                                   const std::vector<uint64_t>& l1KList)
 {
     tilingData_->matmulTiling.baseK = l0BaseKList.back(); // 初始化赋值
     for (auto baseK : l0BaseKList) {
@@ -868,7 +868,7 @@ uint64_t Mc2WeightQuantBatchMatmulV2TilingAS::GetTilingKey() const
 // 6、计算Workspace 大小
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingAS::GetWorkspaceSize()
 {
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "failed to get workspace size"), return ge::GRAPH_FAILED);
     workspaces[0] = static_cast<size_t>(16 * 1024 * 1024); // asc要求workspace最低需要16 * 1024 * 1024 Byte
     return ge::GRAPH_SUCCESS;

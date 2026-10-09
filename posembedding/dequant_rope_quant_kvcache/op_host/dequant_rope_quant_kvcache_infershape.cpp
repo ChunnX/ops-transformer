@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dequant_rope_quant_kvcache_infer.cpp
@@ -117,10 +117,8 @@ ge::graphStatus InferShapeForDequantRopeQuantKvcache(gert::InferShapeContext* co
     int64_t hiddenSize = -1;
 
     if (!IsUnknownRank(qkvShape)) {
-        OP_CHECK_IF(
-            (qkvShape->GetDimNum() != X_DIM && qkvShape->GetDimNum() != BASE_2),
-            OP_LOGE(context->GetNodeName(), "input_x's dimnum should be 3 or 2."),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((qkvShape->GetDimNum() != X_DIM && qkvShape->GetDimNum() != BASE_2),
+                    OP_LOGE(context->GetNodeName(), "input_x's dimnum should be 3 or 2."), return ge::GRAPH_FAILED);
         batch = qkvShape->GetDim(0);
         if (qkvShape->GetDimNum() == BASE_2) {
             qkvSeqlen = 1;
@@ -129,17 +127,13 @@ ge::graphStatus InferShapeForDequantRopeQuantKvcache(gert::InferShapeContext* co
         }
     }
     if (!IsUnknownRank(kCacheShape)) {
-        OP_CHECK_IF(
-            kCacheShape->GetDimNum() != TOTAL_DIM,
-            OP_LOGE(context->GetNodeName(), "kCache's dimnum should be 4."),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(kCacheShape->GetDimNum() != TOTAL_DIM,
+                    OP_LOGE(context->GetNodeName(), "kCache's dimnum should be 4."), return ge::GRAPH_FAILED);
         kvHead = cacheKShape->GetDim(THIRD_DIM);
         hiddenSize = cacheKShape->GetDim(FORTH_DIM);
     }
-    OP_CHECK_IF(
-        splitSizeArray[0] < 0,
-        OP_LOGE(context->GetNodeName(), "size_splits[0] should not less than 0."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(splitSizeArray[0] < 0, OP_LOGE(context->GetNodeName(), "size_splits[0] should not less than 0."),
+                return ge::GRAPH_FAILED);
     int64_t qHead = hiddenSize < 0 ? -1 : GetDiv(splitSizeArray[0], hiddenSize);
 
     if (IsUnknownRank(qkvShape)) {

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dense_lightning_indexer_grad_kl_loss_vector2.h
@@ -37,16 +37,16 @@ public:
     using MM4_OUT_T = T;
 
     DLIGradKLLossConstInfo constInfo;
-    const optiling::DenseLightningIndexerGradKLLossTilingData *__restrict tilingData;
+    const optiling::DenseLightningIndexerGradKLLossTilingData* __restrict tilingData;
 
     __aicore__ inline DLIKLLossVector2Service(){};
 
-    __aicore__ inline void InitParams(const struct DLIGradKLLossConstInfo &vecConstInfo,
-                                      const optiling::DenseLightningIndexerGradKLLossTilingData *__restrict tilingData);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T> &dKeyIndexGmIn,
-                                         const GlobalTensor<OUT_T> &dKeyIndexGmOut);
-    __aicore__ inline void InitVector2DeterGM(const GlobalTensor<T> &lossGm, const GlobalTensor<T> &lossDeterGmFloat);
+    __aicore__ inline void InitParams(const struct DLIGradKLLossConstInfo& vecConstInfo,
+                                      const optiling::DenseLightningIndexerGradKLLossTilingData* __restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T>& dKeyIndexGmIn,
+                                         const GlobalTensor<OUT_T>& dKeyIndexGmOut);
+    __aicore__ inline void InitVector2DeterGM(const GlobalTensor<T>& lossGm, const GlobalTensor<T>& lossDeterGmFloat);
     __aicore__ inline void ProcessVectorDk();
     __aicore__ inline void DeterSumLoss();
 
@@ -73,31 +73,31 @@ private:
 
 template <typename DLIT>
 __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitParams(
-    const struct DLIGradKLLossConstInfo &vecConstInfo,
-    const optiling::DenseLightningIndexerGradKLLossTilingData *__restrict tilingData)
+    const struct DLIGradKLLossConstInfo& vecConstInfo,
+    const optiling::DenseLightningIndexerGradKLLossTilingData* __restrict tilingData)
 {
     this->constInfo = vecConstInfo;
     this->tilingData = tilingData;
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2GM(const GlobalTensor<MM3_OUT_T> &dKeyIndexGmIn,
-                                                                    const GlobalTensor<OUT_T> &dKeyIndexGmOut)
+__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2GM(const GlobalTensor<MM3_OUT_T>& dKeyIndexGmIn,
+                                                                    const GlobalTensor<OUT_T>& dKeyIndexGmOut)
 {
     this->dKeyIndexGmIn = dKeyIndexGmIn;
     this->dKeyIndexGmOut = dKeyIndexGmOut;
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2DeterGM(const GlobalTensor<T> &lossGm,
-                                                                         const GlobalTensor<T> &lossDeterGmFloat)
+__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2DeterGM(const GlobalTensor<T>& lossGm,
+                                                                         const GlobalTensor<T>& lossDeterGmFloat)
 {
     this->lossGm = lossGm;
     this->lossDeterGmFloat = lossDeterGmFloat;
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void DLIKLLossVector2Service<DLIT>::InitBuffers(TPipe* pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(this->uBuf_, DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_192K);

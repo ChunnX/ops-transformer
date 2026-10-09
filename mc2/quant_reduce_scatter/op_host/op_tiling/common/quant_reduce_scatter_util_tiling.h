@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef QUANT_REDECE_SCATTER_UTIL_TILING_H
 #define QUANT_REDECE_SCATTER_UTIL_TILING_H
@@ -84,8 +84,8 @@ struct TilingRunInfo {
 
 class QuantReduceScatterUtilTiling {
 public:
-    static ge::graphStatus CheckNpuArch(const gert::TilingContext *context);
-    static ge::graphStatus CheckTilingFunc(gert::TilingContext *context, TilingRunInfo &runInfo, const OpType opType);
+    static ge::graphStatus CheckNpuArch(const gert::TilingContext* context);
+    static ge::graphStatus CheckTilingFunc(gert::TilingContext* context, TilingRunInfo& runInfo, const OpType opType);
 };
 
 }; // namespace MC2Tiling

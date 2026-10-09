@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -34,7 +34,7 @@ struct MC2AlltoAllContext {
 template <typename HcclType>
 class MC2AlltoAllPrimitives {
 public:
-    __aicore__ inline AscendC::HcclHandle Prepare(HcclType *hccl, MC2AlltoAllContext *context, uint32_t taskIndex)
+    __aicore__ inline AscendC::HcclHandle Prepare(HcclType* hccl, MC2AlltoAllContext* context, uint32_t taskIndex)
     {
         return hccl->template AlltoAll<false>(context->sendBuffer + taskIndex * context->sendOffset,
                                               context->recvBuffer + taskIndex * context->recvOffset, context->sendCount,
@@ -42,7 +42,7 @@ public:
                                               context->strideCount, context->repeat);
     }
 
-    __aicore__ inline AscendC::HcclHandle SyncSend(HcclType *hccl, MC2AlltoAllContext *context, uint32_t taskIndex)
+    __aicore__ inline AscendC::HcclHandle SyncSend(HcclType* hccl, MC2AlltoAllContext* context, uint32_t taskIndex)
     {
         return hccl->template AlltoAll<true>(context->sendBuffer + taskIndex * context->sendOffset,
                                              context->recvBuffer + taskIndex * context->recvOffset, context->sendCount,

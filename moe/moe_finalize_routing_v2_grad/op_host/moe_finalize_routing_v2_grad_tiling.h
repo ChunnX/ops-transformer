@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_finalize_routing_v2_grad_tiling.h
@@ -102,11 +102,11 @@ constexpr int64_t ULONG_BIT_LEN = 64;
 
 class MoeFinalizeRoutingV2GradTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MoeFinalizeRoutingV2GradTiling(gert::TilingContext *context)
+    explicit MoeFinalizeRoutingV2GradTiling(gert::TilingContext* context)
         : TilingBaseClass(context),
           nodeName_(context->GetNodeName()) {};
 
-    void Reset(gert::TilingContext *context) override
+    void Reset(gert::TilingContext* context) override
     {
         TilingBaseClass::Reset(context);
         nodeName_ = context->GetNodeName();
@@ -123,7 +123,7 @@ protected:
     ge::graphStatus PostTiling() override;
     // 内部计算方法
     virtual void CalcBaseInfo();
-    void SetBinaryAddParams(MoeFinalizeRoutingV2GradBinaryAddTilingData &params, int64_t factor);
+    void SetBinaryAddParams(MoeFinalizeRoutingV2GradBinaryAddTilingData& params, int64_t factor);
     virtual ge::graphStatus CalcTilingKey() = 0;
     ge::graphStatus GetRequiredTensorInfo();
     ge::graphStatus GetOptionalTensorInfo();
@@ -151,7 +151,7 @@ protected:
     {
         return Ops::Base::ToString(dtype);
     }
-    std::string ShapeToString(const gert::Shape &shape) const
+    std::string ShapeToString(const gert::Shape& shape) const
     {
         return Ops::Base::ToString(shape);
     }

@@ -1,12 +1,12 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_MASK2IDX_ARCH35
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_MASK2IDX_ARCH35
@@ -33,7 +33,7 @@ public:
     static constexpr uint32_t PRE_COL_TILE = 64;
     static constexpr uint32_t PRE_ELEM_NUM_PER_LOOP = PRE_ROW_TILE * PRE_COL_TILE;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag>& resource)
     {
         constexpr uint32_t MASK_PAT_IN_UINT8 = 0;
         constexpr uint32_t MASK_PAT_IN_FP16 = 2 * PRE_ELEM_NUM_PER_LOOP;

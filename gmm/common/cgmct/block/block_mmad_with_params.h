@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file block_mmad_with_params.h
@@ -40,7 +40,7 @@ public:
      * @param [in] cubeTiling: configuration parameters for matrix multiplication
      * @param [in] tpipe: the pipe object, default is nullptr
      */
-    __aicore__ inline void Init(TCubeTiling *__restrict cubeTiling, AscendC::TPipe *tpipe = nullptr)
+    __aicore__ inline void Init(TCubeTiling* __restrict cubeTiling, AscendC::TPipe* tpipe = nullptr)
     {
         this->AsDerived().matmul_.Init(cubeTiling, tpipe);
     }
@@ -91,7 +91,7 @@ public:
      * @param [out] gm: output tensor for matrix c
      * @param [in] enAtomic: whether to enable atomic operations
      */
-    __aicore__ inline void GetTensorC(const AscendC::GlobalTensor<typename CType::T> &gm, uint8_t enAtomic = 0)
+    __aicore__ inline void GetTensorC(const AscendC::GlobalTensor<typename CType::T>& gm, uint8_t enAtomic = 0)
     {
         this->AsDerived().matmul_.GetTensorC(gm, enAtomic);
     }

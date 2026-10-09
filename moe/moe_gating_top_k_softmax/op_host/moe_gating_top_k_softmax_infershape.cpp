@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_softmax_infer.cpp
@@ -27,19 +27,19 @@ static const int MAX_K = 1024;
 static constexpr int64_t UNKNOWN_DIM_VALUE_ = -1LL;
 static constexpr int64_t UNKNOWN_RANK_DIM_VALUE_ = -2LL;
 
-
 /*
  * @brief: check whether the output shape is unknown rank shape
  * @param [out] output_shape: the output shape ptr
  * @return bool
  */
-static inline bool IsUnknownShape(const gert::Shape* check_shape) {
-  for (size_t i = 0; i < check_shape->GetDimNum(); i++) {
-    if (check_shape->GetDim(i) == UNKNOWN_DIM_VALUE_) {
-      return true;
+static inline bool IsUnknownShape(const gert::Shape* check_shape)
+{
+    for (size_t i = 0; i < check_shape->GetDimNum(); i++) {
+        if (check_shape->GetDim(i) == UNKNOWN_DIM_VALUE_) {
+            return true;
+        }
     }
-  }
-  return false;
+    return false;
 }
 
 static ge::graphStatus InferShapeMoeGatingTopKSoftmax(gert::InferShapeContext* context)
@@ -72,9 +72,7 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmax(gert::InferShapeContext* c
     const int64_t k = *kPtr;
 
     if (k <= 0 || k > MAX_K || (!IsUnknownShape(gatingShape) && k > gatingShape->GetDim(gatingDimNum - 1))) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context->GetNodeName(), "k", std::to_string(k),
-            "k value error!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k", std::to_string(k), "k value error!");
         return ge::GRAPH_FAILED;
     }
 

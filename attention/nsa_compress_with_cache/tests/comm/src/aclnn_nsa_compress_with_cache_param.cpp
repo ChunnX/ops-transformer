@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_nsa_compress_with_cache_param.cpp
@@ -20,7 +20,8 @@
 #include "tests/utils/tests_utils_log.h"
 
 namespace {
-template <class T> bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
+template <class T>
+bool InitAclIntArray(aclIntArray** intArray, std::vector<T>& hostData)
 {
     if (intArray == nullptr) {
         LOG_ERR("intArray nil.");
@@ -52,8 +53,7 @@ AclnnNsaCompressWithCacheParam::AclnnNsaCompressWithCacheParam(int64_t batchSize
     : NsaCompressWithCacheParam(batchSize, headNum, headDim, dtype, std::move(actSeqLenList), layoutType,
                                 compressBlockSize, compressStride, actSeqLenType, pageBlockSize),
       aclnnActualSeqLenIntAry(nullptr)
-{
-}
+{}
 
 AclnnNsaCompressWithCacheParam::~AclnnNsaCompressWithCacheParam()
 {
@@ -80,15 +80,15 @@ bool AclnnNsaCompressWithCacheParam::Init()
         return false;
     }
 
-    auto *cs = static_cast<ops::adv::tests::utils::Case *>(ops::adv::tests::utils::Case::GetCurrentCase());
+    auto* cs = static_cast<ops::adv::tests::utils::Case*>(ops::adv::tests::utils::Case::GetCurrentCase());
     LOG_IF_EXPR(cs == nullptr, LOG_ERR("Can't get current case"), return false);
 
-    for (auto *it : {&aclnnInput, &aclnnWeight, &aclnnOutputCache, &aclnnSlotMapping, &aclnnBlockTable}) {
+    for (auto* it : {&aclnnInput, &aclnnWeight, &aclnnOutputCache, &aclnnSlotMapping, &aclnnBlockTable}) {
         it->FreeDevData();
         if (it->GetExpDataSize() <= 0) {
             continue;
         }
-        auto *devData = it->AllocDevData(0, 0);
+        auto* devData = it->AllocDevData(0, 0);
         if (devData == nullptr) {
             return false;
         }

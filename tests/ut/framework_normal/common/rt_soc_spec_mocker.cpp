@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <securec.h>
 #include <string>
@@ -18,7 +18,7 @@ struct RtSocSpecMockState {
     std::string npuArch = "";
     bool rtGetSocSpecFail = false;
 };
-RtSocSpecMockState &MockState()
+RtSocSpecMockState& MockState()
 {
     static RtSocSpecMockState state;
     return state;
@@ -26,12 +26,12 @@ RtSocSpecMockState &MockState()
 } // namespace
 
 extern "C" {
-void SetRtSocSpecShortVersion(const char *version)
+void SetRtSocSpecShortVersion(const char* version)
 {
     MockState().shortSocVersion = version ? version : "";
 }
 
-void SetRtSocSpecNpuArch(const char *arch)
+void SetRtSocSpecNpuArch(const char* arch)
 {
     MockState().npuArch = arch ? arch : "";
 }
@@ -41,7 +41,7 @@ void SetRtSocSpecFail(bool fail)
     MockState().rtGetSocSpecFail = fail;
 }
 
-rtError_t rtGetSocSpec(const char *label, const char *key, char *val, const uint32_t maxLen)
+rtError_t rtGetSocSpec(const char* label, const char* key, char* val, const uint32_t maxLen)
 {
     if (MockState().rtGetSocSpecFail) {
         return static_cast<rtError_t>(1);
@@ -53,7 +53,7 @@ rtError_t rtGetSocSpec(const char *label, const char *key, char *val, const uint
         if (maxLen == 0) {
             return static_cast<rtError_t>(1);
         }
-        const auto &v = MockState().shortSocVersion;
+        const auto& v = MockState().shortSocVersion;
         auto copyLen = static_cast<uint32_t>(v.size());
         if (copyLen > maxLen - 1) {
             copyLen = maxLen - 1;
@@ -68,7 +68,7 @@ rtError_t rtGetSocSpec(const char *label, const char *key, char *val, const uint
         if (maxLen == 0) {
             return static_cast<rtError_t>(1);
         }
-        const auto &v = MockState().npuArch;
+        const auto& v = MockState().npuArch;
         auto copyLen = static_cast<uint32_t>(v.size());
         if (copyLen > maxLen - 1) {
             copyLen = maxLen - 1;

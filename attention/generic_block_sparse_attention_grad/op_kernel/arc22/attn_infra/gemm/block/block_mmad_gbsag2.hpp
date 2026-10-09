@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef GEMM_BLOCK_MMAD_GBSAG_2_HPP
 #define GEMM_BLOCK_MMAD_GBSAG_2_HPP
@@ -79,7 +79,7 @@ public:
 
     static_assert(std::is_same_v<LayoutC, layout::RowMajor>, "LayoutC only support RowMajor yet!");
 
-    __aicore__ inline BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0,
+    __aicore__ inline BlockMmad(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart = 0,
                                 uint32_t pingpongFlagOffset = 0, bool isAtomicAdd_ = false)
     {
         isAtomicAdd = isAtomicAdd_;
@@ -98,7 +98,7 @@ public:
 
     __aicore__ inline void operator()(AscendC::GlobalTensor<ElementA> gA, AscendC::GlobalTensor<ElementB> gB,
                                       AscendC::GlobalTensor<ElementC> gC, LayoutA layoutA, LayoutB layoutB,
-                                      LayoutC layoutC, GemmCoord actualShape, uint32_t &pingpongFlag)
+                                      LayoutC layoutC, GemmCoord actualShape, uint32_t& pingpongFlag)
     {
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);

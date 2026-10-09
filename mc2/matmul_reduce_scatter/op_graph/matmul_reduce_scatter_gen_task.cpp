@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_reduce_scatter_gen_task.cpp
@@ -24,13 +24,13 @@
 #include "register/op_impl_registry.h"
 
 namespace ops {
-static ge::Status MatmulReduceScatterCalcOpParam(gert::ExeResGenerationContext *context)
+static ge::Status MatmulReduceScatterCalcOpParam(gert::ExeResGenerationContext* context)
 {
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
 }
 
-static ge::Status MatmulReduceScatterGenTask(const gert::ExeResGenerationContext *context,
-                                             std::vector<std::vector<uint8_t>> &tasks)
+static ge::Status MatmulReduceScatterGenTask(const gert::ExeResGenerationContext* context,
+                                             std::vector<std::vector<uint8_t>>& tasks)
 {
     return Mc2GenTaskOpsUtils::CommonKFCMc2GenTask(context, tasks);
 }

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_tiling_310_general.cc
@@ -99,9 +99,9 @@ uint64_t MatmulAllReduceTiling310General::GetTilingKey() const
     return tilingKey;
 }
 
-void MatmulAllReduceTiling310General::DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling &mm1,
-                                                        AscendC::tiling::TCubeTiling &cubeTiling,
-                                                        Mc2Tiling::Mc2L2cacheTilePara &l2cacheTiling)
+void MatmulAllReduceTiling310General::DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling& mm1,
+                                                        AscendC::tiling::TCubeTiling& cubeTiling,
+                                                        Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling)
 {
     DoMatmulTiling(mm1, cubeTiling);
     SetTransLength(mm1, cubeTiling);
@@ -135,8 +135,8 @@ void MatmulAllReduceTiling310General::DoWeightAntiQuantTiling()
     isWeightQuant_ = true;
 }
 
-void MatmulAllReduceTiling310General::GetL2CacheParm(uint64_t &l2CacheSize, uint64_t &singleMatrixSize,
-                                                     uint32_t &tileSize, uint32_t &tileLimit, bool useNewPara)
+void MatmulAllReduceTiling310General::GetL2CacheParm(uint64_t& l2CacheSize, uint64_t& singleMatrixSize,
+                                                     uint32_t& tileSize, uint32_t& tileLimit, bool useNewPara)
 {
     (void)useNewPara;
     constexpr uint64_t L2CACHE_SIZE_310 = 16;
@@ -157,8 +157,8 @@ void MatmulAllReduceTiling310General::GetL2CacheParm(uint64_t &l2CacheSize, uint
     tileLimit = TILE_LIMIT_310;
 }
 
-void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMatmulTiling &mm1,
-                                                     AscendC::tiling::TCubeTiling &cubeTiling)
+void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1,
+                                                     AscendC::tiling::TCubeTiling& cubeTiling)
 {
     (void)mm1;
     // mdy after api supoort vec nd2nz shareub size cal.
@@ -172,8 +172,8 @@ CutResult MatmulAllReduceTiling310General::GetTilingResult()
     CutResult mCutAllreduce;
     SocVersion_2201 socVersion_2201 = SocVersion_2201::SOC910_B;
     SetMCutSocVersion(socVersion_2201);
-    const gert::StorageShape *commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape *commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
     if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
         OP_LOGD(opName_, "TileCnt enter comm quant.");
         MMPlusQuantAllReduce quantAllReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, npuArch_);

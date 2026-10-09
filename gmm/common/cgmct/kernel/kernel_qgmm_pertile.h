@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kernel_qgmm_pertile.h
@@ -129,16 +129,16 @@ public:
     };
 
 public:
-    __aicore__ inline void Init(const Params &params);
-    __aicore__ inline void Run(const Params &params);
-    __aicore__ inline void operator()(const Params &params)
+    __aicore__ inline void Init(const Params& params);
+    __aicore__ inline void Run(const Params& params);
+    __aicore__ inline void operator()(const Params& params)
     {
         Run(params);
     }
 
 private:
     __aicore__ inline void SetMNK(uint32_t groupIdx);
-    __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx);
+    __aicore__ inline void ProcessSingleGroup(const Params& params, BlockSchedulerOp& bs, uint32_t groupIdx);
     __aicore__ inline void UpdateOffset(uint32_t loopIdx, uint32_t groupIdx);
     __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx);
     __aicore__ inline void UpdateMMGlobalAddr();
@@ -172,7 +172,7 @@ private:
 };
 
 QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::Run(const Params &params)
+__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::Run(const Params& params)
 {
     Init(params);
     bool isKZeroInit = false;
@@ -220,7 +220,7 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
 }
 
 QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::Init(const Params &params)
+__aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::Init(const Params& params)
 {
     xTensorPtr_ = params.mmadParams.aGmAddr;
     wTensorPtr_ = params.mmadParams.bGmAddr;
@@ -237,7 +237,7 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
     }
 
     if (groupListPtr_ != nullptr) {
-        groupListGlobal_.SetGlobalBuffer((__gm__ int64_t *)groupListPtr_);
+        groupListGlobal_.SetGlobalBuffer((__gm__ int64_t*)groupListPtr_);
     }
     TupleShape l0Shape{static_cast<int64_t>(params.gmmParams.baseM), static_cast<int64_t>(params.gmmParams.baseN),
                        static_cast<int64_t>(params.gmmParams.baseK)};
@@ -310,7 +310,7 @@ __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>
 
 QGMM_PERTILE_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMmGroupedPerTile<QGMM_PERTILE_KERNEL_FUN_TEM_PARAMS>::ProcessSingleGroup(
-    const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
+    const Params& params, BlockSchedulerOp& bs, uint32_t groupIdx)
 {
     CoordClass coord(Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_),
                      params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
