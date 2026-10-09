@@ -24,27 +24,26 @@ static const gert::Shape g_vec_1_shape = {1};
 
 static bool IsRegbaseSocVersion(NpuArch npuArch)
 {
-    // DAV_9201 (Ascend960DT) runs the same regbase kernels as Ascend950 (DAV_3510).
-    const static std::set<NpuArch> regbaseArch = {Ops::Base::DAV_3510, Ops::Base::DAV_9201, Ops::Base::DAV_5102};
+    const static std::set<NpuArch> regbaseArch = {Ops::Base::DAV_3510, Ops::Base::DAV_5102};
 
     return regbaseArch.find(npuArch) != regbaseArch.end();
 }
 
-bool IsRegbaseSocVersion(const gert::TilingParseContext* context)
+bool IsRegbaseSocVersion(const gert::TilingParseContext *context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     auto arch = ascendcPlatform.GetCurNpuArch();
     return IsRegbaseSocVersion(arch);
 }
 
-bool IsRegbaseSocVersion(const gert::TilingContext* context)
+bool IsRegbaseSocVersion(const gert::TilingContext *context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     auto arch = ascendcPlatform.GetCurNpuArch();
     return IsRegbaseSocVersion(arch);
 }
 
-const gert::Shape& EnsureNotScalar(const gert::Shape& inShape)
+const gert::Shape &EnsureNotScalar(const gert::Shape &inShape)
 {
     if (inShape.IsScalar()) {
         return g_vec_1_shape;
