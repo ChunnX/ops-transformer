@@ -433,10 +433,23 @@ static aclnnStatus ProcessContiguous(const aclTensor *key, aclTensor *keyCacheRe
         CHECK_RET(seqLensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
-    auto scatterResult = l0op::ScatterPaKvCache(
-        keyContiguous, keyCacheContiguous, slotMappingContiguous, valueContiguous, valueCacheContiguous,
-        compressLensContiguous, compressSeqOffsetContiguous, seqLensContiguous, cacheModeOptional, scatterModeOptional,
-        stridesOptional, offsetsOptional, uniqueExecutor.get());
+    bool isCacheRefContiguous = IsContiguous(keyCacheRef);
+    if (value != nullptr) {
+        isCacheRefContiguous = isCacheRefContiguous && IsContiguous(valueCacheRef);
+    }
+
+    std::tuple<const aclTensor *, const aclTensor *> scatterResult;
+    if (isCacheRefContiguous) {
+        scatterResult = l0op::ScatterPaKvCacheWithAllocOut(
+            keyContiguous, keyCacheContiguous, slotMappingContiguous, valueContiguous, valueCacheContiguous,
+            compressLensContiguous, compressSeqOffsetContiguous, seqLensContiguous, cacheModeOptional,
+            scatterModeOptional, stridesOptional, offsetsOptional, uniqueExecutor.get());
+    } else {
+        scatterResult = l0op::ScatterPaKvCache(
+            keyContiguous, keyCacheContiguous, slotMappingContiguous, valueContiguous, valueCacheContiguous,
+            compressLensContiguous, compressSeqOffsetContiguous, seqLensContiguous, cacheModeOptional,
+            scatterModeOptional, stridesOptional, offsetsOptional, uniqueExecutor.get());
+    }
     CHECK_RET(std::get<0>(scatterResult) != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto keyCacheViewCopy = l0op::ViewCopy(std::get<0>(scatterResult), keyCacheRef, uniqueExecutor.get());

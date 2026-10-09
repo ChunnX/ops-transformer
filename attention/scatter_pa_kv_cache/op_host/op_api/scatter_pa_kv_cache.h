@@ -20,5 +20,11 @@ std::tuple<const aclTensor *, const aclTensor *> ScatterPaKvCache(
     aclTensor *valueCacheRef, const aclTensor *compressLensOptional, const aclTensor *compressSeqOffsetOptional,
     const aclTensor *seqLensOptional, char *cacheModeOptional, char *scatterModeOptional,
     const aclIntArray *stridesOptional, const aclIntArray *offsetsOptional, aclOpExecutor *executor);
+
+std::tuple<const aclTensor *, const aclTensor *> ScatterPaKvCacheWithAllocOut(
+    const aclTensor *key, aclTensor *keyCacheRef, const aclTensor *slotMapping, const aclTensor *value,
+    aclTensor *valueCacheRef, const aclTensor *compressLensOptional, const aclTensor *compressSeqOffsetOptional,
+    const aclTensor *seqLensOptional, char *cacheModeOptional, char *scatterModeOptional,
+    const aclIntArray *stridesOptional, const aclIntArray *offsetsOptional, aclOpExecutor *executor);
 }
 #endif
