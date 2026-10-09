@@ -61,14 +61,14 @@ class GmmA2avMteOp {
 public:
     __aicore__ inline GmmA2avMteOp() {}
 
-    __aicore__ inline void Init(const GroupedMatMulAlltoAllvMteTaskTilingInfo* taskTilingInfo, GM_ADDR sendBuffer,
-                                GM_ADDR recvBuffer, GM_ADDR cumsumBuffer, AscendC::TPipe* pipe,
-                                const GmmA2avCoCTiling* cocTiling = nullptr, uint64_t commBufferSize = 0UL,
+    __aicore__ inline void Init(const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
+                                GM_ADDR recvBuffer, GM_ADDR cumsumBuffer, AscendC::TPipe *pipe,
+                                const GmmA2avCoCTiling *cocTiling = nullptr, uint64_t commBufferSize = 0UL,
                                 uint32_t isA3 = 0U)
     {
         taskTilingInfo_ = taskTilingInfo;
-        sendBuffer_ = reinterpret_cast<__gm__ T*>(sendBuffer);
-        recvBuffer_ = reinterpret_cast<__gm__ T*>(recvBuffer);
+        sendBuffer_ = reinterpret_cast<__gm__ T *>(sendBuffer);
+        recvBuffer_ = reinterpret_cast<__gm__ T *>(recvBuffer);
         // Kept in the common MTE Init signature for serialized-tiling ABI
         // compatibility. Expert-overlap offsets are owner-local in UB.
         (void)cumsumBuffer;
@@ -81,14 +81,14 @@ public:
         if (isA3_) {
             // The established A3 package uses the full MC2 resource context.
             // Its peer windows are referenced by remoteRes[].
-            a3WinContext_ = reinterpret_cast<__gm__ HcclOpResParam*>(context);
+            a3WinContext_ = reinterpret_cast<__gm__ HcclOpResParam *>(context);
             rank_ = a3WinContext_->localUsrRankId;
             rankSize_ = a3WinContext_->rankSize;
             winSize_ = a3WinContext_->winSize == 0UL ? commBufferSize : a3WinContext_->winSize;
         } else {
             // Ascend 910B MultiPut exposes HcclCombineOpParam. For larger
             // communication domains HCCL supplies the dynamic data[] table.
-            a2WinContext_ = reinterpret_cast<__gm__ AscendC::HcclCombineOpParam*>(context);
+            a2WinContext_ = reinterpret_cast<__gm__ AscendC::HcclCombineOpParam *>(context);
             rank_ = a2WinContext_->rankId;
             rankSize_ = a2WinContext_->rankNum;
             winSize_ = a2WinContext_->winSize == 0UL ? commBufferSize : a2WinContext_->winSize;
@@ -258,7 +258,7 @@ private:
                 return (GM_ADDR)(a3WinContext_->localWindowsIn);
             }
             auto relation =
-                reinterpret_cast<__gm__ HcclRankRelationResV2*>(a3WinContext_->remoteRes[rank].nextDevicePtr);
+                reinterpret_cast<__gm__ HcclRankRelationResV2 *>(a3WinContext_->remoteRes[rank].nextDevicePtr);
             return (GM_ADDR)(relation->windowsIn);
         }
         if (a2WinContext_->multiFlag == 0U) {
@@ -268,15 +268,15 @@ private:
                                (GM_ADDR)(a2WinContext_->data[rank].remoteInput.addr);
     }
 
-    __aicore__ inline __gm__ int32_t* GetCountTable(uint32_t rank) const
+    __aicore__ inline __gm__ int32_t *GetCountTable(uint32_t rank) const
     {
-        return reinterpret_cast<__gm__ int32_t*>(GetWindow(rank) + winSize_ -
-                                                 Gmma2avMteTiling::SEND_COUNT_STAGING_FROM_TAIL);
+        return reinterpret_cast<__gm__ int32_t *>(GetWindow(rank) + winSize_ -
+                                                  Gmma2avMteTiling::SEND_COUNT_STAGING_FROM_TAIL);
     }
 
-    __aicore__ inline __gm__ T* GetOutputData(uint32_t rank) const
+    __aicore__ inline __gm__ T *GetOutputData(uint32_t rank) const
     {
-        return reinterpret_cast<__gm__ T*>(GetWindow(rank));
+        return reinterpret_cast<__gm__ T *>(GetWindow(rank));
     }
 
     __aicore__ inline void FinishInvocation()
@@ -502,7 +502,7 @@ private:
         return ubBuffer_.template Get<uint32_t>()[GmmA2avMteDetail::SOURCE_OFFSET_UB_OFFSET_BYTES / sizeof(uint32_t)];
     }
 
-    __aicore__ static inline bool SafeAdd(uint64_t lhs, uint64_t rhs, uint64_t& result)
+    __aicore__ static inline bool SafeAdd(uint64_t lhs, uint64_t rhs, uint64_t &result)
     {
         constexpr uint64_t maxValue = ~static_cast<uint64_t>(0U);
         if (lhs > maxValue - rhs) {
@@ -512,7 +512,7 @@ private:
         return true;
     }
 
-    __aicore__ static inline bool SafeMulU32(uint64_t lhs, uint64_t rhs, uint64_t& result)
+    __aicore__ static inline bool SafeMulU32(uint64_t lhs, uint64_t rhs, uint64_t &result)
     {
         constexpr uint64_t maxU32 = 0xffffffffUL;
         if (lhs > maxU32 || rhs > maxU32) {
@@ -534,7 +534,7 @@ private:
         return true;
     }
 
-    __aicore__ inline void LoadInt32Row(__gm__ int32_t* source, const AscendC::LocalTensor<int32_t>& local,
+    __aicore__ inline void LoadInt32Row(__gm__ int32_t *source, const AscendC::LocalTensor<int32_t> &local,
                                         uint32_t elementCount)
     {
         const uint32_t alignedElementCount = AlignControlElements(elementCount);
@@ -548,7 +548,7 @@ private:
         AscendC::DataSyncBarrier<AscendC::MemDsbT::DDR>();
     }
 
-    __aicore__ inline void StoreInt32Row(__gm__ int32_t* destination, const AscendC::LocalTensor<int32_t>& local,
+    __aicore__ inline void StoreInt32Row(__gm__ int32_t *destination, const AscendC::LocalTensor<int32_t> &local,
                                          uint32_t elementCount)
     {
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID2);
@@ -589,20 +589,20 @@ private:
         LocalAivSync();
     }
 
-    __aicore__ inline __gm__ int64_t* GetFixedSyncSlot(uint32_t windowRank, uint64_t phaseBase, uint64_t index) const
+    __aicore__ inline __gm__ int64_t *GetFixedSyncSlot(uint32_t windowRank, uint64_t phaseBase, uint64_t index) const
     {
         const uint64_t syncOffset =
             winSize_ - Gmma2avMteTiling::SYNC_REGION_FROM_TAIL + phaseBase + index * Gmma2avMteTiling::SYNC_SLOT_BYTES;
-        return reinterpret_cast<__gm__ int64_t*>(GetWindow(windowRank) + syncOffset);
+        return reinterpret_cast<__gm__ int64_t *>(GetWindow(windowRank) + syncOffset);
     }
 
-    __aicore__ inline __gm__ int64_t* GetPhaseSlot(uint32_t windowRank, uint64_t phaseBase,
+    __aicore__ inline __gm__ int64_t *GetPhaseSlot(uint32_t windowRank, uint64_t phaseBase,
                                                    uint32_t participantRank) const
     {
         return GetFixedSyncSlot(windowRank, phaseBase, participantRank);
     }
 
-    __aicore__ inline void StoreSyncFlag(__gm__ int64_t* destination, int64_t flag)
+    __aicore__ inline void StoreSyncFlag(__gm__ int64_t *destination, int64_t flag)
     {
         AscendC::LocalTensor<int64_t> local = GetSyncTensor();
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID2);
@@ -630,7 +630,7 @@ private:
     }
 
     template <bool AtLeast = false>
-    __aicore__ inline void WaitSyncFlag(__gm__ int64_t* source, int64_t expected)
+    __aicore__ inline void WaitSyncFlag(__gm__ int64_t *source, int64_t expected)
     {
         AscendC::LocalTensor<int64_t> local = GetSyncTensor();
         AscendC::GlobalTensor<int64_t> global;
@@ -659,7 +659,7 @@ private:
         return (elementCount + alignment - 1U) / alignment * alignment;
     }
 
-    __aicore__ inline void CopyGmToGm(__gm__ T* source, __gm__ T* destination, uint64_t elementCount)
+    __aicore__ inline void CopyGmToGm(__gm__ T *source, __gm__ T *destination, uint64_t elementCount)
     {
         uint32_t moveIdx = 0U;
         BeginGmToGmCopy();
@@ -673,8 +673,8 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
 
-    __aicore__ inline void CopyGmToGmSegment(__gm__ T* source, __gm__ T* destination, uint64_t elementCount,
-                                             uint32_t& moveIdx)
+    __aicore__ inline void CopyGmToGmSegment(__gm__ T *source, __gm__ T *destination, uint64_t elementCount,
+                                             uint32_t &moveIdx)
     {
         AscendC::LocalTensor<T> local = ubBuffer_.template Get<T>();
         AscendC::LocalTensor<T> ping = local;
@@ -710,11 +710,11 @@ private:
     }
 
 private:
-    const GroupedMatMulAlltoAllvMteTaskTilingInfo* taskTilingInfo_{nullptr};
-    __gm__ HcclOpResParam* a3WinContext_{nullptr};
-    __gm__ AscendC::HcclCombineOpParam* a2WinContext_{nullptr};
-    __gm__ T* sendBuffer_{nullptr};
-    __gm__ T* recvBuffer_{nullptr};
+    const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo_{nullptr};
+    __gm__ HcclOpResParam *a3WinContext_{nullptr};
+    __gm__ AscendC::HcclCombineOpParam *a2WinContext_{nullptr};
+    __gm__ T *sendBuffer_{nullptr};
+    __gm__ T *recvBuffer_{nullptr};
     uint64_t winSize_{0UL};
     uint64_t localExpertBaseRows_{0UL};
     uint32_t rank_{0U};
@@ -736,8 +736,8 @@ private:
     using ExpertReadyFlag = Catlass::Arch::CrossCoreFlagWithReverse<15U>;
 
     struct AicExpertChunkReadyCallback {
-        __aicore__ inline AicExpertChunkReadyCallback(ExpertReadyFlag& readyFlag,
-                                                      const GroupedMatMulAlltoAllvMteTaskTilingInfo* taskTilingInfo,
+        __aicore__ inline AicExpertChunkReadyCallback(ExpertReadyFlag &readyFlag,
+                                                      const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo,
                                                       uint32_t expertChunkRows)
             : readyFlag_(readyFlag),
               taskTilingInfo_(taskTilingInfo),
@@ -770,15 +770,15 @@ private:
             Catlass::Arch::CrossCoreSetFlagWithReverse<0x2, PIPE_FIX>(readyFlag_);
         }
 
-        ExpertReadyFlag& readyFlag_;
-        const GroupedMatMulAlltoAllvMteTaskTilingInfo* taskTilingInfo_;
+        ExpertReadyFlag &readyFlag_;
+        const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo_;
         uint32_t expertChunkRows_;
         uint64_t chunkRows_{0UL};
     };
 
 public:
-    static __aicore__ inline void ProcessAic(ComputationOpType& computeOp, SharedComputationOpType& sharedComputeOp,
-                                             const GroupedMatMulAlltoAllvMteTaskTilingInfo* taskTilingInfo,
+    static __aicore__ inline void ProcessAic(ComputationOpType &computeOp, SharedComputationOpType &sharedComputeOp,
+                                             const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo,
                                              uint32_t expertChunkRows)
     {
         if ASCEND_IS_AIC {
@@ -794,8 +794,8 @@ public:
         }
     }
 
-    static __aicore__ inline void ProcessAiv(CommOpType& commOp,
-                                             const GroupedMatMulAlltoAllvMteTaskTilingInfo* taskTilingInfo,
+    static __aicore__ inline void ProcessAiv(CommOpType &commOp,
+                                             const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo,
                                              uint32_t expertChunkRows)
     {
         if ASCEND_IS_AIV {
@@ -831,7 +831,7 @@ public:
 
 private:
     static __aicore__ inline uint64_t GetExpertComputeRows(
-        const GroupedMatMulAlltoAllvMteTaskTilingInfo* taskTilingInfo, uint32_t expertIdx)
+        const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo, uint32_t expertIdx)
     {
         const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo->e);
         const uint32_t rankSize = static_cast<uint32_t>(taskTilingInfo->epWorldSize);
@@ -845,7 +845,7 @@ private:
         return rows;
     }
 
-    static __aicore__ inline uint32_t GetExpertChunkEnd(const GroupedMatMulAlltoAllvMteTaskTilingInfo* taskTilingInfo,
+    static __aicore__ inline uint32_t GetExpertChunkEnd(const GroupedMatMulAlltoAllvMteTaskTilingInfo *taskTilingInfo,
                                                         uint32_t startExpertIdx, uint32_t expertChunkRows)
     {
         const uint32_t expertNum = static_cast<uint32_t>(taskTilingInfo->e);
