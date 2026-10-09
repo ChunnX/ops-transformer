@@ -338,6 +338,7 @@ __aicore__ inline void UpdateExpertLoopState(ExpertLoopState& state, uint32_t ex
 {
     if (expertIdx != state.expertIdx) {
         state.globalTokenStartIndex += Get<M_VALUE>(state.problemShape);
+        state.paddedTokenStartIndex += CalcMtePaddedRowCount(static_cast<uint64_t>(Get<M_VALUE>(state.problemShape)));
     }
     state.expertIdx = expertIdx;
     Get<M_VALUE>(state.problemShape) = static_cast<int64_t>(expertTokenCount);
@@ -355,6 +356,7 @@ __aicore__ inline uint32_t AdvanceExpertTokenPositionInWave(uint32_t expertToken
     waveMGroupCount += Ops::Base::CeilDiv(sliceTokenCount, TileM);
     position.tokenIndexInExpert += sliceTokenCount;
     position.globalTokenIndex += sliceTokenCount;
+    position.paddedTokenIndex += CalcMtePaddedRowCount(sliceTokenCount);
     if (position.tokenIndexInExpert >= expertTokenCount) {
         ++position.expertIdx;
         position.tokenIndexInExpert = 0U;

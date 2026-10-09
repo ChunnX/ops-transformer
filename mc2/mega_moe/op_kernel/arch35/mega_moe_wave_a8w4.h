@@ -344,6 +344,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunMoeE
     ExpertTokenRange pendingWaveRange{};
     ExpertTokenPosition gmm1Position{};
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
+        WaitMteRingIteration(params_, gmm1Count);
         ExpertTokenRange waveRange = ProcessNextDispatchAndCurrentGmm1(
             gmm1Position, dispatchPosition, gmm1State, gmm1AddrInfo, startBlockIdx_, gmm1TilesPerMGroup, pipeline);
         gmm1Position = waveRange.end;
@@ -361,6 +362,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunMoeE
             pendingWaveRange = waveRange;
             hasPendingWave = true;
         }
+        PublishMteRingIteration(params_, gmmExecutionConfig_.blockJob, gmm1Count);
     }
     // 滞后流水收尾：三角色共同补跑最后一个 Wave 的 GMM2/Combine。
     if (hasPendingWave) {

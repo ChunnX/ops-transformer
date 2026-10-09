@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 #include <limits>
 #include "aclnn_common.h"
 
@@ -423,6 +424,7 @@ constexpr int64_t ARCH35_TILE_N = 256LL;
 constexpr int64_t ARCH35_DEDUP_PREPASS_MAX_CHUNKS = 128LL;
 constexpr int64_t ARCH35_DEDUP_ROW_DESC_HEADER_INT32 = 2LL;
 constexpr int64_t ARCH35_INT32_PER_32B = 8LL;
+constexpr int64_t ARCH35_MTE_RING_WAVE_COUNT = 3LL;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
@@ -561,12 +563,43 @@ int64_t CalcUrmaCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64
     return dataOffset + maskRecvSize + expertCountRecvSize + relayDataSize + relayFlagSize + combineSendSize;
 }
 
-// SymmBuffer is created before the concrete weight lists are passed to MegaMoe. Mirror WorkspaceLayout's allocation
-// order with conservative mode choices: A8W4, both dedup work areas, independent shared quantization, the arch35 core
-// upper bound, and four shared experts. Tiling computes the exact suffix and may leave part of this reservation unused.
+// MTE requests dispatch dedup automatically. SymmBuffer has no concrete weights, so it may use the smaller ring
+// reservation only when the host's guard or FP8 upper-bound benefit calculation proves dedup disabled for every
+// supported routed mode. FP4 can only decrease savedBytes. Keep this predicate synchronized with the host gates.
+bool CanUseMteRingWorkspaceBoundA5(int64_t epWorldSize, int64_t expertPerRank, int64_t numMaxTokensPerRank,
+                                  int64_t numTopk, int64_t hidden, int64_t hiddenDim, int64_t combineQuantMode,
+                                  int64_t combineCommMode)
+{
+    if (combineQuantMode != 0 || combineCommMode != 0) {
+        return false;
+    }
+    constexpr int64_t DEDUP_MEMBER_UB_BYTES = 54LL * 1024LL;
+    const int64_t chunkUbCap =
+        std::min(DEDUP_MEMBER_UB_BYTES / (numTopk * 3LL * static_cast<int64_t>(sizeof(int32_t))), 512LL);
+    if (CeilDiv(numMaxTokensPerRank, ARCH35_DEDUP_PREPASS_MAX_CHUNKS) > chunkUbCap) {
+        return true;
+    }
+    const double world = static_cast<double>(epWorldSize);
+    const double topKf = static_cast<double>(numTopk);
+    const double distinctRanks = world * (1.0 - std::pow(1.0 - 1.0 / world, topKf));
+    const double dupRatio = 1.0 - distinctRanks / topKf;
+    const double savedBytes = static_cast<double>(numMaxTokensPerRank) * topKf * dupRatio *
+                              static_cast<double>(hidden);
+    double gateValue = savedBytes;
+    double requiredValue = 60.0 * 1024.0 * 1024.0;
+    if (epWorldSize == 4) {
+        gateValue /= static_cast<double>(expertPerRank);
+        requiredValue = (hiddenDim <= 2048 ? 0.30 : 2.10) * 1024.0 * 1024.0;
+    }
+    return gateValue < requiredValue;
+}
+
+// Mirror WorkspaceLayout's allocation order with conservative mode choices: A8W4, independent shared
+// quantization, the arch35 core upper bound, and four shared experts. Unless dedup is provably disabled above,
+// retain the original full routed reservation (including both dedup work areas). Tiling may still select rings.
 int64_t CalcCclWorkspaceSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank,
                                int64_t numTopk, int64_t hidden, int64_t intermediateHidden, int64_t maxRecvTokenNum,
-                               int64_t topkWeightsType, int64_t serverNum)
+                               int64_t topkWeightsType, int64_t serverNum, bool useMteRing = false)
 {
     const bool isUrma = serverNum > 0;
     const int64_t expertPerRank = moeExpertNum / epWorldSize;
@@ -577,24 +610,28 @@ int64_t CalcCclWorkspaceSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     TORCH_CHECK(maxOutputSize <= std::numeric_limits<uint32_t>::max(),
                 "maximum receive token capacity should be <= UINT32_MAX on Ascend950, but got ", maxOutputSize);
     const int64_t maxOutput = static_cast<int64_t>(maxOutputSize);
+    const int64_t waveMGroups = std::max(
+        CeilDiv(ARCH35_MAX_AIC_NUM * 4LL, CeilDiv(hiddenDim, ARCH35_TILE_N)),
+        CeilDiv(ARCH35_MAX_AIC_NUM, CeilDiv(hidden, ARCH35_TILE_N)));
+    const int64_t dataRows = useMteRing ? ARCH35_MTE_RING_WAVE_COUNT * waveMGroups * ARCH35_TILE_M : maxOutput;
     int64_t workspaceSize = 0;
 
     // Dispatch receive data and scale.
-    workspaceSize += CeilAlign(maxOutput * hidden, ALIGN_512);
+    workspaceSize += CeilAlign(dataRows * hidden, ALIGN_512);
     workspaceSize +=
-        CeilAlign(maxOutput * CeilDiv(hidden, ARCH35_MX_SCALE_DIVISOR) * ARCH35_MX_MULTI_BASE_SIZE, ALIGN_512);
+        CeilAlign(dataRows * CeilDiv(hidden, ARCH35_MX_SCALE_DIVISOR) * ARCH35_MX_MULTI_BASE_SIZE, ALIGN_512);
 
     // URMA always calls the weight-region planner. For MTE, the conservative combine-dedup choice uses it when
-    // topk weights are not prefetched; the prefetch path stores weights in its GMM1 result region instead.
-    if (isUrma || topkWeightsType == 0) {
+    // topk weights are not prefetched; prefetch stores each routed row's selected weight in retained metadata.
+    if (isUrma || (!useMteRing && topkWeightsType == 0)) {
         workspaceSize += CeilAlign(maxOutput * CeilAlign(numTopk * static_cast<int64_t>(sizeof(float)), ALIGN_32),
                                    ALIGN_512);
     }
 
     // Activation output, scales, receive counts, and per-token metadata.
-    workspaceSize += CeilAlign(maxOutput * intermediateHidden, ALIGN_512);
+    workspaceSize += CeilAlign(dataRows * intermediateHidden, ALIGN_512);
     workspaceSize += CeilAlign(
-        maxOutput * CeilDiv(intermediateHidden, ARCH35_MX_SCALE_DIVISOR) * ARCH35_MX_MULTI_BASE_SIZE, ALIGN_512);
+        dataRows * CeilDiv(intermediateHidden, ARCH35_MX_SCALE_DIVISOR) * ARCH35_MX_MULTI_BASE_SIZE, ALIGN_512);
     int64_t expertRecvTokenCountBytes =
         isUrma ? expertPerRank * ALIGN_32 * ARCH35_MAX_AIC_NUM :
                  CeilAlign(expertPerRank, ARCH35_INT_CACHELINE) * static_cast<int64_t>(sizeof(int32_t)) *
@@ -624,25 +661,32 @@ int64_t CalcCclWorkspaceSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
                          ARCH35_INT_CACHELINE;
         workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_INT_CACHELINE * expertPerRank *
                          ARCH35_MAX_AIC_NUM;
-        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_INT_CACHELINE *
-                         (1LL + epWorldSize * ARCH35_DEDUP_PREPASS_MAX_CHUNKS);
+        if (!useMteRing) {
+            workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_INT_CACHELINE *
+                             (1LL + epWorldSize * ARCH35_DEDUP_PREPASS_MAX_CHUNKS);
+        }
         workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_MAX_AIC_NUM * ARCH35_INT_CACHELINE;
-        workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * ARCH35_MAX_AIC_NUM *
-                         ARCH35_INT_CACHELINE;
+        if (!useMteRing) {
+            workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * ARCH35_MAX_AIC_NUM *
+                             ARCH35_INT_CACHELINE;
+        }
         workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * CeilDiv(numMaxTokensPerRank, ARCH35_TILE_M) *
                          ARCH35_MAX_SHARED_EXPERT_NUM * ARCH35_INT_CACHELINE;
         workspaceSize += static_cast<int64_t>(sizeof(int32_t)) * ARCH35_MAX_AIC_NUM * ARCH35_INT_CACHELINE;
+        if (useMteRing) {
+            workspaceSize += 3LL * ARCH35_MAX_AIC_NUM * ARCH35_INT_CACHELINE * static_cast<int64_t>(sizeof(int32_t));
+        }
     }
 
     // Cumsum, A8W4 GMM1 result, and GMM2 result. A8W4 is the largest supported routed layout.
     workspaceSize += CeilAlign(static_cast<int64_t>(sizeof(int32_t)) * expertPerRank * epWorldSize, ALIGN_32) *
                      ARCH35_MAX_AIC_NUM;
-    workspaceSize += static_cast<int64_t>(sizeof(int16_t)) * maxOutput * hiddenDim;
+    workspaceSize += static_cast<int64_t>(sizeof(int16_t)) * dataRows * hiddenDim;
     if (!isUrma) {
         workspaceSize = CeilAlign(workspaceSize, ALIGN_512);
-        workspaceSize += CeilAlign(static_cast<int64_t>(sizeof(int16_t)) * maxOutput * hidden, ALIGN_512);
+        workspaceSize += CeilAlign(static_cast<int64_t>(sizeof(int16_t)) * dataRows * hidden, ALIGN_512);
     } else {
-        workspaceSize += static_cast<int64_t>(sizeof(int16_t)) * maxOutput * hidden;
+        workspaceSize += static_cast<int64_t>(sizeof(int16_t)) * dataRows * hidden;
     }
 
     if (topkWeightsType == 1) {
@@ -662,7 +706,7 @@ int64_t CalcCclWorkspaceSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
         workspaceSize += CeilAlign(serverNum * (ALIGN_32 + numMaxTokensPerRank * ALIGN_32), ALIGN_512);
         workspaceSize += ARCH35_MAX_AIC_NUM * CeilAlign(ARCH35_TILE_M * static_cast<int64_t>(sizeof(uint64_t)),
                                                         ALIGN_512);
-    } else {
+    } else if (!useMteRing) {
         int64_t rowDescStride =
             CeilAlign(ARCH35_DEDUP_ROW_DESC_HEADER_INT32 + 3LL * numTopk, ARCH35_INT32_PER_32B);
         workspaceSize +=
@@ -783,9 +827,21 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
         (topkWeightsType == 1 || combineCommMode == 1 || commAlg == "dedup" || commAlg == "dedup_combine") ? 1 : 0;
     int64_t communicationBufferSize =
         CalcMteCclBufferSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, layoutTopkWeights);
-    return communicationBufferSize +
-           CalcCclWorkspaceSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, intermediateHidden,
-                                  maxRecvTokenNum, topkWeightsType, serverNum);
+    const bool useMteRing = CanUseMteRingWorkspaceBoundA5(
+        epWorldSize, moeExpertNum / epWorldSize, numMaxTokensPerRank, numTopk, hidden, intermediateHidden * 2LL,
+        combineQuantMode, combineCommMode);
+    int64_t workspaceSize = CalcCclWorkspaceSizeA5(
+        epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, intermediateHidden, maxRecvTokenNum,
+        topkWeightsType, serverNum, useMteRing);
+    if (!useMteRing && combineQuantMode == 0 && combineCommMode == 0) {
+        // A small receive cap can make the full reservation smaller than three padded wave budgets. The actual
+        // mode may still fall back to dedup-off at tiling, so cover both layouts whenever rings remain possible.
+        const int64_t ringWorkspaceSize = CalcCclWorkspaceSizeA5(
+            epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, intermediateHidden, maxRecvTokenNum,
+            topkWeightsType, serverNum, true);
+        workspaceSize = std::max(workspaceSize, ringWorkspaceSize);
+    }
+    return communicationBufferSize + workspaceSize;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

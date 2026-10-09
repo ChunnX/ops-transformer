@@ -53,6 +53,7 @@ struct ExpertDispatchCoreRange {
     uint32_t expertGlobalRowBegin;
     uint32_t localExpertRowBegin;
     uint32_t localExpertRowEnd;
+    uint64_t paddedExpertRowBegin = 0U;
 };
 
 // 基线 dispatch 落地目标的 GM 视图集合（按段起始行 rowDstOffset 偏置）。
@@ -180,13 +181,14 @@ __aicore__ inline void StoreDispatchTokenAndMetaInfo(const TokenDispatchConfig& 
 template <typename TopkIndexType, typename ActivationType, typename QuantScaleType, bool TopkWeightsPrefetch>
 __aicore__ inline DispatchCopyTargets<ActivationType, QuantScaleType> CreateDispatchCopyTargets(
     const TokenDispatchConfig& context, const Params& params, GM_ADDR* winRankAddr,
-    const TokenDispatchScratch<ActivationType, TopkIndexType>& scratch, int32_t rowDstOffset, int32_t remoteRankIdx)
+    const TokenDispatchScratch<ActivationType, TopkIndexType>& scratch, int32_t rowDstOffset, int32_t remoteRankIdx,
+    uint64_t physicalRowOffset)
 {
     DispatchCopyTargets<ActivationType, QuantScaleType> targets;
     targets.tokenRev.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(params.workspaceInfo.dispatchRevDataPtr +
-                                                                              rowDstOffset * scratch.revTokenElemCnt));
+                                                                              physicalRowOffset * scratch.revTokenElemCnt));
     targets.scaleRev.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleType*>(params.workspaceInfo.dispatchRevScalePtr +
-                                                                              rowDstOffset * scratch.revScaleElemCnt));
+                                                                              physicalRowOffset * scratch.revScaleElemCnt));
     targets.remoteRank.SetGlobalBuffer(
         reinterpret_cast<__gm__ ActivationType*>(winRankAddr[remoteRankIdx] + context.quantWinOffset));
     targets.metaInfo.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
@@ -213,12 +215,12 @@ __aicore__ inline void CopyTokensAndMetaForDispatch(const TokenDispatchConfig& c
                                                     GM_ADDR* winRankAddr,
                                                     TokenDispatchScratch<ActivationType, TopkIndexType>& scratch,
                                                     int32_t rowDstOffset, int32_t remoteRankIdx, int32_t copyStartIdx,
-                                                    int32_t copyNum)
+                                                    int32_t copyNum, uint64_t physicalRowOffset)
 {
     int32_t bufferCount = context.bufferConfig.bufferCount;
     DispatchCopyTargets<ActivationType, QuantScaleType> targets =
         CreateDispatchCopyTargets<TopkIndexType, ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, params, winRankAddr, scratch, rowDstOffset, remoteRankIdx);
+            context, params, winRankAddr, scratch, rowDstOffset, remoteRankIdx, physicalRowOffset);
     GlobalTensor<ActivationType>& remoteRankGlobalTensor = targets.remoteRank;
     GlobalTensor<ActivationType>& tokenRevGlobalTensor = targets.tokenRev;
     GlobalTensor<QuantScaleType>& scaleRevGlobalTensor = targets.scaleRev;
@@ -297,7 +299,8 @@ __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig& context,
                                              TokenDispatchScratch<ActivationType, TopkIndexType>& scratch,
                                              uint32_t localExpertId, int32_t expertGlobalRowBegin,
                                              uint32_t remoteRankIdx, int32_t rankSegmentRowBegin,
-                                             int32_t segmentMatchOrdinalBegin, int32_t segmentMatchOrdinalEnd)
+                                             int32_t segmentMatchOrdinalBegin, int32_t segmentMatchOrdinalEnd,
+                                             uint64_t paddedExpertRowBegin)
 {
     const MegaMoeDispatchBufferConfig& bufferConfig = context.bufferConfig;
     int32_t processedRouteCount = 0;
@@ -321,8 +324,13 @@ __aicore__ inline int32_t DispatchRankTokens(const TokenDispatchConfig& context,
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID4>();
         // route ordinal 同时决定专家输出行位置，保证分批搬运后仍保持专家内连续布局。
         int32_t dispatchDstRowBegin = rankSegmentRowBegin + expertGlobalRowBegin + routeOrdinal;
+        uint64_t physicalRowOffset = IsMteRingBufferEnabled(params.tilingData) ?
+            CalcMteRingPhysicalRow(paddedExpertRowBegin + rankSegmentRowBegin + routeOrdinal,
+                                  static_cast<uint64_t>(CalcMteRingRowCapacity(params.tilingData))) :
+            static_cast<uint64_t>(dispatchDstRowBegin);
         CopyTokensAndMetaForDispatch<TopkIndexType, ActivationType, QuantScaleType, TopkWeightsPrefetch>(
-            context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx, 0, batchDispatchRowCount);
+            context, params, winRankAddr, scratch, dispatchDstRowBegin, remoteRankIdx, 0, batchDispatchRowCount,
+            physicalRowOffset);
         processedRouteCount += batchDispatchRowCount;
         dispatchedRowCount += batchDispatchRowCount;
     }
@@ -393,7 +401,8 @@ __aicore__ inline void DispatchOwnedExpertRows(const TokenDispatchConfig& contex
                     static_cast<int32_t>(coreRange.expertGlobalRowBegin), sourceRankIdx,
                     static_cast<int32_t>(rankGlobalRowBegin - coreRange.expertGlobalRowBegin),
                     static_cast<int32_t>(overlapGlobalRowBegin - rankGlobalRowBegin),
-                    static_cast<int32_t>(overlapGlobalRowEnd - rankGlobalRowBegin));
+                    static_cast<int32_t>(overlapGlobalRowEnd - rankGlobalRowBegin),
+                    coreRange.paddedExpertRowBegin);
             dispatchedRowCount += rankDispatchedRowCount;
         }
         ++sourceRankIdx;

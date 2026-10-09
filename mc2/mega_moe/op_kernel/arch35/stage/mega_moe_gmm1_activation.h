@@ -758,11 +758,15 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
     int64_t k = Get<K_VALUE>(state.problemShape);
     int64_t expertOffset = state.expertIdx;
     int64_t globalTokenStartIndex = state.globalTokenStartIndex + rowOffsetInExpert;
+    uint64_t physicalTokenStartIndex = IsMteRingBufferEnabled(gmmConfig.tilingData) ?
+        CalcMteRingPhysicalRow(state.paddedTokenStartIndex + rowOffsetInExpert,
+                              static_cast<uint64_t>(CalcMteRingRowCapacity(gmmConfig.tilingData))) :
+        static_cast<uint64_t>(globalTokenStartIndex);
     uint32_t expertMGroupOffset = rowOffsetInExpert / L1_TILE_M_256;
     int64_t scaleK = Ops::Base::CeilDiv(k, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 
     if constexpr (UseA8W4Gmm1 || TopkWeightsPrefetch) {
-        gmmAddrInfo.gmm1OutGlobal = workspace.gmm1MmadResPtr + globalTokenStartIndex * n * sizeof(bfloat16_t);
+        gmmAddrInfo.gmm1OutGlobal = workspace.gmm1MmadResPtr + physicalTokenStartIndex * n * sizeof(bfloat16_t);
     }
     if constexpr (TopkWeightsPrefetch) {
         gmmAddrInfo.gmm1TileStatus = reinterpret_cast<__gm__ int32_t *>(workspace.gmm1TileStatusPtr) +
@@ -775,8 +779,8 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
                                        expertOffset * syncLayout.activationFlagSlotCountPerExpert +
                                        static_cast<uint64_t>(expertMGroupOffset) * INT_CACHELINE;
     gmmAddrInfo.aGlobal =
-        workspace.dispatchRevDataPtr + globalTokenStartIndex * k / ActivationElementsPerByte * sizeof(ActivationType);
-    gmmAddrInfo.aScaleGlobal = workspace.dispatchRevScalePtr + globalTokenStartIndex * scaleK * sizeof(QuantScaleType);
+        workspace.dispatchRevDataPtr + physicalTokenStartIndex * k / ActivationElementsPerByte * sizeof(ActivationType);
+    gmmAddrInfo.aScaleGlobal = workspace.dispatchRevScalePtr + physicalTokenStartIndex * scaleK * sizeof(QuantScaleType);
     gmmAddrInfo.bGlobal =
         GetExpertWeightAddr<WeightType>(weights.weight1, gmmConfig.isPerExpertWeightTensor, state.expertIdx,
                                         static_cast<uint64_t>(state.expertIdx) * n * k / weightElementsPerByte);
@@ -792,8 +796,8 @@ __aicore__ inline void UpdateMoeExpertGmm1GlobalBuffer(
             int64_t scaleN = Ops::Base::CeilDiv(n / ACTIVATION_N_HALF, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                              MXFP_MULTI_BASE_SIZE;
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
-                globalTokenStartIndex * n / ACTIVATION_N_HALF / outputElementsPerByte,
-                globalTokenStartIndex * scaleN,
+                static_cast<int64_t>(physicalTokenStartIndex) * n / ACTIVATION_N_HALF / outputElementsPerByte,
+                static_cast<int64_t>(physicalTokenStartIndex) * scaleN,
                 expertOffset * syncLayout.activationFlagSlotCountPerExpert / INT_CACHELINE + expertMGroupOffset,
                 0L,
                 0L,

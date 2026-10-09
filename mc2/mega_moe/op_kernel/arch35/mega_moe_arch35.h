@@ -23,6 +23,7 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
+#include "common/mega_moe_ring_sync.h"
 #include "common/mega_moe_exception_dump_policy.h"
 #include "blaze/epilogue/block_epilogue_activation_mx_quant.h"
 #include "stage/mega_moe_token_quant.h"
@@ -226,7 +227,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitSyncWorkspaceConfig
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitGmmConfigs()
 {
-    gmmExecutionConfig_ = {.blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
+    gmmExecutionConfig_ = {.tilingData = params_.tilingData,
+                           .blockJob = {.jobIndex = blockIdx_, .totalJobs = blockNum_},
                            .isPerExpertWeightTensor = params_.tilingData->isPerExpertWeightTensor};
     waveCombineJob_ = {.jobIndex = blockIdx_, .totalJobs = blockNum_};
 }

@@ -352,12 +352,14 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     EnterSteadyDispatch();
     ExpertTokenPosition gmm1Position{};
     while (gmm1Position.expertIdx < commonConfig_.moeExpertPerRank) {
+        WaitMteRingIteration(params_, gmm1Count);
         ExpertTokenRange waveRange = ProcessNextDispatchAndCurrentGmm1(
             gmm1Position, dispatchPosition, gmm1State, gmm1AddrInfo, gmm1RuntimeState, gmm1TilesPerMGroup);
         gmm1Position = waveRange.end;
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM1, ++gmm1Count);
         ProcessCurrentWaveGmm2(waveRange, gmm2State, gmm2AddrInfo, combineBufferConfig, combineRowSequence);
         UpdateGmmLoopCount(gmmLoopCount_, LoopCountIndex::GMM2, ++gmm2Count);
+        PublishMteRingIteration(params_, gmmExecutionConfig_.blockJob, gmm1Count);
     }
 
     if constexpr (!TopkWeightsPrefetch) {

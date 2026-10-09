@@ -271,6 +271,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
             processedMGroupCount += problemMGroupCount;
             gmm1Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
             gmm1Position.globalTokenIndex += waveRowCount;
+            gmm1Position.paddedTokenIndex += CalcMtePaddedRowCount(waveRowCount);
             if (gmm1Position.tokenIndexInExpert >= expertRowCount) {
                 ++gmm1Position.expertIdx;
                 gmm1Position.tokenIndexInExpert = 0U;
@@ -301,6 +302,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
         processedMGroupCount += problemMGroupCount;
         gmm1Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
         gmm1Position.globalTokenIndex += waveRowCount;
+        gmm1Position.paddedTokenIndex += CalcMtePaddedRowCount(waveRowCount);
         if (gmm1Position.tokenIndexInExpert >= expertRowCount) {
             ++gmm1Position.expertIdx;
             gmm1Position.tokenIndexInExpert = 0U;
@@ -358,6 +360,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Advance
     uint32_t waveRowCount = waveEndTokenIndexInExpert - gmm2Position.tokenIndexInExpert;
     gmm2Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
     gmm2Position.globalTokenIndex += waveRowCount;
+    gmm2Position.paddedTokenIndex += CalcMtePaddedRowCount(waveRowCount);
     if (gmm2Position.tokenIndexInExpert >= expertRowCount) {
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
             if constexpr (g_coreType == AIV) {
@@ -682,6 +685,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     gmm2State.allCoreCombineExpertIndex = FindAllCoreCombineExpert();
 
     while (waveBeginPosition.expertIdx < moeExpertPerRank_) {
+        WaitMteRingIteration(params_, gmm1Count);
         const uint32_t waveStartBlockIndex = startBlockIdx_;
         ExpertTokenPosition waveEndPosition =
             ProcessGmm1Wave(gmm1Position, gmm1ExpertState, gmm1AddrInfo, gmm1RuntimeState);
@@ -719,6 +723,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
             startBlockIdx_ = gmm1EndBlockIndex;
         }
 
+        PublishMteRingIteration(params_, gmmExecutionConfig_.blockJob, gmm1Count);
         waveBeginPosition = waveEndPosition;
     }
 

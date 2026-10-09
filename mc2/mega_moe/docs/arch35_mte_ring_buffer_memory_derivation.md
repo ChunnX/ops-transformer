@@ -3,7 +3,7 @@
 - 日期：2026-10-09
 - 分析基线：`7bad535f3`（叠加 PR #13256 后的代码）
 - 分支：`feat/mega-moe-ccl-workspace-pr13256`
-- 状态：静态设计与容量推导，尚未实现或进行 NPU 验证。
+- 状态：容量推导已整理；不带去重、非量化 Combine 的 MTE 循环 buffer 首版已实现，尚未进行 AscendC/NPU 验证。
 
 ## 1. 需求与适用范围
 
@@ -286,3 +286,48 @@ Tiling 根据实际配置生成布局、校验窗口容量；kernel/prepass 根�
 8. host/device 布局与 Torch 保守申请公式一致。
 
 这些公式说明容量可行性，不替代同步正确性和数值验证。后续需覆盖跨 wave 成员、专家尾 group、强接收截断、连续多次回绕及两种去重开关组合。
+
+## 11. 不带去重首版实现
+
+首版在最终 tiling 配置满足 `topoType=MTE`、`dedupMode=0`、`combineQuantMode=COMBINE_NO_QUANT` 且 `mGroupsPerWave>0` 时启用。去重、量化 Combine、URMA 继续使用原来的完整布局与地址。
+
+Dispatch、Activation、实际落 GM 的 GMM1 和 GMM2 结果各自分配 `3 × W × 256` 行，data 与对应 scale 使用同一物理行映射。三轮容量是保留现有提前 Dispatch、GMM2 滞后及核心间进度偏差的首版选择，不是所有实现的最小容量。
+
+专家状态同时保留紧凑的 global 行偏移和按 256 行补齐的 padded 行偏移：
+
+```text
+paddedExpertBegin(next) = paddedExpertBegin(current) + align256(expertValidRows)
+physicalRow = (paddedExpertBegin + rowOffsetInExpert) % (3 × W × 256)
+```
+
+wave 按 W 个完整 group 预算划分，因此一个 wave 的各专家段都落在同一个物理 wave 分区内，不会穿过整个环形区末尾。尾块即使只有一行也占完整 group。metadata、路由、prefetch 权重及现有 ready/tile status 保留 global 逻辑寻址。
+
+### 11.1 覆盖保护
+
+每个 AIC、AIV0、AIV1 各有一个 cache line 的单调进度，包含零任务核心，共 `3 × aicNum` 个槽，随原有 flag 区每次 launch 清零。
+
+- 完成外层第 w 轮后，等待本角色的相关 GM 读取/写入完成，发布进度 w+1。
+- 第 w 轮开始时，若 w>=2，等待所有角色进度至少为 w-1，即都已完成第 w-2 轮。
+- AIC 发布前使用 MTE2_S、FIX_S；AIV 发布前使用 MTE2_S、MTE3_S，均为配对 Set/Wait 的 event 6。
+- 保留原有 GMM1→Activation、GMM2→Combine tile 握手及最终排空；进度检查不等待当前轮完成。
+
+在滞后路径，第 w 轮写 Dispatch(w+1)、GMM1/Activation(w)，消费 GMM2/Combine(w-1)。三轮容量与上述进度约束保证回绕覆盖的旧输入或旧结果已被消费。非滞后路径满足同样上界。读取完成前不能发布进度，设备事件语义仍需 AscendC/NPU 验证。
+
+### 11.2 申请量与限制
+
+Host/device 使用共同的 ring gate 和布局 helper。Torch 申请侧在 prepass 护栏或 FP8 上界收益判据能证明去重关闭时，采用保守核数上界得到的 ring 申请；不能证明时，仍预留 full/ring 两种布局的较大上界。
+
+因此部分实际关闭去重的调用可能仍保留较大的外部申请，不能将内部 workspace 缩小等同于所有场景显存申请都缩小。小接收容量下，三 wave 物理容量也可能大于原 full 行容量。
+
+进度发布每轮增加相关流水完成等待，首版优先保证覆盖正确性；其对吞吐、延迟及原 GMM2 滞后收益的影响尚未测量。
+
+### 11.3 本地验证
+
+运行方法和测试边界见 [CPU 验证说明](../tests/ut/cpu_ring_buffer/README.md)。当前结果：
+
+- 6 个独立生命周期模型测试通过，包含随机路由、多核心偏差、尾块、滞后和排空；缩为两轮容量或去掉进度约束的负例能检测到未消费数据被覆盖。
+- 真实 WorkspaceLayout 的 34,560 组参数及真实地址 helper 的 2,872,320 行检查通过。
+- 新增 4 个 host layout UT 的原始测试体提取编译执行通过。
+- Torch 整数 workspace 上界函数与真实布局对比 2,624,400 组参数通过，包含小接收容量和最多 4 个共享专家。
+
+这些检查通过 freestanding MSVC 和最小头文件适配执行，不等于完整 CANN host UT 或 AscendC 内核编译。未运行 NPU，也未验证收益判据中 std::pow 的跨平台边界行为。

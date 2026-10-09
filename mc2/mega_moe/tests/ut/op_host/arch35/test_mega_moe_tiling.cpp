@@ -877,4 +877,162 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN_URMA_PerExpertTensorListCo
     RunPerExpertTensorListCase(3U, ge::GRAPH_FAILED);
 }
 
+static MegaMoeTilingData MakeMteRingLayoutCase()
+{
+    MegaMoeTilingData tilingData{};
+    tilingData.bs = 128;
+    tilingData.h = 4096;
+    tilingData.hiddenDim = 2048;
+    tilingData.epWorldSize = 4;
+    tilingData.numMaxTokensPerRank = 8192;
+    tilingData.maxOutputSize = 32768;
+    tilingData.topK = 8;
+    tilingData.aicNum = 28;
+    tilingData.moeExpertPerRank = 4;
+    tilingData.topoType = MegaMoeImpl::TOPO_TYPE_MTE;
+    tilingData.moeGmmMode = MegaMoeImpl::GMM_MODE_A8W4_NZ;
+    tilingData.mGroupsPerWave = 14;
+    return tilingData;
+}
+
+static void ExpectRoutedBufferRows(const MegaMoeTilingData &tilingData, int64_t rows)
+{
+    MegaMoeImpl::WorkspaceLayout layout(&tilingData);
+    const int64_t scaleGroup = 64;
+    const int64_t storageAlign = 512;
+    const int64_t dispatchElementsPerByte = MegaMoeImpl::IsA4W4GmmMode(tilingData.moeGmmMode) ? 2LL : 1LL;
+    const int64_t dispatchBytes = rows * tilingData.h / dispatchElementsPerByte;
+    const int64_t dispatchScaleBytes = rows * Ops::Base::CeilDiv(static_cast<int64_t>(tilingData.h), scaleGroup) * 2LL;
+    const int64_t activationBytes = rows * tilingData.hiddenDim / 2LL;
+    const int64_t activationScaleBytes =
+        rows * Ops::Base::CeilDiv(static_cast<int64_t>(tilingData.hiddenDim / 2U), scaleGroup) * 2LL;
+    EXPECT_EQ(layout.dispatchRevScaleOffset - layout.dispatchRevDataOffset,
+              Ops::Base::CeilAlign(dispatchBytes, storageAlign));
+    const int64_t afterDispatchScale = layout.dispatchRevWeightsOffset >= 0 ? layout.dispatchRevWeightsOffset :
+                                                                           layout.activationQuantDataOffset;
+    EXPECT_EQ(afterDispatchScale - layout.dispatchRevScaleOffset,
+              Ops::Base::CeilAlign(dispatchScaleBytes, storageAlign));
+    EXPECT_EQ(layout.activationQuantScaleOffset - layout.activationQuantDataOffset,
+              Ops::Base::CeilAlign(activationBytes, storageAlign));
+    EXPECT_EQ(layout.expertRecvTokenCountOffset - layout.activationQuantScaleOffset,
+              Ops::Base::CeilAlign(activationScaleBytes, storageAlign));
+    EXPECT_LE(layout.dispatchRevScaleOffset + Ops::Base::CeilAlign(dispatchScaleBytes, storageAlign),
+              layout.activationQuantDataOffset);
+    const int64_t firstGmmResult = layout.gmm1MmadResOffset >= 0 ? layout.gmm1MmadResOffset : layout.gmm2MmadResOffset;
+    EXPECT_LE(layout.activationQuantScaleOffset + Ops::Base::CeilAlign(activationScaleBytes, storageAlign),
+              firstGmmResult);
+    if (layout.gmm1MmadResOffset >= 0) {
+        const int64_t afterGmm1 = layout.gmm1MmadResOffset + static_cast<int64_t>(2) * rows * tilingData.hiddenDim;
+        EXPECT_EQ(layout.gmm2MmadResOffset, Ops::Base::CeilAlign(afterGmm1, storageAlign));
+    }
+    const int64_t afterGmm2 = layout.gmm1TileStatusOffset >= 0 ? layout.gmm1TileStatusOffset :
+                             layout.dedupRowDescOffset >= 0 ? layout.dedupRowDescOffset : layout.workspaceSize;
+    EXPECT_EQ(afterGmm2 - layout.gmm2MmadResOffset,
+              Ops::Base::CeilAlign(static_cast<int64_t>(2) * rows * tilingData.h, storageAlign));
+}
+
+TEST_F(MegaMoeArch35TilingTest, MteRingsUseWaveBudgetAndRetainGlobalMetadata)
+{
+    auto tilingData = MakeMteRingLayoutCase();
+    const int64_t ringRows = 3LL * 14LL * 256LL;
+    ASSERT_TRUE(MegaMoeImpl::IsMteRingBufferEnabled(&tilingData));
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingRowCapacity(&tilingData), ringRows);
+    ExpectRoutedBufferRows(tilingData, ringRows);
+    MegaMoeImpl::WorkspaceLayout first(&tilingData);
+    EXPECT_EQ(first.flagActivationToGmm2Offset - first.metaInfoOffset, 32768LL * 32LL);
+    ASSERT_GE(first.ringProgressOffset, first.flagActivationToGmm2Offset);
+    EXPECT_EQ(first.ringProgressOffset + 3LL * 28LL * 16LL * 4LL,
+              first.flagActivationToGmm2Offset + first.flagResetElementCount * 4LL);
+
+    tilingData.maxOutputSize *= 2U;
+    MegaMoeImpl::WorkspaceLayout second(&tilingData);
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingRowCapacity(&tilingData), ringRows);
+    ExpectRoutedBufferRows(tilingData, ringRows);
+    EXPECT_EQ(second.flagActivationToGmm2Offset - second.metaInfoOffset, 65536LL * 32LL);
+    EXPECT_GT(second.workspaceSize, first.workspaceSize);
+    EXPECT_LT(second.workspaceSize - first.workspaceSize, 32768LL * tilingData.h);
+
+    tilingData.mGroupsPerWave = 7;
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingRowCapacity(&tilingData), ringRows / 2LL);
+    ExpectRoutedBufferRows(tilingData, ringRows / 2LL);
+}
+
+TEST_F(MegaMoeArch35TilingTest, MteRingsOnlyAllocateActualGmm1GmResults)
+{
+    auto tilingData = MakeMteRingLayoutCase();
+    for (const uint8_t mode : {MegaMoeImpl::GMM_MODE_A8W8_ND, MegaMoeImpl::GMM_MODE_A8W8_NZ,
+                               MegaMoeImpl::GMM_MODE_A4W4_ND, MegaMoeImpl::GMM_MODE_A4W4_NZ}) {
+        tilingData.moeGmmMode = mode;
+        tilingData.topkWeightsPrefetch = 0;
+        MegaMoeImpl::WorkspaceLayout noPrefetch(&tilingData);
+        EXPECT_EQ(noPrefetch.gmm1MmadResOffset, MegaMoeImpl::INVALID_WORKSPACE_OFFSET);
+        ExpectRoutedBufferRows(tilingData, 3LL * 14LL * 256LL);
+        tilingData.topkWeightsPrefetch = 1;
+        tilingData.maxTilesPerExpert = 1024;
+        MegaMoeImpl::WorkspaceLayout prefetch(&tilingData);
+        EXPECT_GE(prefetch.gmm1MmadResOffset, 0);
+        EXPECT_EQ(prefetch.gmm1TileStatusElementCount, (4LL * 1024LL + 1LL) * 16LL);
+        ExpectRoutedBufferRows(tilingData, 3LL * 14LL * 256LL);
+    }
+}
+
+TEST_F(MegaMoeArch35TilingTest, MteRingsKeepDedupQuantizedAndUrmaLayouts)
+{
+    for (const int32_t dedupMode : {1, 2, 3}) {
+        auto tilingData = MakeMteRingLayoutCase();
+        tilingData.dedupMode = dedupMode;
+        EXPECT_FALSE(MegaMoeImpl::IsMteRingBufferEnabled(&tilingData));
+        EXPECT_EQ(MegaMoeImpl::CalcMteRingRowCapacity(&tilingData), 32768LL);
+        ExpectRoutedBufferRows(tilingData, 32768LL);
+        MegaMoeImpl::WorkspaceLayout layout(&tilingData);
+        EXPECT_EQ(layout.ringProgressOffset, MegaMoeImpl::INVALID_WORKSPACE_OFFSET);
+    }
+    for (const int64_t combineQuantMode : {3LL, 4LL}) {
+        auto tilingData = MakeMteRingLayoutCase();
+        tilingData.combineQuantMode = combineQuantMode;
+        EXPECT_FALSE(MegaMoeImpl::IsMteRingBufferEnabled(&tilingData));
+        ExpectRoutedBufferRows(tilingData, 32768LL);
+        MegaMoeImpl::WorkspaceLayout layout(&tilingData);
+        EXPECT_EQ(layout.ringProgressOffset, MegaMoeImpl::INVALID_WORKSPACE_OFFSET);
+    }
+    auto urmaData = MakeMteRingLayoutCase();
+    urmaData.topoType = MegaMoeImpl::TOPO_TYPE_URMA;
+    urmaData.rankNumPerServer = 2;
+    EXPECT_FALSE(MegaMoeImpl::IsMteRingBufferEnabled(&urmaData));
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingRowCapacity(&urmaData), 32768LL);
+    MegaMoeImpl::WorkspaceLayout urma(&urmaData);
+    EXPECT_EQ(urma.dispatchRevScaleOffset - urma.dispatchRevDataOffset, 32768LL * 4096LL);
+    EXPECT_EQ(urma.ringProgressOffset, MegaMoeImpl::INVALID_WORKSPACE_OFFSET);
+
+    auto unsetWave = MakeMteRingLayoutCase();
+    unsetWave.mGroupsPerWave = 0;
+    EXPECT_FALSE(MegaMoeImpl::IsMteRingBufferEnabled(&unsetWave));
+    ExpectRoutedBufferRows(unsetWave, 32768LL);
+}
+
+TEST_F(MegaMoeArch35TilingTest, MteRingMappingPadsExpertTailsAndWrapsFullGroups)
+{
+    EXPECT_FALSE(MegaMoeImpl::IsMteRingBufferEnabled(nullptr));
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingRowCapacity(nullptr), 0);
+    const uint64_t ringRows = 3ULL * 4ULL * 256ULL;
+    uint64_t paddedRow = 0;
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingPhysicalRow(paddedRow, ringRows), 0U);
+    paddedRow += MegaMoeImpl::CalcMtePaddedRowCount(100);
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingPhysicalRow(paddedRow, ringRows), 256U);
+    paddedRow += MegaMoeImpl::CalcMtePaddedRowCount(300);
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingPhysicalRow(paddedRow, ringRows), 768U);
+    paddedRow += MegaMoeImpl::CalcMtePaddedRowCount(50);
+    EXPECT_EQ(paddedRow, 1024U);
+    EXPECT_EQ(MegaMoeImpl::CalcMtePaddedRowCount(0), 0U);
+    EXPECT_EQ(MegaMoeImpl::CalcMtePaddedRowCount(1), 256U);
+    EXPECT_EQ(MegaMoeImpl::CalcMtePaddedRowCount(255), 256U);
+    EXPECT_EQ(MegaMoeImpl::CalcMtePaddedRowCount(256), 256U);
+    EXPECT_EQ(MegaMoeImpl::CalcMtePaddedRowCount(257), 512U);
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingPhysicalRow(ringRows - 256U, ringRows), ringRows - 256U);
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingPhysicalRow(ringRows, ringRows), 0U);
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingPhysicalRow(5U * ringRows + 17U, ringRows), 17U);
+    const uint64_t largeGroupRow = (static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1ULL) * 256ULL;
+    EXPECT_EQ(MegaMoeImpl::CalcMteRingPhysicalRow(largeGroupRow, ringRows), largeGroupRow % ringRows);
+}
+
 } // namespace MegaMoeUT

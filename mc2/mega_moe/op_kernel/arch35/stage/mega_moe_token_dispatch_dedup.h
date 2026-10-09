@@ -504,6 +504,7 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig& context, co
     if (lastExpertExclusive > common.moeExpertPerRank) {
         lastExpertExclusive = common.moeExpertPerRank;
     }
+    uint64_t paddedExpertRowBegin = range.begin.paddedTokenIndex - range.begin.tokenIndexInExpert;
     for (uint32_t expertIdx = range.begin.expertIdx; expertIdx < lastExpertExclusive; ++expertIdx) {
         uint32_t expertGlobalRowBegin =
             expertIdx == 0U ?
@@ -512,6 +513,7 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig& context, co
         uint32_t expertGlobalRowEnd =
             static_cast<uint32_t>(scratch.cumsumInfoTensor.GetValue((expertIdx + 1U) * common.worldSize - 1U));
         if (expertGlobalRowEnd <= coreGlobalRowBegin) {
+            paddedExpertRowBegin += CalcMtePaddedRowCount(expertGlobalRowEnd - expertGlobalRowBegin);
             continue;
         }
         if (expertGlobalRowBegin >= coreGlobalRowEnd) {
@@ -523,11 +525,12 @@ __aicore__ inline void DispatchTokenRange(const TokenDispatchConfig& context, co
         if (overlapGlobalRowBegin < overlapGlobalRowEnd) {
             // 将本核的全局连续区间投影为当前专家内的局部 row 区间，按去重开关走对应 dispatch 路径。
             ExpertDispatchCoreRange expertRange{expertGlobalRowBegin, overlapGlobalRowBegin - expertGlobalRowBegin,
-                                                overlapGlobalRowEnd - expertGlobalRowBegin};
+                                                overlapGlobalRowEnd - expertGlobalRowBegin, paddedExpertRowBegin};
             DispatchOwnedExpertRowsRouted<TopkIndexType, ActivationType, QuantScaleType, PipelineTileM,
                                           TopkWeightsPrefetch>(context, common, syncLayout, params, winRankAddr,
                                                                scratch, expertIdx, expertRange);
         }
+        paddedExpertRowBegin += CalcMtePaddedRowCount(expertGlobalRowEnd - expertGlobalRowBegin);
     }
 }
 /*

@@ -18,6 +18,7 @@
 
 // peermem 窗口的布局与尺寸（含 HOST_DEVICE / GM_ADDR 宏与基础 include）。
 #include "mega_moe_peermem.h"
+#include "mega_moe_ring_layout.h"
 
 namespace MegaMoeImpl {
 
@@ -58,6 +59,7 @@ struct WorkspaceLayout {
     int64_t flagDispatchToGmm1Offset{INVALID_WORKSPACE_OFFSET};
     int64_t flagSendCntCalToUpdParamsOffset{INVALID_WORKSPACE_OFFSET};
     int64_t flagGmmToEpilogueOffset{INVALID_WORKSPACE_OFFSET};
+    int64_t ringProgressOffset{INVALID_WORKSPACE_OFFSET}; // MTE ring role watermarks, one cache line per role/core.
     // 仅 MTE 启用共享专家时使用：AIV1 子组分别在 topk 有效下标发送完成、跨卡握手完成后同步。
     int64_t flagAiv1TopkValidIndexSyncOffset{INVALID_WORKSPACE_OFFSET};
     int64_t gmm2ReadyOffset{INVALID_WORKSPACE_OFFSET};
@@ -166,19 +168,20 @@ private:
 
     HOST_DEVICE void InitializeDispatchBuffers(const MegaMoeTilingData *tilingData)
     {
+        const int64_t dataRows = CalcMteRingRowCapacity(tilingData);
         dispatchRevDataOffset = workspaceSize;
         // dispatchRevData 按 GMM1 激活的实际物理字节数分配：FP8 每字节 1 个元素，FP4 每字节 2 个元素。
         const int64_t dispatchDataElementsPerByte = IsA4W4GmmMode(tilingData->moeGmmMode) ? 2LL : 1LL;
         const int64_t dispatchDataBytesPerToken = static_cast<int64_t>(tilingData->h) / dispatchDataElementsPerByte;
         workspaceSize += Ops::Base::CeilAlign(
-            static_cast<int64_t>(tilingData->maxOutputSize) * dispatchDataBytesPerToken, ALIGN_512);
+            dataRows * dispatchDataBytesPerToken, ALIGN_512);
         dispatchRevScaleOffset = workspaceSize;
 
         int64_t dispatchScaleElementsPerToken =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
             MXFP_MULTI_BASE_SIZE;
         workspaceSize +=
-            Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize * dispatchScaleElementsPerToken, ALIGN_512);
+            Ops::Base::CeilAlign(SIZE_INT_8 * dataRows * dispatchScaleElementsPerToken, ALIGN_512);
     }
 
     HOST_DEVICE void InitializeDispatchRevWeights(const MegaMoeTilingData *tilingData)
@@ -199,13 +202,14 @@ private:
 
     HOST_DEVICE void InitializeActivationBuffers(const MegaMoeTilingData *tilingData)
     {
+        const int64_t dataRows = CalcMteRingRowCapacity(tilingData);
         activationQuantDataOffset = workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(
-            SIZE_INT_8 * tilingData->maxOutputSize * tilingData->hiddenDim / ACTIVATION_N_HALF, ALIGN_512);
+            SIZE_INT_8 * dataRows * tilingData->hiddenDim / ACTIVATION_N_HALF, ALIGN_512);
 
         activationQuantScaleOffset = workspaceSize;
         workspaceSize +=
-            Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->maxOutputSize *
+            Ops::Base::CeilAlign(SIZE_INT_8 * dataRows *
                                      Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->hiddenDim / ACTIVATION_N_HALF),
                                                         static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                                      MXFP_MULTI_BASE_SIZE,
@@ -268,6 +272,11 @@ private:
             flagAiv1TopkValidIndexSyncOffset = workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE * SIZE_INT_32;
         }
+        if (IsMteRingBufferEnabled(tilingData)) {
+            ringProgressOffset = workspaceSize;
+            // AIC lanes first, followed by interleaved AIV0/AIV1 lanes for every AIC job.
+            workspaceSize += 3LL * tilingData->aicNum * INT_CACHELINE * SIZE_INT_32;
+        }
         flagResetElementCount = (workspaceSize - flagRegionBeginOffset) / SIZE_INT_32;
     }
 
@@ -309,6 +318,7 @@ private:
     HOST_DEVICE void InitializeGmmIntermediateBuffers(const MegaMoeTilingData *tilingData, bool reserveCumsum,
                                                       bool alignGmm2Output)
     {
+        const int64_t dataRows = CalcMteRingRowCapacity(tilingData);
         if (reserveCumsum) {
             // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
             cumsumInfoOffset = workspaceSize;
@@ -318,12 +328,11 @@ private:
                              tilingData->aicNum;
         }
         if (tilingData->moeGmmMode == GMM_MODE_A8W4_NZ || tilingData->topkWeightsPrefetch == 1) {
-            // gmm1MmadRes：GMM1 matmul 输出，布局为 maxOutputSize × hiddenDim 个 BF16。
+            // GMM1 result rows are ring-capacity rows on the supported MTE path, otherwise maxOutputSize.
             gmm1MmadResOffset = workspaceSize;
-            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
+            workspaceSize += SIZE_BF_16 * dataRows * tilingData->hiddenDim;
         }
-        // gmm2MmadRes：GMM2 输出，布局为 maxOutputSize × h 个 BF16。
-        int64_t outputBytes = SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+        int64_t outputBytes = SIZE_BF_16 * dataRows * tilingData->h;
         if (alignGmm2Output) {
             workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
             outputBytes = Ops::Base::CeilAlign(outputBytes, static_cast<int64_t>(ALIGN_512));
@@ -450,6 +459,7 @@ struct WorkspaceInfo {
     GM_ADDR flagDispatchToGmm1Ptr{nullptr};
     GM_ADDR flagSendCntCalToUpdParamsPtr{nullptr};
     GM_ADDR flagGmmToEpiloguePtr{nullptr};
+    GM_ADDR ringProgressPtr{nullptr};
     GM_ADDR flagAiv1TopkValidIndexSyncPtr{nullptr};
     GM_ADDR gmm2ReadyPtr{nullptr};
     GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
@@ -501,6 +511,7 @@ public:
         flagDispatchToGmm1Ptr = ResolveWorkspaceAddress(base, layout.flagDispatchToGmm1Offset);
         flagSendCntCalToUpdParamsPtr = ResolveWorkspaceAddress(base, layout.flagSendCntCalToUpdParamsOffset);
         flagGmmToEpiloguePtr = ResolveWorkspaceAddress(base, layout.flagGmmToEpilogueOffset);
+        ringProgressPtr = ResolveWorkspaceAddress(base, layout.ringProgressOffset);
         flagAiv1TopkValidIndexSyncPtr = ResolveWorkspaceAddress(base, layout.flagAiv1TopkValidIndexSyncOffset);
         gmm2ReadyPtr = ResolveWorkspaceAddress(base, layout.gmm2ReadyOffset);
         gmm2CombineSyncCounterPtr = ResolveWorkspaceAddress(base, layout.gmm2CombineSyncCounterOffset);

@@ -997,18 +997,22 @@ __aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(const GmmExecutionConfig&
     uint64_t gmm1OutputDim = static_cast<uint64_t>(Get<N_VALUE>(state.problemShape));
     uint64_t tokenHiddenDim = static_cast<uint64_t>(Get<K_VALUE>(state.problemShape));
     uint64_t globalTokenStartIndex = static_cast<uint64_t>(state.globalTokenStartIndex) + rowOffsetInExpert;
+    uint64_t physicalTokenStartIndex = IsMteRingBufferEnabled(gmmConfig.tilingData) ?
+        CalcMteRingPhysicalRow(state.paddedTokenStartIndex + rowOffsetInExpert,
+                              static_cast<uint64_t>(CalcMteRingRowCapacity(gmmConfig.tilingData))) :
+        globalTokenStartIndex;
     uint32_t expertMGroupOffset = rowOffsetInExpert / L1_TILE_M_256;
     uint64_t activationOutputWidth = gmm1OutputDim / ACTIVATION_N_HALF;
     uint64_t activationScaleWidth =
         Ops::Base::CeilDiv(activationOutputWidth, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
 
-    gmmAddrInfo.gmm2OutGlobal = workspace.gmm2MmadResPtr + globalTokenStartIndex * tokenHiddenDim * sizeof(bfloat16_t);
+    gmmAddrInfo.gmm2OutGlobal = workspace.gmm2MmadResPtr + physicalTokenStartIndex * tokenHiddenDim * sizeof(bfloat16_t);
     gmmAddrInfo.metaInfoGlobal = workspace.metaInfoPtr + globalTokenStartIndex * META_INFO_SIZE * sizeof(int32_t);
-    gmmAddrInfo.aGlobal = workspace.activationQuantDataPtr + globalTokenStartIndex * activationOutputWidth /
+    gmmAddrInfo.aGlobal = workspace.activationQuantDataPtr + physicalTokenStartIndex * activationOutputWidth /
                                                                  activationOutputElementsPerByte *
                                                                  sizeof(ActivationOutType);
     gmmAddrInfo.aScaleGlobal =
-        workspace.activationQuantScalePtr + globalTokenStartIndex * activationScaleWidth * sizeof(QuantScaleType);
+        workspace.activationQuantScalePtr + physicalTokenStartIndex * activationScaleWidth * sizeof(QuantScaleType);
     gmmAddrInfo.bGlobal = GetExpertWeightAddr<WeightType>(
         weights.weight2, gmmConfig.isPerExpertWeightTensor, state.expertIdx,
         static_cast<uint64_t>(state.expertIdx) * tokenHiddenDim * activationOutputWidth / weightElementsPerByte);

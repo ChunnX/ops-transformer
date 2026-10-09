@@ -268,6 +268,8 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "cclWorkspaceOffset is %lu", tilingData->cclWorkspaceOffset);
     OP_LOGD(nodeName, "topkWeightsPrefetch is %d", tilingData->topkWeightsPrefetch);
     OP_LOGD(nodeName, "mGroupsPerWave is %u", tilingData->mGroupsPerWave);
+    OP_LOGD(nodeName, "mteRingEnabled=%d, routedBufferRows=%ld", IsMteRingBufferEnabled(tilingData),
+            CalcMteRingRowCapacity(tilingData));
 
     PrintMegaMoeBufferConfigs(tilingData, nodeName);
 }
@@ -288,6 +290,7 @@ void PrintWorkspaceLayout(const struct WorkspaceLayout *layout, const char *node
     OP_LOGD(nodeName, "flagDispatchToGmm1Offset:      %ld\n", layout->flagDispatchToGmm1Offset);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsOffset: %ld\n", layout->flagSendCntCalToUpdParamsOffset);
     OP_LOGD(nodeName, "flagGmmToEpilogueOffset:       %ld\n", layout->flagGmmToEpilogueOffset);
+    OP_LOGD(nodeName, "ringProgressOffset:            %ld\n", layout->ringProgressOffset);
     OP_LOGD(nodeName, "gmm2ReadyOffset:               %ld\n", layout->gmm2ReadyOffset);
     OP_LOGD(nodeName, "gmm2CombineSyncCounterOffset:  %ld\n", layout->gmm2CombineSyncCounterOffset);
     OP_LOGD(nodeName, "gmm2MmadResOffset:             %ld\n", layout->gmm2MmadResOffset);
@@ -1452,6 +1455,9 @@ static uint64_t CalcHostFlagElementCount(const MegaMoeTilingData *tilingData)
     }
     if (tilingData->sharedExpertNum > 0 && tilingData->topoType == TOPO_TYPE_MTE) {
         flagElementCount += static_cast<uint64_t>(tilingData->aicNum) * INT_CACHELINE;
+    }
+    if (IsMteRingBufferEnabled(tilingData)) {
+        flagElementCount += 3ULL * tilingData->aicNum * INT_CACHELINE;
     }
     return flagElementCount;
 }
