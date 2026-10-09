@@ -316,7 +316,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     LocalTensor<float> result = scBuf;
     if (dLoop_ > 1U && !(DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U)) {
         result = bufScalar_.Get<float>()[(half + 1U) * MhcNormRegBase::VL_FP32];
-        MhcNormRegBase::VFAdd(result, result, scBuf, N + 1U);
+        // 使用AscendC向量接口，使initcheck能跟踪五个有效槽位的写入。
+        AscendC::Add(result, result, scBuf, N + 1U);
         PipeBarrier<PIPE_V>();
         if (tOff + tD < D_) {
             return;
@@ -651,7 +652,9 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, 2, 2U * dTile_ * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_, dTile_ * sizeof(T));
-        pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
+        const bool usePartialAccumulator = dLoop_ > 1U &&
+            !(DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U);
+        pipe_.InitBuffer(bufScalar_, usePartialAccumulator ? PARTIAL_ACCUM_BUF_SIZE : SCALAR_BUF_SIZE);
         const uint32_t gamma1CacheElems = (DUAL_SIBLING && USE_RMS_MID) || D_ <= GAMMA1_CACHE_MAX_D ? D_ : dTile_;
         pipe_.InitBuffer(bufScratchFp32_, gamma1CacheElems * sizeof(float));
 
