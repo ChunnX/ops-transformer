@@ -621,6 +621,20 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
     CalBasicBlock();
     OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                 return ge::GRAPH_FAILED);
+    // The MX scale tensor API uses a fixed 4096-element K window in L1. Keep both
+    // A and B L1 K windows within that limit for WeightNZ to avoid an invalid
+    // scaleB transfer when the last N block is loaded.
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE &&
+        inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        constexpr uint64_t MX_SCALE_K_L1_LIMIT = 4096UL;
+        const uint64_t maxStepK = std::max(MX_SCALE_K_L1_LIMIT / basicTiling_.baseK, 1UL);
+        basicTiling_.stepKa = std::min(basicTiling_.stepKa, maxStepK);
+        basicTiling_.stepKb = std::min(basicTiling_.stepKb, maxStepK);
+        basicTiling_.depthA1 = basicTiling_.stepKa * DB_SIZE;
+        basicTiling_.depthB1 = basicTiling_.stepKb * DB_SIZE;
+        basicTiling_.scaleFactorA = 1;
+        basicTiling_.scaleFactorB = 1;
+    }
     tilingData_.matmulTiling.M = inputParams_.mSize;
     tilingData_.matmulTiling.N = inputParams_.nSize;
     tilingData_.matmulTiling.Ka = inputParams_.kSize;
