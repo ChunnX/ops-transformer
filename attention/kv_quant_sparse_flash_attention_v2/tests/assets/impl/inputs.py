@@ -225,6 +225,13 @@ class KvQuantSparseFlashAttentionV2InputAdapter:
         )
 
 
+def expect_error(kwargs):
+    value = kwargs.get("expect_error", False)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
 def generate_qsfa_v2_inputs(
     query,
     key,
@@ -252,6 +259,8 @@ def generate_qsfa_v2_inputs(
     testcase_name=None,
     **kwargs,
 ):
+    if expect_error(kwargs):
+        return None
     return INPUT_ADAPTER.generate(
         query,
         key,

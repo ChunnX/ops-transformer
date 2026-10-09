@@ -16,6 +16,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
 PYTEST_MODULE_NAME = "li_v2_pytest_golden"
@@ -137,6 +138,55 @@ def cpu_lightning_indexer_v2(
     else:
         sparse_value = torch.zeros(0, dtype=data["topk_value"].dtype)
     return data["cpu_result"], sparse_value
+
+
+def _kernel_numpy(value):
+    if value is None:
+        return None
+    if not torch.is_tensor(value):
+        return np.asarray(value)
+    value = value.detach().cpu().contiguous()
+    if value.dtype == torch.bfloat16:
+        from ml_dtypes import bfloat16
+
+        return value.view(torch.uint16).numpy().view(bfloat16)
+    return value.numpy()
+
+
+def kernel_lightning_indexer_v2_golden(
+    q,
+    k,
+    w,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    metadata=None,
+    **kwargs,
+):
+    """Return numpy Golden outputs for the raw Kernel signature."""
+    del (
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        metadata,
+    )
+    outputs = cpu_lightning_indexer_v2(
+        q,
+        k,
+        w,
+        kwargs["topk"],
+        return_value=kwargs.get("return_value", 0),
+        testcase_name=kwargs.get("testcase_name"),
+    )
+    return [_kernel_numpy(value) for value in outputs]
 
 
 def cpu_aclnn_li_v2(

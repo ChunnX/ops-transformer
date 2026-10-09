@@ -923,8 +923,6 @@ def generate_qli_v2_inputs(
     if expect_error(kwargs):
         return None
 
-    if metadata is None:
-        raise ValueError("QLI_V2 direct API CSV must reserve the metadata tensor slot")
     params = dict(kwargs)
     params.update(
         {
@@ -955,7 +953,8 @@ def generate_qli_v2_inputs(
         layout_k,
         params,
     )
-    zero_metadata(metadata)
+    if metadata is not None:
+        zero_metadata(metadata)
     case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
     testcase_name = params.get("testcase_name")
     case_data.put(testcase_name, data)
@@ -1016,4 +1015,66 @@ def generate_aclnn_qli_v2_inputs(
         cmp_ratio=cmp_ratio,
         return_value=return_value,
         **kwargs,
+    )
+
+
+def kernel_quant_lightning_indexer_v2_input(
+    q,
+    k,
+    w,
+    q_descale,
+    k_descale,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    metadata=None,
+    **kwargs,
+):
+    """Customize raw Kernel numpy inputs while preserving supplied metadata."""
+    inputs = (
+        q,
+        k,
+        w,
+        q_descale,
+        k_descale,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        metadata,
+    )
+    attributes = dict(kwargs)
+    generate_qli_v2_inputs(
+        q,
+        k,
+        w,
+        q_descale,
+        k_descale,
+        attributes.pop("topk"),
+        attributes.pop("quant_mode"),
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        output_idx_offset=output_idx_offset,
+        metadata=None,
+        max_seqlen_q=attributes.pop("max_seqlen_q", -1),
+        layout_q=attributes.pop("layout_q", "BSND"),
+        layout_k=attributes.pop("layout_k", "BSND"),
+        mask_mode=attributes.pop("mask_mode", 0),
+        cmp_ratio=attributes.pop("cmp_ratio", 1),
+        return_value=attributes.pop("return_value", 0),
+        **attributes,
+    )
+    return tuple(
+        None if value is None else np.array(value, copy=True) for value in inputs
     )

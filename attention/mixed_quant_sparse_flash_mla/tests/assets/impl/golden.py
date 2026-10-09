@@ -16,6 +16,9 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import numpy as np
+import torch
+
 
 PYTEST_MODULE_NAME = "mqsmla_pytest_golden"
 PYTEST_MODULE_FILE = "mixed_quant_sparse_flash_mla_golden.py"
@@ -104,6 +107,68 @@ def cpu_mixed_quant_sparse_flash_mla(
     data = activate_case_data(testcase_name)
     softmax_lse = data.get("cpu_lse") if bool(return_softmax_lse) else None
     return data["cpu_output"], softmax_lse
+
+
+def _kernel_numpy(value):
+    if value is None:
+        return None
+    if not torch.is_tensor(value):
+        return np.asarray(value)
+    value = value.detach().cpu().contiguous()
+    if value.dtype == torch.bfloat16:
+        from ml_dtypes import bfloat16
+
+        return value.view(torch.uint16).numpy().view(bfloat16)
+    return value.numpy()
+
+
+def kernel_mixed_quant_sparse_flash_mla_golden(
+    q,
+    ori_kv=None,
+    cmp_kv=None,
+    ori_sparse_indices=None,
+    cmp_sparse_indices=None,
+    ori_block_table=None,
+    cmp_block_table=None,
+    cu_seqlens_q=None,
+    cu_seqlens_ori_kv=None,
+    cu_seqlens_cmp_kv=None,
+    seqused_q=None,
+    seqused_ori_kv=None,
+    seqused_cmp_kv=None,
+    cmp_residual_kv=None,
+    ori_topk_length=None,
+    cmp_topk_length=None,
+    sinks=None,
+    metadata=None,
+    **kwargs,
+):
+    """Return numpy Golden outputs for the raw Kernel signature."""
+    del (
+        ori_kv,
+        cmp_kv,
+        ori_sparse_indices,
+        cmp_sparse_indices,
+        ori_block_table,
+        cmp_block_table,
+        cu_seqlens_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length,
+        cmp_topk_length,
+        sinks,
+        metadata,
+    )
+    outputs = cpu_mixed_quant_sparse_flash_mla(
+        q,
+        return_softmax_lse=kwargs.get("return_softmax_lse", False),
+        testcase_name=kwargs.get("testcase_name"),
+    )
+    return [_kernel_numpy(value) for value in outputs]
 
 
 def cpu_aclnn_mixed_quant_sparse_flash_mla(

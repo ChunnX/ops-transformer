@@ -16,6 +16,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 
 
@@ -539,8 +540,6 @@ def generate_li_v2_inputs(
     if expect_error(kwargs):
         return None
 
-    if metadata is None:
-        raise ValueError("LI_V2 direct API CSV must reserve the metadata tensor slot")
     params = dict(kwargs)
     params.update(
         {
@@ -568,7 +567,8 @@ def generate_li_v2_inputs(
         layout_k,
         params,
     )
-    zero_metadata(metadata)
+    if metadata is not None:
+        zero_metadata(metadata)
     case_data = INPUT_ADAPTER.load_golden_store().CASE_DATA
     testcase_name = params.get("testcase_name")
     case_data.put(testcase_name, data)
@@ -631,3 +631,80 @@ def generate_aclnn_li_v2_inputs(
         return_value=return_value,
         **kwargs,
     )
+
+
+def _kernel_tensor(value):
+    if value is None or torch.is_tensor(value):
+        return value
+    array = np.ascontiguousarray(value)
+    if str(array.dtype) == "bfloat16":
+        return torch.from_numpy(array.view(np.uint16)).view(torch.bfloat16)
+    return torch.from_numpy(array)
+
+
+def _kernel_array(value, template):
+    if value is None:
+        return None
+    value = value.detach().cpu().contiguous()
+    if str(template.dtype) == "bfloat16":
+        return value.view(torch.uint16).numpy().view(template.dtype)
+    return value.numpy().astype(template.dtype, copy=False)
+
+
+def kernel_lightning_indexer_v2_input(
+    q,
+    k,
+    w,
+    cu_seqlens_q=None,
+    cu_seqlens_k=None,
+    seqused_q=None,
+    seqused_k=None,
+    cmp_residual_k=None,
+    block_table=None,
+    output_idx_offset=None,
+    metadata=None,
+    **kwargs,
+):
+    """Adapt Kernel numpy inputs to the existing pytest-backed generator."""
+    inputs = (
+        q,
+        k,
+        w,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        metadata,
+    )
+    tensors = tuple(_kernel_tensor(value) for value in inputs)
+    attributes = dict(kwargs)
+    generate_li_v2_inputs(
+        tensors[0],
+        tensors[1],
+        tensors[2],
+        attributes.pop("topk"),
+        cu_seqlens_q=tensors[3],
+        cu_seqlens_k=tensors[4],
+        seqused_q=tensors[5],
+        seqused_k=tensors[6],
+        cmp_residual_k=tensors[7],
+        block_table=tensors[8],
+        output_idx_offset=tensors[9],
+        metadata=None,
+        max_seqlen_q=attributes.pop("max_seqlen_q", -1),
+        layout_q=attributes.pop("layout_q", "BSND"),
+        layout_k=attributes.pop("layout_k", "BSND"),
+        mask_mode=attributes.pop("mask_mode", 0),
+        cmp_ratio=attributes.pop("cmp_ratio", 1),
+        return_value=attributes.pop("return_value", 0),
+        **attributes,
+    )
+    result = [
+        _kernel_array(value, template) for value, template in zip(tensors, inputs)
+    ]
+    if metadata is not None:
+        result[-1] = np.array(metadata, copy=True)
+    return tuple(result)

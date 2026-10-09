@@ -80,6 +80,13 @@ class LightningIndexerV2Spec:
             golden_module.discard_compare_data(data)
 
 
+class KernelLightningIndexerV2Spec:
+    golden = golden_module.kernel_lightning_indexer_v2_golden
+    customize_inputs = inputs_module.kernel_lightning_indexer_v2_input
+    tolerance = LightningIndexerV2Spec.tolerance
+    compare = staticmethod(LightningIndexerV2Spec.compare)
+
+
 class AclnnLightningIndexerV2Spec(LightningIndexerV2Spec):
     golden = golden_module.cpu_aclnn_li_v2
     customize_inputs = inputs_module.generate_aclnn_li_v2_inputs
@@ -91,6 +98,7 @@ class LightningIndexerMetadataSpec:
 
 
 __spec__ = {
+    "lightning_indexer_v2": "KernelLightningIndexerV2Spec",
     "torch.ops.cann_ops_transformer.lightning_indexer": "LightningIndexerV2Spec",
     "torch.ops.cann_ops_transformer.lightning_indexer_metadata": (
         "LightningIndexerMetadataSpec"

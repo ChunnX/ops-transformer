@@ -60,6 +60,13 @@ class MixedQuantSparseFlashMlaSpec:
     compare = staticmethod(compare_module.compare)
 
 
+class KernelMixedQuantSparseFlashMlaSpec:
+    golden = golden_module.kernel_mixed_quant_sparse_flash_mla_golden
+    customize_inputs = inputs_module.kernel_mixed_quant_sparse_flash_mla_input
+    tolerance = MixedQuantSparseFlashMlaSpec.tolerance
+    compare = staticmethod(compare_module.compare)
+
+
 class AclnnMixedQuantSparseFlashMlaSpec(MixedQuantSparseFlashMlaSpec):
     golden = golden_module.cpu_aclnn_mixed_quant_sparse_flash_mla
     customize_inputs = inputs_module.generate_aclnn_mixed_quant_sparse_flash_mla_inputs
@@ -73,6 +80,7 @@ class MixedQuantSparseFlashMlaMetadataSpec:
 
 
 __spec__ = {
+    "mixed_quant_sparse_flash_mla": "KernelMixedQuantSparseFlashMlaSpec",
     "torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla": "MixedQuantSparseFlashMlaSpec",
     "torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata": (
         "MixedQuantSparseFlashMlaMetadataSpec"

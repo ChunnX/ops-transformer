@@ -60,6 +60,13 @@ class SparseFlashMlaSpec:
     compare = staticmethod(compare_module.compare)
 
 
+class KernelSparseFlashMlaSpec:
+    golden = golden_module.kernel_sparse_flash_mla_golden
+    customize_inputs = inputs_module.kernel_sparse_flash_mla_input
+    tolerance = SparseFlashMlaSpec.tolerance
+    compare = staticmethod(compare_module.compare)
+
+
 class AclnnSparseFlashMlaSpec(SparseFlashMlaSpec):
     golden = golden_module.cpu_aclnn_sparse_flash_mla
     customize_inputs = inputs_module.generate_aclnn_sparse_flash_mla_inputs
@@ -71,6 +78,7 @@ class SparseFlashMlaMetadataSpec:
 
 
 __spec__ = {
+    "sparse_flash_mla": "KernelSparseFlashMlaSpec",
     "torch.ops.cann_ops_transformer.sparse_flash_mla": "SparseFlashMlaSpec",
     "torch.ops.cann_ops_transformer.sparse_flash_mla_metadata": (
         "SparseFlashMlaMetadataSpec"
