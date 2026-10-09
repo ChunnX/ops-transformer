@@ -91,6 +91,15 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     OP_CHECK_IF(ConvertRequiredParams(context, compressorContext) != ge::GRAPH_SUCCESS, , return ge::GRAPH_FAILED);
     ConvertOptionalParams(context, compressorContext);
 
+    // Grouped-decoder shared x-cache scheduling is an Ascend950 (arch35-only)
+    // capability. Reject it explicitly instead of ignoring the extra inputs.
+    constexpr uint32_t X_CACHE_INPUT_INDEX_ARCH22 = 9;
+    OP_CHECK_IF(context.GetOptionalInputDesc(X_CACHE_INPUT_INDEX_ARCH22) != nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    context.GetNodeName(), "x_cache",
+                    "grouped compressor x_cache is not supported on this SoC"),
+                return ge::GRAPH_FAILED);
+
     auto attrs = context.GetAttrs();
     OP_CHECK_IF(attrs == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "attrs", "got from ge is nullptr"),

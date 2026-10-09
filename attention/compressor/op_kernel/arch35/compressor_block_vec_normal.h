@@ -196,7 +196,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::OverLapScoreKv(
     uint32_t dBaseSize, uint32_t needDealTcSize)
 {
     CompressorVec1SliceIterator overLapSliceIterator(this->tools_);
-    overLapSliceIterator.SetMaxBatchSize(this->constInfo_.batchSize);
+    overLapSliceIterator.SetMaxBatchSize(this->constInfo_.projectionBatchSize);
     Vec1SliceInfo &overLapSliceInfo = overLapSliceIterator.GetSlice();
 
     GlobalTensor<T> scoreDBMm1ResGm = this->scoreMm1ResGm_[info.c1v1DbIdx * this->constInfo_.dbSize];
@@ -323,7 +323,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::UpdateIteratorState(co
                                                                               Vec1SplitInfo &splitInfo)
 {
     CompressorVec1SliceIterator sliceIterator(this->tools_);
-    sliceIterator.SetMaxBatchSize(this->constInfo_.batchSize);
+    sliceIterator.SetMaxBatchSize(this->constInfo_.projectionBatchSize);
     sliceIterator.Reset(info.bStart, info.sStart, 0U, 0U);
     Vec1SliceInfo &sliceInfo = sliceIterator.GetSlice();
 
@@ -387,7 +387,7 @@ __aicore__ inline void CompressorBlockVectorNormal<COMP>::ComputeVec1(const Vec1
     LoopInfo loopInfo = this->GetLoopInfo(splitInfo);
 
     CompressorVec1SliceIterator sliceIterator(this->tools_);
-    sliceIterator.SetMaxBatchSize(this->constInfo_.batchSize);
+    sliceIterator.SetMaxBatchSize(this->constInfo_.projectionBatchSize);
     // 切块循环
     uint64_t baseOffset = loopInfo.coreColIdx * splitInfo.dBaseSize;
     for (uint32_t dLoopIdx = 0; dLoopIdx < splitInfo.dLoopCount; dLoopIdx++) {

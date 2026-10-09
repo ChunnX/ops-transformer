@@ -18,6 +18,7 @@ import logging
 import datetime
 import os
 import sys
+from pathlib import Path
 import argparse
 
 np.random.seed(21)  # 固定随机种子
@@ -1543,6 +1544,16 @@ def run_compressor_eager(
 
 
 if __name__ == "__main__":
+    # 显式 grouped 入口：`--grouped_cases <json>` 把用例集交给同目录的
+    # pro0921_grouped_cases.py，普通 CLI 语义完全不变（不使用异常回退）。
+    if "--grouped_cases" in sys.argv:
+        _here = str(Path(__file__).resolve().parent)
+        if _here not in sys.path:
+            sys.path.insert(0, _here)
+        from pro0921_grouped_cases import main as _grouped_main
+
+        _rest = sys.argv[sys.argv.index("--grouped_cases") + 1:]
+        raise SystemExit(_grouped_main(["--cases", _rest[0]] + list(_rest[1:])))
     parser = argparse.ArgumentParser()
     parser.add_argument("--B", required=True, type=int, help="batch size")
     parser.add_argument(

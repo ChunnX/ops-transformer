@@ -37,7 +37,7 @@ using namespace Compressor;
     do { \
         templateClass<COMPType<__VA_ARGS__>, isFullLoad> op(&pipe, tilingData); \
         op.Init(x, wKv, wGate, stateCache, ape, stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut, \
-                softmaxScoreOut, kvOut, workspace); \
+                softmaxScoreOut, kvOut, workspace, xCache, xCacheSlotMapping); \
         op.Process(); \
     } while (0)
 #endif
@@ -46,6 +46,7 @@ template <uint8_t XLayout, uint8_t XDType, uint8_t Coff, uint8_t CacheMode, uint
 __global__ __aicore__ void compressor(__gm__ uint8_t* x, __gm__ uint8_t* wKv, __gm__ uint8_t* wGate,
                                       __gm__ uint8_t* stateCache, __gm__ uint8_t* ape, __gm__ uint8_t* stateBlockTable,
                                       __gm__ uint8_t* cuSeqlens, __gm__ uint8_t* seqUsed, __gm__ uint8_t* startPos,
+                                      __gm__ uint8_t* xCache, __gm__ uint8_t* xCacheSlotMapping,
                                       __gm__ uint8_t* cmpKvOut, __gm__ uint8_t* stateCacheOut,
                                       __gm__ uint8_t* softmaxScoreOut, __gm__ uint8_t* kvOut, __gm__ uint8_t* workspace,
                                       __gm__ uint8_t* tiling)

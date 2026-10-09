@@ -1,11 +1,15 @@
-# Compressor算子测试框架 
+# Compressor算子测试框架
+
 ## 功能说明
+
 基于pytest测试框架，实现Compressor算子的功能验证：
+
 - **CPU侧**：复现算子功能用以生成golden数据
 - **NPU侧**：通过TorchNPU进行算子直调获取实际数据
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 
 ## 当前实现范围
+
 ### 参数限制
 
 -   支持D为128/512。
@@ -20,7 +24,7 @@
 ### 环境配置
 
 #### 前置要求
-1、 确认TorchNPU为最新版本  
+1、 确认torch_npu为最新版本
 2、 参考[Attention融合算子Experimental使用说明](../../../Attention融合算子Experimental使用说明.md)激活CANN包和自定义算子包
 #### custom包调用
 支持custom包调用
@@ -35,6 +39,7 @@
 - test_compressor_single.py                 # 测试单用例运行主程序
 - compressor_operator_single.py             # CPU侧算子逻辑实现获取golden与npu算子直调
 - test_compressor_paramset.py               # 单用例入参配置
+- test_compressor_grouped_decode_x_cache.py # grouped decode x_cache单算子板上用例
 
 批量用例测试:
 - test_compressor_batch.py                  # 用例批量测试主程序并生成excel文件保存结果
@@ -53,6 +58,21 @@
 ``` bash
 bash test_run.sh single
 ```
+
+#### grouped decode x_cache单独调测
+
+非压缩轮次只执行x_cache update-only：
+
+``` bash
+bash run_grouped_decode_update_only.sh
+```
+
+压缩轮次执行x_cache read，并与legacy full-x路径对比输出和state_cache：
+
+``` bash
+bash run_grouped_decode_compress.sh
+```
+
 #### 用例的批量生成与测试
 1、excel路径下存放用例excel表格
 

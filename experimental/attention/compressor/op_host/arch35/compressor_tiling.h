@@ -54,6 +54,8 @@ constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 8;
 constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 9;
 constexpr uint32_t SEQ_USED_INPUT_INDEX = 10;
 constexpr uint32_t START_POS_INPUT_INDEX = 11;
+constexpr uint32_t X_CACHE_INPUT_INDEX = 12;
+constexpr uint32_t X_CACHE_SLOT_MAPPING_INPUT_INDEX = 13;
 
 // ATTR
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 0;
@@ -63,6 +65,7 @@ constexpr uint32_t NORM_EPS_ATTR_INDEX = 3;
 constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 4;
 constexpr uint32_t CACHE_MODE_ATTR_INDEX = 5;
 constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 6;
+constexpr uint32_t X_CACHE_UPDATE_ATTR_INDEX = 7;
 
 // OUTPUT
 constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
@@ -96,6 +99,8 @@ static const std::string STATE_BLOCK_TABLE_NAME = "state_block_table";
 static const std::string CU_SEQLENS_NAME = "cu_seqlens";
 static const std::string SEQUSED_NAME = "seq_used";
 static const std::string START_POS_NAME = "start_pos";
+static const std::string X_CACHE_NAME = "x_cache";
+static const std::string X_CACHE_SLOT_MAPPING_NAME = "x_cache_slot_mapping";
 static const std::string ROPE_HEAD_DIM_NAME = "rope_head_dim";
 static const std::string CMP_RATIO_NAME = "cmp_ratio";
 static const std::string COFF_NAME = "coff";
@@ -119,6 +124,8 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {CU_SEQLENS_NAME, {ge::DT_INT32}},
     {SEQUSED_NAME, {ge::DT_INT32}},
     {START_POS_NAME, {ge::DT_INT32}},
+    {X_CACHE_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {X_CACHE_SLOT_MAPPING_NAME, {ge::DT_INT32}},
     {CMP_KV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}}};
 
 const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
@@ -134,6 +141,8 @@ const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
     {CU_SEQLENS_NAME, {COMPRESSOR_DIM_NUM_1}},
     {SEQUSED_NAME, {COMPRESSOR_DIM_NUM_1}},
     {START_POS_NAME, {COMPRESSOR_DIM_NUM_1}},
+    {X_CACHE_NAME, {COMPRESSOR_DIM_NUM_3}},
+    {X_CACHE_SLOT_MAPPING_NAME, {COMPRESSOR_DIM_NUM_1, COMPRESSOR_DIM_NUM_2}},
     {CMP_KV_NAME, {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}}};
 
 static const std::map<std::string, uint32_t> LAYOUT_DIM_MAP = {
@@ -252,6 +261,9 @@ struct CompressorContext {
     OptionalParaInfo cuSeqlens;
     OptionalParaInfo seqUsed;
     OptionalParaInfo startPos;
+    // Optional grouped-decode ring-cache inputs.  They are null on legacy/no-xcache paths.
+    OptionalParaInfo xCache;
+    OptionalParaInfo xCacheSlotMapping;
     RequiredParaInfo cmpKv;
 
     const int *ropeHeadDim;
@@ -261,6 +273,8 @@ struct CompressorContext {
     const int *rotaryMode;
     const int *cacheMode;
     const int *stateCacheStrideDim0;
+    // False means this call may read x_cache but must not write current x into it.
+    const bool *xCacheUpdate;
     TemplateId templateId;
 
     ge::DataType dtype = ge::DT_BF16;
@@ -325,6 +339,8 @@ private:
     ge::graphStatus CheckSingleParaCuSeqlens() const;
     ge::graphStatus CheckSingleParaSeqused() const;
     ge::graphStatus CheckSingleParaStartPos() const;
+    ge::graphStatus CheckSingleParaXCache() const;
+    ge::graphStatus CheckSingleParaXCacheSlotMapping() const;
     ge::graphStatus CheckSingleParaCmpKv() const;
     ge::graphStatus CheckSingleParaRopeHeadDim() const;
     ge::graphStatus CheckSingleParaCmpRatio() const;
@@ -368,6 +384,7 @@ private:
     CompressorPageAttentionParams *pageAttentionParams_ = nullptr;
     CompressorInnerSplitParams *innerSplitParams_ = nullptr;
     CompressorWorkspaceParams *workspaceParams_ = nullptr;
+    CompressorGroupedDecodeParams *groupedDecodeParams_ = nullptr;
 };
 
 } // namespace optiling

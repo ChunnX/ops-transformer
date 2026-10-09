@@ -24,8 +24,56 @@ namespace Compressor {
 
 struct ToolsParams {
     uint32_t seqSize = 0U;
+    // Nonzero only for grouped-decode x_cache reads. It is the logical number
+    // of rows consumed from one completed compression window of x_cache. The
+    // host tiling derives it from cmpRatio; it is never a caller-provided knob.
+    uint32_t xCacheReadSize = 0U;
     uint32_t cmpRatio = 0U;
 };
+
+struct BatchMetadata {
+    uint32_t rawStartPos = 0U;
+    uint32_t rawSeqUsed = 0U;
+    uint32_t logicalSeqUsed = 0U;
+    uint32_t windowStart = 0U;
+    uint32_t currentStart = 0U;
+    uint32_t seqLength = 0U;
+    bool active = false;
+};
+
+// A decode step crosses a compression boundary when the tokens it owns finish
+// the group that its start position belongs to. ``startPos`` is absolute, so
+// the offset inside the current group is startPos mod cmpRatio.
+__aicore__ inline bool CrossesCompressionBoundary(uint32_t startPos, uint32_t seqUsed, uint32_t cmpRatio)
+{
+    if (cmpRatio == 0U) {
+        return false;
+    }
+    const bool isPowerOfTwoRatio = (cmpRatio & (cmpRatio - 1U)) == 0U;
+    const uint32_t groupOffset =
+        isPowerOfTwoRatio ? (startPos & (cmpRatio - 1U)) : (startPos % cmpRatio);
+    return seqUsed >= cmpRatio - groupOffset;
+}
+
+// Resolve the logical completed window a grouped-decode step may project from
+// the raw start position and step length. ``active`` stays false when the step
+// does not finish a compression group; the caller then only refreshes the raw
+// cache and projects nothing.
+__aicore__ inline void DeriveGroupedWindow(BatchMetadata &metadata, uint32_t xCacheReadSize, uint32_t cmpRatio)
+{
+    metadata.active = CrossesCompressionBoundary(metadata.rawStartPos, metadata.rawSeqUsed, cmpRatio);
+    if (!metadata.active) {
+        metadata.logicalSeqUsed = 0U;
+        metadata.windowStart = metadata.rawStartPos;
+        metadata.currentStart = 0U;
+        return;
+    }
+    metadata.logicalSeqUsed = xCacheReadSize;
+    const uint32_t completeGroupEnd = ((metadata.rawStartPos + metadata.rawSeqUsed) / cmpRatio) * cmpRatio;
+    metadata.windowStart = completeGroupEnd - xCacheReadSize;
+    metadata.currentStart =
+        metadata.rawStartPos > metadata.windowStart ? metadata.rawStartPos - metadata.windowStart : 0U;
+}
 
 template <typename COMP>
 class CompressorTools {
@@ -35,8 +83,11 @@ public:
     __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed, __gm__ uint8_t *cuSeqlens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
+    __aicore__ inline uint32_t GetRawSeqUsed(uint32_t bIdx);
+    __aicore__ inline uint32_t GetRawStartPos(uint32_t bIdx);
     __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
     __aicore__ inline uint32_t GetSeqLength(uint32_t bIdx);
+    __aicore__ inline BatchMetadata GetBatchMetadata(uint32_t bIdx);
     __aicore__ inline uint32_t GetTIdxByBatch(uint32_t bIdx);
 
 public:
@@ -44,6 +95,8 @@ public:
     bool isExistSeqUsed_ = false;
 
 private:
+    __aicore__ inline bool IsGroupedDecode() const;
+
     bool isExistStartPos_ = false;
     GlobalTensor<int32_t> cuSeqlensGm_;
     GlobalTensor<int32_t> sequsedGm_;
@@ -70,7 +123,7 @@ __aicore__ inline void CompressorTools<COMP>::Init(__gm__ uint8_t *startPos, __g
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
+__aicore__ inline uint32_t CompressorTools<COMP>::GetRawSeqUsed(uint32_t bIdx)
 {
     if (isExistSeqUsed_) {
         return (uint32_t)sequsedGm_.GetValue(bIdx);
@@ -84,7 +137,7 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
 }
 
 template <typename COMP>
-__aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
+__aicore__ inline uint32_t CompressorTools<COMP>::GetRawStartPos(uint32_t bIdx)
 {
     if (isExistStartPos_) {
         return (uint32_t)startPosGm_.GetValue(bIdx);
@@ -94,11 +147,68 @@ __aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
 }
 
 template <typename COMP>
+__aicore__ inline bool CompressorTools<COMP>::IsGroupedDecode() const
+{
+    return toolParams_.xCacheReadSize > 0U && toolParams_.cmpRatio > 0U && isExistStartPos_ && isExistSeqUsed_;
+}
+
+template <typename COMP>
+__aicore__ inline BatchMetadata CompressorTools<COMP>::GetBatchMetadata(uint32_t bIdx)
+{
+    BatchMetadata metadata;
+    metadata.rawStartPos = GetRawStartPos(bIdx);
+    metadata.rawSeqUsed = GetRawSeqUsed(bIdx);
+    metadata.seqLength = GetSeqLength(bIdx);
+    if (!IsGroupedDecode()) {
+        metadata.logicalSeqUsed = metadata.rawSeqUsed;
+        metadata.windowStart = metadata.rawStartPos;
+        metadata.active = metadata.logicalSeqUsed > 0U;
+        return metadata;
+    }
+    // The completed window is the last ``xCacheReadSize`` rows ending on the
+    // group boundary this step finished. Logical start/used describe that
+    // window; the raw start position stays the true decode token position.
+    DeriveGroupedWindow(metadata, toolParams_.xCacheReadSize, toolParams_.cmpRatio);
+    return metadata;
+}
+
+template <typename COMP>
+__aicore__ inline uint32_t CompressorTools<COMP>::GetSeqUsed(uint32_t bIdx)
+{
+    if (IsGroupedDecode()) {
+        return CrossesCompressionBoundary(GetRawStartPos(bIdx), GetRawSeqUsed(bIdx), toolParams_.cmpRatio) ?
+                   toolParams_.xCacheReadSize :
+                   0U;
+    }
+    return GetRawSeqUsed(bIdx);
+}
+
+template <typename COMP>
+__aicore__ inline uint32_t CompressorTools<COMP>::GetStartPos(uint32_t bIdx)
+{
+    if (IsGroupedDecode()) {
+        const uint32_t rawStartPos = GetRawStartPos(bIdx);
+        const uint32_t rawSeqUsed = GetRawSeqUsed(bIdx);
+        if (!CrossesCompressionBoundary(rawStartPos, rawSeqUsed, toolParams_.cmpRatio)) {
+            return rawStartPos;
+        }
+        const uint32_t completeGroupEnd = ((rawStartPos + rawSeqUsed) / toolParams_.cmpRatio) * toolParams_.cmpRatio;
+        return completeGroupEnd - toolParams_.xCacheReadSize;
+    }
+    return GetRawStartPos(bIdx);
+}
+
+template <typename COMP>
 __aicore__ inline uint32_t CompressorTools<COMP>::GetSeqLength(uint32_t bIdx)
 {
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
         return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
     } else {
+        if (toolParams_.xCacheReadSize > 0) {
+            // Grouped decode logically runs over the composed x_cache window,
+            // not over the one-token x tensor the caller passed.
+            return GetSeqUsed(bIdx);
+        }
         return toolParams_.seqSize;
     }
 }

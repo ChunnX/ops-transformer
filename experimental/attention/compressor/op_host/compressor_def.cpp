@@ -82,14 +82,21 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("cmp_kv")
-            .ParamType(REQUIRED)
+        // Optional grouped-decode ring cache.  When present, x_cache_slot_mapping
+        // names this decode step's token slots; x_cache_update controls whether this
+        // Compressor call updates the ring cache before compression.
+        this->Input("x_cache")
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("state_cache")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND})
+            .IgnoreContiguous();
+        this->Input("x_cache_slot_mapping")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Output("cmp_kv").ParamType(REQUIRED).DataType({ge::DT_BF16, ge::DT_FLOAT16}).FormatList({ge::FORMAT_ND});
+        this->Output("state_cache").ParamType(REQUIRED).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
         this->Attr("rope_head_dim").AttrType(REQUIRED).Int(ROPE_HEAD_DIM_VALUE);
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(CMP_RATIO_VALUE);
         this->Attr("coff").AttrType(OPTIONAL).Int(COFF_VALUE);
@@ -97,6 +104,10 @@ public:
         this->Attr("rotary_mode").AttrType(OPTIONAL).Int(ROTARY_MODE_VALUE);
         this->Attr("cache_mode").AttrType(OPTIONAL).Int(CACHE_MODE_VALUE);
         this->Attr("state_cache_stride_dim0").AttrType(OPTIONAL).Int(STATE_CACHE_STRIDE_DIM0);
+        // KV and LI compressors in the same layer consume the same x and x_cache.
+        // KV/HCA calls set this true to write the current valid tokens into x_cache;
+        // LI calls set it false to reuse the same cache window without updating it again.
+        this->Attr("x_cache_update").AttrType(OPTIONAL).Bool(true);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -104,7 +115,7 @@ public:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");   // set value of aclnn support
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn"); // set value of aclnn support
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);

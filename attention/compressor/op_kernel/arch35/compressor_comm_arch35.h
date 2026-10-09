@@ -217,6 +217,12 @@ struct ConstInfo {
     uint32_t nSize = 0;
 
     uint64_t dbSize = 0;
+
+    // Grouped-decode shared x-cache plan (all zero for the ordinary schedule).
+    uint32_t xCacheReadSize = 0;        // rows read back from one completed window (= cmpRatio)
+    uint32_t xCacheSize = 0;            // ring length of one physical request bank
+    uint32_t xCacheUpdateBatchSize = 0; // requests that refresh the ring this call
+    uint32_t projectionBatchSize = 0;   // trailing-inactive-trimmed compression range
 };
 
 struct RunInfo {

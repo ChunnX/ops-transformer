@@ -34,7 +34,8 @@ public:
                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *xDescale,
                                 __gm__ uint8_t *wKvDescale, __gm__ uint8_t *wGateDescale,
                                 __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-                                __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut);
+                                __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut,
+                                __gm__ uint8_t *xCache = nullptr, __gm__ uint8_t *xCacheSlotMapping = nullptr);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGlobalBuffers(const GlobalTensor<MM1_OUT_T> &kvMm1ResGm,
                                              const GlobalTensor<MM1_OUT_T> &scoreMm1ResGm);
@@ -64,6 +65,9 @@ private:
 
     // GM
     GlobalTensor<X_T> xGm_;
+    GlobalTensor<X_T> xCacheGm_;
+    GlobalTensor<int32_t> xCacheSlotMappingGm_;
+    bool isExistXCache_ = false;
     GlobalTensor<X_T> wkvGm_;
     GlobalTensor<X_T> wgateGm_;
     GlobalTensor<MM1_OUT_T> kvMm1ResGm;
@@ -128,9 +132,15 @@ template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::Init(
     __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
     __gm__ uint8_t *xDescale, __gm__ uint8_t *wKvDescale, __gm__ uint8_t *wGateDescale, __gm__ uint8_t *stateBlockTable,
-    __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+    __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut,
+    __gm__ uint8_t *xCache, __gm__ uint8_t *xCacheSlotMapping)
 {
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
+    isExistXCache_ = (xCache != nullptr);
+    if (isExistXCache_) {
+        xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
+        xCacheSlotMappingGm_.SetGlobalBuffer((__gm__ int32_t *)xCacheSlotMapping);
+    }
     wkvGm_.SetGlobalBuffer((__gm__ X_T *)wKv);
     wgateGm_.SetGlobalBuffer((__gm__ X_T *)wGate);
     startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
@@ -215,6 +225,49 @@ __aicore__ inline void QuantCompressorBlockCube<COMP, IS_FULL_LOAD>::CopyXGmToL1
 {
     uint32_t copySeqCnt;
     uint64_t sIdx;
+    if (!IS_FULL_LOAD && isExistXCache_) {
+        // Grouped decode reads every active request's completed window straight
+        // out of its own physical ring bank, so only the rows that actually
+        // form a window are projected. The logical M index walks the composed
+        // window in request order, so the L1 tile is filled segment by segment.
+        const uint32_t xL1Offset = 0 * NZ_C0_SIZE;
+        uint32_t remainRows = info.dealSeqCnt;
+        uint32_t localRow = 0;
+        uint32_t curB = info.bStart;
+        uint32_t curS = info.sStart;
+        while (remainRows > 0U && curB < constInfo_.projectionBatchSize) {
+            BatchMetadata metadata = tools_.GetBatchMetadata(curB);
+            const uint32_t curSeqLen = metadata.seqLength;
+            if (curSeqLen == 0U || metadata.logicalSeqUsed == 0U || curS >= curSeqLen) {
+                ++curB;
+                curS = 0U;
+                continue;
+            }
+            const uint32_t segmentRows = min(remainRows, curSeqLen - curS);
+            const uint32_t segmentL1Offset = xL1Offset + localRow * NZ_C0_SIZE;
+            const uint32_t tokenIdx = tools_.GetTIdxByBatch(curB);
+            const int32_t currentSlot = xCacheSlotMappingGm_.GetValue(tokenIdx);
+            if (currentSlot < 0) {
+                ++curB;
+                curS = 0U;
+                continue;
+            }
+            const uint64_t bankBase = static_cast<uint64_t>(currentSlot) / constInfo_.xCacheSize *
+                                      constInfo_.xCacheSize;
+            const uint64_t cacheStart = static_cast<uint64_t>(metadata.windowStart + curS) % constInfo_.xCacheSize;
+            const uint64_t cacheGmOffset = (bankBase + cacheStart) * constInfo_.hSize + hIdx;
+            CopySingleMatrixNDToNZ(xL1Tensor[segmentL1Offset], xCacheGm_[cacheGmOffset], segmentRows, kBase,
+                                   constInfo_.hSize, Align(info.dealSeqCnt, NZ_FRACTAL_DIM));
+            localRow += segmentRows;
+            remainRows -= segmentRows;
+            curS += segmentRows;
+            if (curS >= curSeqLen) {
+                ++curB;
+                curS = 0U;
+            }
+        }
+        return;
+    }
     if constexpr (IS_FULL_LOAD) {
         copySeqCnt = constInfo_.mEnd - constInfo_.mStart;
         sIdx = constInfo_.mStart;

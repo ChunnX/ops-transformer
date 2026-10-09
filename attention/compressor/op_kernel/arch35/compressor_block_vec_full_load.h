@@ -217,7 +217,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLapScoreKv(
     uint32_t dDealSize, uint32_t dBaseSize, uint32_t dealSeqStartIdx, uint32_t needDealTcSize)
 {
     CompressorVec1SliceIterator overLapSliceIterator(this->tools_);
-    overLapSliceIterator.SetMaxBatchSize(this->constInfo_.batchSize);
+    overLapSliceIterator.SetMaxBatchSize(this->constInfo_.projectionBatchSize);
     Vec1SliceInfo &overLapSliceInfo = overLapSliceIterator.GetSlice();
 
     GlobalTensor<T> scoreDBMm1ResGm = this->scoreMm1ResGm_;
@@ -282,7 +282,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1Sp
 {
     uint32_t aiCoreNum = this->constInfo_.usedCoreNum * 2;
     splitInfo.dBaseSize =
-        this->constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, this->constInfo_.batchSize)));
+        this->constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, this->constInfo_.projectionBatchSize)));
     // 32B(8个FP32)对齐的UB列窗口上限（同 NORMAL 模板）：dBaseSize 超过它时
     // this->CalcTilingStrategy 的 dSplitSize = dBaseSize/dLoopCount 整数除法会切出非32B
     // 对齐的列窗口（DataCopy blockLen/srcGap 整数除法错位 → 数据错乱）。
@@ -295,7 +295,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1Sp
     splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<X_T>());
     splitInfo.vec1GroupSize = this->constInfo_.headDim / splitInfo.dBaseSize;
     splitInfo.vec1GroupNum =
-        min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), this->constInfo_.batchSize);
+        min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), this->constInfo_.projectionBatchSize);
 }
 template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcTaskDistribution(Vec1SplitInfo &splitInfo)
@@ -303,7 +303,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcTaskDistribution
     uint32_t blockIdx = GetBlockIdx();
     uint32_t groupSize = splitInfo.vec1GroupSize;
     uint32_t groupNum = splitInfo.vec1GroupNum;
-    uint32_t totalDealBatchNum = this->constInfo_.batchSize;
+    uint32_t totalDealBatchNum = this->constInfo_.projectionBatchSize;
 
     if (blockIdx < groupSize * (totalDealBatchNum % groupNum)) {
         splitInfo.dealBatchNum = totalDealBatchNum / groupNum + 1;
@@ -326,7 +326,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::UpdateIteratorState(
     splitInfo.curSStart = 0;
     totalCompressedCnt_ = 0;
     uint32_t endB = splitInfo.preDealBatchNum + splitInfo.dealBatchNum;
-    for (uint32_t curB = 0; curB < this->constInfo_.batchSize; curB++) {
+    for (uint32_t curB = 0; curB < this->constInfo_.projectionBatchSize; curB++) {
         uint32_t startPos = this->GetStartPos(curB);
         uint32_t seqLength = this->GetSeqLength(curB);
         if (curB < splitInfo.curBStart) {
@@ -372,7 +372,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
     LoopInfo loopInfo = this->GetLoopInfo(splitInfo);
 
     CompressorVec1SliceIterator sliceIterator(this->tools_);
-    sliceIterator.SetMaxBatchSize(this->constInfo_.batchSize);
+    sliceIterator.SetMaxBatchSize(this->constInfo_.projectionBatchSize);
     // 切块循环
     uint64_t baseOffset = loopInfo.coreColIdx * splitInfo.dBaseSize;
 

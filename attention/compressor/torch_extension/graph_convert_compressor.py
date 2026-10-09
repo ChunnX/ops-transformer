@@ -44,8 +44,8 @@ except ImportError:
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
-        [False, False, False, False, False, True, True, True, True],
-        [False, False, False, False, False, False, False, False, False],
+        [False, False, False, False, False, True, True, True, True, True, True],
+        [False, False, False, False, False, False, False, False, False, False, False],
     )
     def Compressor(
         x: Tensor,
@@ -57,10 +57,13 @@ if _TORCHAIR_AVAILABLE:
         cu_seqlens: Optional[Tensor],
         seqused: Optional[Tensor],
         start_pos: Optional[Tensor],
+        x_cache: Optional[Tensor],
+        x_cache_slot_mapping: Optional[Tensor],
         cmp_ratio: int,
         *,
         coff: int = 1,
         cache_mode: int = 1,
+        x_cache_update: bool = True,
         grad_enabled: bool = False,
         state_cache_stride_dim0: int = 0,
     ):
@@ -68,7 +71,7 @@ if _TORCHAIR_AVAILABLE:
         return result
 
     @register_fx_node_ge_converter(
-        torch.ops.cann_ops_transformer._compressor_forward.default
+        torch.ops.cann_ops_transformer._compressor_inference.default
     )
     def convert_compressor(
         *args,
