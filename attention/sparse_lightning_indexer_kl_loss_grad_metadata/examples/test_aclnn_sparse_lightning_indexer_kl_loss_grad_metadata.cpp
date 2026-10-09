@@ -84,15 +84,15 @@ struct ArgScenario {
 };
 
 struct ArgContext {
-    Tensor cuSeqLensQOptional {};
-    Tensor cuSeqLensKOptional {};
-    Tensor seqUsedQOptional {};
-    Tensor seqUsedKOptional {};
+    Tensor cuSeqlensQOptional {};
+    Tensor cuSeqlensKOptional {};
+    Tensor sequsedQOptional {};
+    Tensor sequsedKOptional {};
     Tensor cmpResidualKOptional {};
     Tensor metadata {};
     int64_t batchSize { 0 };
-    int64_t maxSeqLenQ { 0 };
-    int64_t maxSeqLenK { 0 };
+    int64_t maxSeqlenQ { 0 };
+    int64_t maxSeqlenK { 0 };
     int64_t numHeadsQ { 8 };
     int64_t numHeadsK { 1 };
     int64_t headDim { 128 };
@@ -173,10 +173,10 @@ void DestroyTensor(Tensor &tensor)
 void DestroyArgs(ArgContext &context)
 {
     DestroyTensor(context.metadata);
-    DestroyTensor(context.cuSeqLensQOptional);
-    DestroyTensor(context.cuSeqLensKOptional);
-    DestroyTensor(context.seqUsedQOptional);
-    DestroyTensor(context.seqUsedKOptional);
+    DestroyTensor(context.cuSeqlensQOptional);
+    DestroyTensor(context.cuSeqlensKOptional);
+    DestroyTensor(context.sequsedQOptional);
+    DestroyTensor(context.sequsedKOptional);
     DestroyTensor(context.cmpResidualKOptional);
 
     if (context.layoutQOptional != nullptr) {
@@ -195,8 +195,8 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     aclnnStatus ret;
 
     int64_t batchSize = 1;
-    context.maxSeqLenQ = 16;
-    context.maxSeqLenK = 4;
+    context.maxSeqlenQ = 16;
+    context.maxSeqlenK = 4;
     context.layoutQOptional = (char *)malloc(sizeof(char) * 16);
     context.layoutKOptional = (char *)malloc(sizeof(char) * 16);
     strcpy(context.layoutQOptional, scenario.hasCuSeq ? "TND" : "BSND");
@@ -206,12 +206,12 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
 
     if (scenario.hasCuSeq) {
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqLensQOptional);
-        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqLensQOptional failed. Error: %d", ret);
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqLensKOptional);
-        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqLensKOptional failed. Error: %d", ret);
-        SetInt32TensorData(context.cuSeqLensQOptional, { 0, static_cast<int32_t>(context.maxSeqLenQ) });
-        SetInt32TensorData(context.cuSeqLensKOptional, { 0, static_cast<int32_t>(context.maxSeqLenK) });
+        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqlensQOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqlensQOptional failed. Error: %d", ret);
+        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqlensKOptional);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqlensKOptional failed. Error: %d", ret);
+        SetInt32TensorData(context.cuSeqlensQOptional, { 0, static_cast<int32_t>(context.maxSeqlenQ) });
+        SetInt32TensorData(context.cuSeqlensKOptional, { 0, static_cast<int32_t>(context.maxSeqlenK) });
         context.batchSize = 0;
     } else {
         context.batchSize = batchSize;
@@ -261,9 +261,9 @@ int main() {
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
     ret = aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
-        context.cuSeqLensQOptional.data, context.cuSeqLensKOptional.data, context.seqUsedQOptional.data,
-        context.seqUsedKOptional.data, context.cmpResidualKOptional.data, context.batchSize, context.maxSeqLenQ,
-        context.maxSeqLenK, context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.layoutQOptional,
+        context.cuSeqlensQOptional.data, context.cuSeqlensKOptional.data, context.sequsedQOptional.data,
+        context.sequsedKOptional.data, context.cmpResidualKOptional.data, context.batchSize, context.maxSeqlenQ,
+        context.maxSeqlenK, context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.layoutQOptional,
         context.layoutKOptional, context.maskMode, context.cmpRatio, context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d", ret);
