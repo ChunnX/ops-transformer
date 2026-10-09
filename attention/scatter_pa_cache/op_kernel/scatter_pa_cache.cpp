@@ -20,6 +20,7 @@
 #include "../scatter_pa_kv_cache/arch35/scatter_pa_kv_cache_rope_not_fully_load.h"
 #include "../scatter_pa_kv_cache/arch35/scatter_pa_kv_cache_alibi_fully_load.h"
 #include "../scatter_pa_kv_cache/arch35/scatter_pa_kv_cache_alibi_not_fully_load.h"
+#include "../scatter_pa_kv_cache/arch35/scatter_pa_kv_cache_arch35_common.h"
 #else
 #include "../../scatter_pa_kv_cache/op_kernel/arch35/scatter_pa_kv_cache_normal_fully_load.h"
 #include "../../scatter_pa_kv_cache/op_kernel/arch35/scatter_pa_kv_cache_normal_not_fully_load.h"
@@ -27,6 +28,7 @@
 #include "../../scatter_pa_kv_cache/op_kernel/arch35/scatter_pa_kv_cache_rope_not_fully_load.h"
 #include "../../scatter_pa_kv_cache/op_kernel/arch35/scatter_pa_kv_cache_alibi_fully_load.h"
 #include "../../scatter_pa_kv_cache/op_kernel/arch35/scatter_pa_kv_cache_alibi_not_fully_load.h"
+#include "../../scatter_pa_kv_cache/op_kernel/arch35/scatter_pa_kv_cache_arch35_common.h"
 #endif
 
 #define NORMAL_INT32_FULLY_LOAD 141
