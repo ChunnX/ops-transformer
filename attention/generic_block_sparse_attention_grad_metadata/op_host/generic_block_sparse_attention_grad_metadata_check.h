@@ -107,7 +107,6 @@ aclnnStatus CheckSingleParam(int64_t maxQSeqlen, int64_t maxKvSeqlen, int64_t nu
                 layoutSparsePattern, residualBlockMode);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    // TopK consistency is a forward-selection hint, not equality of inverse counts.
     (void)isConsistentTopk;
     if (layoutQ == nullptr || layoutKv == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(GSAG_ACLNN_OP_NAME, "layout_q/layout_kv",

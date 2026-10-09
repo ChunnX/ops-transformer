@@ -86,7 +86,6 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::ParamsCheck()
         KERNEL_LOG_ERROR("sparse_block_count must be a valid 3D tensor");
         return false;
     }
-    // Intercept empty / non-positive shapes that otherwise crash AICPU (e.g. maxS1=0).
     if (maxQSeqlen_ <= 0 || maxKvSeqlen_ <= 0) {
         KERNEL_LOG_ERROR("max_q_seqlen=%d and max_kv_seqlen=%d must be > 0", maxQSeqlen_, maxKvSeqlen_);
         return false;
@@ -150,7 +149,6 @@ bool GenericBlockSparseAttentionGradMetadataCpuKernelArch35::ParamsInit()
         return false;
     }
 
-    // TND: reject empty per-batch Q/KV lengths (sq=0 / cu delta<=0) before scheduling.
     if (layoutQ_ == "TND") {
         const int64_t* cuQ = static_cast<const int64_t*>(cuSeqLengthsQ_->GetData());
         const int64_t* cuKv = static_cast<const int64_t*>(cuSeqLengthsKv_->GetData());
