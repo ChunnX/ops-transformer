@@ -2277,6 +2277,11 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
         IsWeightQuant(gmmParams.xDtype, weightDtype)) {
         // 伪量化场景DAV_3510除了单单单/单多单的GroupList，其他校验在AclnnGroupedMatmulWeightQuantDAV3510Checker均已完成，下方校验跳过
         if (gmmParams.groupType == gmm::SPLIT_M) {
+            // POOL mode carries group_list as an Int[] (groupListOptional); the groupTensorOptional is only
+            // derived later in GetGMMResultByL0Api, so the per-group tensor-list check below is skipped.
+            if (gmmParams.isPoolMode) {
+                return ACLNN_SUCCESS;
+            }
             size_t batchSizeWeight = (*gmmParams.weight)[0]->GetViewShape().GetDim(0);
             if (IsMultiTensorWeight(gmmParams)) {
                 batchSizeWeight = gmmParams.weight->Size();

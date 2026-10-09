@@ -388,6 +388,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckTensorShape(const 
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckWeightInnerAxisEven(size_t idx) const
 {
+    if (gmmParams_.isPoolMode) {
+        // POOL mode: weight is the flat pool rectangle, not a per-expert INT4 tensor, so the even-axis
+        // requirement on the packed weight tail does not apply to rowBytes.
+        return ACLNN_SUCCESS;
+    }
     if (weightDtype_ == ge::DT_INT4) {
         auto wShape = (*gmmParams_.weight)[idx]->GetViewShape();
         bool isTrans = IsTransposeLastTwoDims((*gmmParams_.weight)[idx]);
@@ -515,6 +520,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumByGroupType(
                                                                                 size_t xDimNum,
                                                                                 size_t weightDimNum) const
 {
+    if (gmmParams_.isPoolMode) {
+        // POOL mode: weight is the flat pool [slotCount, rowBytes] (2D) and carries no per-expert K/N axes,
+        // so the per-expert weight dim-num requirements below do not apply. N/K come from pool_meta/x.
+        return ACLNN_SUCCESS;
+    }
     if (gmmParams_.groupType == NO_SPLIT) {
         if (IsA16W4Pergroup(wIdx)) {
             if (unlikely(xDimNum != MIN_FM_DIM)) {
@@ -657,6 +667,12 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValue(size_t xI
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimMatching(size_t xIdx, size_t yIdx, size_t wIdx) const
 {
+    if (gmmParams_.isPoolMode) {
+        // POOL mode: weight is the flat pool [slotCount, rowBytes] and carries no K/N axes, so the
+        // x-vs-weight K and y-vs-weight N comparisons below are meaningless. N comes from pool_meta,
+        // K from x, and the real per-expert geometry is only known to tiling. Skip them entirely.
+        return ACLNN_SUCCESS;
+    }
     size_t xKDim = 0;
     if (unlikely(GetDimFromEnd((*gmmParams_.x)[xIdx], 1, xKDim, "x[" + std::to_string(xIdx) + "]") != ACLNN_SUCCESS)) {
         return ACLNN_ERR_PARAM_INVALID;
@@ -844,6 +860,12 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantDtype(siz
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantShape(size_t idx) const
 {
+    if (gmmParams_.isPoolMode) {
+        // POOL mode: antiquantScale is the shared pool rectangle [slotCount, rowBytes], whose axes describe
+        // the pool layout rather than (g, n, k/groupSize). The per-expert scale geometry is only known to
+        // tiling, so the per-channel/per-group shape checks below are skipped.
+        return ACLNN_SUCCESS;
+    }
     if (gmmParams_.antiquantScaleOptional != nullptr) {
         CHECK_RET(CheckTensorShape(gmmParams_.antiquantScaleOptional, idx, "antiquantScale") == ACLNN_SUCCESS,
                   ACLNN_ERR_PARAM_INVALID);
@@ -883,6 +905,12 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimValueAllOne(con
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckAntiQuantTranspose(size_t idx) const
 {
+    if (gmmParams_.isPoolMode) {
+        // POOL mode: antiquantScale is the shared pool rectangle [slotCount, rowBytes], whose axes describe
+        // the pool layout rather than (g, n) or (g, k/gs, n). The per-channel/per-group transpose and
+        // all-one-dim checks below are meaningless for the pool rectangle.
+        return ACLNN_SUCCESS;
+    }
     if (IsA16W4()) {
         auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
         auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
@@ -1096,6 +1124,12 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckS8S4GroupSize(size
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t idx) const
 {
+    if (gmmParams_.isPoolMode) {
+        // POOL mode: weight/antiquantScale are the flat pool and carry no (g, k/groupSize, n) axes, so the
+        // per-expert groupSize derived from their shapes below is meaningless. quantGroupSize is carried by
+        // the dedicated quantGroupSize attr instead. Skip the shape-derived check.
+        return ACLNN_SUCCESS;
+    }
     if (IsS8S4PseudoQuant()) {
         return CheckS8S4GroupSize(idx);
     }
@@ -1244,7 +1278,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupListAndSplitI
         if (gmmParams_.apiVersion == gmm::GMMApiVersion::V1 || gmmParams_.apiVersion == gmm::GMMApiVersion::V2) {
             CHECK_COND(gmmParams_.groupListOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
                        "GroupListOptional should not be nullptr when split axis is M."); // V1 没有groupType参数
-        } else {
+        } else if (!gmmParams_.isPoolMode) {
+            // POOL mode takes group_list as an Int[] (groupListOptional); the groupTensorOptional is only
+            // derived from it later in GetGMMResultByL0Api, so requiring it here would always fail.
             CHECK_COND(gmmParams_.groupTensorOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
                        "GroupListOptional should not be nullptr when groupType is 0.");
         }

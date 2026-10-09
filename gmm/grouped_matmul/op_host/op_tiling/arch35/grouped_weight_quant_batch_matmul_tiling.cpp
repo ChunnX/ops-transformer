@@ -274,10 +274,15 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDimSingleXSingleWeightSingl
     OP_CHECK_IF(!CheckTensorDimEqualTarget(context, X_IDX, idx, 2, "x"),
                 OP_LOGE(context->GetNodeName(), "Invalid x dimension. "), return false);
 
-    uint32_t targetWeightDim = weightNzFlag_ ? 5 : 3; // NZ (g, n1, k1, k0, n0) 5维 ND (g, k, n) 3维
+    uint32_t targetWeightDim = isPoolMode_ ? 2 : (weightNzFlag_ ? 5 : 3); // pool: flat 2D [P,rowBytes]; NZ 5D; ND 3D
     OP_CHECK_IF(!CheckTensorDimEqualTarget(context, WEIGHT_IDX, idx, targetWeightDim, "weight"),
                 OP_LOGE(context->GetNodeName(), "Invalid weight dimension. "), return false);
 
+    if (isPoolMode_) {
+        // POOL mode: antiquantScale is the shared pool rectangle, not a per-expert (g,k/gs,n) tensor, so the
+        // per-channel/per-group dim checks below do not apply.
+        return true;
+    }
     if (!IsA16W4ND() && !IsMxA8W4()) {
         return true;
     }
@@ -379,6 +384,12 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorShape(const gert::TilingCon
                                                            size_t idx, const std::string &tensorType) const
 {
     if (!IsA16W4ND() && !IsMxA8W4()) {
+        return true;
+    }
+    if (isPoolMode_) {
+        // POOL mode: antiquantScale is the shared pool rectangle [P, rowBytes]; N comes from pool_meta, not
+        // from the weight shape, so the per-expert N/groupNum comparisons below (and the negative-index
+        // wShape.GetDim(wDimNum-3) read on a 2D pool) are skipped. The pool branch re-validates shapes.
         return true;
     }
     // 校验bias、antiquantScale和antiquantOffset的shape
@@ -783,6 +794,13 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeTensorLayout(const gert::Tiling
                        context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr &&
                        context->GetDynamicInputTensor(WEIGHT_IDX, 0) != nullptr &&
                        context->GetDynamicInputTensor(WEIGHT_IDX, 0)->GetStorageShape().GetDimNum() == singleWeightDim);
+    // POOL mode: weight is the flat pool rectangle [slotCount, rowBytes] (2D), a single shared tensor, so
+    // force the single-weight dispatch that reaches the pool branch in SetShapeList*SingleXSingleWeight*.
+    if (isPoolMode_) {
+        isSingleWeight_ = true;
+        isSingleMultiSingle_ = false;
+        return true;
+    }
     isSingleMultiSingle_ = IsMxA8W4() && isSingleX_ && !isSingleWeight_ && isSingleY_;
     return true;
 }
@@ -911,7 +929,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CalcResplitTiling(const gert::TilingCo
     OP_CHECK_IF(!GetC0Size(context, xDType_, c0Size), OP_LOGE(context->GetNodeName(), "Get C0 size failed"),
                 return false);
     OP_CHECK_IF(
-        (weightNzFlag_ && !transB_ && nSize_ % c0Size > 0),
+        (weightNzFlag_ && !transB_ && nSize_ % c0Size > 0) && !isPoolMode_,
         OP_LOGE(context->GetNodeName(),
                 "Invalid C0 size[%lu], expect greater than 0 and divisible by N[%lu] when weight format is FRACTAL_NZ",
                 c0Size, nSize_),
@@ -1165,7 +1183,9 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportedRemainingCases() const
                (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT4_E1M2 ||
                 weightDtype_ == ge::DT_FLOAT) &&
                antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
-        OP_CHECK_IF(!(weightNzFlag_ && transB_),
+        // POOL mode: the pool rectangle is flat and not transposable, so the transposed-NZ requirement
+        // below does not apply (the pool NZ layout is set up by the caller, not by transposeWeight).
+        OP_CHECK_IF(!(weightNzFlag_ && transB_) && !isPoolMode_,
                     OP_LOGE_FOR_INVALID_FORMAT(OP_NAME, "weight",
                                                std::string("format=") + (weightNzFlag_ ? "NZ" : "ND") +
                                                    ", transpose=" + (transB_ ? "true" : "false"),
@@ -1202,6 +1222,12 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckAntiQuantDtype() const
 
 bool GroupedWeightQuantBatchMatmulTiling::CheckPerTokenScale(const gert::TilingContext *context) const
 {
+    if (isPoolMode_) {
+        // POOL mode: mSize_/kSize_ are set later in SetShapeListSplitMSingleXSingleWeightSingleY (the pool
+        // branch), so comparing perTokenScale against them here would always fail. The pool path handles
+        // perTokenScale through the kernel/slot_table, not via this shape check.
+        return true;
+    }
     if (IsMxA8W4()) {
         auto perTokenScaleShapePtr = context->GetDynamicInputShape(GroupedMatmul::PER_TOKEN_SCALE_INDEX, 0);
         OP_CHECK_IF(perTokenScaleShapePtr == nullptr,
@@ -1343,6 +1369,11 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensorSingleXMultiWeightSing
 
 bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensorDefault(const gert::TilingContext *context) const
 {
+    if (isPoolMode_) {
+        // POOL mode: weight is the flat pool rectangle, so the per-expert N read below (which maps to
+        // rowBytes, not N) is meaningless. The pool branch in SetShapeList* validates the real shapes.
+        return true;
+    }
     size_t numGroups = std::min(numX_, numWeight_);
     for (size_t i = 0; i < numGroups; ++i) {
         auto xShapePtr = context->GetDynamicInputShape(X_IDX, i);
