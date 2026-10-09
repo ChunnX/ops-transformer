@@ -30,6 +30,13 @@
 
 #include "../../../common/op_kernel/mc2_combine_type_traits.h"
 
+// A2Layered 分段耗时打点开关：1=开启（Process 各阶段耗时经设备侧 printf 输出至 plog，单位 us）
+// 0=关闭（打点代码被预处理器剔除，零开销）。改本宏后需重编算子包生效。
+// 注：设备侧 printf 由 devkit>=9 的 basic_api 路径暴露（kernel_operator_dump_tensor_intf.h: using __asc_aicore::printf）。
+#ifndef A2_LAYERED_PROF_EN
+#define A2_LAYERED_PROF_EN 1
+#endif
+
 namespace MoeDistributeCombineA2Impl {
 
 constexpr int UB_ALIGN_SIZE = 32;
@@ -1342,10 +1349,28 @@ template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::Process()
 {
     if ASCEND_IS_AIV {
+#if A2_LAYERED_PROF_EN
+        // 分段耗时打点： GetCurrentTimestampUs()=GetSystemCycle()/50，单位 us
+        const int64_t profT0 = GetCurrentTimestampUs();
+        int64_t profT1 = profT0;
+        int64_t profT2 = profT0;
+        int64_t profT3 = profT0;
+        int64_t profT4 = profT0;
+        int64_t profT5 = profT0;
+        int64_t profT6 = profT0;
+#endif
         GM2IPC();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_GM2IPC);
+#if A2_LAYERED_PROF_EN
+        PipeBarrier<PIPE_ALL>();
+        profT1 = GetCurrentTimestampUs();
+#endif
         WaitIPC();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_WAITIPC);
+#if A2_LAYERED_PROF_EN
+        PipeBarrier<PIPE_ALL>();
+        profT2 = GetCurrentTimestampUs();
+#endif
         stepCoreNum = IPC_REDUCE_USED_CORE_NUM;
         if (coreIdx_ < stepCoreNum) {
             SumToWindow();
@@ -1354,10 +1379,31 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         }
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_SEND);
         SyncAll<true>();
+#if A2_LAYERED_PROF_EN
+        profT3 = GetCurrentTimestampUs();
+#endif
         Preload();
+#if A2_LAYERED_PROF_EN
+        PipeBarrier<PIPE_ALL>();
+        profT4 = GetCurrentTimestampUs();
+#endif
         WaitDispatch();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_COMBINE_INTER_RECV);
+#if A2_LAYERED_PROF_EN
+        PipeBarrier<PIPE_ALL>();
+        profT5 = GetCurrentTimestampUs();
+#endif
         SumToServer();
+#if A2_LAYERED_PROF_EN
+        PipeBarrier<PIPE_ALL>();
+        profT6 = GetCurrentTimestampUs();
+        printf("[A2LProf][combine] core=%d gm2ipc=%d waitipc=%d branch=%d preload=%d waitdisp=%d sum2svr=%d total=%d us\n",
+            static_cast<int32_t>(coreIdx_),
+            static_cast<int32_t>(profT1 - profT0), static_cast<int32_t>(profT2 - profT1),
+            static_cast<int32_t>(profT3 - profT2), static_cast<int32_t>(profT4 - profT3),
+            static_cast<int32_t>(profT5 - profT4), static_cast<int32_t>(profT6 - profT5),
+            static_cast<int32_t>(profT6 - profT0));
+#endif
         CopyPerformanceInfo();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();

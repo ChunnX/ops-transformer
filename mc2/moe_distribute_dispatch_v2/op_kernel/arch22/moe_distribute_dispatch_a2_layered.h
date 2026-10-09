@@ -30,6 +30,13 @@
 #include "moe_distribute_a2_adump.h"
 #include "moe_distribute_a2_constant.h"
 
+// A2Layered 分段耗时打点开关：1=开启（Process 各阶段耗时经设备侧 printf 输出至 plog，单位 us）
+// 0=关闭（打点代码被预处理器剔除，零开销）。改本宏后需重编算子包生效。
+// 注：设备侧 printf 由 devkit>=9 的 basic_api 路径暴露（kernel_operator_dump_tensor_intf.h: using __asc_aicore::printf）。
+#ifndef A2_LAYERED_PROF_EN
+#define A2_LAYERED_PROF_EN 1
+#endif
+
 namespace MoeDistributeDispatchA2Impl {
 #define TemplateMC2TypeA2layeredClass \
     typename XType, typename ExpandXOutType, bool StaticQuant, bool DynamicQuant, bool IsSmoothScaleExist
@@ -1397,10 +1404,22 @@ template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+#if A2_LAYERED_PROF_EN
+        // 分段耗时打点： GetCurrentTimestampUs()=GetSystemCycle()/50，单位 us
+        const int64_t profT0 = GetCurrentTimestampUs();
+        int64_t profT1 = profT0;
+        int64_t profT2 = profT0;
+        int64_t profT3 = profT0;
+        int64_t profT4 = profT0;
+        int64_t profT5 = profT0;
+#endif
         ReorderTokens();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_REORDERTOKEN);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+#if A2_LAYERED_PROF_EN
+        profT1 = GetCurrentTimestampUs();
+#endif
         if (aivId_ < serverNum) {
             if (aivId_ != serverId_) {
                 SendDataToServer(aivId_);
@@ -1415,17 +1434,34 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTER_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+#if A2_LAYERED_PROF_EN
+        profT2 = GetCurrentTimestampUs();
+#endif
         SetIpcFlag(IPC_FLAG_STEP_1);
         WaitIpcFlag(IPC_FLAG_STEP_1);
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_INTRA_FINISH);
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+#if A2_LAYERED_PROF_EN
+        profT3 = GetCurrentTimestampUs();
+#endif
         Ipc2Out();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_HIERARCHY_DISPATCH_IPC2OUT);
         PipeBarrier<PIPE_ALL>();
+#if A2_LAYERED_PROF_EN
+        profT4 = GetCurrentTimestampUs();
+#endif
         CleanUp();
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+#if A2_LAYERED_PROF_EN
+        profT5 = GetCurrentTimestampUs();
+        printf("[A2LProf][dispatch] aiv=%d svr=%d reorder=%d branch=%d ipcflag=%d ipc2out=%d cleanup=%d total=%d us\n",
+            static_cast<int32_t>(aivId_), static_cast<int32_t>(serverId_),
+            static_cast<int32_t>(profT1 - profT0), static_cast<int32_t>(profT2 - profT1),
+            static_cast<int32_t>(profT3 - profT2), static_cast<int32_t>(profT4 - profT3),
+            static_cast<int32_t>(profT5 - profT4), static_cast<int32_t>(profT5 - profT0));
+#endif
         CopyPerformanceInfo();
         aDump_.RunPosRecord(Mc2A2Kernel::RUNPOS_END);
         hccl_.Finalize();
