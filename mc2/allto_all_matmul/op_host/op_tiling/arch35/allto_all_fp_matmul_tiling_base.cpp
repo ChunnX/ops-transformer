@@ -275,7 +275,7 @@ uint8_t AllToAllFpMatmulTilingBase::ChooseAddBiasSplitMode() const
 {
     constexpr uint32_t ADD_BIAS_TILE_M = 64;
     constexpr uint32_t ADD_BIAS_TILE_N = 256;
-    const uint32_t aivCoreNum = contextInfo_.args_.aicCoreNum * 2;
+    const uint32_t aivCoreNum = contextInfo_.args_.aicCoreNum * cvRatio_;
 
     const uint32_t M = std::max(inferredInfo_.tileM, inferredInfo_.tailM);
     const uint32_t N = contextInfo_.args_.nValue;
