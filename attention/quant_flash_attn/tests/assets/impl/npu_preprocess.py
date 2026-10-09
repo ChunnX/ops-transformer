@@ -146,20 +146,28 @@ def build_metadata_arguments(
 
     is_tnd_q = layout_q == "TND"
     is_tnd_kv = layout_kv == "TND"
+    # TND 与 NTD (GQA FP8, quant_mode=6) 均为 varlen 布局, metadata/主算子都需要
+    # cu_seqlens_q 推导 batch (与 graph.py 一致); 仅 cu_seqlens_q=None 时
+    # _calculate_batch_size 兜底返回 0 → AICPU 拦截。
+    is_varlen_q = is_tnd_q or layout_q == "NTD"
 
     # Mirror the original two-phase golden implementations:
     #   - cu_seqlens only feeds the metadata op for TND layouts (otherwise None),
     #     and batch_size is only provided for non-TND layouts.
     # 空 (0,) 张量归一成 None, 否则 torch_extension 重算 batch_size 时会把
     # size(0)=0 误当 batch (参考 flash_attn 资产的 _resolve_tensor)。
-    cu_q = _resolve_tensor(cu_seqlens_q, kwargs, "cu_seqlens_q") if is_tnd_q else None
+    cu_q = (
+        _resolve_tensor(cu_seqlens_q, kwargs, "cu_seqlens_q") if is_varlen_q else None
+    )
     cu_kv = (
         _resolve_tensor(cu_seqlens_kv, kwargs, "cu_seqlens_kv") if is_tnd_kv else None
     )
     seq_q = _resolve_tensor(seqused_q, kwargs, "seqused_q")
     seq_kv = _resolve_tensor(seqused_kv, kwargs, "seqused_kv")
     batch_size = (
-        None if is_tnd_q else _derive_batch_size(q_shape, layout_q, cu_q, seq_q, kwargs)
+        None
+        if is_varlen_q
+        else _derive_batch_size(q_shape, layout_q, cu_q, seq_q, kwargs)
     )
 
     return {
@@ -238,6 +246,9 @@ def run(
     sinks=None,
     attn_mask=None,
     metadata=None,
+    v_tail=None,
+    block_table_tail=None,
+    seqused_v_tail=None,
     softmax_scale=1.0,
     mask_mode=0,
     win_left=-1,
@@ -251,14 +262,17 @@ def run(
     return_softmax_lse=False,
     **kwargs,
 ):
-    """Generate and copy metadata for a main QuantFlashAttn invocation.
+    """Materialize metadata after H2D, before timing and graph capture.
 
     Signature mirrors ``torch.ops.cann_ops_transformer.quant_flash_attn`` so TTK
     delivers the op-schema-ordered positional args; extra sidecar attributes
     (batch_size / N_q / N_kv / D / head_dim_v / *_values ...) arrive via kwargs.
+
+    动态槽位 (CSV tensor_view_shapes 含 -1, ttk 传 metadata=None): 按参数名返回
+    ``{"metadata": generated}``, 由 ttk 回填主算子 args/kwargs (参考
+    flash_mla_with_kvcache 资产); 静态槽位 (旧 (0,) 占位或已有 Tensor):
+    原地 resize_/copy_ 回填并隐式返回 None。
     """
-    if metadata is None:
-        raise ValueError("QuantFlashAttn npu_preprocess requires metadata")
     if quant_mode is None:
         quant_mode = get_attribute(kwargs, "quant_mode", 1)
     # 位置标量参数桥接进 kwargs, 供 build_metadata_arguments 统一读取。
@@ -276,6 +290,60 @@ def run(
         "[%s] build QuantFlashAttn metadata (quant_mode=%s)", testcase_name, quant_mode
     )
 
+    # GQA FP8 PA: K/V cache slot 末尾带 K_SCALE_ROWS(=4) 行 scale, 主算子
+    # kernel 从 k 的 dim[2] 推导 block_size, 132 != 128 会被 tiling 拦截。
+    # eager 路径 ttk 直接把 slot tensor 传给主算子, 这里 set_ 原地重绑定为
+    # 数据切片视图 (ttk args 持有同一对象), 与 graph 路径 graph.py __init__
+    # 的 [:, :, :bs, :] 切片对齐; golden 用 raw_inputs 不受影响。
+    _block_size_attr = int(get_attribute(kwargs, "block_size", 0) or 0)
+    # layout_kv 是主算子位置参数, eager hook 的 kwargs 拿不到;
+    # csv attributes 里对应 enable_pa/kv_cache_layout, 用后者判断 PA 布局。
+    _kv_layout = str(
+        get_attribute(kwargs, "kv_cache_layout", get_attribute(kwargs, "layout_kv", ""))
+        or ""
+    )
+    _is_pa_layout = get_attribute(kwargs, "enable_pa", False) or _kv_layout.startswith(
+        "PA"
+    )
+    if (
+        int(quant_mode) == 6
+        and _block_size_attr > 0
+        and _is_pa_layout
+        and k is not None
+        and v is not None
+        and k.dim() == 4
+        and k.shape[2] == _block_size_attr + 4  # 4 = K_SCALE_ROWS
+    ):
+        # set_ 之前 k 仍是 132 行, 直接 view 链派生 k_descale (参考 qfa_fp8_test)
+        # 共享 k cache 的 132 行大 storage, stride (8448, 4224, 1)
+        if k_descale is not None and k_descale.dim() == 3:
+            try:
+                _cap = k_descale.shape[2]  # scale 容量, D=128 时 = 128
+                _k_pa_f32 = (
+                    k.view(torch.uint8)
+                    .view(k.shape[0], k.shape[1], -1)
+                    .view(torch.float32)
+                )
+                k_descale.set_(_k_pa_f32[:, :, -_cap:])
+                logging.info(
+                    "[%s] GQA FP8 PA: rebind k_descale to k storage, "
+                    "stride=%s, shape=%s",
+                    testcase_name,
+                    tuple(k_descale.stride()),
+                    tuple(k_descale.shape),
+                )
+            except Exception as e:
+                logging.info("[%s] k_descale rebind failed: %s", testcase_name, e)
+        k.set_(k[:, :, :_block_size_attr, :])
+        v.set_(v[:, :, :_block_size_attr, :])
+        logging.info(
+            "[%s] GQA FP8 PA: slice k/v to data rows %s, k stride=%s, v stride=%s",
+            testcase_name,
+            tuple(k.shape),
+            tuple(k.stride()),
+            tuple(v.stride()),
+        )
+
     arguments = build_metadata_arguments(
         q,
         k,
@@ -286,7 +354,23 @@ def run(
         seqused_kv,
         hook_kwargs,
     )
+    # 动态槽位 (CSV tensor_view_shapes 含 -1, ttk 传入 None): 按参数名物化并返回,
+    # 由 ttk 回填主算子调用 (参考 flash_mla_with_kvcache 资产: 返回
+    # {"metadata": generated}, 键必须是 API 参数名);
+    # 静态槽位 (旧 (0,) 占位或已有 Tensor): 原地 copy_ 回填并返回 None。
+    # run_metadata 需要设备锚点 tensor, 动态槽位下用 q 提供 device。
+    if metadata is None:
+        generated = run_metadata(arguments, q)
+        logging.info(
+            "[%s] materialize dynamic metadata slot: shape=%s",
+            testcase_name,
+            tuple(generated.shape),
+        )
+        return {"metadata": generated}
+
     generated = run_metadata(arguments, metadata)
+    if tuple(metadata.shape) == (0,):
+        metadata.resize_(generated.shape)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "QuantFlashAttn metadata shape mismatch: "

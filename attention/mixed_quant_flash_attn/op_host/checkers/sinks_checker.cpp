@@ -19,7 +19,7 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
-#include "../fa_tiling_info.h"
+#include "../mqfa_fa_tiling_info.h"
 #include "sinks_checker.h"
 
 namespace optiling {
@@ -31,7 +31,7 @@ using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
 
-ge::graphStatus SinksChecker::CheckSinglePara(const FaTilingInfo &faInfo)
+ge::graphStatus SinksChecker::CheckSinglePara(const FaTilingInfo& faInfo)
 {
     if (!faInfo.sinksFlag) {
         return ge::GRAPH_SUCCESS;
@@ -46,14 +46,14 @@ ge::graphStatus SinksChecker::CheckSinglePara(const FaTilingInfo &faInfo)
                         ge::TypeUtils::DataTypeToSerialString(dtype).c_str()),
                 return ge::GRAPH_FAILED);
 
-    const auto &shape = faInfo.opParamInfo.sinks.tensor->GetStorageShape();
+    const auto& shape = faInfo.opParamInfo.sinks.tensor->GetStorageShape();
     OP_CHECK_IF(shape.GetDimNum() != 1,
                 OP_LOGE(faInfo.opName, "sinks shape must be 1D (Q_N,), but got %lu dims.", shape.GetDimNum()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(shape.GetDim(0) != faInfo.n1Size,
-                OP_LOGE(faInfo.opName, "sinks shape[0] must equal Q_N (%ld), but got %ld.",
-                        faInfo.n1Size, shape.GetDim(0)),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        shape.GetDim(0) != faInfo.n1Size,
+        OP_LOGE(faInfo.opName, "sinks shape[0] must equal Q_N (%ld), but got %ld.", faInfo.n1Size, shape.GetDim(0)),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

@@ -40,7 +40,7 @@ else()
     )
 endif()
 
-file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES 
+file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
     ../op_host/checkers/*checker*.cpp
 )
 
@@ -49,7 +49,7 @@ if (NOT BUILD_OPS_RTY_KERNEL)
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     ${ARCH35_CHECKER_SRC_FILES}
     mixed_quant_flash_attn_tiling_info_parser.cpp
-    arch-920r1/mixed_quant_flash_attn_tiling.cpp
+    arch92/mixed_quant_flash_attn_tiling.cpp
     )
     add_modules_sources_with_soc(
         # 该变量用于判断op_api目录是否从op_host移出

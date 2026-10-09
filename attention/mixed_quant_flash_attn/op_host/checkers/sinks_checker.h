@@ -19,7 +19,7 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "base_checker.h"
+#include "mqfa_base_checker.h"
 
 namespace optiling {
 namespace mixed_quant_flash_attn {
@@ -29,7 +29,7 @@ public:
     SinksChecker() = default;
     ~SinksChecker() override = default;
 
-    ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
+    ge::graphStatus CheckSinglePara(const FaTilingInfo& faInfo) override;
 };
 
 } // namespace mixed_quant_flash_attn

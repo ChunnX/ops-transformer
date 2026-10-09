@@ -47,11 +47,9 @@ public:
         param_ = param;
         ctx_ = ctx;
         pipe_ = pipe;
-        // 认领段按**真实向量核编号**:一个 block 下挂多个 AIV 子核时 GetBlockIdx() 相同,
-        // 只用它认领会让同一段算两遍、另一段没人算。
-        const int64_t subNum = GetTaskRation() > 0 ? GetTaskRation() : 1;
-        vecId_ = GetBlockIdx() * subNum + GetSubBlockIdx();
-        vecNum_ = GetBlockNum() * subNum;
+        // DAV_3510 的 GetBlockIdx 已展平；统一使用同一 AIV 编号/数量坐标系。
+        vecId_ = GetFlatAivIdx();
+        vecNum_ = GetFlatAivNum();
 
         flatIdsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(flatIdsWs), param_.totalElements);
         pairGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(pairWs), param_.segNum * param_.sortLenPerSeg);
@@ -82,9 +80,32 @@ private:
     __aicore__ inline void PrepareKeys(const LocalTensor<float> &keys, const LocalTensor<uint32_t> &maskBits,
                                        int64_t count)
     {
+        // CompareScalar 的实际读取粒度是 64 个 FP32。GM -> UB 只搬运 count 个有效 id，
+        // count 不是 64 的倍数时，若直接把向上对齐后的长度交给 CompareScalar，最后一个
+        // repeat 会读取未初始化的 UB。GatherMask 虽然只回收 count 个结果，但无效输入已经
+        // 参与了比较指令，既不满足确定性要求，也会让后续维护者误以为尾部天然安全。
+        //
+        // 不能把 keys[count] 当作固定起点：count 不保证满足 32B 向量写对齐；即使某个具体
+        // count 恰好对齐，也无法保证掩码的 bit 0 与最后一个 Compare64 repeat 的 lane 0 一致。
+        // 因此统一回退到本 64 元素 repeat 的起点，再通过掩码只覆盖 [count, compareLen)。这样既
+        // 满足对齐，又让 bit validInRepeat 精确对应第一个待填 lane。填充放在下面的 Muls
+        // 之前：UpdateMask<float>(remain) 通过引用参数做 POST_UPDATE，每轮最多消费 64 个
+        // FP32。因此 Muls 及其回写全程只打开 [0, count) 的真实 id，哨兵不会被取反；
+        // CompareScalar 看到的尾部始终是 SORT_FILL_VALUE。它小于 -expertStart，对应的
+        // 有效位恒为 false，不会被 GatherMask 收进有效 expert 序列。
+        const int64_t compareLen = Ceil(count, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM;
+        if (compareLen > count) {
+            const int64_t repeatBegin = count / ONE_REPEAT_COMPARE_NUM * ONE_REPEAT_COMPARE_NUM;
+            const int64_t validInRepeat = count - repeatBegin; // compareLen > count 时必在 [1, 63]
+            const uint64_t tailBits = UINT64_MAX << validInRepeat;
+            uint64_t tailMask[NUM_TWO] = {tailBits, 0};
+            Duplicate(keys[repeatBegin], SORT_FILL_VALUE, tailMask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
+            PipeBarrier<PIPE_V>();
+        }
+
         const uint16_t repeatTimes = static_cast<uint16_t>(Ceil(count, FLOAT_REG_ELEMENTS));
         uint32_t remain = static_cast<uint32_t>(count);
-        __local_mem__ float *keyAddr = reinterpret_cast<__local_mem__ float *>(keys.GetPhyAddr());
+        __ubuf__ float *keyAddr = reinterpret_cast<__ubuf__ float *>(keys.GetPhyAddr());
         const float negOne = -1.0f;
 
         __VEC_SCOPE__
@@ -93,16 +114,16 @@ private:
             Reg::RegTensor<float> keyReg;
             for (uint16_t i = 0; i < repeatTimes; i++) {
                 loopMask = Reg::UpdateMask<float>(remain);
-                Reg::DataCopy(keyReg, keyAddr + i * FLOAT_REG_ELEMENTS);
+                Reg::LoadAlign(keyReg, keyAddr + i * FLOAT_REG_ELEMENTS);
                 Reg::Muls(keyReg, keyReg, negOne, loopMask);
-                Reg::DataCopy(keyAddr + i * FLOAT_REG_ELEMENTS, keyReg, loopMask);
+                Reg::StoreAlign(keyAddr + i * FLOAT_REG_ELEMENTS, keyReg, loopMask);
             }
         }
         PipeBarrier<PIPE_V>();
-        // 有效位:键 > -expertStart(即原 expert_id < expertStart)。比较按 64 元素粒度对齐。
+        // 有效位:键 > -expertStart(即原 expert_id < expertStart)。上面的 tail 填充保证
+        // CompareScalar 按 compareLen 读取时，所有 lane 都有确定值。
         LocalTensor<uint8_t> maskU8 = maskBits.template ReinterpretCast<uint8_t>();
-        CompareScalar(maskU8, keys, static_cast<float>(-param_.expertStart), CMPMODE::GT,
-                      Ceil(count, ONE_REPEAT_COMPARE_NUM) * ONE_REPEAT_COMPARE_NUM);
+        CompareScalar(maskU8, keys, static_cast<float>(-param_.expertStart), CMPMODE::GT, compareLen);
         PipeBarrier<PIPE_V>();
     }
 
@@ -234,6 +255,7 @@ struct A5MergeParam {
     int64_t sortLenPerSeg = 0;      // 每段 slot 的 float 个数
     int64_t oneLoopMaxElements = 0; // 单路单次载入 UB 的最大元素数
     int64_t rounds = 0;             // 归并轮数 = ceil(log4(segNum))
+    int64_t countCacheSegments = 0; // 计数缓存槽数，由 Host 纳入 UB 预算
 };
 
 class FfnWbA5MrgSort {
@@ -245,9 +267,8 @@ public:
     {
         param_ = param;
         pipe_ = pipe;
-        const int64_t subNum = GetTaskRation() > 0 ? GetTaskRation() : 1;
-        vecId_ = GetBlockIdx() * subNum + GetSubBlockIdx();
-        vecNum_ = GetBlockNum() * subNum;
+        vecId_ = GetFlatAivIdx();
+        vecNum_ = GetFlatAivNum();
 
         const int64_t wsFloats = param_.segNum * param_.sortLenPerSeg;
         wsGm_[0].SetGlobalBuffer(reinterpret_cast<__gm__ float *>(wsA), wsFloats);
@@ -259,16 +280,13 @@ public:
         const int64_t loopFloats = GetSortLen<float>(param_.oneLoopMaxElements);
         pipe_->InitBuffer(inQue_, 1, loopFloats * MRG_LIST_NUM * sizeof(float) + ONE_BLK_SIZE);
         pipe_->InitBuffer(outQue_, 1, loopFloats * MRG_LIST_NUM * sizeof(float) + ONE_BLK_SIZE);
-        pipe_->InitBuffer(
-            cntBuf_,
-            Align(param_.segNum * (ONE_BLK_SIZE / sizeof(int32_t)), sizeof(int32_t)) * sizeof(int32_t) + ONE_BLK_SIZE);
+        pipe_->InitBuffer(cntBuf_, param_.countCacheSegments * ONE_BLK_SIZE + ONE_BLK_SIZE);
     }
 
     // 跑完全部归并轮次;返回最终结果所在的工作区序号(0=wsA,1=wsB)。
     // 每轮内各组由不同向量核认领,轮与轮之间由调用方 SyncAll。
     __aicore__ inline int64_t ProcessRound(int64_t round, int64_t srcIdx)
     {
-        LoadSegCounts();
         const int64_t groupStride = Pow4(round + 1); // 本轮一组覆盖的段数
         const int64_t listStride = Pow4(round);      // 组内相邻两路相隔的段数
         const int64_t groupNum = Ceil(param_.segNum, groupStride);
@@ -282,7 +300,6 @@ public:
     // 最终一路的元素总数 = 各段有效数之和
     __aicore__ inline int64_t TotalValid()
     {
-        LoadSegCounts();
         int64_t total = 0;
         for (int64_t s = 0; s < param_.segNum; s++) {
             total += SegCount(s);
@@ -300,18 +317,24 @@ private:
         return v;
     }
 
-    __aicore__ inline void LoadSegCounts()
+    __aicore__ inline void LoadSegCounts(int64_t seg)
     {
-        if (cntLoaded_) {
+        if (seg >= cachedBegin_ && seg < cachedBegin_ + cachedCount_) {
             return;
         }
+        // 段计数在排序完成后的 SyncAll 之后不再修改，可按槽缓存跨轮复用。
+        // 换块前等待标量读完旧缓存，搬入后再允许标量求和，防止复用同一 UB 区时竞争。
+        if (cachedBegin_ >= 0) {
+            SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+        }
+        cachedBegin_ = seg / param_.countCacheSegments * param_.countCacheSegments;
+        cachedCount_ = Min(param_.countCacheSegments, param_.segNum - cachedBegin_);
         cntLocal_ = cntBuf_.Get<int32_t>();
-        const int64_t words = param_.segNum * (ONE_BLK_SIZE / static_cast<int64_t>(sizeof(int32_t)));
+        const int64_t words = cachedCount_ * (ONE_BLK_SIZE / static_cast<int64_t>(sizeof(int32_t)));
         DataCopyExtParams cp{static_cast<uint16_t>(1), static_cast<uint32_t>(words * sizeof(int32_t)), 0, 0, 0};
         DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
-        DataCopyPad(cntLocal_, cntGm_, cp, pad);
+        DataCopyPad(cntLocal_, cntGm_[cachedBegin_ * (ONE_BLK_SIZE / sizeof(int32_t))], cp, pad);
         SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-        cntLoaded_ = true;
     }
 
     __aicore__ inline int64_t SegCount(int64_t seg)
@@ -319,7 +342,8 @@ private:
         if (seg >= param_.segNum) {
             return 0;
         }
-        return static_cast<int64_t>(cntLocal_.GetValue(seg * (ONE_BLK_SIZE / sizeof(int32_t))));
+        LoadSegCounts(seg);
+        return static_cast<int64_t>(cntLocal_.GetValue((seg - cachedBegin_) * (ONE_BLK_SIZE / sizeof(int32_t))));
     }
 
     // 第 r 轮中,以 seg 为首段、跨度 listStride 的那一路的元素数 = 其覆盖段的有效数之和
@@ -462,7 +486,8 @@ private:
     TQue<QuePosition::VECOUT, 1> outQue_;
     TBuf<TPosition::VECCALC> cntBuf_;
     LocalTensor<int32_t> cntLocal_;
-    bool cntLoaded_ = false;
+    int64_t cachedBegin_ = -1;
+    int64_t cachedCount_ = 0;
 
     int64_t vecId_ = 0;
     int64_t vecNum_ = 0;
@@ -485,9 +510,8 @@ public:
     {
         param_ = param;
         pipe_ = pipe;
-        const int64_t subNum = GetTaskRation() > 0 ? GetTaskRation() : 1;
-        vecId_ = GetBlockIdx() * subNum + GetSubBlockIdx();
-        vecNum_ = GetBlockNum() * subNum;
+        vecId_ = GetFlatAivIdx();
+        vecNum_ = GetFlatAivNum();
 
         pairGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(pairWs), GetSortLen<float>(param_.totalValid));
         idsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(idsWs), param_.totalValid);
@@ -527,6 +551,25 @@ private:
         DataCopyPad(pairLocal, pairGm_[GetSortLen<float>(begin)], cpIn, pad);
         SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
 
+        // Extract 的 repeat 数来自 alignLen，而 DMA 只载入 len 个 proposal 对。最后一组的
+        // 未载入 pair 若不初始化，Extract 会从旧 UB 内容取 key/index；即使 CopyOut 只写 len
+        // 个结果，这也是未定义的向量输入。一个 proposal 对恰好是两个 FP32，Sort32 对齐后
+        // [2*len, 2*alignLen) 总落在同一个 64-FP32 repeat 内。pairLocal[2*len] 也不保证
+        // 32B 对齐；即使偶然对齐，从 repeat 首地址出发仍可固定掩码 lane 到数据 lane 的映射。
+        // 因此与段内比较相同，先退到该 repeat 的对齐首地址，再用位掩码只填充尾部。这里填
+        // 0.0f 即可：Extract 只是按 proposal 对拆包，不依赖尾部 pair 的排序语义；后续 Muls、
+        // Cast 与两个 DataCopyPad 都严格只处理 len 个有效元素，填充值不会写回 GM。这里要保证
+        // 的是 Extract 的每个输入 lane 都有确定值，而不是为无效 pair 赋业务含义。
+        if (alignLen > len) {
+            const int64_t pairFloats = GetSortLen<float>(len);
+            const int64_t repeatBegin = pairFloats / FLOAT_REG_ELEMENTS * FLOAT_REG_ELEMENTS;
+            const int64_t validInRepeat = pairFloats - repeatBegin; // 必为偶数，且在 [2, 62]
+            const uint64_t tailBits = UINT64_MAX << validInRepeat;
+            uint64_t tailMask[NUM_TWO] = {tailBits, 0};
+            Duplicate(pairLocal[repeatBegin], 0.0f, tailMask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
+            PipeBarrier<PIPE_V>();
+        }
+
         LocalTensor<int32_t> idsLocal = idsBuf_.Get<int32_t>();
         LocalTensor<int32_t> idxLocal = idxBuf_.Get<int32_t>();
         LocalTensor<float> keysLocal = idsLocal.template ReinterpretCast<float>();
@@ -551,6 +594,10 @@ private:
     }
 
 private:
+    static constexpr int64_t FLOAT_REG_ELEMENTS = 64;
+    static constexpr int64_t DST_BLK_STRIDE = 1;
+    static constexpr int64_t DST_REP_STRIDE = 8;
+
     A5ExtractParam param_;
     TPipe *pipe_ = nullptr;
 

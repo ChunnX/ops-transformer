@@ -1,4 +1,21 @@
-# Pre-commit 配置指导书
+# pre-commit 配置指导书
+
+## 快速使用
+
+```bash
+# 1. 安装 pre-commit
+pip3 install pre-commit
+
+# 2. 安装 Git Hooks（此后 git commit 自动触发检查）
+cd /path/to/ops-transformer
+pre-commit install        # 取消：pre-commit uninstall
+
+# 3. 配置 git pc 别名（对指定范围提交运行检查，每个环境执行一次）
+git config --global alias.pc '!f() { pre-commit run --files $(git diff --name-only "$@"); }; f'
+git pc HEAD~x        # 检查最近x笔提交
+```
+
+完成上述配置后，`git commit` 时将自动执行检查，无需手动干预。完整说明见下文。
 
 ## 一、概述
 
@@ -37,7 +54,7 @@ git pc HEAD~x        # 检查最近x笔提交
 
 ```bash
 # 提交时自动检查
-git add . && git commit -m "msg"
+git add <文件清单> && git commit -m "msg"
 
 # 手动运行
 pre-commit run                        # 暂存区
@@ -58,9 +75,11 @@ git commit --no-verify -m "msg"
 
 搜索输出中的 `Failed` 定位失败项，查看该 hook 下方输出处理，或粘贴给 AI 获取修复建议。
 
+拦截类钩子的报告同时落盘在 `pre-commit_reports/`（不入 git）：`codespell.log`（拼写命中清单）、`oat_result.txt`（合规违规明细），可随时复查。
+
 | 报错                  | 原因               | 处理方式                                          |
 |-----------------------|--------------------|---------------------------------------------------|
-| clang-format Failed   | 代码存在规范问题 | rebase 最新代码后再做 pre-commit；重新 `git add` 后再次 commit |
+| clang-format Failed   | 代码存在规范问题 | 钩子会自动修复文件，重新 `git add` 后再次 commit 即可 |
 | OAT Compliance Failed | 缺版权声明等       | 搜索 `OAT Scan Result Summary` 定位文件；版权声明无法自动订正，需参照仓内文件头手动补齐 |
 
 ## 六、补查历史提交（--no-verify 跳过后）
@@ -77,7 +96,7 @@ git pc <commit>^     # 某一笔提交
 ## 七、检查项说明
 
 1. **pre-commit-hooks** (v4.6.0)：trailing-whitespace、end-of-file-fixer、check-yaml/json、check-added-large-files、check-merge-conflict、detect-private-key
-2. **clang-format** (v18.1.8)：遵循项目 `.clang-format`（Google 风格，4 空格缩进，不限列宽不自动拆行，枚举逐行，构造函数初始化列表逐行换行，函数定义大括号换行，指针右对齐 `int *ptr`）
+2. **clang-format** (v18.1.8)：遵循项目 `.clang-format`（Google 风格，4 空格缩进，不限列宽不自动拆行，枚举逐行，构造函数初始化列表逐行换行，函数定义大括号换行，指针左对齐 `int* ptr`）
 3. **ruff** (v0.14.14)：ruff-check（`--fix` 自动修复）+ ruff-format
 4. **codespell** (v2.4.1)：拼写检查，CANN、ascend、EnQue 等术语已加白名单
 5. **OAT**：基于 oat-py，检查许可证头（YAML/CSV 已豁免）、禁止二进制和归档文件
@@ -124,5 +143,5 @@ sudo apt install clang-format
 
 - [pre-commit官方文档](https://pre-commit.com/)
 - [clang-format配置](https://clang.llvm.org/docs/ClangFormatStyleOptions.html)
-- [OAT工具](https://gitcode.com/openharmony-sig/tools_oat)
-- [代码仓集成pre-commit指导](https://gitcode.com/cann/infrastructure/blob/main/docs/SC/pre-commit/pre-commit%E9%85%8D%E7%BD%AE%E6%8C%87%E5%AF%BC%E4%B9%A6.md)
+- [OAT工具](https://atomgit.com/openharmony-sig/tools_oat)
+- [代码仓集成pre-commit指导](https://atomgit.com/cann/infrastructure/blob/main/docs/SC/pre-commit/pre-commit%E9%85%8D%E7%BD%AE%E6%8C%87%E5%AF%BC%E4%B9%A6.md)

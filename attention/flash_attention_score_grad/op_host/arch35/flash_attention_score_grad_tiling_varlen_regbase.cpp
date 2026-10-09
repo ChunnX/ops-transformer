@@ -294,7 +294,9 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
             } else {
                 GetTNDRightDownVirt(shape.m, shape.n, virtM, virtN);
             }
-            if (!TNDRunIsLineWorthy(k, virtM, virtN, runPairs)) {
+            const bool foldedCausalPairsSafe = !leftUp && k > 0 && runPairs > 0 && p.isS1S2Same && shape.m == shape.n;
+            const bool genericLineWorthy = TNDRunIsLineWorthy(k, virtM, virtN, runPairs);
+            if (!foldedCausalPairsSafe && !genericLineWorthy) {
                 return false;
             }
             if (!leftUp && runHasSingle && shape.m < std::min(k, shape.n)) {
@@ -321,6 +323,7 @@ inline bool PreferTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
 
 struct TNDLineDeterPack {
     std::vector<int64_t> prefixSolo = {0};
+    std::vector<int64_t> prefixSingle = {0};
     int64_t rLine = 0;
 };
 
@@ -333,7 +336,20 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
                         (p.sparseMode == static_cast<uint32_t>(SparseMode::NO_MASK) &&
                          p.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND));
     const bool leftUp = !isBand && (p.sparseMode != static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
-    std::vector<int64_t> prefixSolo = {0};
+    for (int64_t batch = 0; batch < p.b; ++batch) {
+        int64_t m = 0;
+        int64_t n = 0;
+        GetTNDOuterMN(p, batch, m, n);
+        if (!isBand) {
+            const TNDRunShape shape = MakeTNDCausalRunShape(p, batch, leftUp);
+            m = shape.m;
+            n = shape.n;
+        }
+        const int64_t tasks = !isBand && m == 1 && n == 1 ? n1 : 0;
+        pack.prefixSingle.push_back(pack.prefixSingle.back() + tasks);
+    }
+    const int64_t singleRounds = CeilDivideBy(pack.prefixSingle.back(), k);
+    std::vector<int64_t> prefixSolo = {singleRounds};
 
     int64_t i = 0;
     while (i < p.b) {
@@ -344,7 +360,9 @@ inline TNDLineDeterPack BuildTNDLineDeter(FuzzyBaseInfoParamsRegbase &p)
         const bool runHasSingle = (total % NUM_TWO == 1);
         int64_t runSolo = 0;
         if (!TNDRunEmpty(shape, isBand)) {
-            if (!isBand) {
+            if (!isBand && shape.m == 1 && shape.n == 1) {
+                runSolo = 0;
+            } else if (!isBand) {
                 int64_t virtM = 0;
                 int64_t virtN = 0;
                 if (leftUp) {
@@ -385,6 +403,7 @@ inline void ApplyTNDLineDeterParam(FuzzyBaseInfoParamsRegbase &p, const TNDLineD
     p.tndLineDeter = 1;
     p.deterMaxRound = pack.rLine;
     StoreTNDPrefix(pack.prefixSolo, p.deterPrefixStep, pack.rLine, p.deterPrefix0);
+    StoreTNDPrefix(pack.prefixSingle, p.deterPrefixStep, pack.prefixSingle.back(), p.deterPrefix1);
 
     std::vector<int64_t> deterPrefix = {0};
     std::vector<int64_t> deterPrefixAlign = {0};

@@ -19,10 +19,10 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
-#include "../fa_tiling_info.h"
-#include "fa_checker.h"
-#include "common_checker.h"
-#include "quant_checker.h"
+#include "../mqfa_fa_tiling_info.h"
+#include "mqfa_fa_checker.h"
+#include "mqfa_common_checker.h"
+#include "mqfa_quant_checker.h"
 
 namespace optiling {
 namespace mixed_quant_flash_attn {
@@ -47,16 +47,16 @@ void FAChecker::RegisterCheckers()
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
 }
 
-ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
+ge::graphStatus FAChecker::Init(const FaTilingInfo& faInfo)
 {
     (void)faInfo;
     RegisterCheckers();
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FAChecker::RunCheck(const CheckMethod &method, const FaTilingInfo &faInfo)
+ge::graphStatus FAChecker::RunCheck(const CheckMethod& method, const FaTilingInfo& faInfo)
 {
-    for (const auto &checker : checkers_) {
+    for (const auto& checker : checkers_) {
         if (ge::GRAPH_SUCCESS != method(checker.get(), faInfo)) {
             return ge::GRAPH_FAILED;
         }
@@ -64,27 +64,27 @@ ge::graphStatus FAChecker::RunCheck(const CheckMethod &method, const FaTilingInf
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FAChecker::CheckSinglePara(const FaTilingInfo &faInfo)
+ge::graphStatus FAChecker::CheckSinglePara(const FaTilingInfo& faInfo)
 {
-    return RunCheck([](FABaseChecker *c, const FaTilingInfo &info) { return c->CheckSinglePara(info); }, faInfo);
+    return RunCheck([](FABaseChecker* c, const FaTilingInfo& info) { return c->CheckSinglePara(info); }, faInfo);
 }
 
-ge::graphStatus FAChecker::CheckParaExistence(const FaTilingInfo &faInfo)
+ge::graphStatus FAChecker::CheckParaExistence(const FaTilingInfo& faInfo)
 {
-    return RunCheck([](FABaseChecker *c, const FaTilingInfo &info) { return c->CheckParaExistence(info); }, faInfo);
+    return RunCheck([](FABaseChecker* c, const FaTilingInfo& info) { return c->CheckParaExistence(info); }, faInfo);
 }
 
-ge::graphStatus FAChecker::CheckFeature(const FaTilingInfo &faInfo)
+ge::graphStatus FAChecker::CheckFeature(const FaTilingInfo& faInfo)
 {
-    return RunCheck([](FABaseChecker *c, const FaTilingInfo &info) { return c->CheckFeature(info); }, faInfo);
+    return RunCheck([](FABaseChecker* c, const FaTilingInfo& info) { return c->CheckFeature(info); }, faInfo);
 }
 
-ge::graphStatus FAChecker::CheckMultiPara(const FaTilingInfo &faInfo)
+ge::graphStatus FAChecker::CheckMultiPara(const FaTilingInfo& faInfo)
 {
-    return RunCheck([](FABaseChecker *c, const FaTilingInfo &info) { return c->CheckMultiPara(info); }, faInfo);
+    return RunCheck([](FABaseChecker* c, const FaTilingInfo& info) { return c->CheckMultiPara(info); }, faInfo);
 }
 
-ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
+ge::graphStatus FAChecker::Process(const FaTilingInfo& faInfo)
 {
     if (faInfo.emptyTensorFlag) {
         OP_LOGE(faInfo.opName, "Empty tensor detected: q, k, v or attn_out has dimension with size 0");

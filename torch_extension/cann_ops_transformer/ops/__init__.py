@@ -67,8 +67,18 @@ def _load_op(name, target):
                 globals()[name] = getattr(_mod, name)
             else:
                 globals()[name] = _mod
+            for _extra in getattr(_mod, "__all__", []):
+                if _extra != name and not _extra.startswith("_"):
+                    globals()[_extra] = getattr(_mod, _extra)
         except (ImportError, RuntimeError, AttributeError) as e:
             logger.warning("Failed to load op '%s': %s", name, e)
+        try:
+            _gmod = importlib.import_module("%s.graph_convert_%s" % (module_path, name))
+            _func = "convert_%s" % name
+            if hasattr(_gmod, _func):
+                globals()[_func] = getattr(_gmod, _func)
+        except ImportError:
+            pass
         return
     try:
         _mod = importlib.import_module(target)
@@ -141,7 +151,7 @@ _legacy_map = {
     "mhc_pre_sinkhorn": "mhc.mhc_pre_sinkhorn",
     "mhc_pre_sinkhorn_backward": "mhc.mhc_pre_sinkhorn_backward",
     "mixed_quant_flash_attn": "attention.mixed_quant_flash_attn",
-    "mixed_quant_flash_attn_metadata": "attention.mixed_quant_flash_attn_metadata",
+    "mixed_quant_flash_attn_metadata": "attention.mixed_quant_flash_attn",
     "mixed_quant_sparse_flash_mla": "attention.mixed_quant_sparse_flash_mla",
     "moe_finalize_routing": "moe.moe_finalize_routing_v2",
     "moe_init_routing": "moe.moe_init_routing_v4",
@@ -170,6 +180,7 @@ _legacy_map = {
     "apply_rotary_pos_emb": "posembedding.apply_rotary_pos_emb",
     "apply_rotary_pos_emb_grad": "posembedding.apply_rotary_pos_emb_grad",
     "mla_prolog": "attention.mla_prolog_v3",
+    "quant_flash_mla_with_kvcache": "attention.quant_flash_mla_with_kvcache",
 }
 
 if __name__ == "cann_ops_transformer.ops":

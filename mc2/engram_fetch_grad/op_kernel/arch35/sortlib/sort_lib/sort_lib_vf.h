@@ -20,7 +20,7 @@
 
 #include "kernel_operator.h"
 #include "simt_api/asc_simt.h"
-#include "sort_lib_util.h"
+#include "sort_util.h"
 #include "sort_lib_constants.h"
 
 namespace SortLib::detail {

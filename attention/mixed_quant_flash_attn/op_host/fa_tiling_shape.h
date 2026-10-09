@@ -15,12 +15,12 @@
 #ifndef MIXED_QUANT_FLASH_ATTN_FA_TILING_SHAPE_H
 #define MIXED_QUANT_FLASH_ATTN_FA_TILING_SHAPE_H
 
-#include "fa_tiling_info.h"
+#include "mqfa_fa_tiling_info.h"
 
 namespace optiling {
 namespace mixed_quant_flash_attn {
 template <typename T>
-using CompareFunc = bool (*)(const T &, const T &);
+using CompareFunc = bool (*)(const T&, const T&);
 
 enum class FaCompareType : uint32_t {
     EQUAL = 0,
@@ -66,11 +66,14 @@ class FaTilingShape {
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
 public:
-    FaTilingShape(const gert::Shape &shape, FaLayout layout, std::string name, std::string opName)
-        : shape_(shape), layout_(layout), name_(name), opName_(opName) {};
+    FaTilingShape(const gert::Shape& shape, FaLayout layout, std::string name, std::string opName)
+        : shape_(shape),
+          layout_(layout),
+          name_(name),
+          opName_(opName) {};
 
 public:
-    const gert::Shape &shape_;
+    const gert::Shape& shape_;
     FaLayout layout_;
     std::string name_;
     std::string opName_;
@@ -160,65 +163,68 @@ public:
         return invalidDimValue_;
     }
 
-    ge::graphStatus CheckHasShapeB(const std::string &funcName) const
+    ge::graphStatus CheckHasShapeB(const std::string& funcName) const
     {
         return CheckHasAxis(FaAxis::B, funcName);
     }
-    ge::graphStatus CheckHasShapeS(const std::string &funcName) const
+    ge::graphStatus CheckHasShapeS(const std::string& funcName) const
     {
         return CheckHasAxis(FaAxis::S, funcName);
     }
-    ge::graphStatus CheckHasShapeD(const std::string &funcName) const
+    ge::graphStatus CheckHasShapeD(const std::string& funcName) const
     {
         return CheckHasAxis(FaAxis::D, funcName);
     }
-    ge::graphStatus CheckHasShapeN(const std::string &funcName) const
+    ge::graphStatus CheckHasShapeN(const std::string& funcName) const
     {
         return CheckHasAxis(FaAxis::N, funcName);
     }
 
-    ge::graphStatus CheckHasShapeT(const std::string &funcName) const
+    ge::graphStatus CheckHasShapeT(const std::string& funcName) const
     {
         return CheckHasAxis(FaAxis::T, funcName);
     }
 
-    ge::graphStatus CheckHasShapeBlockSize(const std::string &funcName) const
+    ge::graphStatus CheckHasShapeBlockSize(const std::string& funcName) const
     {
         return CheckHasAxis(FaAxis::Bs, funcName);
     }
-    ge::graphStatus CheckHasShapeBlockNum(const std::string &funcName) const
+    ge::graphStatus CheckHasShapeBlockNum(const std::string& funcName) const
     {
         return CheckHasAxis(FaAxis::Bn, funcName);
     }
 
 private:
-    bool HasAxis(const FaAxis &axis) const;
-    size_t GetAxisIdx(const FaAxis &axis) const;
-    int64_t GetAxisNum(const FaAxis &axis) const;
-    ge::graphStatus CheckHasAxis(const FaAxis &axis, const std::string &funcName) const;
+    bool HasAxis(const FaAxis& axis) const;
+    size_t GetAxisIdx(const FaAxis& axis) const;
+    int64_t GetAxisNum(const FaAxis& axis) const;
+    ge::graphStatus CheckHasAxis(const FaAxis& axis, const std::string& funcName) const;
 };
 
 class FaTilingShapeCompare {
     static const std::map<FaCompareType, CompareFunc<int64_t>> compareFuncMap_;
 
 public:
-    FaTilingShapeCompare(const gert::Shape &shape, FaLayout layout, std::string name, std::string opName)
-        : shape_(shape), layout_(layout), name_(name), opName_(opName) {};
+    FaTilingShapeCompare(const gert::Shape& shape, FaLayout layout, std::string name, std::string opName)
+        : shape_(shape),
+          layout_(layout),
+          name_(name),
+          opName_(opName) {};
 
 public:
-    const gert::Shape &shape_;
+    const gert::Shape& shape_;
     FaLayout layout_;
     std::string name_;
     std::string opName_;
 
     std::string CompareTypeToSerialString(const FaCompareType compareType) const;
-    std::string CompareTypeToSerialSymbolString(const FaCompareType &compareType) const;
-    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const FaTilingShapeCompareParam &param,
-                                     const std::string &funcName) const;
-    FaCompareType GetCompareType(const std::map<FaAxis, FaCompareType> &compareTypeMap, const FaAxis &axis) const;
-    ge::graphStatus GetCompareFunc(const FaCompareType &compareType, CompareFunc<int64_t> &compareFunc,
-                                   const std::string &funcName) const;
-    ge::graphStatus CompareShape(FaTilingShapeCompareParam &param, const std::string &funcName) const;
+    std::string CompareTypeToSerialSymbolString(const FaCompareType& compareType) const;
+    ge::graphStatus GetExpectedShape(gert::Shape& shapeExpected, const FaTilingShapeCompareParam& param,
+                                     const std::string& funcName) const;
+    FaCompareType GetCompareType(const std::map<FaAxis, FaCompareType>& compareTypeMap, const FaAxis& axis) const;
+    ge::graphStatus GetCompareFunc(const FaCompareType& compareType, CompareFunc<int64_t>& compareFunc,
+                                   const std::string& funcName) const;
+    ge::graphStatus CompareShape(FaTilingShapeCompareParam& param, const std::string& funcName) const;
 };
 } // namespace mixed_quant_flash_attn
 } // namespace optiling

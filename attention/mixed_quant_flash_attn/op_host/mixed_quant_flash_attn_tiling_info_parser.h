@@ -15,23 +15,23 @@
 
 #pragma once
 
-#include "fa_tiling_info.h"
+#include "mqfa_fa_tiling_info.h"
 #include "fa_tiling_shape.h"
 
 namespace optiling {
 namespace mixed_quant_flash_attn {
 class FaInfoParser {
 public:
-    explicit FaInfoParser(const gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit FaInfoParser(const gert::TilingContext* context)
+        : context_(context)
+    {}
     ~FaInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
     ge::graphStatus GetEmptyTensorFlag();
-    ge::graphStatus GetCuSeqLenQSize(int64_t &size);
+    ge::graphStatus GetCuSeqLenQSize(int64_t& size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaMaskInfo();
@@ -54,7 +54,7 @@ public:
     void GetKvStorageMode();
 
     void SetFaShape();
-    ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout, int64_t &maxActualSeqLen);
+    ge::graphStatus GetMaxActualSeq(const gert::Tensor* actualSeqLensTensor, FaLayout layout, int64_t& maxActualSeqLen);
     ge::graphStatus GetS2SizeFromCuSeqLens();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetMaxBlockNumPerBatch();
@@ -73,20 +73,20 @@ public:
 
     ge::graphStatus GetActualSeqInfo();
 
-    void GenerateAxisInfo(FaTilingInfo &faInfo);
-    void GenerateDtypeInfo(FaTilingInfo &faInfo);
-    void GenerateFeatureInfo(FaTilingInfo &faInfo);
-    void GenerateLayoutInfo(FaTilingInfo &faInfo);
-    void GenerateInfo(FaTilingInfo &faInfo);
+    void GenerateAxisInfo(FaTilingInfo& faInfo);
+    void GenerateDtypeInfo(FaTilingInfo& faInfo);
+    void GenerateFeatureInfo(FaTilingInfo& faInfo);
+    void GenerateLayoutInfo(FaTilingInfo& faInfo);
+    void GenerateInfo(FaTilingInfo& faInfo);
     ge::graphStatus ParseAxisInfo();
     ge::graphStatus ParseFeatureInfo();
-    ge::graphStatus Parse(FaTilingInfo &faInfo);
+    ge::graphStatus Parse(FaTilingInfo& faInfo);
 
 public:
-    const gert::TilingContext *context_ = nullptr;
+    const gert::TilingContext* context_ = nullptr;
 
-    const char *opName_ = nullptr;
-    fe::PlatFormInfos *platformInfo_ = nullptr;
+    const char* opName_ = nullptr;
+    fe::PlatFormInfos* platformInfo_ = nullptr;
     FAParaInfo opParamInfo_;
 
     // BaseParams

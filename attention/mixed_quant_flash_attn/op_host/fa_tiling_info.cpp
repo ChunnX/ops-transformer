@@ -13,8 +13,7 @@
  * \brief
  */
 
-#include "fa_tiling_info.h"
-
+#include "mqfa_fa_tiling_info.h"
 
 namespace optiling {
 namespace mixed_quant_flash_attn {

@@ -19,8 +19,8 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
-#include "../fa_tiling_info.h"
-#include "metadata_checker.h"
+#include "../mqfa_fa_tiling_info.h"
+#include "mqfa_metadata_checker.h"
 
 namespace optiling {
 namespace mixed_quant_flash_attn {
@@ -31,15 +31,15 @@ using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
 
-ge::graphStatus MetadataChecker::CheckSinglePara(const FaTilingInfo &faInfo)
+ge::graphStatus MetadataChecker::CheckSinglePara(const FaTilingInfo& faInfo)
 {
-    auto &metadataTensor = faInfo.opParamInfo.metadata.tensor;
+    auto& metadataTensor = faInfo.opParamInfo.metadata.tensor;
     if (metadataTensor == nullptr) {
         OP_LOGE(faInfo.opName, "metadata is required but is null!");
         return ge::GRAPH_FAILED;
     }
 
-    const gert::CompileTimeTensorDesc *metadataDesc = faInfo.opParamInfo.metadata.desc;
+    const gert::CompileTimeTensorDesc* metadataDesc = faInfo.opParamInfo.metadata.desc;
     OP_CHECK_IF(metadataDesc == nullptr, OP_LOGE(faInfo.opName, "metadata desc is null pointer!"),
                 return ge::GRAPH_FAILED);
 

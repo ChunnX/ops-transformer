@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Ascend 950PR&950DT系列产品</term>                             |    √     |
+| <term>Atlas A3系列产品</term>       |    ×     |
+| <term>Atlas A2系列产品</term> |    ×     |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×     |
+| <term>Atlas推理系列产品</term>                               |    ×     |
+| <term>Atlas训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -157,7 +157,7 @@
     <tr>
     <td style="white-space: nowrap">cclBufferSize</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">CCL通信缓冲区总大小（Bytes），由 <code>get_buffer_for_attention_to_ffn</code> 接口内部自动计算。需 >= token_info_size + token_data_size（按2MB向上对齐）。</td>
+    <td style="white-space: nowrap">CCL通信缓冲区总大小（Bytes），由 <code>get_buffer_for_attention_to_ffn</code> 接口内部自动计算。需 >= token_info_size + token_data_size + staging_size + flag_staging_size（按2MB向上对齐）。</td>
     <td style="white-space: nowrap">INT64</td>
     <td style="white-space: nowrap">-</td>
     </tr>
@@ -186,7 +186,7 @@
 
 - `ccl_buffer_size`为HBM上分配的CCL通信缓冲区**总大小**（Bytes），需满足：
 
-$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{tokenDataSize},\ 2\,\mathrm{MB})$$
+$$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{CeilAlign}(\mathrm{tokenInfoSize},\ 512) + \mathrm{CeilAlign}(\mathrm{tokenDataSize},\ 512) + \mathrm{CeilAlign}(\mathrm{stagingSize},\ 512) + \mathrm{flagStagingSize},\ 2\,\mathrm{MB})$$
 
 其中：
 
@@ -194,6 +194,8 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
   - 非量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 2B`
   - INT8/FP8量化模式：`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
   - FP4量化模式：`HS`已按打包字节计算，`tokenDataSize = attentionWorkerNum × microBatchNum × BS × (K+shared) × HS × 1B`
+  - `stagingSize = BS × (K+shared) × CeilAlign(HS × bytesPerElem, 32B)`，为窗口内token数据区之后的紧凑连续staging区（每token一个staging槽，槽步长按32B向上对齐；`bytesPerElem`与`tokenDataSize`一致，非量化为2B，量化为1B）
+  - `flagStagingSize = (BS × (K+shared) + 1) × 32B`，为staging区之后的URMA flag常驻区（每token一个32B flag槽 + 1个layer flag槽）
 
 该大小由 `get_buffer_for_attention_to_ffn` 接口内部自动计算，用户无需自行计算或设置`ccl_buffer_size`。
 
@@ -205,10 +207,10 @@ $$ccl\_buffer\_size \ge \mathrm{CeilAlign}(\mathrm{tokenInfoSize} + \mathrm{toke
 - 参数说明里shape格式说明：
     - `X`：表示micro batch sequence size（token组数），当前版本只支持`X` = 1。
     - `BS`：表示batch sequence size（本卡最终输出的token数量）取值范围为0 < `BS` ≤ 512。
-    - `K`：表示选取topK个专家，，取值范围为0 < `K` ≤ 16且满足0 < `K` ≤ moeExpertNum。
+    - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16且满足0 < `K` ≤ moeExpertNum。
     - `H`：表示hidden size（隐藏层大小），取值范围为1024 ≤ `H` ≤ 8192。
-    - `L`：表示模型层数，当前版本只支持`L` = 1。
-    - `M`：表示expertRankTable最后一维的长度，具体体现为部署在FFN节点上数量最多的专家部署信息列表的长度。
+    - `L`：表示模型层数，取值范围为`L` ≥ 1，且运行时`LayerId`取值需小于`L`。
+    - `M`：表示expertRankTable最后一维的长度，具体体现为部署在FFN节点上数量最多的专家部署信息列表的长度，取值范围为0 < `M` ≤ 2049（每行布局为`[rankCnt, (toRankId, localExpId) × rankCnt]`，rankCnt不超过worldSize）。
     - `moeExpertNum`：表示MoE专家数量，取值范围为0 < `moeExpertNum` ≤ 1024。
 
 - 通信域使用约束：

@@ -1,26 +1,26 @@
 # aclnnGroupedMatmulWeightNz
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：支持
+- <term>Atlas推理系列产品</term>：支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -35,7 +35,7 @@
       - 输入的weight会被接口按AI处理器亲和数据排布格式（FRACTAL_NZ）解析。
       - 新增参数quantGroupSize，整数型参数，代表分组量化（pergroup）的分组大小，不涉及分组量化时，填0。
       <!-- npu="950" id7 -->
-      - <term>Ascend 950PR/Ascend 950DT</term>：支持quantGroupSize参数，综合约束请参见<a href="#约束说明">约束说明</a>。
+      - <term>Ascend 950PR&950DT系列产品</term>：支持quantGroupSize参数，综合约束请参见<a href="#约束说明">约束说明</a>。
       <!-- end id7 -->
 
   - **计算公式**：
@@ -431,7 +431,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     </table>
 
     <!-- npu="950" id8 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：
+    - <term>Ascend 950PR&950DT系列产品</term>：
       - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
       - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。非全量化场景，当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
       - `offsetOptional`支持，`antiquantOffsetOptional`暂不支持。综合约束请参见<a href="#约束说明">约束说明</a>。
@@ -442,7 +442,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <!-- end id8 -->
 
     <!-- npu="A3,910b" id9 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
       - 上表数据类型列中的角标"2"代表该系列不支持的数据类型。
       - `weight`会被接口按FRACTAL_NZ格式解析。当传入INT32时，接口内部将每个INT32识别成8个INT4。
       - 输入参数`x`、`weight`，输出参数`out`支持最多128个tensor。
@@ -525,11 +525,11 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
 <!-- npu="A3,910b" id10 -->
 <details>
-<summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
+<summary><term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term></summary>
 
   - 公共约束
     - tuningConfigOptional控制的weight特殊格式适用于S8S4（A8W4）场景，具体限制见[S8S4（A8W4）场景约束](#a2-a3-weightnz-s8s4场景约束)。
-    - 如果传入groupListOptional，当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列，且长度不能为1；groupListType为2时，groupListOptional的第二列数据必须为非负数列，且长度不能为1。
+    - 如果传入groupListOptional，当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列，且长度不能为1；当groupListType为2时，groupListOptional的shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1], ...]，其中groupSize为分组轴上每组大小，必须为非负数，且groupListOptional的长度不能为1。所有groupSize非0的分组按groupIdx有序排列在前，所有groupSize为0的分组按groupIdx有序排列在后，确保非零组前置、零值组后置，且组内有序。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 量化场景下，若当前量化组合不支持激活函数，传入1、2、4、5时仅打印warning提示，不做拦截，建议传入0。
@@ -611,14 +611,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
 <!-- npu="950" id11 -->
 <details>
-<summary><term>Ascend 950PR/Ascend 950DT</term></summary>
+<summary><term>Ascend 950PR&950DT系列产品</term></summary>
 
   - 公共约束
     - tuningConfigOptional控制的weight特殊格式适用于S8S4场景，具体限制见[S8S4场景约束](#ascend950-weightnz-s8s4场景约束)。
     - groupListType：支持取值0、1、2。
       - 当groupListType为0时，groupListOptional必须为非负单调非递减数列；
       - 当groupListType为1时，groupListOptional必须为非负数列。
-      - 仅全量化且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
+      - 仅全量化、非量化或伪量化a8w4，且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1], ...]，其中groupSize为分组轴上每组大小，必须为非负数。所有groupSize非0的分组按groupIdx有序排列在前，所有groupSize为0的分组按groupIdx有序排列在后，确保非零组前置、零值组后置，且组内有序。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 在伪量化和非量化场景下，actType仅支持0。
@@ -819,7 +819,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:---------:|:-------:| :------ |
       | -1 | 多多多 |1）仅支持splitItem为0/1<br>2）x，out中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3） groupListOptional必须传空<br>4）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>5）x不支持转置<br>6）仅支持非量化|
       | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（E, N, K）或（E, K, N）；x，out中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（E, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维，当groupListType为2时，第二列数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持x不转置，weight转置、不转置均支持|
-      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等，长度最大为1024，当groupListType为2时，第二列数值的总和不大于x中tensor的第一维<br>3）x，out中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）<br>4）weight中每个tensor的K轴和N轴必须分别相等，动态量化（mx量化）场景下weight的tensor数必须与groupListOptional中的group数一致<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）支持非量化场景、MxA8W4伪量化场景和动态量化（mx量化）场景。动态量化（mx量化）场景要求biasOptional为空，scaleOptional为多tensor且长度与weight相同。 |
+      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等，长度最大为1024，当groupListType为2时，第二列数值的总和不大于x中tensor的第一维<br>3）x，out中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）<br>4）weight中每个tensor的K轴和N轴必须分别相等，动态量化（mx量化）场景下weight的tensor数必须与groupListOptional中的group数一致<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）支持非量化场景、MxA8W4伪量化场景和动态量化（mx量化）场景。动态量化（mx量化）场景要求biasOptional为空，scaleOptional为多tensor且长度与weight相同。MxA8W4伪量化和动态量化（mx量化）的MX A8W8/MX A4W4支持E=1时weight列表仅包含一个二维tensor的特殊多tensor场景。 |
       | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
 
 </details>
@@ -830,7 +830,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 <!-- npu="950" id12 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
 
   MX_A8W4场景下，先调用`aclnnWeightQuantPreprocess`同步预处理weight和weightScale，再将预处理输出直接作为weight和antiquantScaleOptional调用本接口完成分组矩阵乘。
 
@@ -1153,7 +1153,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
   int main()
   {
-      // WeightQuantPreprocess当前仅支持Ascend 950PR/Ascend 950DT。
+      // WeightQuantPreprocess当前仅支持Ascend 950PR&950DT系列产品。
       int32_t deviceId = 0;
       auto ret = AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(deviceId);
       CHECK_RET(ret == ACL_SUCCESS,
@@ -1831,7 +1831,7 @@ int main()
 }
 ```
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
 
   MxA8W4伪量化（单多单场景）调用示例
 

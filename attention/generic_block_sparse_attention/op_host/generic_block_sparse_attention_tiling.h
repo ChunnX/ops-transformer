@@ -67,6 +67,10 @@ TILING_DATA_FIELD_DEF(uint32_t, fdLseSubStride);
 TILING_DATA_FIELD_DEF(uint32_t, fdPartialCapacity);
 TILING_DATA_FIELD_DEF(uint64_t, fdPartialLseOffset);
 TILING_DATA_FIELD_DEF(uint64_t, fdPartialOOffset);
+// 0: do not force-select residual KV block; 1: always include residual KV block.
+TILING_DATA_FIELD_DEF(uint32_t, residualBlockMode);
+// 0: per-Q-block sparseBlockCount; 1: every Q block uses the same topK.
+TILING_DATA_FIELD_DEF(uint32_t, isConsistentTopk);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GenericBlockSparseAttention, GenericBlockSparseAttentionTilingData)
 
@@ -88,29 +92,29 @@ public:
     GBSATiling() = default;
     ~GBSATiling() = default;
 
-    ge::graphStatus GetTiling(gert::TilingContext *context, GenericBlockSparseAttentionTilingData &tilingData);
-    ge::graphStatus SetTilingData(gert::TilingContext *context, GenericBlockSparseAttentionTilingData &tilingData);
+    ge::graphStatus GetTiling(gert::TilingContext* context, GenericBlockSparseAttentionTilingData& tilingData);
+    ge::graphStatus SetTilingData(gert::TilingContext* context, GenericBlockSparseAttentionTilingData& tilingData);
 
 private:
-    ge::graphStatus GetNpuInfo(gert::TilingContext *context);
-    ge::graphStatus ParseAttrs(gert::TilingContext *context);
-    ge::graphStatus ParseCapabilityAttrs(gert::TilingContext *context);
-    ge::graphStatus CheckReservedAttrs(gert::TilingContext *context);
-    ge::graphStatus GetInputLayout(gert::TilingContext *context);
-    ge::graphStatus ParseInputTensors(gert::TilingContext *context);
-    ge::graphStatus ParseQueryKeyShapes(gert::TilingContext *context);
-    ge::graphStatus ParseSparseTensors(gert::TilingContext *context);
-    ge::graphStatus ParseBlockTable(gert::TilingContext *context);
-    ge::graphStatus ParseQkvDtype(gert::TilingContext *context);
-    ge::graphStatus CalculateWorkSpace(gert::TilingContext *context);
-    ge::graphStatus FillTilingData(gert::TilingContext *context);
-    ge::graphStatus CheckAttentionOutDtype(gert::TilingContext *context);
-    ge::graphStatus CheckSoftmaxPrecision(gert::TilingContext *context);
-    ge::graphStatus CheckQuantConfig(gert::TilingContext *context);
-    ge::graphStatus CheckMetadata(gert::TilingContext *context);
-    ge::graphStatus CheckReservedOptionalInputs(gert::TilingContext *context);
-    ge::graphStatus CheckCuSeqLengths(gert::TilingContext *context);
-    ge::graphStatus ParseKvCacheStride0(gert::TilingContext *context);
+    ge::graphStatus GetNpuInfo(gert::TilingContext* context);
+    ge::graphStatus ParseAttrs(gert::TilingContext* context);
+    ge::graphStatus ParseCapabilityAttrs(gert::TilingContext* context);
+    ge::graphStatus CheckReservedAttrs(gert::TilingContext* context);
+    ge::graphStatus GetInputLayout(gert::TilingContext* context);
+    ge::graphStatus ParseInputTensors(gert::TilingContext* context);
+    ge::graphStatus ParseQueryKeyShapes(gert::TilingContext* context);
+    ge::graphStatus ParseSparseTensors(gert::TilingContext* context);
+    ge::graphStatus ParseBlockTable(gert::TilingContext* context);
+    ge::graphStatus ParseQkvDtype(gert::TilingContext* context);
+    ge::graphStatus CalculateWorkSpace(gert::TilingContext* context);
+    ge::graphStatus FillTilingData(gert::TilingContext* context);
+    ge::graphStatus CheckAttentionOutDtype(gert::TilingContext* context);
+    ge::graphStatus CheckSoftmaxPrecision(gert::TilingContext* context);
+    ge::graphStatus CheckQuantConfig(gert::TilingContext* context);
+    ge::graphStatus CheckMetadata(gert::TilingContext* context);
+    ge::graphStatus CheckReservedOptionalInputs(gert::TilingContext* context);
+    ge::graphStatus CheckCuSeqLengths(gert::TilingContext* context);
+    ge::graphStatus ParseKvCacheStride0(gert::TilingContext* context);
     uint64_t GenerateTilingKey();
 
     uint32_t batch_ = 0;
@@ -121,13 +125,17 @@ private:
     uint32_t blockShapeX_ = 1;
     uint32_t blockShapeY_ = 128;
     uint32_t blockSize_ = 128;
+    // key PA_BBND origin [blockNum, blockSize, Nkv, D] dim BLOCKED_KV_DIM_KV_HEAD (Nkv); cross-checked against
+    // sparseBlockIdx dim0 in ParseSparseTensors.
+    uint32_t keyKvHeads_ = 0;
     uint32_t topK_ = 16;
     uint32_t qBlockNum_ = 0;
     uint32_t maxBlocksPerBatch_ = 0;
     uint32_t groupSize_ = 0;
     float scaleValue_ = 0.0f;
     uint32_t softmaxPrecision_ = 0;
-    int64_t isPackedGQA_ = 1;
+    int64_t residualBlockMode_ = 0;
+    bool isConsistentTopk_ = false;
     int64_t softmaxLseFlag_ = 0;
     bool returnSoftmaxlse_ = false;
     bool blockTablePresent_ = false;
@@ -148,6 +156,7 @@ private:
 
     std::string layoutQ_ = "TND";
     std::string layoutKv_ = "TND";
+    int64_t layoutSparsePattern_ = 4;
     int64_t maskType_ = 0;
     int64_t quantType_ = 0;
 
@@ -161,7 +170,7 @@ private:
     uint64_t fdPartialLseOffset_ = 0;
     uint64_t fdPartialOOffset_ = 0;
 
-    GenericBlockSparseAttentionTilingData *tilingData_ = nullptr;
+    GenericBlockSparseAttentionTilingData* tilingData_ = nullptr;
 };
 
 } // namespace optiling

@@ -13,6 +13,16 @@
  * \brief
  */
 
+#if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
+#include "version/asc_devkit_version.h"
+#include "version/hcomm_version.h"
+
+#if (ASC_DEVKIT_VERSION_NUM >= 90200000) && (HCOMM_VERSION_NUM >= 90200000)
+#define ENABLE_ATTENTION_TO_FFN_V2_KERNEL
+#endif
+
+#endif
+
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
@@ -41,6 +51,7 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
     REGISTER_TILING_DEFAULT(AttentionToFfnV2TilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", AttentionToFfnV2TilingData);
     TPipe pipe;
+#if defined(ENABLE_ATTENTION_TO_FFN_V2_KERNEL)
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
 #endif
@@ -85,5 +96,6 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
     }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     AscendC::SetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
 #endif
 }

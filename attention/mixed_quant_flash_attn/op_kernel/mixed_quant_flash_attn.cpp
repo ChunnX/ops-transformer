@@ -17,19 +17,17 @@
 #include "utils/mixed_quant_flash_attn_utils.h"
 #include "mixed_quant_flash_attn_template_tiling_key.h"
 #include "mixed_quant_flash_attn_tiling_data.h"
-#include "arch-920r1/mixed_quant_flash_attn_kernel_gqa.h"
-#include "arch-920r1/mixed_quant_flash_attn_empty_kernel.h"
+#include "arch92/mixed_quant_flash_attn_kernel_gqa.h"
+#include "arch92/mixed_quant_flash_attn_empty_kernel.h"
 
 using namespace AscendC;
 
 template <uint8_t inOutLayoutType, uint8_t kvLayoutType, bool hasAttenMask, uint8_t config, uint8_t quantComputeMode>
-__global__ __aicore__ void
-mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *kDescale,
-                       __gm__ uint8_t *vDescale, __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ,
-                       __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                       __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
-                       __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                       __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__global__ __aicore__ void mixed_quant_flash_attn(
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* kDescale,
+    __gm__ uint8_t* vDescale, __gm__ uint8_t* blockTable, __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* seqUsedQ,
+    __gm__ uint8_t* seqUsedKv, __gm__ uint8_t* sinks, __gm__ uint8_t* attnMask, __gm__ uint8_t* metadata,
+    __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     REGISTER_TILING_DEFAULT(optiling::MixedQuantFlashAttnTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
@@ -53,14 +51,14 @@ mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
         return;
     }
 
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    __gm__ uint8_t* user = GetUserWorkspace(workspace);
 
     // dc_preload(reinterpret_cast<__gm__ uint64_t*>(seqUsedQ), 0);
     dc_preload(reinterpret_cast<__gm__ uint64_t*>(seqUsedKv), 0);
     // dc_preload(reinterpret_cast<__gm__ uint64_t*>(tiling), 0);
     // if ASCEND_IS_AIC {
     //     uint32_t aicIdx = GetBlockIdx();
-        // dc_preload(reinterpret_cast<__gm__ uint64_t*>(metadata), 4*(16+16*aicIdx));
+    // dc_preload(reinterpret_cast<__gm__ uint64_t*>(metadata), 4*(16+16*aicIdx));
     // }
 
     fa_base_matmul::idCounterNum = 0;
@@ -77,9 +75,9 @@ mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
     constexpr bool useDn = false;
     constexpr bool pageAttention = (kvLayoutType != KvLayoutType_NO_PA);
 
-    using MQFA_T = MQFAType<Q_T, OUT_T, KV_T, KVSCALE_T, pageAttention, qLayout, kvLayoutType, outLayout, 
+    using MQFA_T = MQFAType<Q_T, OUT_T, KV_T, KVSCALE_T, pageAttention, qLayout, kvLayoutType, outLayout,
                             s1TemplateType, s2TemplateType, dTemplateType, hasAttenMask, useDn, quantComputeMode>;
-                                 
+
     using CubeBlock = BaseApi::FAAntiQuantGqaBlockCube<MQFA_T>;
     using VecFaBlock = BaseApi::FAAntiQuantGqaBlockVec<MQFA_T>;
     using VecFdBlock = BaseApi::FiaBlockVecFlashDecode<MQFA_T>;
@@ -95,10 +93,10 @@ mixed_quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_
 
     Kernel op;
     // printf("ly debug 004\n");
-    op.Init(query, key, value, kDescale, vDescale, blockTable, cuSeqLensQ, nullptr, //cuSeqLenskv placeholder
+    op.Init(query, key, value, kDescale, vDescale, blockTable, cuSeqLensQ, nullptr, // cuSeqLenskv placeholder
             seqUsedQ, seqUsedKv, sinks, attnMask, attnOut, softmaxLse, user, metadata, &tilingData->baseTiling);
-    MixedQuantFlashAttnEmpty::InitEmptyKvSinkLse<inOutLayoutType>(
-        cuSeqLensQ, seqUsedQ, seqUsedKv, sinks, softmaxLse, &tilingData->baseTiling);
+    MixedQuantFlashAttnEmpty::InitEmptyKvSinkLse<inOutLayoutType>(cuSeqLensQ, seqUsedQ, seqUsedKv, sinks, softmaxLse,
+                                                                  &tilingData->baseTiling);
     op.Process();
 
     AscendC::PipeBarrier<PIPE_ALL>();

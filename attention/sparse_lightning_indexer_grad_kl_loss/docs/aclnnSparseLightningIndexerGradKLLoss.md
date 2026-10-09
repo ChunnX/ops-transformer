@@ -3,27 +3,27 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：SparselightningIndexerGradKlLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能。LightningIndexer算子将QueryToken和KeyToken之间的最高内在联系的TopK个筛选出来，存放在SparseIndices中，从而减少长序列场景下Attention的计算量，加速长序列的网络的推理和训练的性能。
+- 接口功能：SparseLightningIndexerGradKLLoss算子是LightningIndexer的反向算子，再额外融合了Loss计算功能。LightningIndexer算子将QueryToken和KeyToken之间的最高内在联系的TopK个筛选出来，存放在SparseIndices中，从而减少长序列场景下Attention的计算量，加速长序列网络的推理和训练。
 
 - 计算公式：
    用于取Top-k的value的计算公式可以表示为：
@@ -32,7 +32,7 @@
    I_{t,:}=W_{t,:}@ReLU(q_{t,:}@(K_{:t,:})^T)
    $$
 
-   其中，$W$是第$t$个token对应的weights，$q$是第$t$个token对应的$G$个query头合轴后的矩阵，$K$为$t$行$K$矩阵。
+   其中，$W$是第$t$个token对应的weights，$q$是第$t$个token对应的$G$个query头合轴后的矩阵，$K$为$t$行$K$列矩阵。
 
    LightningIndexer会单独训练，对应的loss function为：
 
@@ -49,7 +49,7 @@
    通过求导可得Loss的梯度表达式：
 
    $$
-   dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \left) -p\mathop{{}}\nolimits_{{t,:}}\right. \right.
+   dI\mathop{{}}\nolimits_{{t,:}}=Softmax \left( I\mathop{{}}\nolimits_{{t,:}} \right) -p\mathop{{}}\nolimits_{{t,:}}
    $$
 
    利用链式法则可以进行weights，query和key矩阵的梯度计算：
@@ -172,7 +172,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>queryIndex</td>
             <td>输入</td>
-            <td>lightingIndexer结构的输入queryIndex。</td>
+            <td>LightningIndexer结构的输入queryIndex。</td>
             <td>
             <ul>
                 <li>数据类型与query/key/keyIndex保持一致。</li>
@@ -187,7 +187,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>keyIndex</td>
             <td>输入</td>
-            <td>lightingIndexer结构的输入keyIndex。</td>
+            <td>LightningIndexer结构的输入keyIndex。</td>
             <td>
             <ul>
                 <li>数据类型与query/key/queryIndex保持一致。</li>
@@ -294,7 +294,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <ul>
                 <li>值依赖。</li>
                 <li>长度与B保持一致。</li>
-                <li>累加和T2保持一致。</li>
+                <li>累加和与T2保持一致。</li>
                 <li>不支持空Tensor。</li>
             </ul>
             </td>
@@ -442,7 +442,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
     </table>
 
 <!-- npu="A3,910b" id7 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
   - T1支持大于等于actualSeqLengthsQuery的累加和，T2支持大于等于actualSeqLengthsKey的累加和。
 
 <!-- end id7 -->
@@ -617,7 +617,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         <tr>
             <td>S1、S2</td>
-            <td>S1支持1~32K，S2支持1~1M</td>
+            <td>S1支持1~32k，S2支持1~1M</td>
             <td>S1、S2支持不等长；S1必须小于等于S2</td>
         </tr>
         <tr>
@@ -667,7 +667,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tbody>
     </table>
     <!-- npu="950" id8 -->
-    <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对; B、S1、S2均支持泛化。
+    <term>Ascend 950PR&950DT系列产品</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对; B、S1、S2均支持泛化。
     <!-- end id8 -->
 
 ## 调用示例
@@ -818,20 +818,21 @@ int main() {
   aclTensor* dWeight = nullptr;
   aclTensor* loss = nullptr;
 
-  std::vector<float> qHostData(1*64*512, 1);
-  std::vector<float> kHostData(1*1*512, 1);
-  std::vector<float> qRopeHostData(1*64*64, 1);
-  std::vector<float> kRopeHostData(1*1*64, 1);
-  std::vector<float> qIndexHostData(1*32*128, 1);
-  std::vector<float> kIndexHostData(1*1*128, 1);
-  std::vector<float> weightHostData(1*32, 1);
-  std::vector<int32_t> sparseIndicesHostData(2048, 1);
-  std::vector<float> softmaxMaxHostData(1*64, 1);
+  std::vector<aclFloat16> qHostData(1*64*512, aclFloatToFloat16(0.1));
+  std::vector<aclFloat16> kHostData(1*1*512, aclFloatToFloat16(0.2));
+  std::vector<aclFloat16> qRopeHostData(1*64*64, aclFloatToFloat16(0.1));
+  std::vector<aclFloat16> kRopeHostData(1*1*64, aclFloatToFloat16(0.2));
+  std::vector<aclFloat16> qIndexHostData(1*32*128, aclFloatToFloat16(0.2));
+  std::vector<aclFloat16> kIndexHostData(1*1*128, aclFloatToFloat16(0.1));
+  std::vector<aclFloat16> weightHostData(1*32, aclFloatToFloat16(0.005));
+  std::vector<int32_t> sparseIndicesHostData(2048, -1);
+  sparseIndicesHostData[0] = 0;
+  std::vector<float> softmaxMaxHostData(1*64, 25.4483f);
   std::vector<float> softmaxSumHostData(1*64, 1);
 
-  std::vector<float> dQIndexHostData(1*32*128, 1);
-  std::vector<float> dKIndexHostData(1*1*128, 1);
-  std::vector<float> dWeightHostData(1*32, 1);
+  std::vector<aclFloat16> dQIndexHostData(1*32*128, 1);
+  std::vector<aclFloat16> dKIndexHostData(1*1*128, 1);
+  std::vector<aclFloat16> dWeightHostData(1*32, 1);
   std::vector<float> lossHostData(1, 1);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);

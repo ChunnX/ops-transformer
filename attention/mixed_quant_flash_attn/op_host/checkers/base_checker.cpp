@@ -16,8 +16,8 @@
 #include <map>
 #include <numeric>
 #include "tiling/tiling_api.h"
-#include "../fa_tiling_info.h"
-#include "base_checker.h"
+#include "../mqfa_fa_tiling_info.h"
+#include "mqfa_base_checker.h"
 #include "log/log.h"
 namespace optiling {
 namespace mixed_quant_flash_attn {
@@ -28,20 +28,21 @@ using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
 
-ge::graphStatus FABaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
+ge::graphStatus FABaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc, const std::string& name) const
 {
     if (desc != nullptr) {
-        const auto &it = DTYPE_SUPPORT_MAP.find(name);
-        OP_CHECK_IF(
-            it == DTYPE_SUPPORT_MAP.end(),
-            OP_LOGE("MixedQuantFlashAttn", "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
-            return ge::GRAPH_FAILED);
-        auto &expectDtypeList = it->second;
+        const auto& it = DTYPE_SUPPORT_MAP.find(name);
+        OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
+                    OP_LOGE("MixedQuantFlashAttn", "%s datatype support list should be specify in DTYPE_SUPPORT_MAP",
+                            name.c_str()),
+                    return ge::GRAPH_FAILED);
+        auto& expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
             std::string dtypeStr = DataTypeToSerialString(desc->GetDataType());
             std::string expectedDtypes;
             for (size_t i = 0; i < expectDtypeList.size(); i++) {
-                if (i > 0) expectedDtypes += ", ";
+                if (i > 0)
+                    expectedDtypes += ", ";
                 expectedDtypes += DataTypeToSerialString(expectDtypeList[i]);
             }
             OP_LOGE_FOR_INVALID_DTYPE("MixedQuantFlashAttn", name.c_str(), dtypeStr.c_str(), expectedDtypes.c_str());
@@ -51,14 +52,15 @@ ge::graphStatus FABaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDe
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FABaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDesc *desc,
-                                                  const std::string &name) const
+ge::graphStatus FABaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDesc* desc,
+                                                  const std::string& name) const
 {
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
-        OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
+        OP_CHECK_IF(
+            (FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
             OP_LOGE_FOR_INVALID_FORMAT("MixedQuantFlashAttn", name.c_str(), Ops::Base::ToString(format).c_str(), "ND"),
-                return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
