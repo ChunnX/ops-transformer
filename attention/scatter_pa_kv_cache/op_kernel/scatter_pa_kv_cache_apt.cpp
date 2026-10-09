@@ -82,8 +82,8 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
     using keyType = GetInputType<DTYPE_KEY>::type;
     using valueType = GetInputType<DTYPE_VALUE>::type;
     if TILING_KEY_IS (NORMAL_INT32_FULLY_LOAD) {
-        ScatterPaKvCache::ScatterPaKvCacheNormalFullyLoad<keyType, int32_t, int32_t, DUAL_IN_OUT> op(&pipe,
-                                                                                                     &tilingData);
+        ScatterPaKvCache::ScatterPaKvCacheNormalFullyLoad<keyType, DTYPE_SLOT_MAPPING, int32_t, DUAL_IN_OUT> op(
+            &pipe, &tilingData);
         op.Init(key, key_cache_in, slot_mapping, value, value_cache_in, compress_lens, compress_seq_offset, seq_lens,
                 key_cache_out, value_cache_out);
         op.Process();
