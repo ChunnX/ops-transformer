@@ -48,9 +48,14 @@
  * lo) into the same L0C accumulator, giving ~fp32-level operand precision on
  * the fp16 cube. (R9: bf16 switched from single plane to the same dual-plane
  * scheme — the ATK wide-range accuracy bar needs the dn residual term.)
- * dn is consumed in its natural (T_pad, C) layout (srcDValue = C <= 65535
- * always), so the R2 dnT panel mechanism is gone together with the dn
- * transpose kernels.
+ * R11: dn arrives blocked-NZ pre-tiled from the scatter kernel — 64KB
+ * [hi|lo] tile units at C-strip-major index cTile*(T_pad/128) + tTile — so
+ * both the dx and the dw A-side GM->L1 hops are single contiguous 32KB
+ * bursts (formerly Nd2Nz over the natural (T_pad, C) layout: 128 strided
+ * 256B rows at a C*2B pitch, plus a 2*T_pad*C far hop to the lo plane).
+ * The L1 image per tile is byte-identical to the old Nd2Nz product, so the
+ * L1->L0 paths (incl. the dw transposed ZZ load) and all queue orders are
+ * untouched and the results stay bitwise.
  *
  * R2 scheduling/dataflow (vs R1):
  * - Work unit is a tile PAIR, and units are handed to cores as contiguous
@@ -83,22 +88,11 @@
 
 using namespace AscendC;
 
-// GM(ND) -> L1(Nz), matrix (m, n) row-major with leading dim ld
-template <typename T>
-__aicore__ inline void LoadNdGmToNzL1(const LocalTensor<T>& dst, const GlobalTensor<T>& src, uint32_t m, uint32_t n,
-                                      uint32_t ld)
-{
-    Nd2NzParams params;
-    params.ndNum = 1;
-    params.nValue = m;
-    params.dValue = n;
-    params.srcNdMatrixStride = 0;
-    params.srcDValue = ld;
-    params.dstNzC0Stride = m;
-    params.dstNzNStride = 1;
-    params.dstNzMatrixStride = 0;
-    DataCopy(dst, src, params);
-}
+// (R11) dn arrives blocked-NZ pre-tiled from the scatter kernel, so the
+// former GM(ND)->L1(Nz) Nd2Nz helper is gone together with its strided
+// 128x256B row stream; every A tile is one contiguous 32KB DataCopy whose
+// L1 image is byte-identical to the old Nd2Nz(nValue=128, dValue=128,
+// dstNzC0Stride=128, dstNzNStride=1) product.
 
 // L1(Nz) -> L0A(Zz): A tile (m, k), non-transposed (A = src)
 template <typename T>
@@ -201,10 +195,12 @@ public:
         cSize_ = static_cast<uint32_t>(tilingData->totalHeadDim);
         tPad_ = static_cast<uint32_t>(tilingData->tPad);
         gDx_ = static_cast<uint32_t>(tilingData->gemmDxCores);
-        // dn is stored as HiLo dual planes (dn = hi + lo, plane stride
-        // T_pad*C) for both fp16 and bf16 inputs (R9: always on).
+        // dn is stored as HiLo dual planes (dn = hi + lo) in blocked-NZ
+        // tiles (R11): 64KB units [hi tile | lo tile] at C-strip-major index
+        // cTile*dnTilesT_ + tTile, for both fp16 and bf16 inputs (R9: HiLo
+        // always on).
         hilo_ = true;
-        dnPlaneElems_ = static_cast<uint64_t>(tPad_) * cSize_;
+        dnTilesT_ = CeilDivU32(tPad_, CG_GEMM_BK); // T-tiles per C-strip
         pipe->InitBuffer(queA1_, CG_L1_A_DEPTH, CG_GEMM_BM * CG_GEMM_BK * sizeof(half));
         pipe->InitBuffer(queB1_, CG_L1_B_DEPTH, CG_GEMM_BK * CG_GEMM_BN * sizeof(half));
         // L0 double buffering: 2x32KB fills L0A/L0B (64KB each), 2x64KB fills
@@ -374,14 +370,18 @@ private:
     // (DxTerm kv then sc) is unchanged and bitwise semantics are preserved.
     __aicore__ inline void DxEnqueueTerm(uint32_t m0, uint32_t n0, uint32_t k, bool isSc, bool hasB, uint32_t kTiles)
     {
-        uint64_t aOff = static_cast<uint64_t>(m0) * cSize_ + k * CG_GEMM_BK;
         const GlobalTensor<half>& dn = isSc ? dnScGM_ : dnKvGM_;
+        // dn is blocked-NZ from the scatter kernel (R11): tile (m0/128, k)
+        // is one contiguous 32KB burst at C-strip-major index
+        // k*dnTilesT_ + m0/128, with the lo tile 32KB behind the hi tile.
+        uint64_t aUnit =
+            (static_cast<uint64_t>(k) * dnTilesT_ + m0 / CG_GEMM_BM) * (2U * CG_GEMM_BM * CG_GEMM_BK);
         LocalTensor<half> a = queA1_.AllocTensor<half>();
-        LoadNdGmToNzL1(a, dn[aOff], CG_GEMM_BM, CG_GEMM_BK, cSize_);
+        DataCopy(a, dn[aUnit], CG_GEMM_BM * CG_GEMM_BK);
         queA1_.EnQue(a);
         if (hilo_) {
             LocalTensor<half> aLo = queA1_.AllocTensor<half>();
-            LoadNdGmToNzL1(aLo, dn[aOff + dnPlaneElems_], CG_GEMM_BM, CG_GEMM_BK, cSize_);
+            DataCopy(aLo, dn[aUnit + CG_GEMM_BM * CG_GEMM_BK], CG_GEMM_BM * CG_GEMM_BK);
             queA1_.EnQue(aLo);
         }
         // wkv/wgate are blocked-NZ from the cast kernel (R7): tile
@@ -411,25 +411,28 @@ private:
         LocalTensor<float> cW = queL0C_.AllocTensor<float>();
         LocalTensor<float> cG = queL0C_.AllocTensor<float>();
         for (uint32_t k = 0; k < kTiles; k++) {
-            uint32_t k0 = k * CG_GEMM_BK;
             bool init = (k == 0);
-            // ---- GM -> L1: dnKv/dnSc A tiles (natural (T,C) tiles at
-            // (k0,m0), transposed on the way to L0A), then shared x B tile
-            uint64_t aOff = static_cast<uint64_t>(k0) * cSize_ + m0;
+            // ---- GM -> L1: dnKv/dnSc A tiles (blocked-NZ (T,C) tiles at
+            // (k,m0/128), transposed on the way to L0A), then shared x B
+            // tile. k is the inner loop and the tile index is
+            // (m0/128)*kTiles + k, so the dw A stream walks consecutive
+            // 64KB hi+lo units within one C-strip.
+            uint64_t aUnit =
+                (static_cast<uint64_t>(m0) / CG_GEMM_BM * kTiles + k) * (2U * CG_GEMM_BM * CG_GEMM_BK);
             LocalTensor<half> aW = queA1_.AllocTensor<half>();
-            LoadNdGmToNzL1(aW, dnKvGM_[aOff], CG_GEMM_BK, CG_GEMM_BM, cSize_);
+            DataCopy(aW, dnKvGM_[aUnit], CG_GEMM_BK * CG_GEMM_BM);
             queA1_.EnQue(aW);
             if (hilo_) {
                 LocalTensor<half> aWLo = queA1_.AllocTensor<half>();
-                LoadNdGmToNzL1(aWLo, dnKvGM_[aOff + dnPlaneElems_], CG_GEMM_BK, CG_GEMM_BM, cSize_);
+                DataCopy(aWLo, dnKvGM_[aUnit + CG_GEMM_BK * CG_GEMM_BM], CG_GEMM_BK * CG_GEMM_BM);
                 queA1_.EnQue(aWLo);
             }
             LocalTensor<half> aG = queA1_.AllocTensor<half>();
-            LoadNdGmToNzL1(aG, dnScGM_[aOff], CG_GEMM_BK, CG_GEMM_BM, cSize_);
+            DataCopy(aG, dnScGM_[aUnit], CG_GEMM_BK * CG_GEMM_BM);
             queA1_.EnQue(aG);
             if (hilo_) {
                 LocalTensor<half> aGLo = queA1_.AllocTensor<half>();
-                LoadNdGmToNzL1(aGLo, dnScGM_[aOff + dnPlaneElems_], CG_GEMM_BK, CG_GEMM_BM, cSize_);
+                DataCopy(aGLo, dnScGM_[aUnit + CG_GEMM_BK * CG_GEMM_BM], CG_GEMM_BK * CG_GEMM_BM);
                 queA1_.EnQue(aGLo);
             }
             LocalTensor<half> bX = queB1_.AllocTensor<half>();
@@ -573,8 +576,7 @@ private:
 
     GlobalTensor<half> xF16GM_, wkvF16GM_, wgateF16GM_, dnKvGM_, dnScGM_;
     GlobalTensor<ioT> dXGM_, dWkvGM_, dWgateGM_;
-    uint32_t tLen_, hSize_, cSize_, tPad_, gDx_;
-    uint64_t dnPlaneElems_;
+    uint32_t tLen_, hSize_, cSize_, tPad_, gDx_, dnTilesT_;
     bool hilo_;
     TQue<TPosition::A1, CG_L1_A_DEPTH> queA1_;
     TQue<TPosition::B1, CG_L1_B_DEPTH> queB1_;

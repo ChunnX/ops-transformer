@@ -385,16 +385,24 @@ ge::graphStatus CompressorGradTilingA3::CalcSchedule()
     // the sweep curves:
     //   u_dx = 2.68*nCn + 0.76 us per dx unit (128M x 2*128N pair); LSQ over
     //         nCn in {1,2,4}, case5 left wing independently validates 11.48
-    //   u_dw = (xResident ? 1.55 : 2.70) * kT us per dw unit (128x128),
-    //         kT = T_pad/128; 1.55 while the x workspace stays L2-resident
-    //         (T_pad*H*2 <= 128MB), 2.70 when it is HBM-streamed
+    //   u_dw = (xResident ? c_l2 : c_hbm) * kT us per dw unit (128x128),
+    //         kT = T_pad/128; residency split while the x workspace streams
+    // R11 recalibration (dn blocked-NZ, logs/r11/r11_land_gdx_table.txt): the
+    // dw-side A operand (dn along k=T) turned from strided Nd2Nz rows into
+    // single 32KB bursts, so the HBM tier collapsed onto the L2 tier —
+    // c_hbm 2.70 -> 1.47, c_l2 1.55 -> 1.48 (LSQ marginal slopes of the R11
+    // case2/3/5 right wings; case5 g12..g16 slope 377us/unit at kT=256).
+    // u_dx is unchanged (dx is B-side/mmad-bound; R11 left wings reproduce
+    // 3.44/6.12/11.47 for nCn 1/2/4). Verdicts move only for case3 (11->12)
+    // and case5 (8->12): all four decision cases hit their measured optima,
+    // 107/225 of the (a,b,c) grid keeps the full vector (13,13,12,12,13,12).
     // Pick g by minimizing the discrete makespan
     //   t(g) = max(ceil(nDxU/g)*u_dx, ceil(nDwU/(cores-g))*u_dw), g in [6,16]
     // — the ceil terms price per-core unit quantization, so dw-side cliffs
     // (case1 g14, case2 g13) are penalized automatically and the search is
     // two-directional. Ties break toward the continuous balance point
     // g_cont = cores*DxT/(DxT+DwT); the constants sit on a wide plateau
-    // (33/375 grid combos keep all 6-case verdicts identical).
+    // (R10 grid: 33/375; R11 recalibration grid: 107/225 — see above).
     const int64_t gemmCores = aicNum_;
     int64_t gDx = std::max<int64_t>(1, gemmCores / 2);
     {
@@ -406,7 +414,7 @@ ge::graphStatus CompressorGradTilingA3::CalcSchedule()
         const int64_t nDwU = nCn * nH;             // dw units: 128x128 tiles
         const double uDx = 2.68 * static_cast<double>(nCn) + 0.76;
         const bool xResident = (tPad_ * hSize * 2) <= static_cast<int64_t>(128) * 1024 * 1024;
-        const double uDw = (xResident ? 1.55 : 2.70) * static_cast<double>(tPad_ / CG_A3_NZ_TILE);
+        const double uDw = (xResident ? 1.48 : 1.47) * static_cast<double>(tPad_ / CG_A3_NZ_TILE);
         const double dxT = static_cast<double>(nDxU) * uDx;
         const double dwT = static_cast<double>(nDwU) * uDw;
         const double gCont = static_cast<double>(gemmCores) * dxT / (dxT + dwT);

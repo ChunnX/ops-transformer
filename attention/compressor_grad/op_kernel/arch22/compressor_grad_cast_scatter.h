@@ -18,9 +18,22 @@
  *
  * fp16 and bf16 inputs both use HiLo dual-plane dn workspaces (R9: the bf16
  * single-plane path missed the ATK wide-range accuracy bar): scatter writes
- * hi = fp16(dn) to plane 0 and lo = fp16(dn - fp32(hi)) to plane 1 (plane
- * stride T_pad*C); the gemm kernel accumulates dot(hi, w) + dot(lo, w) so
- * the dn operand keeps ~fp32-level precision through the fp16 cube path.
+ * hi = fp16(dn) and lo = fp16(dn - fp32(hi)); the gemm kernel accumulates
+ * dot(hi, w) + dot(lo, w) so the dn operand keeps ~fp32-level precision
+ * through the fp16 cube path.
+ *
+ * R11: the dn workspaces are blocked-NZ tiled (same family as the x/w cast
+ * outputs since R6/R7). Tile (tTile = t/128, cTile = c/128) sits at
+ * C-strip-major index cTile*kTilesT + tTile as one 64KB unit: hi tile
+ * first, lo
+ * tile 32KB behind it; in-tile arrangement is group g = cLocal/16 at
+ * g*2048 with rows packed contiguously (r*16 + cLocal%16) — the
+ * byte-exact Nd2Nz L1 image the gemm's A-side load used to build on the
+ * fly, so the gemm A tiles load as single contiguous 32KB bursts and the
+ * hi+lo pair of a tile is one contiguous 64KB region. Values are unchanged
+ * (same elementwise Cast/Sub chain, only UB placement), so outputs stay
+ * bitwise identical; total workspace bytes are unchanged too, so tiling
+ * offsets and the linear ZeroDn fill need no change.
  *
  * Kernel logic is ported verbatim from the verified standalone A3 AscendC
  * implementation; only the entry form changed (Init reads the tiling struct,
@@ -281,7 +294,8 @@ public:
         segLen_ = static_cast<uint32_t>(tilingData->segLen);
         blocksPerCore_ = static_cast<uint32_t>(tilingData->blocksPerCore);
         scatterCoreNum_ = static_cast<uint32_t>(tilingData->scatterCoreNum);
-        dnPlaneElems_ = static_cast<uint64_t>(tilingData->tPad) * static_cast<uint64_t>(cSize_);
+        // R11 blocked-NZ dn: T-tiles per C-strip (tPad is 128-aligned)
+        dnTilesT_ = CeilDivU32(static_cast<uint32_t>(tilingData->tPad), 128U);
         uint32_t seg = segLen_;
         // HiLo dual-plane dn staging for both fp16 and bf16 inputs (R9: always on).
         constexpr uint32_t planes = 2U;
@@ -436,49 +450,113 @@ private:
     }
 
     // stage all rows of a row-major fp32 block (N, seg) into the cur/prev dn
-    // slot tiles; coff==1: rows map 1:1 onto the cur tile (contiguous cast);
-    // coff==2: odd rows -> cur tile, even rows -> prev tile (strided casts).
-    // Every dtype additionally produces the lo tile: lo = fp16(row - fp32(hi)).
+    // slot tiles in blocked-NZ group-major order: 16-column group g sits at
+    // stage + g*cr*16 with its rows packed contiguously — the exact in-tile
+    // arrangement of the blocked-NZ dn workspace, so FlushDn writes one
+    // contiguous run per (tile, group) instead of row-strided segments.
+    // coff==1: rows map 1:1 onto the cur tile; coff==2: odd rows -> cur
+    // tile, even rows -> prev tile (src repeat stride picks the parity).
+    // Every dtype additionally produces the lo tile: lo = fp16(row -
+    // fp32(hi)). Same elementwise Cast/Sub chain as the former row-major
+    // staging (mask=16 grouped repeats; repeat-stride unit is 32B), so the
+    // staged values are bitwise identical — only the placement changed.
     __aicore__ inline void StageTiles(const LocalTensor<float>& blk)
     {
         const uint32_t seg = segLen_;
-        const uint8_t rowBlk = static_cast<uint8_t>(seg / 8);
-        const uint8_t rowBlkH = static_cast<uint8_t>(seg / 16);
+        const uint8_t rowBlk = static_cast<uint8_t>(seg / 8);         // fp32 row stride, 32B units
+        const uint8_t row2Blk = static_cast<uint8_t>(2 * rowBlk);     // fp32 two-row stride
+        UnaryRepeatParams gather{1, 1, 1, rowBlk};                    // f32 rows -> f16 NZ rows
+        UnaryRepeatParams gatherOdd{1, 1, 1, row2Blk};                // f32 odd/even rows -> f16
+        UnaryRepeatParams roundtrip{1, 1, rowBlk, 1};                 // f16 NZ rows -> f32 rows
         if (coff_ == 1) {
-            Cast(stageHiCur_, blk, RoundMode::CAST_NONE, crSize_ * seg);
-            Cast(hBTile_, stageHiCur_, RoundMode::CAST_NONE, crSize_ * seg);
+            for (uint32_t g = 0; g < seg / 16; g++) {
+                Cast(stageHiCur_[g * crSize_ * 16], blk[g * 16], RoundMode::CAST_NONE, 16, crSize_, gather);
+            }
+            for (uint32_t g = 0; g < seg / 16; g++) {
+                Cast(hBTile_[g * 16], stageHiCur_[g * crSize_ * 16], RoundMode::CAST_NONE, 16, crSize_, roundtrip);
+            }
             Sub(hBTile_, blk, hBTile_, static_cast<int32_t>(crSize_ * seg));
-            Cast(stageLoCur_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
+            for (uint32_t g = 0; g < seg / 16; g++) {
+                Cast(stageLoCur_[g * crSize_ * 16], hBTile_[g * 16], RoundMode::CAST_NONE, 16, crSize_, gather);
+            }
         } else {
-            UnaryRepeatParams castPrm{1, 1, rowBlkH, static_cast<uint8_t>(2 * rowBlk)};
-            Cast(stageHiCur_, blk[seg], RoundMode::CAST_NONE, seg, crSize_, castPrm); // odd rows
-            Cast(stageHiPrev_, blk, RoundMode::CAST_NONE, seg, crSize_, castPrm);     // even rows
-            BinaryRepeatParams subPrm{1, 1, 1, rowBlk, static_cast<uint8_t>(2 * rowBlk), rowBlk};
-            Cast(hBTile_, stageHiCur_, RoundMode::CAST_NONE, crSize_ * seg);
+            for (uint32_t g = 0; g < seg / 16; g++) {
+                Cast(stageHiCur_[g * crSize_ * 16], blk[seg + g * 16], RoundMode::CAST_NONE, 16, crSize_, gatherOdd);
+                Cast(stageHiPrev_[g * crSize_ * 16], blk[g * 16], RoundMode::CAST_NONE, 16, crSize_, gatherOdd);
+            }
+            BinaryRepeatParams subPrm{1, 1, 1, rowBlk, row2Blk, rowBlk};
+            for (uint32_t g = 0; g < seg / 16; g++) {
+                Cast(hBTile_[g * 16], stageHiCur_[g * crSize_ * 16], RoundMode::CAST_NONE, 16, crSize_, roundtrip);
+            }
             Sub(hBTile_, blk[seg], hBTile_, seg, crSize_, subPrm);
-            Cast(stageLoCur_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
-            Cast(hBTile_, stageHiPrev_, RoundMode::CAST_NONE, crSize_ * seg);
+            for (uint32_t g = 0; g < seg / 16; g++) {
+                Cast(stageLoCur_[g * crSize_ * 16], hBTile_[g * 16], RoundMode::CAST_NONE, 16, crSize_, gather);
+            }
+            for (uint32_t g = 0; g < seg / 16; g++) {
+                Cast(hBTile_[g * 16], stageHiPrev_[g * crSize_ * 16], RoundMode::CAST_NONE, 16, crSize_, roundtrip);
+            }
             Sub(hBTile_, blk, hBTile_, seg, crSize_, subPrm);
-            Cast(stageLoPrev_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
+            for (uint32_t g = 0; g < seg / 16; g++) {
+                Cast(stageLoPrev_[g * crSize_ * 16], hBTile_[g * 16], RoundMode::CAST_NONE, 16, crSize_, gather);
+            }
+        }
+    }
+
+    // flush one staged slot tile (one HiLo plane) into the blocked-NZ dn
+    // workspace: block rows [r0, r0+cr) x cols [c0, c0+seg) covers NZ groups
+    // g0..g0+seg/16-1 of tile (rt, ct). Within a group the destination rows
+    // are contiguous (in-tile row pitch is 16 elements), so the common case
+    // (no row straddle) is one 2D DataCopyPad of seg/16 bursts, nR*32B each,
+    // contiguous src, 4KB dst pitch. Rows never straddle a tile when cr
+    // divides 128 (all official cases; the loop covers the general
+    // cr<=255 shape with <=3 tiles); cols never straddle because c0 is a
+    // multiple of seg and seg divides 128.
+    __aicore__ inline void FlushSlotPlane(const GlobalTensor<half>& dn, const LocalTensor<half>& stage, uint32_t plane,
+                                          uint64_t r0, uint64_t c0)
+    {
+        const uint32_t seg = segLen_;
+        const uint32_t ct = static_cast<uint32_t>(c0 / 128U);
+        const uint32_t g0 = static_cast<uint32_t>((c0 % 128U) / 16U);
+        const uint64_t r1 = r0 + crSize_;
+        for (uint64_t rt = r0 / 128U, rtEnd = (r1 + 127U) / 128U; rt < rtEnd; rt++) {
+            uint64_t rFirst = (r0 > rt * 128U) ? r0 : rt * 128U;
+            uint64_t rLast = (r1 < (rt + 1U) * 128U) ? r1 : (rt + 1U) * 128U;
+            uint32_t nR = static_cast<uint32_t>(rLast - rFirst);
+            uint32_t rOff = static_cast<uint32_t>(rFirst - r0); // staging row offset in this group
+            uint64_t unit = (static_cast<uint64_t>(ct) * dnTilesT_ + rt) * (2U * 128U * 128U);
+            uint64_t dstBase = unit + static_cast<uint64_t>(plane) * 16384U + (rFirst - rt * 128U) * 16U;
+            if (nR == crSize_) {
+                // common case (cr divides 128): one 2D copy, contiguous src
+                DataCopyExtParams cp{static_cast<uint16_t>(seg / 16U), nR * 32U, 0, 128U * 32U - nR * 32U, 0};
+                DataCopyPad(dn[dstBase + g0 * 2048U], stage, cp);
+            } else {
+                // row-straddling tail (cr not a divisor of 128): the staged
+                // groups are row-sliced, so walk them one contiguous burst
+                // per group (strides on a sliced 2D src are avoided on
+                // purpose: nonzero srcStride on the pad-copy path proved
+                // timing-sensitive on 910_93)
+                for (uint32_t g = 0; g < seg / 16U; g++) {
+                    DataCopyExtParams cp1{1, nR * 32U, 0, 0, 0};
+                    DataCopyPad(dn[dstBase + (g0 + g) * 2048U], stage[(g * crSize_ + rOff) * 16U], cp1);
+                }
+            }
         }
     }
 
     // flush the staged slot tiles: cur tile -> tokens [j*cr, (j+1)*cr) cols
     // [(coff-1)*D+d0, +seg); prev tile (coff==2, j>=1) -> tokens [(j-1)*cr,
-    // j*cr) cols [d0, +seg); one 2D DataCopyPad per tile per HiLo plane.
+    // j*cr) cols [d0, +seg); one FlushSlotPlane per slot per HiLo plane.
     __aicore__ inline void FlushDn(const GlobalTensor<half>& dn, uint32_t b, uint32_t j, uint32_t d0)
     {
-        const uint32_t seg = segLen_;
-        DataCopyExtParams cp{static_cast<uint16_t>(crSize_), static_cast<uint32_t>(seg * sizeof(half)), 0,
-                             static_cast<uint32_t>((cSize_ - seg) * sizeof(half)), 0};
-        uint64_t curOff = (static_cast<uint64_t>(b) * sSize_ + j * crSize_) * cSize_ + (coff_ - 1) * dSize_ + d0;
+        uint64_t curRow = static_cast<uint64_t>(b) * sSize_ + j * crSize_;
+        uint64_t curCol = static_cast<uint64_t>(coff_ - 1U) * dSize_ + d0;
         SetWaitFlag<HardEvent::V_MTE3>();
-        DataCopyPad(dn[curOff], stageHiCur_, cp);
-        DataCopyPad(dn[curOff + dnPlaneElems_], stageLoCur_, cp);
+        FlushSlotPlane(dn, stageHiCur_, 0U, curRow, curCol);
+        FlushSlotPlane(dn, stageLoCur_, 1U, curRow, curCol);
         if (coff_ == 2 && j >= 1) {
-            uint64_t prevOff = (static_cast<uint64_t>(b) * sSize_ + (j - 1) * crSize_) * cSize_ + d0;
-            DataCopyPad(dn[prevOff], stageHiPrev_, cp);
-            DataCopyPad(dn[prevOff + dnPlaneElems_], stageLoPrev_, cp);
+            uint64_t prevRow = static_cast<uint64_t>(b) * sSize_ + (j - 1U) * crSize_;
+            FlushSlotPlane(dn, stageHiPrev_, 0U, prevRow, d0);
+            FlushSlotPlane(dn, stageLoPrev_, 1U, prevRow, d0);
         }
     }
 
@@ -486,8 +564,7 @@ private:
     GlobalTensor<float> smGM_, kvGM_, dApeGM_;
     GlobalTensor<half> dnKvGM_, dnScGM_;
     uint32_t bSize_, sSize_, dSize_, crSize_, coff_, nblk_, nblkIn_, nRows_, cSize_, segLen_;
-    uint32_t blocksPerCore_, scatterCoreNum_;
-    uint64_t dnPlaneElems_;
+    uint32_t blocksPerCore_, scatterCoreNum_, dnTilesT_;
     TBuf<TPosition::VECCALC> buf_;
     LocalTensor<float> apeCur_, apePrev_, sm_, kvBlk_, dkvBlk_, colAcc_, dC32_, hBTile_;
     LocalTensor<ioT> dCIn_;
