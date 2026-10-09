@@ -647,8 +647,8 @@ __simd_vf__ void MulWeightAndReduceSum2F32VF(__ubuf__ uint16_t *qliTwoF32Out0, _
         // Weight无bank冲突，用LoadAlign来提取weight标量
         // 地址空间处理：原 BroadcastLane(ptr) 内联为 LoadAlign BRC，避免 __ubuf__ 传给 __local_mem__ 参数
         Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(qliTwoF32RegwBrc[1], weightTemp + qliTwoF32I);
-// A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201
-#if !(defined(__NPU__ARCH__) && __NPU_ARCH__ == 9201)
+// A6 (9201/9202): relu在fixpipe随路做，vec1不做
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
         Reg::Relu(qliTwoF32RegQK0[0], qliTwoF32RegQK0[0], qliTwoF32MaskAllB32);
         Reg::Relu(qliTwoF32RegQK0[1], qliTwoF32RegQK0[1], qliTwoF32MaskAllB32);
         Reg::Relu(qliTwoF32RegQK1[0], qliTwoF32RegQK1[0], qliTwoF32MaskAllB32);
@@ -771,8 +771,8 @@ __simd_vf__ void MulWeightAndReduceSum2Int32VF(__ubuf__ uint16_t *qliTwoI32Out0,
         // Weight无bank冲突，用LoadAlign来提取weight标量
         // 地址空间处理：原 BroadcastLane(ptr) 内联为 LoadAlign BRC，避免 __ubuf__ 传给 __local_mem__ 参数
         Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(qliTwoI32RegwBrc[1], weightTemp + qliTwoI32I);
-// A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201
-#if !(defined(__NPU__ARCH__) && __NPU_ARCH__ == 9201)
+// A6 (9201/9202): relu在fixpipe随路做，vec1不做
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
         Reg::Relu(qliTwoI32RegQK0[0], qliTwoI32RegQK0[0], qliTwoI32MaskAllB32);
         Reg::Relu(qliTwoI32RegQK0[1], qliTwoI32RegQK0[1], qliTwoI32MaskAllB32);
         Reg::Relu(qliTwoI32RegQK1[0], qliTwoI32RegQK1[0], qliTwoI32MaskAllB32);
@@ -1285,8 +1285,8 @@ __simd_vf__ void MulWeightAndReduceSumOptionalScale2VF(__ubuf__ uint16_t *qliOpt
         // Weight无bank冲突，用LoadAlign来提取weight标量
         // 地址空间处理：原 BroadcastLane(ptr) 内联为 LoadAlign BRC，避免 __ubuf__ 传给 __local_mem__ 参数
         Reg::LoadAlign<float, Reg::LoadDist::DIST_BRC_B32>(qliOptTwoRegwBrc[1], qliOptTwoWeightTemp + qliOptTwoI);
-// A6: relu在fixpipe随路做，vec1不做; A6: __NPU__ARCH__ 9201
-#if !(defined(__NPU__ARCH__) && __NPU_ARCH__ == 9201)
+// A6 (9201/9202): relu在fixpipe随路做，vec1不做
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
         Reg::Relu(qliOptTwoRegQK0[0], qliOptTwoRegQK0[0], qliOptTwoMaskAllB32);
         Reg::Relu(qliOptTwoRegQK0[1], qliOptTwoRegQK0[1], qliOptTwoMaskAllB32);
         Reg::Relu(qliOptTwoRegQK1[0], qliOptTwoRegQK1[0], qliOptTwoMaskAllB32);
