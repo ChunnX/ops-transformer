@@ -81,7 +81,7 @@ def _normalize_activation_params(
     if activation == "gelu":
         if activation_clamp is not None:
             raise ValueError("activation_clamp is not supported for gelu.")
-        return [0.0]  # Placeholder only; GELU has no activation parameters.
+        return [_CLAMP_DEFAULT]  # Non-empty ListFloat placeholder; GELU does not use it.
 
     if activation in ("swiglu", "swiglustep"):
         clamp = _CLAMP_DEFAULT if activation_clamp is None else float(activation_clamp)
