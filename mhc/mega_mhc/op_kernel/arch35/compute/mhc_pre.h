@@ -13,6 +13,71 @@
 #include "rms_norm_common.h"
 
 namespace MegaMhc::Compute {
+/** Cast aligned input rows to FP32, accumulate Pre squares and write FP32 ND/NZ in one VF.
+ * Formula: NZ[(c/8)*R*8+r*8+c%8]=FP32(x2[r,c]), ND[r*S+c]=FP32(x2[r,c]); squares[r]+=sum_c FP32(x2[r,c])^2.
+ * FP16 and BF16 share the Cast-based conversion path. Each 128-column pass
+ * accumulates its two 64-lane halves in the same order as the generic conversion. Host owns NZ row stride R or ND K
+ * stride S. A 64-row register collects row sums so the previous statistics are loaded and stored once per row group.
+ */
+template <typename T, bool PACKED_NZ>
+__aicore__ inline void PrepareProjectionStageTile(__ubuf__ T *input, uint32_t rows, uint32_t kCount,
+                                                  uint32_t stageStride, __ubuf__ float *stage, __ubuf__ float *squares)
+{
+    const uint16_t passes = static_cast<uint16_t>(kCount / 128U);
+    const uint16_t groups = static_cast<uint16_t>((rows + 63U) / 64U);
+    __VEC_SCOPE__
+    {
+        Reg::MaskReg full = MaskForCount(64U);
+        Reg::MaskReg rowMask, validRows;
+        Reg::RegTensor<T> rawLo, rawHi;
+        Reg::RegTensor<float> lo, hi;
+        Reg::RegTensor<float> indices, one, currentRow, packedSums, acc, square, sum, broadcast, previous;
+        Reg::Arange(indices, 0.0f);
+        Reg::Duplicate(one, 1.0f);
+        for (uint16_t group = 0U; group < groups; ++group) {
+            const uint32_t firstRow = static_cast<uint32_t>(group) * 64U;
+            const uint16_t rowCount = static_cast<uint16_t>(AscendC::Std::min(rows - firstRow, 64U));
+            Reg::Duplicate(currentRow, 0.0f);
+            Reg::Duplicate(packedSums, 0.0f);
+            for (uint16_t row = 0U; row < rowCount; ++row) {
+                auto source = input + (firstRow + row) * kCount;
+                auto destination = stage + (firstRow + row) * (PACKED_NZ ? 8U : stageStride);
+                Reg::Duplicate(acc, 0.0f);
+                for (uint16_t pass = 0U; pass < passes; ++pass) {
+                    const uint32_t column = static_cast<uint32_t>(pass) * 128U;
+                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(rawLo, source + column);
+                    Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(rawHi, source + column + 64U);
+                    Reg::Cast<float, T, kCastInputToFloat>(lo, rawLo, full);
+                    Reg::Cast<float, T, kCastInputToFloat>(hi, rawHi, full);
+                    Reg::Mul(square, lo, lo, full);
+                    Reg::Add(acc, acc, square, full);
+                    Reg::Mul(square, hi, hi, full);
+                    Reg::Add(acc, acc, square, full);
+                    if constexpr (PACKED_NZ) {
+                        Reg::StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                            destination, lo, stageStride, 8U * stageStride, full);
+                        Reg::StoreAlign<float, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
+                            destination, hi, stageStride, 8U * stageStride, full);
+                    } else {
+                        Reg::StoreAlign(destination + column, lo, full);
+                        Reg::StoreAlign(destination + column + 64U, hi, full);
+                    }
+                }
+                Reg::Reduce<Reg::ReduceType::SUM>(sum, acc, full);
+                Reg::Duplicate(broadcast, sum, full);
+                Reg::Compare<float, AscendC::CMPMODE::EQ>(rowMask, indices, currentRow, full);
+                Reg::Select(packedSums, broadcast, packedSums, rowMask);
+                Reg::Add(currentRow, currentRow, one, full);
+            }
+            uint32_t count = rowCount;
+            validRows = Reg::UpdateMask<float>(count);
+            Reg::LoadAlign(previous, squares + firstRow);
+            Reg::Add(packedSums, packedSums, previous, validRows);
+            Reg::StoreAlign(squares + firstRow, packedSums, validRows);
+        }
+    }
+}
+
 /** Convert an entire AIV tile and accumulate Pre statistics in the same VF.
  * Formula: stage[r,c] = FP32(x2[r,c]); squares[r] += sum_c stage[r,c]^2.
  * Input is packed by valid K. ND uses a host-planned K stride; NZ uses host-planned rows R.
@@ -26,6 +91,12 @@ template <typename T, bool COMPENSATE = false, bool PACKED_NZ = false>
 __aicore__ inline void PrepareProjectionTile(__ubuf__ T *input, uint32_t rows, uint32_t kCount, uint32_t stageStride,
                                              __ubuf__ float *stage, __ubuf__ float *squares)
 {
+    if constexpr (!COMPENSATE) {
+        if (kCount % 128U == 0U) {
+            PrepareProjectionStageTile<T, PACKED_NZ>(input, rows, kCount, stageStride, stage, squares);
+            return;
+        }
+    }
     const uint16_t rowCount = static_cast<uint16_t>(rows);
     const uint16_t repeats = static_cast<uint16_t>((kCount + 63U) / 64U);
     const uint16_t pairedRows = rowCount / 2U;

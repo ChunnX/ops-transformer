@@ -18,6 +18,6 @@ enum class ProjectionTransport : uint32_t {
     UbToL1 = 1U
 };
 constexpr ProjectionTransport kFourProjectionTransport = ProjectionTransport::UbToL1;
-constexpr ProjectionTransport kFiveProjectionTransport = ProjectionTransport::GmStage;
+constexpr ProjectionTransport kFiveProjectionTransport = ProjectionTransport::UbToL1;
 } // namespace MegaMhc
 #endif
