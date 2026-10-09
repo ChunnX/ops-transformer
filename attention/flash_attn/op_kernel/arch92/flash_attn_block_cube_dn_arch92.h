@@ -217,6 +217,10 @@ public:
 
     __aicore__ inline void InitCrossCoreSync() {}
 
+    __aicore__ inline void AllocEventID() {}
+
+    __aicore__ inline void FreeEventID() {}
+
     __aicore__ inline void UnInitCrossCoreSync()
     {
         for (int bufferId = 0; bufferId < UB_MM1_RES_BUFCNT; ++bufferId) {

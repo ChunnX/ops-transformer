@@ -18,7 +18,7 @@
 #include "utils/flash_attn_common_def.h"
 #include "../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 // 合轴 DN 模板仅 arch35 提供; arch92 的 DN 即不合轴模板(经 templateId=2 路由), host 不会下发 templateId=1
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if __NPU_ARCH__ == 3510
 #include "flash_attn_kernel_dn.h"
 #endif
 #include "flash_attn_kernel_dn_unmerged.h"
@@ -116,9 +116,9 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t* query, __gm__ uint8_t* key
 
     // 按架构选择 config 档位表: arch35 与 arch92 的 config 编号语义不同
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    constexpr const ConfigParams& cfg = ConfigValue[config];
+    constexpr const ConfigParams &cfg = ConfigValue[config];
 #else
-    constexpr const ConfigParams& cfg = ConfigValueArch92[config];
+    constexpr const ConfigParams &cfg = ConfigValueArch92[config];
 #endif
 
     constexpr S1TemplateType s1TemplateType = static_cast<S1TemplateType>(cfg.s1);
@@ -136,9 +136,9 @@ __global__ __aicore__ void flash_attn(__gm__ uint8_t* query, __gm__ uint8_t* key
     InitSocState();
 
     using FA_T = FlashAttnKernel::FAType<INPUT_T, OUT_T, pageAttention, qLayout, kvLayout, outLayout, s1TemplateType,
-                                         s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask,
-                                         cfg.ubMm1ResBufcnt, cfg.ubMm2ResBufcnt, cfg.ubVec1ResBufcnt, cfg.ubMaskBufcnt,
-                                         cfg.l1PBufcnt, cfg.l1QBufcnt, cfg.l1KvBufcnt>;
+                                         s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, cfg.ubMm1ResBufcnt,
+                                         cfg.ubMm2ResBufcnt, cfg.ubVec1ResBufcnt, cfg.ubMaskBufcnt, cfg.l1PBufcnt,
+                                         cfg.l1QBufcnt, cfg.l1KvBufcnt>;
 
     if constexpr (templateId == FA_Template_DN_Unmerged) {
         // 不合轴 DN(预埋): BN1_S1 分核, 独立文件(*_dn_unmerged.h), 全部注册维度/有无 mask 实例化;
