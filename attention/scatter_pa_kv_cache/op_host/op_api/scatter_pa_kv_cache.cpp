@@ -70,4 +70,72 @@ std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCache(
     return std::tuple<const aclTensor*, const aclTensor*>(keyCacheRef, valueCacheRef);
 }
 
+std::tuple<const aclTensor*, const aclTensor*> ScatterPaKvCacheOutOfPlace(
+    const aclTensor *key,
+    aclTensor *keyCacheRef,
+    const aclTensor *slotMapping,
+    const aclTensor *value,
+    aclTensor *valueCacheRef,
+    const aclTensor *compressLensOptional,
+    const aclTensor *compressSeqOffsetOptional,
+    const aclTensor *seqLensOptional,
+    char *cacheModeOptional,
+    char *scatterModeOptional,
+    const aclIntArray *stridesOptional,
+    const aclIntArray *offsetsOptional,
+    aclOpExecutor *executor)
+{
+    L0_DFX(ScatterPaKvCacheOutOfPlace, key, keyCacheRef, slotMapping, value, valueCacheRef,
+           compressLensOptional, compressSeqOffsetOptional, seqLensOptional,
+           cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional);
+
+    auto& platformInfo = op::GetCurrentPlatformInfo();
+    auto socVersion = platformInfo.GetCurNpuArch();
+    bool isArch35 = (socVersion == NpuArch::DAV_3510);
+
+    aclTensor *keyCacheOut = keyCacheRef;
+    aclTensor *valueCacheOut = valueCacheRef;
+    if (!isArch35) {
+        // 独立输出buffer: storage/view shape与format均与cacheRef一致, 保证kernel按原布局写入。
+        keyCacheOut = executor->AllocTensor(keyCacheRef->GetStorageShape(), keyCacheRef->GetViewShape(),
+                                            keyCacheRef->GetDataType(), keyCacheRef->GetStorageFormat(),
+                                            keyCacheRef->GetViewFormat());
+        if (value != nullptr) {
+            valueCacheOut = executor->AllocTensor(valueCacheRef->GetStorageShape(), valueCacheRef->GetViewShape(),
+                                                  valueCacheRef->GetDataType(), valueCacheRef->GetStorageFormat(),
+                                                  valueCacheRef->GetViewFormat());
+        }
+        if (keyCacheOut == nullptr || (value != nullptr && valueCacheOut == nullptr)) {
+            OP_LOGE(ACLNN_ERR_INNER, "AllocTensor for ScatterPaKvCache out-of-place output failed.");
+            return {nullptr, nullptr};
+        }
+    }
+
+    const aclTensor *compressLens = compressLensOptional;
+    if (!isArch35 && compressLensOptional == nullptr) {
+        compressLens = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+
+    const aclTensor *compressSeqOffset = compressSeqOffsetOptional;
+    if (!isArch35 && compressSeqOffsetOptional == nullptr) {
+        compressSeqOffset = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+
+    const aclTensor *seqLens = seqLensOptional;
+    if (!isArch35 && seqLensOptional == nullptr) {
+        seqLens = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
+    }
+    auto ret = ADD_TO_LAUNCHER_LIST_AICORE(
+        ScatterPaKvCache,
+        OP_INPUT(key, keyCacheRef, slotMapping, value, valueCacheRef,
+                 compressLens, compressSeqOffset, seqLens),
+        OP_OUTPUT(keyCacheOut, valueCacheOut),
+        OP_ATTR(cacheModeOptional, scatterModeOptional, stridesOptional, offsetsOptional));
+    if (ret != ACLNN_SUCCESS) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        return {nullptr, nullptr};
+    }
+    return std::tuple<const aclTensor*, const aclTensor*>(keyCacheOut, valueCacheOut);
+}
+
 } // namespace l0op
