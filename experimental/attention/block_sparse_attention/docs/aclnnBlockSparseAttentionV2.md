@@ -197,7 +197,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
       <td>
         可选输入（当前版本为必选）
         <ul>
-          <li>shape为[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), ceilDiv(maxKvSeqLength, blockShapeY)]。</li>
+          <li>shape为[batch, headNum, qBlockNum, kvBlockNum]。TND按actualSeqLengths/actualSeqLengthsKv的最大值计算块数；BNSD/BSND可按Q/K shape中的S，或在传入actualSeqLengths/actualSeqLengthsKv时按其最大值计算块数。块数分别使用blockShapeX和blockShapeY向上取整。</li>
           <li>表示按block划分后哪些block需要参与计算（为1），哪些block不参与计算（为0）。</li>
           <li>如传入nullptr，则视为不开启块稀疏计算，即所有token之间的注意力分数都会被计算。</li>
         </ul>
@@ -603,7 +603,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 - 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
 - query、key、value的D轴当前仅支持配置为64或128
 - blockShapeOptional如果传入，则必须包含至少两个元素[blockShapeX, blockShapeY]，且值必须大于0，blockShapeY在<term>Ascend 950PR&950DT系列产品</term>上须为16的倍数，在<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>上须为128的倍数。
-- blockSparseMaskOptional当前必须传入，且shape必须为[batch, headNum, ceilDiv(maxQS, blockShapeX), ceilDiv(maxKVS, blockShapeY)]。
+- blockSparseMaskOptional当前必须传入，且shape为[batch, headNum, qBlockNum, kvBlockNum]；BNSD/BSND传入actualSeqLengths和actualSeqLengthsKv时，后两维可按实际长度最大值或Q/K shape中的S计算，分别用blockShapeX和blockShapeY向上取整。
 - attenMaskOptional当前只支持传入nullptr。
 - actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
 - actualSeqLengthsOptional与actualSeqLengthsKvOptional当前必须同时配置或同时不配置，仅配置其中之一的行为将被算子拦截。
