@@ -385,8 +385,15 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
     auto commMode = context_->GetAttrs()->GetAttrPointer<char>(COMMMODE_INDEX);
     OP_TILING_CHECK(commMode == nullptr, OP_LOGE_WITH_INVALID_ATTR(opName_, "commMode", "null", "not null"),
                     return false);
-    OP_TILING_CHECK(SUPPORT_COMM_MODE_A5.find(commMode) == SUPPORT_COMM_MODE_A5.end(),
-                    OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\" or \"ccu\""), return false);
+    if (npuArch_ == Ops::Base::DAV_9201) {
+        // A6(ascend960)无CCU引擎，仅支持ai_cpu(gen_task按attr路由server，ccu必须在此拒绝)
+        OP_TILING_CHECK(std::strcmp(commMode, "ai_cpu") != 0,
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\""), return false);
+    } else {
+        OP_TILING_CHECK(SUPPORT_COMM_MODE_A5.find(commMode) == SUPPORT_COMM_MODE_A5.end(),
+                        OP_LOGE_FOR_INVALID_VALUE(opName_, "commMode", commMode, "\"ai_cpu\" or \"ccu\""),
+                        return false);
+    }
     return CheckInputScale();
 }
 

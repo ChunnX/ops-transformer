@@ -31,6 +31,13 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=off
                     -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
+    elseif(("${CONDITION_UNIT}" STREQUAL "ascend960dt"))
+        # A6(ascend960)复用950(arch35)编译选项
+        add_ops_compile_options(
+            OP_NAME AlltoAllvQuantGroupedMatMul
+            OPTIONS --cce-auto-sync=off
+                    -mllvm -cce-aicore-dcci-before-kernel-end=false
+        )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
             OP_NAME AlltoAllvQuantGroupedMatMul

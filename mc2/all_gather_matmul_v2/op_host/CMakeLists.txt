@@ -29,7 +29,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     )
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-    if("${CONDITION_UNIT}" STREQUAL "ascend950")
+    if(("${CONDITION_UNIT}" STREQUAL "ascend950") OR ("${CONDITION_UNIT}" STREQUAL "ascend960dt"))
         add_ops_compile_options(
             OP_NAME AllGatherMatmulV2
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false

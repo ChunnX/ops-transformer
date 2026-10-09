@@ -23,7 +23,8 @@
 namespace ops {
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> PLATFORM_A3 = {"Ascend910_93"};
-const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(Ops::Base::DAV_3510))};
+const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(Ops::Base::DAV_3510)),
+                                          std::to_string(static_cast<uint32_t>(Ops::Base::DAV_9201))};
 const std::set<std::string> NPUARCH_310P = {std::to_string(static_cast<uint32_t>(Ops::Base::DAV_2002))};
 
 // distinguish between 910B and 910_93

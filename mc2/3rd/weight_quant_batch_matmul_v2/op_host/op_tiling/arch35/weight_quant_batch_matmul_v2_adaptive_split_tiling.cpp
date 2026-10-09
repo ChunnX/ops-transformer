@@ -129,8 +129,9 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingAS::DoOpTiling()
 {
     OP_TILING_CHECK(InstantiateTilingData() == ge::GRAPH_FAILED,
                     OP_LOGE(opName_, "unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
-    if (compileInfoPtr_->socVersion != SocVersion::ASCEND910_55) {
-        // A5上默认给L1的n轴大小为256
+    if (compileInfoPtr_->socVersion != SocVersion::ASCEND910_55 &&
+        compileInfoPtr_->socVersion != SocVersion::ASCEND960DT) {
+        // A5 & A6上默认给L1的n轴大小为256
         l1NMaxSize_ = 256UL;
     } else {
         // 910_55上默认给L1的n轴大小转置情况下为128，非转置情况下为256
@@ -146,7 +147,8 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingAS::DoOpTiling()
     nzSceneFlag_ = matmulInfoPtr_->bFormat == ge::FORMAT_FRACTAL_NZ && !matmulInfoPtr_->transB;
     bool highPerfFlag = CheckHighPerfScene();
     ComputeCubeTiling(highPerfFlag);
-    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55) {
+    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55 ||
+        compileInfoPtr_->socVersion == SocVersion::ASCEND960DT) {
         ComputeBasicTiling();
     } else {
         if (highPerfFlag) {
@@ -173,7 +175,8 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::ComputeCubeTiling(bool highPerfFlag)
 {
     SetDefaultMatmulTiling();
     ComputeCubeSplit(highPerfFlag);
-    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55) {
+    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55 ||
+        compileInfoPtr_->socVersion == SocVersion::ASCEND960DT) {
         SetAttrs();
     }
     OptimizeMatmulTiling();
@@ -210,7 +213,7 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::SetDefaultMatmulTiling()
     tilingData_->matmulTiling.baseN = tilingData_->matmulTiling.singleCoreN;
     tilingData_->matmulTiling.baseK = ((compileInfoPtr_->l0aSize >> 1) / GetSizeByDataType(matmulInfoPtr_->aDtype) /
                                        tilingData_->matmulTiling.singleCoreN);
-    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55 && matmulInfoPtr_->transB) {
+    if ((compileInfoPtr_->socVersion == SocVersion::ASCEND910_55 || compileInfoPtr_->socVersion == SocVersion::ASCEND960DT) && matmulInfoPtr_->transB) {
         tilingData_->matmulTiling.baseK =
             ((compileInfoPtr_->l0aSize >> 1) / GetSizeByDataType(matmulInfoPtr_->aDtype) /
              // 910_55上转置情况下singleCoreN为128，会导致算出的baseK增大为128，超L0A，故此处baseK除以2缩小为64
@@ -347,7 +350,8 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::ComputeHighPerfSceneCubeSplit()
 void Mc2WeightQuantBatchMatmulV2TilingAS::EnlargeBaseK(uint64_t l0aMaxBaseK)
 {
     // 910_55不走basek放大的优化方案
-    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55) {
+    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55 ||
+        compileInfoPtr_->socVersion == SocVersion::ASCEND960DT) {
         return;
     }
     // 根据理论需要处理的N推算L0B上K的最大值
@@ -518,7 +522,7 @@ bool Mc2WeightQuantBatchMatmulV2TilingAS::CheckHighPerfScene() const
 
     bool transACDtypeRestriction = !matmulInfoPtr_->transA && matmulInfoPtr_->cDtype != ge::DT_INT8;
 
-    if (compileInfoPtr_->socVersion != SocVersion::ASCEND910_55 && transACDtypeRestriction &&
+    if ((compileInfoPtr_->socVersion != SocVersion::ASCEND910_55 && compileInfoPtr_->socVersion != SocVersion::ASCEND960DT) && transACDtypeRestriction &&
         (a16w8w4NdHighPerfScene || a16MxFp4NdHighPerfScene || IsWeight4Nz())) {
         OP_LOGD(opName_, "current shape match Adaptive tiling high perf scene.");
         return true;
@@ -801,7 +805,7 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::SetPreLoad()
 void Mc2WeightQuantBatchMatmulV2TilingAS::ComputeBasicTiling()
 {
     algorithmSubCategory_ = Mc2OptimizationAlgorithmSubCategory::N_FIRST_BASIC_BLOCK;
-    if (matmulInfoPtr_->transB && compileInfoPtr_->socVersion != SocVersion::ASCEND910_55) {
+    if (matmulInfoPtr_->transB && compileInfoPtr_->socVersion != SocVersion::ASCEND910_55 && compileInfoPtr_->socVersion != SocVersion::ASCEND960DT) {
         // step 1. n方向做尾块重切分
         ResplitTail();
 
@@ -822,7 +826,7 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::ComputeBasicTiling()
         tilingData_->secondTailBlockCount = 0;
 
         // step 2. 判定内轴(k)的核内切分规则
-        if (compileInfoPtr_->socVersion != SocVersion::ASCEND910_55) {
+        if (compileInfoPtr_->socVersion != SocVersion::ASCEND910_55 && compileInfoPtr_->socVersion != SocVersion::ASCEND960DT) {
             mte2Config_ = Mc2Mte2Configuration::MTE2_INNER_SIZE_256_BUF_NUM_4;
         } else {
             mte2Config_ = matmulInfoPtr_->transB ? Mc2Mte2Configuration::MTE2_INNER_SIZE_512_BUF_NUM_2 :
@@ -835,7 +839,7 @@ void Mc2WeightQuantBatchMatmulV2TilingAS::ComputeBasicTiling()
 uint64_t Mc2WeightQuantBatchMatmulV2TilingAS::GetTilingKey() const
 {
     Mc2TilingKeyConfigure tilingKeyConfigure;
-    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55) {
+    if (compileInfoPtr_->socVersion == SocVersion::ASCEND910_55 || compileInfoPtr_->socVersion == SocVersion::ASCEND960DT) {
         // 平台类型占2位(平台大类， 平台小类)，平台大类在高位，需要乘10
         tilingKeyConfigure.socVersionType = static_cast<uint8_t>(SocVersion::ASCEND910_55) * 10;
     } else {

@@ -418,10 +418,16 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
 {
     const size_t maxLength = 7UL;
     // 获取通信引擎参数
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+            if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) {
+                // A6(ascend960)无CCU引擎，v2的commMode为显式入参，直接拒绝
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "A6 only support commMode 'ai_cpu', but got %s.", commModeStr);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
         } else {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.",
@@ -480,7 +486,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight not contiguous, and set gmmWeight transpose, it is error!");
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (notContiguous && (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+                          GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
         transGmmWeight = !transGmmWeight;
         // 把非连续gmmWeight转成连续
         transposeGmmWeight = TransGmmWeightTensor(gmmWeight);
@@ -492,7 +499,9 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     }
 
     auto transposeGmmWeightScale = gmmWeightScale;
-    if (notContiguous && gmmWeightScale != nullptr && GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (notContiguous && gmmWeightScale != nullptr &&
+        (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+         GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
         transposeGmmWeightScale = TransGmmWeightScaleTensor(gmmWeightScale);
         CHECK_RET(transposeGmmWeightScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
@@ -512,7 +521,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
                     "mmWeightOptional not contiguous, and set mmWeightOptional transpose, it is error!");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        if (notContiguous && (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+                              GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
             transMmWeight = !transMmWeight;
             transMmWeightOptional = TransMmWeightOptionalTensor(mmWeightOptional);
             CHECK_RET(transMmWeightOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -523,7 +533,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
     auto transMmWeightScaleOptional = mmWeightScaleOptional;
     bool mmWeightScaleNotContiguous = false;
     if (mmWeightScaleOptional != nullptr && mmWeightScaleOptional->GetViewShape().GetDimNum() >= 3 &&
-        GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+         GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201)) {
         mmWeightScaleNotContiguous = IsTransposeTwoDims(mmWeightScaleOptional, -2, -3);
         if (mmWeightScaleNotContiguous) {
             transMmWeightScaleOptional = TransMmWeightScaleTensor(mmWeightScaleOptional);
@@ -559,7 +570,8 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(void *workspace, uint6
                                                           aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+            op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) { // A6复用A5路径；commMode在GetWorkspaceSize阶段经CheckAndHandleCommMode校验，A6下handle只能为AICPU
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);
