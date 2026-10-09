@@ -238,7 +238,7 @@ private:
     template <bool IS_FULL = false>
     __aicore__ inline void CopyIn8Block(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t& s2,
                                         const RunInfo& smla35VecRunInfo, ConstInfo& smla35VecConstInfo);
-    __aicore__ inline void CopyToOutUb(LocalTensor<Q_T> kvNzUb, LocalTensor<KV_T> srcTensor, int64_t dealRow,
+    __aicore__ inline void CopyToOutUb(LocalTensor<Q_T> kvOutUb, LocalTensor<KV_T> srcTensor, int64_t dealRow,
                                        ConstInfo& smla35VecConstInfo);
     __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
                                           LocalTensor<Q_T> kvOutUb, int64_t dealRow, int64_t s2StartIdx,

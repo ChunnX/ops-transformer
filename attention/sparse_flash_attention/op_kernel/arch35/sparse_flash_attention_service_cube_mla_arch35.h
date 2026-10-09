@@ -64,7 +64,7 @@ public:
                                          __gm__ uint8_t* blockTable, __gm__ uint8_t* sfaActualSeqLengthsQ,
                                          const ConstInfo& constInfo);
     __aicore__ inline void UninitLocalBuffer();
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& output,
+    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf,
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
                                        RunInfo& runInfo, ConstInfo& constInfo);
@@ -77,7 +77,7 @@ public:
 
 private:
     __aicore__ inline void InitLocalBuffer(BufferManager<BufferType::L1>& sfaL1BuffMgr);
-    __aicore__ inline void InitGmTensor(__gm__ uint8_t* cuSeqlensQ, const ConstInfo& constInfo);
+    __aicore__ inline void InitGmTensor(__gm__ uint8_t* sfaActualSeqLengthsQ, const ConstInfo& constInfo);
 
     __aicore__ inline void IterateBmm1SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
                                           Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf,
