@@ -373,7 +373,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 {
     SetTilingData(tilingData);
     SetTilingDataAndCalParam();
-    useSerialMode_ = (axisMaxBS_ < SERIAL_MODE_BS_THRESHOLD) && (rscvStatusNum_ <= DATA_COPY_MAX_BLOCK_COUNT);
+    useSerialMode_ = (axisMaxBS_ < SERIAL_MODE_BS_THRESHOLD) && (rscvStatusNum_ <= DATA_COPY_MAX_BLOCK_COUNT) &&
+                      !isScalingDownFlag_;
     // 仅CumSum核计算并发送专家计数，发送核全部用于token发送
     aivUsedCumSum_ = totalExpertNum_ / 16; // 单核处理16个专家cnt发送
     aivUsedCumSum_ = (aivUsedCumSum_ == 0) ? 1 : aivUsedCumSum_;
