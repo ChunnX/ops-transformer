@@ -80,10 +80,10 @@ __aicore__ inline void Gmm1AicMmadTileToGmGeneric(BlockMmad &blockMmad, const Co
                                                Get<K_VALUE>(actualShape), 0};
 
     // QGMM 内部把两段 W1 权重拼成完整的 N 列输出；这里的半宽不是激活输出宽度。
-    Get<N_VALUE>(singleShape) /= GMM1_WEIGHT_CONCAT_PARTS;
-    auto gmBlockB = gmB.slice(asc::te::make_coord(kLoc, nLoc / GMM1_WEIGHT_CONCAT_PARTS),
+    Get<N_VALUE>(singleShape) /= ACTIVATION_N_HALF;
+    auto gmBlockB = gmB.slice(asc::te::make_coord(kLoc, nLoc / ACTIVATION_N_HALF),
                               asc::te::make_shape(Get<K_VALUE>(actualShape), Get<N_VALUE>(singleShape)));
-    auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(0, nLoc / GMM1_WEIGHT_CONCAT_PARTS),
+    auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(0, nLoc / ACTIVATION_N_HALF),
                                         asc::te::make_shape(config.scaleK, Get<N_VALUE>(singleShape)));
     auto tensorBlockGm = gmC.slice(asc::te::make_coord(mLoc, nLoc),
                                    asc::te::make_shape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -103,10 +103,10 @@ __aicore__ inline void Gmm1AicMmadTileToUbGeneric(BlockMmad &blockMmad, const Co
     typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                Get<K_VALUE>(actualShape), 0};
 
-    Get<N_VALUE>(singleShape) /= GMM1_WEIGHT_CONCAT_PARTS;
-    auto gmBlockB = gmB.slice(asc::te::make_coord(kLoc, nLoc / GMM1_WEIGHT_CONCAT_PARTS),
+    Get<N_VALUE>(singleShape) /= ACTIVATION_N_HALF;
+    auto gmBlockB = gmB.slice(asc::te::make_coord(kLoc, nLoc / ACTIVATION_N_HALF),
                               asc::te::make_shape(Get<K_VALUE>(actualShape), Get<N_VALUE>(singleShape)));
-    auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(0, nLoc / GMM1_WEIGHT_CONCAT_PARTS),
+    auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(0, nLoc / ACTIVATION_N_HALF),
                                         asc::te::make_shape(config.scaleK, Get<N_VALUE>(singleShape)));
     auto tensorUb = pingpongIdx == 0U ? l0cOutUbFirst : l0cOutUbSecond;
     auto tensorBlockUb = tensorUb.slice(asc::te::make_coord(0, 0),
@@ -128,7 +128,7 @@ __aicore__ inline void Gmm1AicMmadTileA8W4(BlockMmad &blockMmad, TensorA &gmA, T
     auto gmBlockScaleA =
         gmScaleA.slice(asc::te::make_coord(mLoc, 0), asc::te::make_shape(Get<M_VALUE>(actualShape), config.scaleK));
 
-    uint32_t nOffset = nLoc / GMM1_WEIGHT_CONCAT_PARTS;
+    uint32_t nOffset = nLoc / ACTIVATION_N_HALF;
     auto gmBlockScaleB =
         gmScaleB.slice(asc::te::make_coord(0, nOffset), asc::te::make_shape(config.scaleK, Get<N_VALUE>(actualShape)));
     auto tensorBlockGm = l0cOutGm.slice(asc::te::make_coord(mLoc, nLoc),
@@ -379,9 +379,9 @@ __aicore__ inline void Gmm1Aiv0PrologueA8W4(BlockPrologue &blockPrologue, Schedu
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         auto nL1Size = Get<N_VALUE>(actualShape);
 
-        auto nOffset = nLoc / GMM1_WEIGHT_CONCAT_PARTS;
+        auto nOffset = nLoc / ACTIVATION_N_HALF;
         // W1 两段物理拼接各占一半，与激活输出列宽无关。
-        blockPrologue(gmB, config.k, nL1Size, nOffset, config.n, config.n / GMM1_WEIGHT_CONCAT_PARTS);
+        blockPrologue(gmB, config.k, nL1Size, nOffset, config.n, config.n / ACTIVATION_N_HALF);
     }
 }
 
@@ -619,13 +619,14 @@ __aicore__ inline void RunGmm1Generic(BlockEpilogueActivationMxQuant<EpilogueEle
                                       const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
                                       const BlockJobContext &blockJob, uint32_t expertBeforeCnt, uint32_t expertIdx,
-                                      uint16_t &pingpongIdx, void *blockMmadContext = nullptr,
+                                      uint16_t &pingpongIdx, uint32_t activationOutputDivisor,
+                                      void *blockMmadContext = nullptr,
                                       bool allowWeightL2Bypass = false, const LayoutArgs &...layoutArgs)
 {
     using GmmConfig =
         GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
                           IsWeightNZ, TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained>;
-    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM, params.tilingData->actMode);
+    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM, activationOutputDivisor);
 
     GmmKernel::BlockScheduler scheduler({config.m, config.n, config.k},
                                         GmmKernel::BlockScheduler::Params{asc::te::make_coord(
@@ -664,14 +665,15 @@ __aicore__ inline void RunGmm1Generic(BlockEpilogueActivationMxQuant<EpilogueEle
                                       const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                       const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
                                       uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx,
-                                      void *blockMmadContext = nullptr, bool allowWeightL2Bypass = false)
+                                      uint32_t activationOutputDivisor, void *blockMmadContext = nullptr,
+                                      bool allowWeightL2Bypass = false)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm1Generic<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
                    Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared, IsWaveFlagGrained>(
         epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, blockJob, expertBeforeCnt,
-        expertIdx, pingpongIdx, blockMmadContext, allowWeightL2Bypass);
+        expertIdx, pingpongIdx, activationOutputDivisor, blockMmadContext, allowWeightL2Bypass);
 }
 
 // RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、Activation 和量化。
@@ -685,14 +687,15 @@ __aicore__ inline void RunGmm1A8W4(const BlockContext &pipeline,
                                    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                    int32_t &gmm1TileReadySequence, const BlockJobContext &blockJob,
-                                   uint32_t expertBeforeCnt, uint32_t expertIdx, const LayoutArgs &...layoutArgs)
+                                   uint32_t expertBeforeCnt, uint32_t expertIdx, uint32_t activationOutputDivisor,
+                                   const LayoutArgs &...layoutArgs)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
 
     using GmmConfig = GmmKernel::Config<true, 0, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, false,
                                         TopkWeightsPrefetch, IsShared, false, IsWaveFlagGrained>;
-    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM, params.tilingData->actMode);
+    auto config = GmmConfig::BuildGmm1ProblemConfig(problemShape, blockJob, Gmm1TileM, activationOutputDivisor);
 
     if constexpr (g_coreType == AIV) {
         activationQuantOp.UpdateNextProblem({config.m, config.activationOutputCols, config.k, 0});
@@ -731,14 +734,16 @@ __aicore__ inline void RunGmm1A8W4(const BlockContext &pipeline,
                                    const Params &params,
                                    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-                                   int32_t &gmm1TileReadySequence, uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+                                   int32_t &gmm1TileReadySequence, uint32_t expertBeforeCnt,
+                                   uint32_t activationOutputDivisor, uint32_t expertIdx = 0)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm1A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, EpilogueTileM,
                 TopkWeightsPrefetch, IsShared, IsWaveFlagGrained>(pipeline, activationQuantOp, params, problemShape,
                                                                   gmmAddrInfo, startBlockIdx, gmm1TileReadySequence,
-                                                                  blockJob, expertBeforeCnt, expertIdx);
+                                                                  blockJob, expertBeforeCnt, expertIdx,
+                                                                  activationOutputDivisor);
 }
 
 template <typename ActivationType, typename WeightType, typename ActivationOutType, typename QuantScaleType,
@@ -837,9 +842,9 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
     uint64_t gmm1OutputCols = commonConfig.gmm1OutputCols;
     uint64_t k = commonConfig.tokenHiddenDim;
     uint64_t scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-    uint64_t activationOutputCols = commonConfig.activationOutputCols;
     uint64_t activationScaleRowElements =
-        Ops::Base::CeilDiv(activationOutputCols, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Ops::Base::CeilDiv(static_cast<uint64_t>(commonConfig.activationOutputCols),
+                           static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
     uint64_t expertIdx = sharedExpertIdx;
 
     if constexpr (UseA8W4Gmm1) {
@@ -871,7 +876,7 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const MoeStageCommonCo
 
     if constexpr (g_coreType == AIV) {
         AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
-            static_cast<int64_t>(expertIdx * m * activationOutputCols / outputElemsPerByte),
+            static_cast<int64_t>(expertIdx * m * commonConfig.activationOutputCols / outputElemsPerByte),
             static_cast<int64_t>(expertIdx * m * activationScaleRowElements),
             0L,
             0L,

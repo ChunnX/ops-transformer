@@ -898,22 +898,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::RunGmm1Wi
             0L};
         epilogue.UpdateGlobalAddr(vecBaseOffset);
     }
+    // tiling 限定 Layered URMA 只使用门控激活，GMM1/GMM2 显式传相同的列宽除数。
     if constexpr (ENABLE_A8W4) {
         RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                     epilogueTileM, prefetchWeights, IsShared, false>(blockContext_, epilogue, params_,
                                                                      state.problemShape, gmmAddrInfo, startBlockIdx_,
-                                                                     gmTileSequence, state.expertBeforeCnt, expertIdx);
+                                                                     gmTileSequence, state.expertBeforeCnt,
+                                                                     ACTIVATION_N_HALF, expertIdx);
     } else {
         if (params_.tilingData->moeGmmMode == GMM_MODE_A8W8_NZ || params_.tilingData->moeGmmMode == GMM_MODE_A4W4_NZ) {
             RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                            QuantScaleOutType, true, GMM1_TILE_M, epilogueTileM, prefetchWeights, IsShared>(
                 epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+                state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, ACTIVATION_N_HALF);
         } else {
             RunGmm1Generic<QuantOutType, ActivationQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                            QuantScaleOutType, false, GMM1_TILE_M, epilogueTileM, prefetchWeights, IsShared>(
                 epilogue, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+                state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, ACTIVATION_N_HALF);
         }
     }
 }
@@ -943,7 +945,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     if constexpr (ENABLE_A8W4) {
         RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                     L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(blockContext_, state.problemShape,
-                                                                                      gmmAddrInfo, startBlockIdx_);
+                                                                                      gmmAddrInfo, startBlockIdx_,
+                                                                                      ACTIVATION_N_HALF);
     } else if constexpr (ENABLE_A4W4) {
         // A4W4 GMM1 uses a different block; keep the FP8/W4 objects local to GMM2.
         if constexpr (g_coreType == AscendC::AIC) {
@@ -951,18 +954,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             typename A8W4Config::BlockContext context{&block};
             RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                         L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(context, state.problemShape,
-                                                                                          gmmAddrInfo, startBlockIdx_);
+                                                                                          gmmAddrInfo, startBlockIdx_,
+                                                                                          ACTIVATION_N_HALF);
         } else {
             if (GetSubBlockIdx() == 0U) {
                 typename A8W4Config::BlockPrologue block(params_.tilingData->a8w4L1Layout);
                 typename A8W4Config::BlockContext context{&block};
                 RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                             L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
-                    context, state.problemShape, gmmAddrInfo, startBlockIdx_);
+                    context, state.problemShape, gmmAddrInfo, startBlockIdx_, ACTIVATION_N_HALF);
             } else {
                 RunGmm2A8W4<ActivationQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                             L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true, false, false>(
-                    typename A8W4Config::BlockContext{}, state.problemShape, gmmAddrInfo, startBlockIdx_);
+                    typename A8W4Config::BlockContext{}, state.problemShape, gmmAddrInfo, startBlockIdx_,
+                    ACTIVATION_N_HALF);
             }
         }
     } else {
@@ -970,11 +975,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
         if (params_.tilingData->moeGmmMode == GMM_MODE_A8W8_NZ) {
             RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                            QuantScaleOutType, true, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared, false>(
-                state.problemShape, gmmAddrInfo, startBlockIdx_);
+                state.problemShape, gmmAddrInfo, startBlockIdx_, ACTIVATION_N_HALF);
         } else {
             RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                            QuantScaleOutType, false, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared, false>(
-                state.problemShape, gmmAddrInfo, startBlockIdx_);
+                state.problemShape, gmmAddrInfo, startBlockIdx_, ACTIVATION_N_HALF);
         }
     }
 }

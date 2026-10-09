@@ -118,7 +118,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
                 EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
         pipeline, epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmTileSequence_,
         gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
-        state.expertIdx);
+        state.expertIdx, commonConfig_.activationOutputDivisor);
 }
 
 template <TemplateMegaMoeA8W4WaveTypeClass>

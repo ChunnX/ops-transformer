@@ -237,6 +237,8 @@ struct MoeStageCommonConfig {
     uint32_t tokenHiddenDim;
     // GMM1 MMAD 的完整输出列数，也是 W1 的逻辑列数。
     uint32_t gmm1OutputCols;
+    // 本次 kernel 按 actMode 确定一次，供 GMM1/Activation/GMM2 共用。
+    uint32_t activationOutputDivisor;
     // 激活与量化输出列数，也是 GMM2 的 K。
     uint32_t activationOutputCols;
 };

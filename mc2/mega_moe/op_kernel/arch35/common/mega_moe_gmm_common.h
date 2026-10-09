@@ -281,7 +281,8 @@ struct Config {
         uint32_t activationOutputCols = 0;
         // GMM2 的 k 是激活后的输入列宽；等待通知仍按 GMM1 原始列宽计数。
         uint32_t gmm1OutputCols = 0;
-        uint32_t gmm1ToActivationColsDivisor = GATED_ACTIVATION_WIDTH_DIVISOR;
+        // 仅 GMM1 epilogue 使用；构造 GMM1 problem 时由阶段配置填入。
+        uint32_t gmm1ToActivationColsDivisor;
         uint32_t blockNum = 0;
         uint32_t blockIdx = 0;
         uint32_t scaleK = 0;
@@ -311,13 +312,13 @@ struct Config {
 
     __aicore__ static inline ProblemConfig BuildGmm1ProblemConfig(const ProblemShape &problemShape,
                                                                   const BlockJobContext &blockJob, uint32_t gmm1TileM,
-                                                                  uint8_t actMode)
+                                                                  uint32_t activationOutputDivisor)
     {
-        ProblemConfig config;
+        ProblemConfig config{};
         config.m = Get<M_VALUE>(problemShape);
         config.n = Get<N_VALUE>(problemShape);
         config.k = Get<K_VALUE>(problemShape);
-        config.gmm1ToActivationColsDivisor = GetActivationOutputDivisor(actMode);
+        config.gmm1ToActivationColsDivisor = activationOutputDivisor;
         config.activationOutputCols = config.n / config.gmm1ToActivationColsDivisor;
         config.tileM = gmm1TileM;
         FinalizeProblemConfig(config, blockJob, gmm1TileM);
@@ -326,13 +327,13 @@ struct Config {
 
     __aicore__ static inline ProblemConfig BuildGmm2ProblemConfig(const ProblemShape &problemShape,
                                                                   const BlockJobContext &blockJob, uint32_t gmm1TileM,
-                                                                  uint8_t actMode)
+                                                                  uint32_t activationOutputDivisor)
     {
-        ProblemConfig config;
+        ProblemConfig config{};
         config.m = Get<M_VALUE>(problemShape);
         config.n = Get<K_VALUE>(problemShape);
         config.gmm1OutputCols = Get<N_VALUE>(problemShape);
-        config.k = config.gmm1OutputCols / GetActivationOutputDivisor(actMode);
+        config.k = config.gmm1OutputCols / activationOutputDivisor;
         config.tileM = L1_TILE_M_256;
         FinalizeProblemConfig(config, blockJob, gmm1TileM);
         return config;
@@ -402,7 +403,7 @@ struct BlockMmadContext<BlockMmad, Blaze::Gemm::GroupedMatmulWithScaleMx<>> {
     {
         const auto &tiling = config.blockMmadTiling;
         // GMM1 的 QGMM 拼接两段 W1 权重后生成完整 tile；GMM2 直接使用完整 tile 宽度。
-        const uint32_t tileN = Stage == GmmStage::GMM1 ? tiling.tileN / GMM1_WEIGHT_CONCAT_PARTS : tiling.tileN;
+        const uint32_t tileN = Stage == GmmStage::GMM1 ? tiling.tileN / ACTIVATION_N_HALF : tiling.tileN;
         const BlockMmadInitConfig requestedConfig{config.k, tiling.tileM, tileN, tiling.l1Params.kAL1,
                                                   tiling.l1Params.scaleKL1};
         if (!initialized_ || initConfig_ != requestedConfig) {

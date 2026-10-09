@@ -120,7 +120,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
                    TopkWeightsPrefetch, false, true>(
         epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
         gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
-        state.expertIdx, runtimeState.pingpongIdx);
+        state.expertIdx, runtimeState.pingpongIdx, commonConfig_.activationOutputDivisor);
 }
 
 template <TemplateMegaMoeA4W4WaveTypeClass>

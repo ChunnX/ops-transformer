@@ -297,7 +297,7 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
                        MoeWeight1Format != FORMAT_ND, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
             epilogueOp_, params_, gmm1WaveProblemShape, gmm1AddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, gmmExecutionConfig_.blockJob, waveTokenStartIndex, gmm1Position.expertIdx,
-            runtimeState.pingpongIdx, nullptr, isWholeExpert);
+            runtimeState.pingpongIdx, commonConfig_.activationOutputDivisor, nullptr, isWholeExpert);
 
         processedMGroupCount += problemMGroupCount;
         gmm1Position.tokenIndexInExpert = waveEndTokenIndexInExpert;
@@ -339,15 +339,15 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     if (IsCombineDedupOn(params_.tilingData->dedupMode)) {
         RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                        MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true, false>(
-            gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-            gmm2Position.tokenIndexInExpert, &params_, params_.tilingData->actMode);
+            gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob,
+            commonConfig_.activationOutputDivisor, nullptr, isWholeExpert, gmm2Position.tokenIndexInExpert, &params_);
     } else {
         RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                        MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true,
                        CombineQuantMode == COMBINE_NO_QUANT>(gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx,
-                                                             gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-                                                             gmm2Position.tokenIndexInExpert, &params_,
-                                                             params_.tilingData->actMode);
+                                                              gmmExecutionConfig_.blockJob,
+                                                              commonConfig_.activationOutputDivisor, nullptr,
+                                                              isWholeExpert, gmm2Position.tokenIndexInExpert, &params_);
     }
 }
 
