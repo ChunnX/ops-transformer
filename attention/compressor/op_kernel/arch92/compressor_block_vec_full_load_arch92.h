@@ -379,7 +379,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Warmup()
         uint32_t batchStart = splitInfo_.curBStart;
         uint32_t batchEnd = batchStart + splitInfo_.dealBatchNum;
         for (uint32_t curB = batchStart; curB < batchEnd; ++curB) {
-            if (this->GetSeqUsed(curB) <= 0) {
+            if (this->GetSeqUsed(curB) == 0) {
                 continue;
             }
             uint32_t startPos = this->GetStartPos(curB);
