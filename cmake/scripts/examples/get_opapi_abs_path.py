@@ -26,10 +26,14 @@ from typing import List, Optional
 class OpApiMgr:
     @staticmethod
     def has_symbol(file_path: Path, sym: str) -> bool:
-        cmd = f"nm -D {file_path}".split()
+        cmd = ["nm", "-D", "--defined-only", str(file_path)]
         ret = subprocess.run(cmd, capture_output=True, check=True, encoding="utf-8")
         ret.check_returncode()
-        return sym in ret.stdout
+        for line in ret.stdout.splitlines():
+            fields = line.split()
+            if len(fields) >= 3 and fields[-1].split("@@", 1)[0] == sym:
+                return True
+        return False
 
     @staticmethod
     def get_environ_custom_lib_paths() -> List[Path]:
