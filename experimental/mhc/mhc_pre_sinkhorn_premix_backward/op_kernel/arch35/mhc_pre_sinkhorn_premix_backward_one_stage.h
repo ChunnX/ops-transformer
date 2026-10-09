@@ -32,15 +32,32 @@ constexpr int32_t FP32_PER_REPEAT = 64;
 
 constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(false, false, 0, true, false, false, true);
 constexpr MatmulConfig MHC_PRE_GRAD_MM2_CFG = GetMDLConfig(false, false, 0, true, false, false, true);
+// 收尾 pass 每行(c 维)处理的元素数；需 % 64 == 0 保证三次 CopyIn 与 CopyOut 全部 32B 对齐
+constexpr int32_t GRADX_FIN_CHUNK = 4096;
+
+// bf16 路径 gradX 精度修复：vec 部分不再先舍入写 bf16 GM（旧结构为 vec 舍入写 + mm1 原子加，
+// 双重舍入叠加 HF32 截断导致 bf16 输出相对 fp64 真值约 28% 元素差 1 ulp，超 ATK default 的
+// bf16 阈值 4e-3）；改为 mm1 非原子写 fp32 workspace + 收尾 pass fp32 合成单次舍入，
+// 与 deterministic(key1)/A3(arch22) 的 gradX 装配结构同构。mm1 输出 dtype 随之切 fp32。
+template <typename T, typename U>
+struct Mm1OutSelector {
+    using type = U;
+};
+template <typename T>
+struct Mm1OutSelector<T, bfloat16_t> {
+    using type = T;
+};
 } // namespace
 
 template <typename T, typename U>
 class MhcPreSinkhornPremixBackwardOneStage {
 public:
+    // bf16 走 fp32 workspace 单次舍入装配；fp16 维持原 bf16-写出+原子加路径（ATK 已达标，零改动）
+    static constexpr bool kGradXWsFp32_ = IsSameType<U, bfloat16_t>::value;
     using A0Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
     using A1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
     using BType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
-    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, U>;
+    using C1Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, typename Mm1OutSelector<T, U>::type>;
     using C2Type = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
 
     matmul::MatmulImpl<A0Type, BType, C1Type, C1Type, MHC_PRE_GRAD_MM1_CFG> mm1_;
@@ -74,6 +91,7 @@ protected:
     int64_t skIterCount_;
     int64_t mm1K_, mm1M_, mm1N_;
     int64_t mm2K_, mm2M_, mm2N_;
+    int64_t mm2SliceN_;
     T alphaPre_, alphaPost_, alphaRes_;
 
     TBuf<TPosition::VECCALC> gradHinBuf_, hPreBuf_, hResBuf_, xBuf_;
@@ -84,8 +102,15 @@ protected:
     TBuf<TPosition::VECCALC> sigmoidGradBuf1_, sigmoidGradBuf2_;
     TBuf<TPosition::VECCALC> tmpBuf_;
     TBuf<TPosition::VECCALC> gradRMSNormBuf_;
+    TBuf<TPosition::VECCALC> skNormPreBuf_, skSumPreBuf_;
     TBuf<TPosition::VECOUT> gradH2Buf_;
     TBuf<TPosition::VECOUT> gradAlphaBuf_, gradBiasBuf_;
+    // bf16：逐 token 标量积 gradRsqrt*gradRMSNorm 的暂存（主循环 spill，收尾 pass 读回）
+    TBuf<TPosition::VECCALC> sSpillBuf_;
+    // bf16 收尾 pass 缓冲（pipe_->Reset() 后分配，独占 UB）
+    TQue<QuePosition::VECIN, DOUBLE_BUF> xFinQue_, gradHinFinQue_, mFinQue_;
+    TQue<QuePosition::VECOUT, DOUBLE_BUF> gradXFinQue_;
+    TBuf<TPosition::VECCALC> xFinTBuf_, ghFinTBuf_, tmpFinTBuf_, hPreFinBuf_, sFinBuf_;
 
     LocalTensor<U> xLocal_;
     LocalTensor<T> xFp32Local_;
@@ -103,6 +128,10 @@ protected:
     LocalTensor<T> gradSigmoidLocal1_;
     LocalTensor<T> gradSigmoidLocal2_;
     LocalTensor<T> gradRMSNormLocal_;
+    LocalTensor<T> skNormPreLocal_, skSumPreLocal_;
+    LocalTensor<T> sSpillLocal_;
+    LocalTensor<T> xFinT_, ghFinT_, tmpFinT_, hPreFinLocal_, sFinLocal_;
+    int64_t spillSlotElems_ = 0; // 逐 tile spill 槽位跨度：AlignUp(tile_, 8)，保证 GM 写 32B 对齐
 
     GlobalTensor<U> xGlobal_;
     GlobalTensor<T> xFp32Global_;
@@ -119,6 +148,8 @@ protected:
     GlobalTensor<T> gradH2Global_;
     GlobalTensor<T> gradPhiGlobal_;
     GlobalTensor<T> phiGlobal_;
+    GlobalTensor<T> gradXMWsGlobal_; // bf16：mm1 非原子输出的 fp32 workspace plane
+    GlobalTensor<T> sSpillGlobal_;   // bf16：标量积 spill 区（fp16 workspace 不含此两段，仅赋值不解引用）
 
 private:
     __aicore__ inline void InitTiling(const MhcPreSinkhornPremixBackwardArch35TilingData *tilingData)
@@ -126,7 +157,7 @@ private:
         batchSize_ = tilingData->batchSize;
         seqLength_ = tilingData->seqLength;
         aivNum_ = tilingData->aivNum;
-        aicNum_ = tilingData->aivNum / 2;
+        aicNum_ = tilingData->aicNum;
         c_ = tilingData->c;
         n_ = tilingData->n;
         c0_ = tilingData->c0;
@@ -136,6 +167,7 @@ private:
         tileAligned_ = AlignUp(tile_, BYTE_SIZE_PER_BLOCK / sizeof(T));
         totalTasks_ = batchSize_ * seqLength_;
         totalTasksAligned_ = AlignUp(totalTasks_, aivNum_ * tile_);
+        spillSlotElems_ = AlignUp(tile_, ELEMENTS_SIZE_PER_BLOCK);
 
         if ASCEND_IS_AIC {
             mm1K_ = n_ * n_ + 2 * n_;
@@ -145,6 +177,8 @@ private:
             mm2K_ = batchSize_ * seqLength_;
             mm2M_ = n_ * n_ + 2 * n_;
             mm2N_ = n_ * c_;
+            // CeilDiv 切 N 维，不整除时由 ProcessMatmul2 的尾核截断兜底
+            mm2SliceN_ = (mm2N_ + aicNum_ - 1) / aicNum_;
         }
     }
 
@@ -160,6 +194,11 @@ private:
         phiGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(phi));         // fp32
         gradXGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ U *>(gradX));     // fp32
         gradH2Global_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) + batchSize_ * seqLength_ * n_ * c_);
+        // workspace 布局：[xFp32: bs*n*c][gradH2: bs*(n*n+2n)]，bf16 追加 [gradXM: bs*n*c][sSpill]
+        gradXMWsGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) +
+                                        batchSize_ * seqLength_ * (n_ * c_ + n_ * n_ + 2 * n_));
+        sSpillGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) +
+                                      batchSize_ * seqLength_ * (2 * n_ * c_ + n_ * n_ + 2 * n_));
 
         if ASCEND_IS_AIV {
             hPreGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(hPre));       // fp32
@@ -189,8 +228,13 @@ private:
             pipe_->InitBuffer(xBuf_, n_ * c_ * sizeof(U));
             pipe_->InitBuffer(xFp32Buf_, DOUBLE_BUF * c_ * sizeof(T));
             pipe_->InitBuffer(gradHinBuf_, DOUBLE_BUF * c_ * sizeof(U));
-            pipe_->InitBuffer(gradXBuf_, DOUBLE_BUF * c_ * sizeof(U));
-            pipe_->InitBuffer(hPreBuf_, DOUBLE_BUF * 2 * n_ * sizeof(T));
+            if constexpr (kGradXWsFp32_) {
+                // bf16 不在主循环舍入写 gradX，gradXBuf_ 不分配；改配标量 spill 暂存
+                pipe_->InitBuffer(sSpillBuf_, AlignUp(tile_, ELEMENTS_SIZE_PER_BLOCK) * sizeof(T));
+            } else {
+                pipe_->InitBuffer(gradXBuf_, DOUBLE_BUF * c_ * sizeof(U));
+            }
+            pipe_->InitBuffer(hPreBuf_, tile_ * n_ * sizeof(T));
             pipe_->InitBuffer(hResBuf_, tile_ * n_ * n_ * sizeof(T));
             pipe_->InitBuffer(invRmsBuf_, tile_ * sizeof(T));
             pipe_->InitBuffer(gradH2Buf_, tile_ * (n_ * n_ + 2 * n_) * sizeof(T));
@@ -211,6 +255,9 @@ private:
             pipe_->InitBuffer(gradAlphaBuf_, 8 * sizeof(T));
             pipe_->InitBuffer(gradBiasBuf_, 2 * n_ * sizeof(T));
             pipe_->InitBuffer(gradRMSNormBuf_, tile_ * sizeof(T));
+            pipe_->InitBuffer(skNormPreBuf_, skIterCount_ * tile_ * n_ * n_ * sizeof(T));
+            // DataCopyPad 多块写 UB 的块距按 32B 对齐，tile_ 为奇数时每块多占一档，buffer 按对齐口径分配
+            pipe_->InitBuffer(skSumPreBuf_, 2 * skIterCount_ * AlignUp(tile_ * n_, ELEMENTS_SIZE_PER_BLOCK) * sizeof(T));
 
             xLocal_ = xBuf_.Get<U>();
             xFp32Local_ = xFp32Buf_.Get<T>();
@@ -237,11 +284,18 @@ private:
             gradAlphaLocal_ = gradAlphaBuf_.Get<T>();
 
             gradRMSNormLocal_ = gradRMSNormBuf_.Get<T>();
-            gradXLocal_ = gradXBuf_.Get<U>();
+            if constexpr (kGradXWsFp32_) {
+                sSpillLocal_ = sSpillBuf_.Get<T>();
+            } else {
+                gradXLocal_ = gradXBuf_.Get<U>();
+            }
 
             hPreLocal_ = hPreBuf_.Get<T>();
 
             hRes2Local_ = hResBuf_.Get<T>();
+
+            skNormPreLocal_ = skNormPreBuf_.Get<T>();
+            skSumPreLocal_ = skSumPreBuf_.Get<T>();
         }
     }
 
@@ -251,9 +305,11 @@ private:
     __aicore__ inline T ComputeGradInvRms(const int32_t i);
     __aicore__ inline void ComputeGradRMSNorm(const int32_t tileTaskCount);
     __aicore__ inline void ComputeGradXVector(const T gradRsqrtVal, const T gradRMSNormVal, const int32_t taskOffset,
-                                              bool copyNext);
+                                              const int32_t tokenIdx, bool copyNext);
     __aicore__ inline void ProcessMatmul1(const int32_t taskOffset, const int32_t mm1M);
-    __aicore__ inline void ProcessMatmul2(const int32_t taskOffset, const int32_t mm2K);
+    __aicore__ inline void ProcessMatmul2();
+    // bf16 收尾 pass：fp32 合成 gradX 并单次舍入写出（仅 kGradXWsFp32_ 时调用）
+    __aicore__ inline void ProcessGradXFinal();
 };
 
 template <typename T, typename U>
@@ -289,6 +345,23 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ComputeGradRe
                 {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * sizeof(T)), 0, 0, 0},
                 {false, 0, 0, 0});
 
+    // Sinkhorn 全部迭代数据一次性批量预载到 UB，消除 SIMT 内逐轮 GM 标量装载的延迟链。
+    // GM 中迭代块以 totalTasks_*2 行为间隔正向等距排布，UB 内块 j 对应 SIMT 第 skIterCount_-1-j 轮；
+    // sum 的 col 段紧随 row 段（GM 源起始偏移 totalTasks_*n_），UB 侧块间距按 32B 对齐（SIMT 内同口径）。
+    DataCopyPad(skNormPreLocal_, skNormGlobal_[taskOffset * n_ * n_],
+                {static_cast<uint16_t>(skIterCount_), static_cast<uint32_t>(tileTaskCount * n_ * n_ * sizeof(T)),
+                 static_cast<int64_t>((totalTasks_ * 2 - tileTaskCount) * n_ * n_ * sizeof(T)), 0, 0},
+                {false, 0, 0, 0});
+    DataCopyPad(skSumPreLocal_, skSumGlobal_[taskOffset * n_],
+                {static_cast<uint16_t>(skIterCount_), static_cast<uint32_t>(tileTaskCount * n_ * sizeof(T)),
+                 static_cast<int64_t>((totalTasks_ * 2 - tileTaskCount) * n_ * sizeof(T)), 0, 0},
+                {false, 0, 0, 0});
+    DataCopyPad(skSumPreLocal_[skIterCount_ * AlignUp(tileTaskCount * n_, ELEMENTS_SIZE_PER_BLOCK)],
+                skSumGlobal_[(totalTasks_ + taskOffset) * n_],
+                {static_cast<uint16_t>(skIterCount_), static_cast<uint32_t>(tileTaskCount * n_ * sizeof(T)),
+                 static_cast<int64_t>((totalTasks_ * 2 - tileTaskCount) * n_ * sizeof(T)), 0, 0},
+                {false, 0, 0, 0});
+
     SetFlag<HardEvent::MTE2_V>(0);
     WaitFlag<HardEvent::MTE2_V>(0);
 
@@ -300,11 +373,11 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ComputeGradRe
     Simt::VF_CALL<SinkhornKnoppSimt<T>>(
         Simt::Dim3{xThreadCount, yThreadCount}, (__ubuf__ T *)gradH2Local_.GetPhyAddr(),
         (__ubuf__ T *)gradInvRmsLocal_.GetPhyAddr(), (__gm__ T *)gradAlphaGlobal_[2].GetPhyAddr(),
-        (__gm__ T *)gradBiasGlobal_[n_ * 2].GetPhyAddr(), (__gm__ T *)skSumGlobal_.GetPhyAddr(),
-        (__gm__ T *)skNormGlobal_.GetPhyAddr(), (__ubuf__ T *)gradHResLocal_.GetPhyAddr(),
+        (__gm__ T *)gradBiasGlobal_[n_ * 2].GetPhyAddr(), (__ubuf__ T *)skSumPreLocal_.GetPhyAddr(),
+        (__ubuf__ T *)skNormPreLocal_.GetPhyAddr(), (__ubuf__ T *)gradHResLocal_.GetPhyAddr(),
         (__ubuf__ T *)hRes2Local_.GetPhyAddr(), (__ubuf__ T *)invRmsLocal_.GetPhyAddr(),
-        (__ubuf__ T *)biasLocal_[n_ * 2].GetPhyAddr(), (__ubuf__ T *)tmpLocal_.GetPhyAddr(), alphaRes_, totalTasks_,
-        taskOffset, tileTaskCount, skIterCount_, n_);
+        (__ubuf__ T *)biasLocal_[n_ * 2].GetPhyAddr(), (__ubuf__ T *)tmpLocal_.GetPhyAddr(), alphaRes_,
+        tileTaskCount, skIterCount_, n_);
 }
 
 template <typename T, typename U>
@@ -351,6 +424,7 @@ template <typename T, typename U>
 __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ComputeGradXVector(const T gradRsqrtVal,
                                                                                       const T gradRMSNormVal,
                                                                                       const int32_t taskOffset,
+                                                                                      const int32_t tokenIdx,
                                                                                       bool copyNext)
 {
     int8_t ping = 0;
@@ -360,16 +434,20 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ComputeGradXV
     for (int32_t i = 0; i < n_; i++) {
         WaitFlag<HardEvent::MTE3_V>(ping);
 
-        ComputeGradXVf<T, U>(gradXLocal_[ping * c_], xLocal_[i * c_], gradHinLocal_[ping1_ * c_],
-                             hPreLocal_[ping1_ * 8 + i], gradRsqrtVal, gradRMSNormVal, c_, c1_);
+        if constexpr (!kGradXWsFp32_) {
+            ComputeGradXVf<T, U>(gradXLocal_[ping * c_], xLocal_[i * c_], gradHinLocal_[ping1_ * c_],
+                                 hPreLocal_[tokenIdx * n_ + i], gradRsqrtVal, gradRMSNormVal, c_, c1_);
+        }
         Cast(xFp32Local_[ping * c_], xLocal_[i * c_], RoundMode::CAST_NONE, c_);
 
         SetFlag<HardEvent::V_MTE3>(0);
         SetFlag<HardEvent::V_MTE2>(0);
         WaitFlag<HardEvent::V_MTE3>(0);
 
-        DataCopyPad(gradXGlobal_[taskOffset * n_ * c_ + i * c_], gradXLocal_[ping * c_],
-                    {static_cast<uint16_t>(1), static_cast<uint32_t>(c_ * sizeof(U)), 0, 0, 0});
+        if constexpr (!kGradXWsFp32_) {
+            DataCopyPad(gradXGlobal_[taskOffset * n_ * c_ + i * c_], gradXLocal_[ping * c_],
+                        {static_cast<uint16_t>(1), static_cast<uint32_t>(c_ * sizeof(U)), 0, 0, 0});
+        }
         DataCopyPad(xFp32Global_[taskOffset * n_ * c_ + i * c_], xFp32Local_[ping * c_],
                     {static_cast<uint16_t>(1), static_cast<uint32_t>(c_ * sizeof(T)), 0, 0, 0});
 
@@ -386,6 +464,10 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ComputeGradXV
 
         ping = 1 - ping;
     }
+    if (copyNext) {
+        // 覆盖本轮 4 行 x 预取与循环头部发射的下一 token gradHin 预取，供下一 token 头部的 MTE2_V 等待
+        SetFlag<HardEvent::MTE2_V>(0);
+    }
     WaitFlag<HardEvent::MTE3_V>(0);
     WaitFlag<HardEvent::MTE3_V>(1);
 }
@@ -400,7 +482,6 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::Process()
 {
     if ASCEND_IS_AIV {
         if (blkIdx_ == 0) {
-            InitOutput<T>(gradPhiGlobal_, (n_ * n_ + 2 * n_) * n_ * c_, 0);
             InitOutput<T>(gradAlphaGlobal_, 3, 0);
             InitOutput<T>(gradBiasGlobal_, n_ * n_ + 2 * n_, 0);
         }
@@ -425,28 +506,59 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::Process()
                 DataCopyPad(xLocal_, xGlobal_[taskOffset * n_ * c_],
                             {static_cast<uint16_t>(n_), static_cast<uint32_t>(c_ * sizeof(U)), 0, 0, 0},
                             {false, 0, 0, 0});
+                // hPre 全 tile 一次批量装载（tile*n 个 fp32 在 GM 上连续），替代逐 token 的 16B 装载
+                DataCopyPad(hPreLocal_, hPreGlobal_[taskOffset * n_],
+                            {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * n_ * sizeof(T)), 0, 0,
+                             0},
+                            {false, 0, 0, 0});
+                // 首 token 的 gradHin 预载；循环内每轮预取下一 token 到另一缓冲（ping-pong），
+                // 与本轮 vec 计算重叠，消除当轮装载当轮等待的 GM 延迟暴露
+                DataCopyPad(gradHinLocal_[ping1_ * c_], gradHinGlobal_[taskOffset * c_],
+                            {static_cast<uint16_t>(1), static_cast<uint32_t>(c_ * sizeof(U)), 0, 0, 0},
+                            {false, 0, 0, 0});
+                SetFlag<HardEvent::MTE2_V>(0);
 
                 SetFlag<HardEvent::V_MTE2>(0);
                 SetFlag<HardEvent::V_MTE2>(1);
                 for (int32_t i = 0; i < tileTaskCount; i++) {
                     WaitFlag<HardEvent::V_MTE2>(ping1_);
-                    DataCopyPad(hPreLocal_[ping1_ * 8], hPreGlobal_[(taskOffset + i) * n_],
-                                {static_cast<uint16_t>(1), static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0},
-                                {false, 0, 0, 0});
-                    DataCopyPad(gradHinLocal_[ping1_ * c_], gradHinGlobal_[(taskOffset + i) * c_],
-                                {static_cast<uint16_t>(1), static_cast<uint32_t>(c_ * sizeof(U)), 0, 0, 0},
-                                {false, 0, 0, 0});
+                    if (i + 1 < tileTaskCount) {
+                        // 预取下一 token 的 gradHin 到另一缓冲（ping-pong），与本轮 vec 计算重叠，
+                        // 消除当轮装载当轮等待的 GM 延迟暴露。id=2 的成对 flag 确保上一 token 的
+                        // vec 已读完目标缓冲（不占用 id 0/1，避免扰动现有 V_MTE2 配对纪律）
+                        SetFlag<HardEvent::V_MTE2>(2);
+                        WaitFlag<HardEvent::V_MTE2>(2);
+                        DataCopyPad(gradHinLocal_[(1 - ping1_) * c_], gradHinGlobal_[(taskOffset + i + 1) * c_],
+                                    {static_cast<uint16_t>(1), static_cast<uint32_t>(c_ * sizeof(U)), 0, 0, 0},
+                                    {false, 0, 0, 0});
+                    }
 
-                    SetFlag<HardEvent::MTE2_V>(0);
+                    // 等待本 token 数据就绪：gradHin（上轮预取/首轮预载）+ x 各行（上轮 ComputeGradXVector 预取，
+                    // 首轮为循环外整块装载）+ hPre 批量装载，统一由上一轮末尾的 SetFlag<MTE2_V>(0) 覆盖
                     WaitFlag<HardEvent::MTE2_V>(0);
 
                     ComputeGradPreVf<T>(fusedGradHPreAndGradHPostLocal_[i * 2 * n_], xLocal_,
                                         gradHinLocal_[ping1_ * c_], n_, c_ / FP32_PER_VL);
                     T gradRsqrtVal = ComputeGradInvRms(i);
-                    ComputeGradXVector(gradRsqrtVal, gradRMSNormLocal_.GetValue(i), taskOffset + i,
+                    if constexpr (kGradXWsFp32_) {
+                        // bf16：暂存逐 token 标量积，收尾 pass 以 fp32 重算 vec 部分并单次舍入
+                        sSpillLocal_.SetValue(i, gradRsqrtVal * gradRMSNormLocal_.GetValue(i));
+                    }
+                    ComputeGradXVector(gradRsqrtVal, gradRMSNormLocal_.GetValue(i), taskOffset + i, i,
                                        i != tileTaskCount - 1);
                     SetFlag<HardEvent::V_MTE2>(ping1_);
                     ping1_ = 1 - ping1_;
+                }
+                if constexpr (kGradXWsFp32_) {
+                    // spill 槽位起点按 AlignUp(tile_,8) 对齐，保证 GM 写 32B 对齐；
+                    // MTE3_S 就地等待避免下一 tile 的 SetValue 与本次写出竞争
+                    SetFlag<HardEvent::S_MTE3>(0);
+                    WaitFlag<HardEvent::S_MTE3>(0);
+                    DataCopyPad(sSpillGlobal_[(taskOffset / tile_) * spillSlotElems_], sSpillLocal_,
+                                {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * sizeof(T)), 0, 0,
+                                 0});
+                    SetFlag<HardEvent::MTE3_S>(0);
+                    WaitFlag<HardEvent::MTE3_S>(0);
                 }
                 SetFlag<HardEvent::V_MTE3>(0);
                 WaitFlag<HardEvent::V_MTE3>(0);
@@ -498,9 +610,22 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::Process()
 
             if (tileTaskCount > 0) {
                 ProcessMatmul1(taskOffset, tileTaskCount);
-                ProcessMatmul2(taskOffset, tileTaskCount);
             }
         }
+    }
+
+    // AIV+AIC 全核屏障：mm2 要按全量 K=bs 读所有核产出的 gradH2/xFp32，
+    // 逐组 flag 只保证本组 AIV 的 tile 落盘，不足以为 mm2 提供全量可见性
+    SyncAll<false>();
+
+    if ASCEND_IS_AIV {
+        if constexpr (kGradXWsFp32_) {
+            // bf16：mm1 的 fp32 部分和已全数落盘，合成 vec 部分并单次舍入写出 gradX
+            ProcessGradXFinal();
+        }
+    } else {
+        // 各 AIC 按 N 维取不相交切片，直接非原子写 gradPhi，消除逐核原子写放大
+        ProcessMatmul2();
     }
 }
 
@@ -508,9 +633,9 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::Process()
 // mm1M_ = tile_ * 2;
 // mm1N_ = n_ * c_;
 
-// mm2K_ = tile_ * 2;
+// mm2K_ = batchSize_ * seqLength_;
 // mm2M_ = n_ * n_ + 2 * n_;
-// mm2N_ = n_ * c_;
+// mm2N_ = n_ * c_;  // org N；单核实算 N = min(mm2SliceN_, mm2N_ - blkIdx_ * mm2SliceN_)
 template <typename T, typename U>
 __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ProcessMatmul1(const int32_t taskOffset,
                                                                                   const int32_t mm1M)
@@ -520,24 +645,132 @@ __aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ProcessMatmul
 
     mm1_.SetTensorA(gradH2Global_[taskOffset * mm1K_]);
     mm1_.SetTensorB(phiGlobal_);
-    mm1_.SetHF32(true, 1);
-    mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false>(gradXGlobal_[taskOffset * (n_ * c_)], 1);
+    if constexpr (kGradXWsFp32_) {
+        // bf16：关 HF32 截断；各 AIC 的 M 维行不相交，非原子直写 fp32 workspace，
+        // vec 部分由收尾 pass 以 fp32 合成后单次舍入（旧路径为 bf16 原子加，双重舍入）
+        mm1_.SetHF32(false, 1);
+        mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
+        mm1_.template IterateAll<false>(gradXMWsGlobal_[taskOffset * (n_ * c_)], 0);
+    } else {
+        mm1_.SetHF32(true, 1);
+        mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
+        mm1_.template IterateAll<false>(gradXGlobal_[taskOffset * (n_ * c_)], 1);
+    }
     mm1_.End();
 }
 
+// bf16 gradX 收尾 pass：gradX[task,k,:] = cast_bf16(gradHin[task,:]·hPre[task,k] + x[task,k,:]·s[task]
+// + mm1Ws[task,k,:])，fp32 求和单次舍入。注意 gradHin 是 [B,S,C] 逐 token 的（n_ 行共享），
+// x/WS_m/gradX 是 [B,S,N,C] 逐行的。tile 分配与主循环一致，spill/hPre 按 tile 批量装载。
+// 先于 pipe_->Reset() 排空主循环的 MTE2/MTE3（flag 触发即对应 pipe 队列排空），再独占 UB。
 template <typename T, typename U>
-__aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ProcessMatmul2(const int32_t taskOffset,
-                                                                                  const int32_t mm2K)
+__aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ProcessGradXFinal()
 {
-    if (mm2K <= 0)
+    SetFlag<HardEvent::MTE3_V>(6);
+    WaitFlag<HardEvent::MTE3_V>(6);
+    SetFlag<HardEvent::MTE2_V>(6);
+    WaitFlag<HardEvent::MTE2_V>(6);
+    pipe_->Reset();
+
+    pipe_->InitBuffer(xFinQue_, DOUBLE_BUF, GRADX_FIN_CHUNK * sizeof(U));
+    pipe_->InitBuffer(gradHinFinQue_, DOUBLE_BUF, GRADX_FIN_CHUNK * sizeof(U));
+    pipe_->InitBuffer(mFinQue_, DOUBLE_BUF, GRADX_FIN_CHUNK * sizeof(T));
+    pipe_->InitBuffer(gradXFinQue_, DOUBLE_BUF, GRADX_FIN_CHUNK * sizeof(U));
+    pipe_->InitBuffer(xFinTBuf_, GRADX_FIN_CHUNK * sizeof(T));
+    pipe_->InitBuffer(ghFinTBuf_, GRADX_FIN_CHUNK * sizeof(T));
+    pipe_->InitBuffer(tmpFinTBuf_, GRADX_FIN_CHUNK * sizeof(T));
+    pipe_->InitBuffer(hPreFinBuf_, AlignUp(tile_ * n_, ELEMENTS_SIZE_PER_BLOCK) * sizeof(T));
+    pipe_->InitBuffer(sFinBuf_, spillSlotElems_ * sizeof(T));
+    xFinT_ = xFinTBuf_.Get<T>();
+    ghFinT_ = ghFinTBuf_.Get<T>();
+    tmpFinT_ = tmpFinTBuf_.Get<T>();
+    hPreFinLocal_ = hPreFinBuf_.Get<T>();
+    sFinLocal_ = sFinBuf_.Get<T>();
+
+    for (int32_t taskOffset = blkIdx_ * tile_; taskOffset < totalTasksAligned_; taskOffset += aivNum_ * tile_) {
+        int32_t tileTaskCount = min(tile_, totalTasks_ - taskOffset);
+        if (tileTaskCount <= 0) {
+            continue;
+        }
+        DataCopyPad(hPreFinLocal_, hPreGlobal_[taskOffset * n_],
+                    {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * n_ * sizeof(T)), 0, 0, 0},
+                    {false, 0, 0, 0});
+        DataCopyPad(sFinLocal_, sSpillGlobal_[(taskOffset / tile_) * spillSlotElems_],
+                    {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * sizeof(T)), 0, 0, 0},
+                    {false, 0, 0, 0});
+        SetFlag<HardEvent::MTE2_S>(1);
+        WaitFlag<HardEvent::MTE2_S>(1);
+
+        for (int32_t t = 0; t < tileTaskCount; t++) {
+            T sVal = sFinLocal_.GetValue(t);
+            int64_t tokenBase = static_cast<int64_t>(taskOffset + t);
+            for (int32_t cOff = 0; cOff < c_; cOff += GRADX_FIN_CHUNK) {
+                int32_t len = min(static_cast<int64_t>(GRADX_FIN_CHUNK), c_ - cOff);
+                // gradHin 逐 token 装载一次，n_ 行复用（[B,S,C] 布局）
+                LocalTensor<U> ghU = gradHinFinQue_.AllocTensor<U>();
+                DataCopyPad(ghU, gradHinGlobal_[tokenBase * c_ + cOff],
+                            {static_cast<uint16_t>(1), static_cast<uint32_t>(len * sizeof(U)), 0, 0, 0},
+                            {false, 0, 0, 0});
+                gradHinFinQue_.EnQue(ghU);
+                ghU = gradHinFinQue_.DeQue<U>();
+                Cast(ghFinT_, ghU, RoundMode::CAST_NONE, len);
+                gradHinFinQue_.FreeTensor(ghU);
+                for (int32_t k = 0; k < n_; k++) {
+                    T hPreVal = hPreFinLocal_.GetValue(t * n_ + k);
+                    int64_t rowOffset = (tokenBase * n_ + k) * c_ + cOff;
+                    LocalTensor<U> xU = xFinQue_.AllocTensor<U>();
+                    DataCopyPad(xU, xGlobal_[rowOffset],
+                                {static_cast<uint16_t>(1), static_cast<uint32_t>(len * sizeof(U)), 0, 0, 0},
+                                {false, 0, 0, 0});
+                    xFinQue_.EnQue(xU);
+                    LocalTensor<T> mT = mFinQue_.AllocTensor<T>();
+                    DataCopyPad(mT, gradXMWsGlobal_[rowOffset],
+                                {static_cast<uint16_t>(1), static_cast<uint32_t>(len * sizeof(T)), 0, 0, 0},
+                                {false, 0, 0, 0});
+                    mFinQue_.EnQue(mT);
+                    xU = xFinQue_.DeQue<U>();
+                    mT = mFinQue_.DeQue<T>();
+                    LocalTensor<U> outU = gradXFinQue_.AllocTensor<U>();
+                    Cast(xFinT_, xU, RoundMode::CAST_NONE, len);
+                    Muls(xFinT_, xFinT_, sVal, len);
+                    Muls(tmpFinT_, ghFinT_, hPreVal, len);
+                    Add(xFinT_, xFinT_, tmpFinT_, len);
+                    Add(xFinT_, xFinT_, mT, len);
+                    // 与被替换路径的 castTrait2 一致：最近舍入（RINT）fp32 -> bf16
+                    Cast(outU, xFinT_, RoundMode::CAST_RINT, len);
+                    gradXFinQue_.EnQue(outU);
+                    xFinQue_.FreeTensor(xU);
+                    mFinQue_.FreeTensor(mT);
+                    outU = gradXFinQue_.DeQue<U>();
+                    DataCopyPad(gradXGlobal_[rowOffset], outU,
+                                {static_cast<uint16_t>(1), static_cast<uint32_t>(len * sizeof(U)), 0, 0, 0});
+                    gradXFinQue_.FreeTensor(outU);
+                }
+            }
+        }
+        // 下一 tile 的批量装载会覆盖 hPreFin/sFin：先确保本 tile 的标量读（S pipe）完成
+        SetFlag<HardEvent::S_MTE2>(1);
+        WaitFlag<HardEvent::S_MTE2>(1);
+    }
+}
+
+// gradPhi = gradH2^T @ xFp32，A/B/C 的 GM 行主序行首 stride 均由 SetOrgShape 给出（orgN = n_ * c_），
+// 本核只算/写 N 维切片 [nOffset, nOffset + curSliceN)，切片间不相交，无需原子加与清零；
+// mm2SliceN_ 为 CeilDiv，不整除时尾核由 curSliceN 截断、越界核直接返回
+template <typename T, typename U>
+__aicore__ inline void MhcPreSinkhornPremixBackwardOneStage<T, U>::ProcessMatmul2()
+{
+    const int64_t nOffset = blkIdx_ * mm2SliceN_;
+    const int64_t curSliceN = min(mm2SliceN_, mm2N_ - nOffset);
+    if (mm2K_ <= 0 || curSliceN <= 0)
         return;
 
-    mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true);
-    mm2_.SetTensorB(xFp32Global_[taskOffset * mm2N_]);
-    mm2_.SetHF32(true, 1);
-    mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
-    mm2_.template IterateAll<false>(gradPhiGlobal_, 1);
+    mm2_.SetTensorA(gradH2Global_, true);
+    mm2_.SetTensorB(xFp32Global_[nOffset]);
+    mm2_.SetHF32(false, 1);
+    mm2_.SetOrgShape(mm2M_, mm2N_, mm2K_);
+    mm2_.SetSingleShape(mm2M_, curSliceN, mm2K_);
+    mm2_.template IterateAll<false>(gradPhiGlobal_[nOffset], 0);
     mm2_.End();
 }
 
