@@ -38,7 +38,6 @@ struct SFAType {
     using kvType = KV_T;
     using outputType = OUT_T;
     static constexpr bool flashDecode = FLASH_DECODE;
-    static constexpr bool IS_FD = FLASH_DECODE && LAYOUT_T == SFA_LAYOUT::TND && KV_LAYOUT_T == SFA_LAYOUT::PA_BSND;
     static constexpr SFA_LAYOUT layout = LAYOUT_T;
     static constexpr SFA_LAYOUT kvLayout = KV_LAYOUT_T;
     static constexpr int templateMode = TEMPLATE_MODE;

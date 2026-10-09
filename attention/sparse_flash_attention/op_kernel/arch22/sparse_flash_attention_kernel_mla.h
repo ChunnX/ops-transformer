@@ -77,7 +77,6 @@ private:
     static constexpr bool PAGE_ATTENTION = SFAT::pageAttention;
     static constexpr int TEMPLATE_MODE = SFAT::templateMode;
     static constexpr bool FLASH_DECODE = SFAT::flashDecode;
-    static constexpr bool IS_FD = SFAT::IS_FD;
     static constexpr SFA_LAYOUT LAYOUT_T = SFAT::layout;
     static constexpr SFA_LAYOUT KV_LAYOUT_T = SFAT::kvLayout;
 
@@ -161,10 +160,6 @@ private:
 
     GlobalTensor<int32_t> mm2ResInt32Gm;
     GlobalTensor<UPDATE_T> vec2ResGm;
-
-    GlobalTensor<T> accumOutGm;
-    GlobalTensor<T> lseSumFdGm;
-    GlobalTensor<T> lseMaxFdGm;
 
     GlobalTensor<T> lseSumFaGm;
     GlobalTensor<T> lseMaxFaGm;
@@ -500,7 +495,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
     topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-    if constexpr (IS_FD) {
+    if constexpr (FLASH_DECODE) {
         if (aiCoreIdx < usedCoreNum) {
             if (splitQueryIdx >= actualSeqLengthsQGm.GetValue(sfaKernelConstInfo.batchSize - 1)) {
                 usedCoreNum = 0;
@@ -565,14 +560,6 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
             (__gm__ int32_t *)(workspace + offset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
     }
 
-    if constexpr (FLASH_DECODE && !IS_FD) {
-        accumOutGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
-        offset = offset + tilingData->splitKVParams.accumOutSize * sizeof(float);
-        lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
-        lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset) + tilingData->splitKVParams.logSumExpSize / 2);
-        offset = offset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
-    }
-
     if ASCEND_IS_AIV {
         sfaKernelVectorService.InitParams(sfaKernelConstInfo, tilingData);
         sfaKernelVectorService.InitMm2ResInt32GmGlobalTensor(mm2ResInt32Gm);
@@ -580,8 +567,8 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
             sfaKernelVectorService.InitVec0GlobalTensor(kvValidSizeGm_, kvMergeGm_, kRopeGm, keyGm, blockTableGm);
         }
         sfaKernelVectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm,
-                                                    lseMaxFdGm, lseSumFdGm, topKGm, softmaxMaxGm, softmaxSumGm);
-        sfaKernelVectorService.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
+                                                    topKGm, softmaxMaxGm, softmaxSumGm);
+        sfaKernelVectorService.InitVec2GlobalTensor(vec2ResGm, mm2ResGm, attentionOutGm);
     }
 
     if ASCEND_IS_AIC {
@@ -600,7 +587,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
 template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::InitCalcParamsEach()
 {
-    if constexpr (IS_FD) {
+    if constexpr (FLASH_DECODE) {
         splitPart = aiCoreIdx % sfaKernelConstInfo.splitKVNum;
         splitQueryIdx = aiCoreIdx / sfaKernelConstInfo.splitKVNum;
         if (aiCoreIdx >= usedCoreNum) {
@@ -877,7 +864,7 @@ template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::Process()
 {
     bool runCore = aiCoreIdx < usedCoreNum;
-    if constexpr (IS_FD) {
+    if constexpr (FLASH_DECODE) {
         runCore = runCore && (splitActive || splitPart == 0);
     }
     if (runCore) {
@@ -895,7 +882,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Process()
             matmulService.FreeEventID();
         }
     }
-    if constexpr (IS_FD) {
+    if constexpr (FLASH_DECODE) {
         SyncAll();
         if (splitActive && splitPart == 0 && aiCoreIdx < usedCoreNum) {
             if ASCEND_IS_AIV {
@@ -960,7 +947,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::ProcessBalance()
             uint32_t extraLoop = isEnd ? 2 : 0;
 
             uint32_t curTopKIdx = 0;
-            if constexpr (IS_FD) {
+            if constexpr (FLASH_DECODE) {
                 if (splitActive) {
                     sfaKernelLoopInfo.s2LoopTimes = sfaKernelConstInfo.s2End;
                     sfaKernelLoopInfo.tndIsS2SplitCore = false;

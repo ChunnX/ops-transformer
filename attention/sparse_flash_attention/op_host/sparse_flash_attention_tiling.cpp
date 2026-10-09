@@ -374,14 +374,6 @@ void SFAMlaTiling::CheckUbSpace()
 void SFAMlaTiling::CalcInnerSize(uint32_t sfaS2Size)
 {
     sInnerSize_ = 512; // 512:s2默认切分大小
-    // FlashDecode时，如果S2的计算量>=256(确保切分后不小于128)但又不足以分2次计算时，则修改sInnerSize_，均分为2份进行计算，确保Nbuffer=2
-    if (splitKVFlag_ && sfaInfo_->qLayout != SFALayout::TND) {
-        if (sfaS2Size == 256) { // 256:s2Size的阈值，判断sInnerSize_是否切分
-            sInnerSize_ = 128;  // 128:sInnerSize_值为s2Size的一半，均分为2份进行计算，
-        } else if (sfaS2Size > 256 && sfaS2Size <= sInnerSize_) { // 256:s2Size的阈值，判断sInnerSize_是否切分
-            sInnerSize_ = (sInnerSize_ + 1) / 2;                  // 2:减半
-        }
-    }
 
     sInnerLoopTimes_ = (sfaS2Size + sInnerSize_ - 1) / sInnerSize_;
     sInnerSizeTail_ = sfaS2Size - (sInnerLoopTimes_ - 1) * sInnerSize_;
@@ -498,30 +490,6 @@ void SFAMlaTiling::FillTiling()
     FillTilingSingleCoreTensorSizeMla();
 }
 
-uint32_t SFAMlaTiling::CalcBalanceFDParamNums(const uint32_t actCoreNum) const
-{
-    return actCoreNum * 2 * sfaInfo_->n2Size * mBaseSize_; // 2:每个核可能有头规约和尾规约，一共两份规约信息
-}
-
-void SFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
-{
-    if (splitKVFlag_) {
-        uint32_t accumOutSize = 0;
-        uint32_t logSumExpSize = 0;
-        uint32_t FDParamNums = CalcBalanceFDParamNums(
-            actCoreNum); // balanceModeFlag_ ? CalcBalanceFDParamNums(actCoreNum) : CalcUnbalanceFDParamNums();
-        accumOutSize = FDParamNums * headDimAlign_;
-        logSumExpSize =
-            2 * FDParamNums * (BYTE_BLOCK / sfaInfo_->blockTypeSize); // log和sum的存储空间一致，共需要2份内存
-        workspaceSize_ += (accumOutSize + logSumExpSize) * sfaInfo_->blockTypeSize;
-    }
-}
-
-void SFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum)
-{
-    NormalCalcFDWorkSpace(actCoreNum);
-}
-
 void SFAMlaTiling::GetWorkspaceSize()
 {
     uint32_t actCoreNum = coreNum_;
@@ -577,8 +545,6 @@ void SFAMlaTiling::GetWorkspaceSize()
         // arch22 stores one BF16 output and two FP32 statistics per (split, query, head).
         workspaceSize_ += static_cast<uint64_t>(kvSplitPart_) * sfaInfo_->s1Size * sfaInfo_->gSize *
                           (headDimAlign_ * sizeof(uint16_t) + 2 * sizeof(float));
-    } else {
-        CalcFDWorkSpace(actCoreNum);
     }
 }
 

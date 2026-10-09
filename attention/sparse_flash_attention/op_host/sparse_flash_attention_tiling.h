@@ -320,7 +320,6 @@ private:
     bool IsSplitKVSupported() const;
     void CalcInnerSize(uint32_t sfaS2Size);
 
-    bool IsFlashDecode(uint32_t coreNum);
 
     void FillTilingSplitKVMla();
     void FillTilingBaseParamsMla();
@@ -332,11 +331,6 @@ private:
     void CalcUbBmm();
     void CheckUbSpace();
     void GetWorkspaceSize();
-    void NormalCalcFDWorkSpace(const uint32_t actCoreNum);
-    void CalcFDWorkSpace(const uint32_t actCoreNum);
-
-    uint32_t CalcBalanceFDParamNums(const uint32_t actCoreNum) const;
-
     void CalcBlockDim();
 
     gert::TilingContext *context_ = nullptr;
@@ -370,7 +364,6 @@ private:
 
     uint32_t headDimAlign_ = 0;
     uint32_t mBaseSize_ = 128;
-    uint32_t mFdBaseSize_ = 8;
 
     SFATilingInfo *sfaInfo_ = nullptr;
 };
