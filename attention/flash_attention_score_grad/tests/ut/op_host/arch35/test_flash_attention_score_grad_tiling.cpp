@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -74,6 +75,286 @@ protected:
     }
 };
 
+static optiling::fag::FuzzyBaseInfoParamsRegbase MakeGqaCausalBatchMajorParams()
+{
+    using namespace optiling::fag;
+    FuzzyBaseInfoParamsRegbase params{};
+    params.aicNum = 32;
+    params.coreNum = 64;
+    params.b = 32;
+    params.n1 = 16;
+    params.n2 = 1;
+    params.g = 16;
+    params.s1 = 8192;
+    params.s2 = 8192;
+    params.s1Outer = 64;
+    params.s2Outer = 64;
+    params.s1Inner = 128;
+    params.s1CvInner = 128;
+    params.s2Inner = 128;
+    params.cvS2Inner = 128;
+    params.layoutType = INPUT_FORMAT_BS2N2GD;
+    params.isDeterministic = true;
+    params.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL);
+    params.sparseMode = static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL);
+    return params;
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalRoundCount)
+{
+    using namespace optiling::fag;
+    struct RoundCase {
+        int64_t k;
+        int64_t m;
+        int64_t n;
+        int64_t originalRounds;
+        int64_t batchMajorRounds;
+    };
+    // Expected values independently computed by FAG_Causal_GQA_0915_v1.py.
+    const RoundCase cases[] = {
+        {28, 64, 64, 38096, 41984},     {32, 64, 64, 33280, 33280}, {36, 64, 64, 29840, 32768},
+        {32, 8, 8, 576, 4608},          {32, 16, 16, 2176, 8704},   {32, 32, 32, 8448, 16384},
+        {32, 63, 63, 32256, 32256},     {32, 65, 65, 34320, 34816}, {32, 96, 96, 74496, 82432},
+        {32, 128, 128, 132096, 132096}, {32, 64, 63, 33264, 33280},
+    };
+    for (const auto& testCase : cases) {
+        SCOPED_TRACE(::testing::Message() << "k=" << testCase.k << ", m=" << testCase.m << ", n=" << testCase.n);
+        EXPECT_EQ(CalcCausalDeterRound(testCase.k, testCase.m, testCase.n, 32, 16), testCase.originalRounds);
+        EXPECT_EQ(32 * CalcCausalDeterRound(testCase.k, testCase.m, testCase.n, 1, 16), testCase.batchMajorRounds);
+    }
+    EXPECT_EQ(CalcCausalDeterRound(32, 64, 64, 32, 1), 2080);
+    EXPECT_EQ(CalcCausalDeterRound(32, 64, 64, 1, 1), 65);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorDefaultDisabled)
+{
+    using namespace optiling::fag;
+    FuzzyBaseInfoParamsRegbase defaultParams{};
+    EXPECT_EQ(defaultParams.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+    EXPECT_EQ(defaultParams.deterGqaCausalRoundsPerBatch, 0);
+
+    // Callers that have not verified the original Cube tile must retain the old mapping.
+    auto params = MakeGqaCausalBatchMajorParams();
+    CalcleCausalDeterParam(params);
+    EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+    EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, 0);
+    EXPECT_EQ(params.deterMaxRound, 33280);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorPreservesTilingLayout)
+{
+    using namespace optiling::fag;
+    // Both fields occupy former padding; unrelated serialized tiling fields must not move.
+    static_assert(sizeof(FlashAttentionScoreGradS1S2BNGS1S2BaseParamsRegbase) == 200,
+                  "Base tiling size must remain unchanged");
+    static_assert(offsetof(FlashAttentionScoreGradS1S2BNGS1S2BaseParamsRegbase, deterGqaCausalScheduleMode) == 193,
+                  "GQA mode must occupy the first former padding byte");
+    static_assert(sizeof(BaseDeterParamRegbase) == 32 + 2 * MAX_CORE_NUM * sizeof(uint64_t),
+                  "Deterministic tiling size must remain unchanged");
+    static_assert(offsetof(BaseDeterParamRegbase, deterGqaCausalRoundsPerBatch) == sizeof(uint32_t),
+                  "GQA rounds must occupy the former reserved uint32 field");
+    static_assert(offsetof(BaseDeterParamRegbase, deterMaxRound) == sizeof(uint64_t),
+                  "Maximum round offset must remain unchanged");
+    static_assert(offsetof(BaseDeterParamRegbase, dqIsNeedDeter) == 32,
+                  "Synchronization array offset must remain unchanged");
+
+    FlashAttentionScoreGradS1S2BNGS1S2BaseParamsRegbase baseParams{};
+    BaseDeterParamRegbase deterParams{};
+    EXPECT_EQ(baseParams.get_deterGqaCausalScheduleMode(), static_cast<uint8_t>(DeterGqaCausalScheduleMode::ORIGINAL));
+    EXPECT_EQ(deterParams.get_deterGqaCausalRoundsPerBatch(), 0);
+    baseParams.set_deterGqaCausalScheduleMode(static_cast<uint8_t>(DeterGqaCausalScheduleMode::BATCH_MAJOR));
+    deterParams.set_deterGqaCausalRoundsPerBatch(1040);
+    EXPECT_EQ(baseParams.get_deterGqaCausalScheduleMode(),
+              static_cast<uint8_t>(DeterGqaCausalScheduleMode::BATCH_MAJOR));
+    EXPECT_EQ(deterParams.get_deterGqaCausalRoundsPerBatch(), 1040);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorZeroRoundGrowth)
+{
+    using namespace optiling::fag;
+    const uint64_t coreCounts[] = {28, 32, 36};
+    const int64_t expectedRounds[] = {38096, 33280, 29840};
+    for (size_t i = 0; i < sizeof(coreCounts) / sizeof(coreCounts[0]); ++i) {
+        SCOPED_TRACE(::testing::Message() << "core count=" << coreCounts[i]);
+        auto params = MakeGqaCausalBatchMajorParams();
+        params.aicNum = coreCounts[i];
+        params.coreNum = 2 * coreCounts[i];
+        CalcleCausalDeterParam(params, true);
+        EXPECT_EQ(params.deterMaxRound, expectedRounds[i]);
+        const auto expectedMode =
+            coreCounts[i] == 32 ? DeterGqaCausalScheduleMode::BATCH_MAJOR : DeterGqaCausalScheduleMode::ORIGINAL;
+        EXPECT_EQ(params.deterGqaCausalScheduleMode, expectedMode);
+        EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, coreCounts[i] == 32 ? 1040 : 0);
+    }
+
+    // A small increase is also rejected: 33,280 > 33,264 rounds.
+    auto params = MakeGqaCausalBatchMajorParams();
+    params.s2 = 63 * 128;
+    params.s2Outer = 63;
+    params.sparseMode = static_cast<uint32_t>(SparseMode::LEFT_UP_CAUSAL);
+    CalcleCausalDeterParam(params, true);
+    EXPECT_EQ(params.deterMaxRound, 33264);
+    EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+    EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, 0);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorFlattensKvHeads)
+{
+    using namespace optiling::fag;
+    auto params = MakeGqaCausalBatchMajorParams();
+    params.b = 8;
+    params.n2 = 4;
+    params.n1 = params.n2 * params.g;
+    CalcleCausalDeterParam(params, true);
+    EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::BATCH_MAJOR);
+    EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, 1040);
+    EXPECT_EQ(params.deterMaxRound, 33280);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorEligibilityGuards)
+{
+    using namespace optiling::fag;
+    struct GuardCase {
+        const char* name;
+        void (*modify)(FuzzyBaseInfoParamsRegbase&);
+    };
+    const GuardCase cases[] = {
+        {"non-deterministic", [](FuzzyBaseInfoParamsRegbase& p) { p.isDeterministic = false; }},
+        {"true variable-length TND", [](FuzzyBaseInfoParamsRegbase& p) { p.layoutType = INPUT_FORMAT_TND; }},
+        {"BN2S2", [](FuzzyBaseInfoParamsRegbase& p) { p.splitAxis = SplitAxisEnum::BN2S2; }},
+        {"non-causal",
+         [](FuzzyBaseInfoParamsRegbase& p) {
+             p.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_DENSE);
+         }},
+        {"MHA",
+         [](FuzzyBaseInfoParamsRegbase& p) {
+             p.g = 1;
+             p.n1 = p.n2;
+         }},
+        {"single KV batch", [](FuzzyBaseInfoParamsRegbase& p) { p.b = 1; }},
+        {"inconsistent AIC/AIV counts", [](FuzzyBaseInfoParamsRegbase& p) { p.coreNum = 32; }},
+        {"S1 tile 64",
+         [](FuzzyBaseInfoParamsRegbase& p) {
+             p.s1Inner = 64;
+             p.s1CvInner = 64;
+         }},
+        {"S2 tile 256",
+         [](FuzzyBaseInfoParamsRegbase& p) {
+             p.s2Inner = 256;
+             p.cvS2Inner = 256;
+         }},
+    };
+    for (const auto& testCase : cases) {
+        SCOPED_TRACE(testCase.name);
+        auto params = MakeGqaCausalBatchMajorParams();
+        testCase.modify(params);
+        const auto expectedRound =
+            CalcCausalDeterRound(params.aicNum, params.s1Outer, params.s2Outer, params.b * params.n2, params.g);
+        CalcleCausalDeterParam(params, true);
+        EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+        EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, 0);
+        EXPECT_EQ(params.deterMaxRound, expectedRound);
+    }
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorRoundIdOverflowFallback)
+{
+    using namespace optiling::fag;
+    auto params = MakeGqaCausalBatchMajorParams();
+    // The existing kernel round ID is uint32_t. Keep unsupported huge schedules on the legacy path.
+    params.g = 1LL << 21;
+    params.n1 = params.g;
+    const auto expectedRound = CalcCausalDeterRound(32, 64, 64, 32, params.g);
+    ASSERT_GT(expectedRound, (1LL << 32) - 1);
+    CalcleCausalDeterParam(params, true);
+    EXPECT_EQ(params.deterMaxRound, expectedRound);
+    EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+    EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, 0);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorReservesLookaheadRound)
+{
+    using namespace optiling::fag;
+    auto params = MakeGqaCausalBatchMajorParams();
+    params.aicNum = 1;
+    params.coreNum = 2;
+    params.s1 = 128;
+    params.s2 = 128;
+    params.s1Outer = 1;
+    params.s2Outer = 1;
+    params.b = 3;
+    params.g = ((1LL << 32) - 1) / params.b;
+    params.n1 = params.g;
+    // UINT32_MAX itself cannot leave space for CalDeterIndex(loopIdx + 1) at pipeline drain.
+    CalcleCausalDeterParam(params, true);
+    EXPECT_EQ(params.deterMaxRound, (1LL << 32) - 1);
+    EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+    EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, 0);
+
+    params.b = 2;
+    params.g = ((1LL << 32) - 2) / params.b;
+    params.n1 = params.g;
+    CalcleCausalDeterParam(params, true);
+    EXPECT_EQ(params.deterMaxRound, (1LL << 32) - 2);
+    EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::BATCH_MAJOR);
+    EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, params.g);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorSparseNormalization)
+{
+    using namespace optiling::fag;
+    // Right-down causal skips the leading empty S1 block before selecting a schedule.
+    auto rightDown = MakeGqaCausalBatchMajorParams();
+    rightDown.s1 += 128;
+    rightDown.s1Outer += 1;
+    CalcleCausalDeterParam(rightDown, true);
+    EXPECT_EQ(rightDown.deterMaxRound, 33280);
+    EXPECT_EQ(rightDown.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::BATCH_MAJOR);
+    EXPECT_EQ(rightDown.deterGqaCausalRoundsPerBatch, 1040);
+
+    // Left-up causal and its NO_MASK equivalent truncate empty S2 columns.
+    const SparseMode modes[] = {SparseMode::LEFT_UP_CAUSAL, SparseMode::NO_MASK};
+    for (const auto sparseMode : modes) {
+        auto leftUp = MakeGqaCausalBatchMajorParams();
+        leftUp.sparseMode = static_cast<uint32_t>(sparseMode);
+        leftUp.s2 += 128;
+        leftUp.s2Outer += 1;
+        CalcleCausalDeterParam(leftUp, true);
+        EXPECT_EQ(leftUp.deterMaxRound, 33280);
+        EXPECT_EQ(leftUp.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::BATCH_MAJOR);
+        EXPECT_EQ(leftUp.deterGqaCausalRoundsPerBatch, 1040);
+    }
+
+    auto rightDownBand = MakeGqaCausalBatchMajorParams();
+    rightDownBand.s2 += 128;
+    rightDownBand.s2Outer += 1;
+    CalcleCausalDeterParam(rightDownBand, true);
+    EXPECT_EQ(rightDownBand.deterSparseType, static_cast<uint32_t>(DeterSparseType::DETER_BAND));
+    EXPECT_EQ(rightDownBand.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+    EXPECT_EQ(rightDownBand.deterGqaCausalRoundsPerBatch, 0);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, DeterGqaCausalBatchMajorClearsPreviousSelection)
+{
+    using namespace optiling::fag;
+    auto params = MakeGqaCausalBatchMajorParams();
+    CalcleCausalDeterParam(params, true);
+    ASSERT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::BATCH_MAJOR);
+
+    CalcleCausalDeterParam(params);
+    EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+    EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, 0);
+    EXPECT_EQ(params.deterMaxRound, 33280);
+
+    CalcleCausalDeterParam(params, true);
+    params.s2 += 128;
+    params.s2Outer += 1;
+    CalcleCausalDeterParam(params, true);
+    EXPECT_EQ(params.deterSparseType, static_cast<uint32_t>(DeterSparseType::DETER_BAND));
+    EXPECT_EQ(params.deterGqaCausalScheduleMode, DeterGqaCausalScheduleMode::ORIGINAL);
+    EXPECT_EQ(params.deterGqaCausalRoundsPerBatch, 0);
+}
+
 static Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo MakeA5CompileInfo()
 {
     return {64,       // aivNum
@@ -89,7 +370,7 @@ static Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo MakeA5Comp
 }
 
 static gert::TilingContextPara MakeMlaRopeTilingContext(
-    Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo *compileInfo, int64_t qkD, int64_t valueD)
+    Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo* compileInfo, int64_t qkD, int64_t valueD)
 {
     return gert::TilingContextPara("FlashAttentionScoreGrad",
                                    {

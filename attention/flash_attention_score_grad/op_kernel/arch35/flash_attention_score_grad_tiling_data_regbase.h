@@ -32,6 +32,11 @@ enum class DeterBandScheduleMode : uint8_t {
     BAND = 3
 };
 
+enum class DeterGqaCausalScheduleMode : uint8_t {
+    ORIGINAL = 0,
+    BATCH_MAJOR = 1
+};
+
 class FlashAttentionScoreGradEmptyTensorTilingDataRegbase {
 public:
     uint32_t formerDqNum;
@@ -239,7 +244,8 @@ public:
     uint64_t s1SinkOuter;
     uint64_t s2SinkOuter;
     uint8_t deterBandScheduleMode;
-    uint8_t reservedPad[7]; // tilingData需要8字节对齐，对应编译器尾部padding
+    uint8_t deterGqaCausalScheduleMode;
+    uint8_t reservedPad[6]; // tilingData需要8字节对齐，对应编译器尾部padding
 
     int64_t get_coreNum() const
     {
@@ -372,6 +378,10 @@ public:
     uint8_t get_deterBandScheduleMode() const
     {
         return deterBandScheduleMode;
+    }
+    uint8_t get_deterGqaCausalScheduleMode() const
+    {
+        return deterGqaCausalScheduleMode;
     }
 
     void set_coreNum(int64_t coreNumParam)
@@ -518,6 +528,10 @@ public:
     {
         this->deterBandScheduleMode = deterBandScheduleModeParam;
     }
+    void set_deterGqaCausalScheduleMode(uint8_t deterGqaCausalScheduleModeParam)
+    {
+        this->deterGqaCausalScheduleMode = deterGqaCausalScheduleModeParam;
+    }
     void set_reservedPad(uint8_t reservedPadVal = 0)
     {
         for (uint32_t i = 0; i < sizeof(reservedPad); ++i) {
@@ -636,7 +650,7 @@ public:
     int64_t blockStarts[MAX_CORE_NUM];
     int64_t blockEnds[MAX_CORE_NUM];
 
-    const int64_t *get_blockStarts() const
+    const int64_t* get_blockStarts() const
     {
         return blockStarts;
     }
@@ -644,7 +658,7 @@ public:
     {
         return blockStarts[index];
     }
-    const int64_t *get_blockEnds() const
+    const int64_t* get_blockEnds() const
     {
         return blockEnds;
     }
@@ -652,7 +666,7 @@ public:
     {
         return blockEnds[index];
     }
-    void set_blockStarts(const int64_t *val)
+    void set_blockStarts(const int64_t* val)
     {
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
             blockStarts[i] = val[i];
@@ -662,7 +676,7 @@ public:
     {
         blockStarts[index] = val;
     }
-    void set_blockEnds(const int64_t *val)
+    void set_blockEnds(const int64_t* val)
     {
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
             blockEnds[i] = val[i];
@@ -1229,7 +1243,7 @@ public:
 class BaseDeterParamRegbase {
 public:
     uint32_t noNeedDeter;
-    uint32_t reserved1; // tilingData需要8字节对齐
+    uint32_t deterGqaCausalRoundsPerBatch;
     int64_t deterMaxRound;
     uint64_t deterGmOffset;
     uint64_t deterWorkSpaceOffset;
@@ -1244,6 +1258,10 @@ public:
     {
         return deterMaxRound;
     }
+    uint32_t get_deterGqaCausalRoundsPerBatch() const
+    {
+        return deterGqaCausalRoundsPerBatch;
+    }
     uint64_t get_deterGmOffset() const
     {
         return deterGmOffset;
@@ -1256,11 +1274,11 @@ public:
     {
         return dqIsNeedDeter[index];
     }
-    const uint64_t *get_dqIsNeedDeter() const
+    const uint64_t* get_dqIsNeedDeter() const
     {
         return dqIsNeedDeter;
     }
-    const uint64_t *get_dkDvIsNeedDeter() const
+    const uint64_t* get_dkDvIsNeedDeter() const
     {
         return dkDvIsNeedDeter;
     }
@@ -1273,13 +1291,13 @@ public:
     {
         noNeedDeter = val;
     }
-    void set_reserved1(uint32_t val)
-    {
-        reserved1 = val;
-    }
     void set_deterMaxRound(int64_t value)
     {
         deterMaxRound = value;
+    }
+    void set_deterGqaCausalRoundsPerBatch(uint32_t value)
+    {
+        deterGqaCausalRoundsPerBatch = value;
     }
     void set_deterGmOffset(uint64_t value)
     {
@@ -1289,7 +1307,7 @@ public:
     {
         deterWorkSpaceOffset = value;
     }
-    void set_dqIsNeedDeter(const uint64_t *val)
+    void set_dqIsNeedDeter(const uint64_t* val)
     {
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
             dqIsNeedDeter[i] = val[i];
@@ -1299,7 +1317,7 @@ public:
     {
         dqIsNeedDeter[index] = val;
     }
-    void set_dkDvIsNeedDeter(const uint64_t *val)
+    void set_dkDvIsNeedDeter(const uint64_t* val)
     {
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
             dkDvIsNeedDeter[i] = val[i];
@@ -1339,7 +1357,7 @@ public:
     {
         return deterPrefixStep;
     }
-    const int64_t *get_deterPrefix() const
+    const int64_t* get_deterPrefix() const
     {
         return deterPrefix;
     }
@@ -1347,7 +1365,7 @@ public:
     {
         return deterPrefix[index];
     }
-    const int64_t *get_deterPrefixAlign() const
+    const int64_t* get_deterPrefixAlign() const
     {
         return deterPrefixAlign;
     }
@@ -1355,7 +1373,7 @@ public:
     {
         return deterPrefixAlign[index];
     }
-    const int64_t *get_deterPrefix0() const
+    const int64_t* get_deterPrefix0() const
     {
         return deterPrefix0;
     }
@@ -1363,7 +1381,7 @@ public:
     {
         return deterPrefix0[index];
     }
-    const int64_t *get_deterPrefix1() const
+    const int64_t* get_deterPrefix1() const
     {
         return deterPrefix1;
     }
@@ -1371,7 +1389,7 @@ public:
     {
         return deterPrefix1[index];
     }
-    const int64_t *get_deterPrefix2() const
+    const int64_t* get_deterPrefix2() const
     {
         return deterPrefix2;
     }
@@ -1397,7 +1415,7 @@ public:
     {
         deterPrefixStep = value;
     }
-    void set_deterPrefix(const int64_t *val)
+    void set_deterPrefix(const int64_t* val)
     {
         for (int i = 0; i < DETER_PREFIX_NUM; ++i) {
             deterPrefix[i] = val[i];
@@ -1407,7 +1425,7 @@ public:
     {
         deterPrefix[index] = val;
     }
-    void set_deterPrefixAlign(const int64_t *val)
+    void set_deterPrefixAlign(const int64_t* val)
     {
         for (int i = 0; i < DETER_PREFIX_NUM; ++i) {
             deterPrefixAlign[i] = val[i];
@@ -1417,7 +1435,7 @@ public:
     {
         deterPrefixAlign[index] = val;
     }
-    void set_deterPrefix0(const int64_t *val)
+    void set_deterPrefix0(const int64_t* val)
     {
         for (int i = 0; i < DETER_PREFIX_NUM; ++i) {
             deterPrefix0[i] = val[i];
@@ -1427,7 +1445,7 @@ public:
     {
         deterPrefix0[index] = val;
     }
-    void set_deterPrefix1(const int64_t *val)
+    void set_deterPrefix1(const int64_t* val)
     {
         for (int i = 0; i < DETER_PREFIX_NUM; ++i) {
             deterPrefix1[i] = val[i];
@@ -1437,7 +1455,7 @@ public:
     {
         deterPrefix1[index] = val;
     }
-    void set_deterPrefix2(const int64_t *val)
+    void set_deterPrefix2(const int64_t* val)
     {
         for (int i = 0; i < DETER_PREFIX_NUM; ++i) {
             deterPrefix2[i] = val[i];
@@ -1455,25 +1473,25 @@ public:
     uint64_t tndS1S2PrefixSum[MAX_CORE_NUM];
     uint64_t tndS1S2AlignPrefixSum[MAX_CORE_NUM];
     uint64_t tndPrefixSum[MAX_CORE_NUM];
-    void set_tndStartBIdx(const uint64_t *val)
+    void set_tndStartBIdx(const uint64_t* val)
     {
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
             tndStartBIdx[i] = val[i];
         }
     }
-    void set_tndS1S2PrefixSum(const uint64_t *val)
+    void set_tndS1S2PrefixSum(const uint64_t* val)
     {
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
             tndS1S2PrefixSum[i] = val[i];
         }
     }
-    void set_tndS1S2AlignPrefixSum(const uint64_t *val)
+    void set_tndS1S2AlignPrefixSum(const uint64_t* val)
     {
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
             tndS1S2AlignPrefixSum[i] = val[i];
         }
     }
-    void set_tndPrefixSum(const uint64_t *val)
+    void set_tndPrefixSum(const uint64_t* val)
     {
         for (uint i = 0; i < MAX_CORE_NUM; ++i) {
             tndPrefixSum[i] = val[i];
@@ -1487,19 +1505,19 @@ public:
     uint64_t tndSwizzleS1S2AlignPrefixSum[TND_SWIZZLE_PREFIX_NUM];
     uint64_t tndS2BlockPrefixSum[TND_SWIZZLE_PREFIX_NUM];
 
-    void set_tndSwizzleS1S2PrefixSum(const uint64_t *val)
+    void set_tndSwizzleS1S2PrefixSum(const uint64_t* val)
     {
         for (int i = 0; i < TND_SWIZZLE_PREFIX_NUM; ++i) {
             tndSwizzleS1S2PrefixSum[i] = val[i];
         }
     }
-    void set_tndSwizzleS1S2AlignPrefixSum(const uint64_t *val)
+    void set_tndSwizzleS1S2AlignPrefixSum(const uint64_t* val)
     {
         for (int i = 0; i < TND_SWIZZLE_PREFIX_NUM; ++i) {
             tndSwizzleS1S2AlignPrefixSum[i] = val[i];
         }
     }
-    void set_tndS2BlockPrefixSum(const uint64_t *val)
+    void set_tndS2BlockPrefixSum(const uint64_t* val)
     {
         for (int i = 0; i < TND_SWIZZLE_PREFIX_NUM; ++i) {
             tndS2BlockPrefixSum[i] = val[i];
