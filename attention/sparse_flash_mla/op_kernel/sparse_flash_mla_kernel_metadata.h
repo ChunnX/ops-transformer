@@ -21,7 +21,11 @@
 
 namespace optiling {
 
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
+constexpr uint32_t SMLA_METADATA_TOTAL_SIZE = 2048;
+#else
 constexpr uint32_t SMLA_METADATA_TOTAL_SIZE = 1024;
+#endif
 using SMLA_METADATA_T = int32_t;
 
 namespace detail {
