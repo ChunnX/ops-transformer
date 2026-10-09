@@ -116,6 +116,9 @@ private:
                                                   float (&dotHalf)[2][N], uint32_t halfBegin = 0,
                                                   uint32_t halfEnd = 2, bool firstPhiPrefetched = false);
 
+    __aicore__ inline void CollectHalfPartials(LocalTensor<float> scBuf, uint32_t half, uint32_t tOff,
+                                               uint32_t tD, float (&sumSqHalf)[2], float (&dotHalf)[2][N]);
+
     TPipe pipe_;
 
     TBuf<TPosition::VECCALC> bufGammaFp32_;
@@ -169,6 +172,17 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                                  tD % MhcNormRegBase::VL_FP32 == 0U;
         const uint32_t reduceWidth = compactRows ? MhcNormRegBase::VL_FP32 : tD;
 
+        // 一个寄存器宽度存放ReduceSum结果，另两个寄存器宽度跨tile保留两个half的五项partial。
+        // 只在多tile且未延迟归约时启用，单tile和已有的dual has-mid延迟归约路径保持原样。
+        if (dLoop_ > 1U && !deferReduce && tOff == 0U) {
+            LocalTensor<float> scalar = bufScalar_.Get<float>();
+            Duplicate(scalar, 0.0f, MhcNormRegBase::VL_FP32);
+            for (uint32_t half = halfBegin; half < halfEnd; ++half) {
+                Duplicate(scalar[(half + 1U) * MhcNormRegBase::VL_FP32], 0.0f,
+                          MhcNormRegBase::VL_FP32);
+            }
+        }
+
         DataCopyExtParams copyParams = {2, 0, 0, 0, 0};
         copyParams.blockLen = tD * sizeof(float);
         copyParams.srcStride = (D_ - tD) * sizeof(float);
@@ -202,10 +216,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 uint32_t reduceShape[2] = {N + 1U, tD};
                 ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
                 PipeBarrier<PIPE_V>();
-                sumSqHalf[half] += scBuf.GetValue(0);
-                for (uint32_t o = 0; o < N; ++o) {
-                    dotHalf[half][o] += scBuf.GetValue(o + 1U);
-                }
+                CollectHalfPartials(scBuf, half, tOff, tD, sumSqHalf, dotHalf);
             }
             return;
         }
@@ -293,12 +304,29 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             // 五行输入在归约后不再使用，允许接口复用源缓冲，避免额外申请UB。
             ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
             PipeBarrier<PIPE_V>();
-            sumSqHalf[half] += scBuf.GetValue(0);
-            for (uint32_t o = 0; o < N; ++o) {
-                dotHalf[half][o] += scBuf.GetValue(o + 1);
-            }
+            CollectHalfPartials(scBuf, half, tOff, tD, sumSqHalf, dotHalf);
         }
     }
+
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CollectHalfPartials(
+    LocalTensor<float> scBuf, uint32_t half, uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
+    float (&dotHalf)[2][N])
+{
+    LocalTensor<float> result = scBuf;
+    if (dLoop_ > 1U && !(DUAL_SIBLING && USE_RMS_MID && lastDTile_ == 0U)) {
+        result = bufScalar_.Get<float>()[(half + 1U) * MhcNormRegBase::VL_FP32];
+        MhcNormRegBase::VFAdd(result, result, scBuf, N + 1U);
+        PipeBarrier<PIPE_V>();
+        if (tOff + tD < D_) {
+            return;
+        }
+    }
+    sumSqHalf[half] += result.GetValue(0);
+    for (uint32_t o = 0; o < N; ++o) {
+        dotHalf[half][o] += result.GetValue(o + 1U);
+    }
+}
 
 template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
 __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
