@@ -96,6 +96,7 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     LocalTensor<float> gammaEvenCache = bufGammaFp32_.Get<float>();
     FenceVToMte2();
     CopyInGammaTile(gammaEvenCache, gamma2Gm_, nStart * D_, D_);
+    SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
 
     LocalTensor<float> midBuf = bufScalar_.Get<float>();
     for (uint32_t i = 1U; i < PARTIAL_SLOT_ELEMS; ++i) {
@@ -112,11 +113,11 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
         ((uint64_t)token * SIBLING_AIV_COUNT + (1U - siblingAivIdx_)) * PARTIAL_SLOT_ELEMS;
     DataCopy(midBuf, partial1Gm_[siblingSlot], PARTIAL_SLOT_ELEMS);
     SetFlag<HardEvent::MTE2_S>(evtMte2toS_);
-    // 同一MTE2流水上更早提交的gammaEven搬运也在此等待完成。
     WaitFlag<HardEvent::MTE2_S>(evtMte2toS_);
     midSqHalf[1U - siblingAivIdx_] = midBuf.GetValue(0);
     const float totalMidSq = midSqHalf[0] + midSqHalf[1];
     const float invRmsMid = 1.0f / sqrt(totalMidSq * invK_ + normEps_);
+    WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
         const uint32_t tD = GetTileD(tile);
         const uint32_t tOff = tile * dTile_;
