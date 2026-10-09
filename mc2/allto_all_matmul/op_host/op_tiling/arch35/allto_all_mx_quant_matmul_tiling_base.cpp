@@ -431,7 +431,7 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
         cutRes = tiling.GetTiling();
     } else {
         OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
-        AlltoallMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
+        AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
                                                npuArch_, true);
         if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
             constexpr uint64_t MX_AICPU_TILING_MAX_NUM = 3;
