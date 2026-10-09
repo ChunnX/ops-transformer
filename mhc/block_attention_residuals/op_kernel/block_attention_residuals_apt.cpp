@@ -40,7 +40,6 @@ extern "C" __global__ __aicore__ void block_attention_residuals(GM_ADDR partialB
     TPipe pipe;
     BlockAttentionResidualsInitParams initParams{partialBlock, blockRes, projWeight, normWeight,
                                                  hiddenStates, invNorm,  probs};
-    // du_test   why
     // 按 tiling key 分派算法分支（RELOAD/RESIDENT/HSLICE）；dtype 由编译期宏 DTYPE_PARTIAL_BLOCK 决定
     if (TILING_KEY_IS(TILING_KEY_RELOAD)) {
         BlockAttentionResidualsReload<DTYPE_PARTIAL_BLOCK> op(&pipe, &tilingData);
