@@ -205,7 +205,7 @@ aclnnStatus aclnnCompressorGrad(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnCompressorGrad默认确定性实现。
+  - dX、dWkv、dWgate 同输入逐 bit 确定；dApe 为多核浮点原子累加（scatter-add），结果受加法次序影响，同输入重跑存在 ≤1e-5 量级的数值抖动（远低于常用容差），非逐 bit 确定。
 - executor生命周期（两段式接口通用约束）：
   - `aclnnCompressorGradGetWorkspaceSize` 返回的 `aclOpExecutor*` 默认为**单次使用**：每次执行计算前应重新调用 GetWorkspaceSize 获取新的 executor（本仓 `torch_extension` 的 ACLNN_CMD 调用链即为此模式）。
   - 若调用方需缓存并复用 executor（例如避免重复构建 tiling），必须在首次执行前调用 `aclSetAclOpExecutorRepeatable(executor)` 打标；复用时若输入/输出 tensor 地址发生变化，需配合 `aclSetAclOpTensorAddr` 系列接口更新地址。未打标的 executor 复用属未定义行为，第二次发射会因 workspace 实参失效产生设备侧错误（如 507057）。
