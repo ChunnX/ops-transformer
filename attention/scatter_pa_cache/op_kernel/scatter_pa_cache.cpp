@@ -53,10 +53,10 @@ struct GetInputType {
             typename std::conditional<
                 std::is_same<T, hifloat4x2_t>::value, int8_t,
                 typename std::conditional<
-                    sizeof(T) == B8, int8_t,
-                    typename std::conditional<sizeof(T) == B16, int16_t,
-                                              typename std::conditional<sizeof(T) == B32, int32_t, T>::type>::type>::
-                    type>::type>::type>::type;
+                    sizeof(T) == ScatterPaKvCache::B8, int8_t,
+                    typename std::conditional<sizeof(T) == ScatterPaKvCache::B16, int16_t,
+                                              typename std::conditional<sizeof(T) == ScatterPaKvCache::B32, int32_t,
+                                                                        T>::type>::type>::type>::type>::type>::type;
 };
 
 extern "C" __global__ __aicore__ void scatter_pa_cache(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping,
