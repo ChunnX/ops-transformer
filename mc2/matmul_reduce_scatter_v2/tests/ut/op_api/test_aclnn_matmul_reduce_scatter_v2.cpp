@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <gtest/gtest.h>
 #include "../../../op_api/aclnn_matmul_reduce_scatter_v2.h"
@@ -173,13 +173,13 @@ TEST_F(MatmulReduceScatterV2AclnnTest, E4m3fnNotSupport)
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// =================== CCU 模式测试 (DAV_3510 / ASCEND950) ===================
+// =================== CCU 模式测试 (DAV_3510 / A5) ===================
 
 class MatmulReduceScatterV2CcuModeTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformNpuArch(NpuArch::DAV_3510);
+        op::SetPlatformNpuArch(Ops::Base::DAV_3510);
         cout << "MatmulReduceScatterV2CcuModeTest SetUp" << endl;
     }
     static void TearDownTestCase()

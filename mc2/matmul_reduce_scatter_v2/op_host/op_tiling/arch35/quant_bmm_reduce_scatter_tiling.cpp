@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_bmm_reduce_scatter_tiling.cpp
@@ -20,8 +20,10 @@
 #include "quant_bmm_reduce_scatter_tiling.h"
 #include "common/utils/op_mc2.h"
 #include "mc2_log.h"
+#include "reduce_scatter_comm_algo_table.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "mc2_tiling_utils.h"
+#include "mc2_comm_algo_selector.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_apt_tiling_key.h"
 #include "reduce_scatter_fit_balance_tiling.h"
@@ -71,6 +73,7 @@ constexpr uint32_t QUANTSCALE_INDEX = 5;
 // Attr
 constexpr uint32_t YDTYPE_INDEX = 9;
 constexpr uint32_t OUTPUT_TYPE_FLOAT = 2;
+constexpr uint32_t ALG_CONFIG_RANK_SIZE = 16U;
 constexpr uint32_t BLOCKSIZE_INDEX = 6;
 constexpr uint32_t GROUPSIZE_INDEX = 7;
 constexpr uint32_t TRANSPOSEB_INDEX = 3;
@@ -83,7 +86,7 @@ constexpr std::initializer_list<ge::DataType> HIF8FP8FP4DTYPE_SUPPORT_LIST = {
 
 bool QuantBmmReduceScatterTiling::IsCapable()
 {
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != Ops::Base::DAV_3510) {
         OP_LOGI(opName_, "skip quantbmm reducescatter tiling when npuArch is not 3510.");
         return false;
     }
@@ -470,6 +473,10 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
     if (commMode_ == TPL_AICPU_COMM_MODE) {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to AiCPU for quant_bmm_reduce_scatter_tiling.");
+        if (args_.rankDim == ALG_CONFIG_RANK_SIZE) {
+            mc2CcTilingConfig.SetAlgConfig("InsReduceScatterParallelMesh1DNHR");
+            OP_LOGD(opName_, "[SetAlgConfig] Set AlgConfig to InsReduceScatterParallelMesh1DNHR.");
+        }
     } else {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
@@ -481,6 +488,19 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
                   mc2tiling::Mc2TilingUtils::GetDebugMode() == 0;
     if (isPeerOnly_) {
         mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
+    } else {
+        uint64_t commDataBytes = args_.orgMValue * args_.orgNValue * args_.outputDtypeSize;
+        uint32_t algoCount = 0;
+        uint8_t commEngine =
+            (commMode_ == TPL_CCU_COMM_MODE) ? mc2tiling::A5_CCU_ENGINE : mc2tiling::A5_AICPU_TS_ENGINE;
+        const Mc2Hcom::CommAlgoEntry *algoEntries = GetReduceScatterCommAlgoTable(algoCount);
+        std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
+            opName_, group, commEngine, commDataBytes, static_cast<uint32_t>(args_.rankDim), algoEntries, algoCount,
+            REDUCE_SCATTER_DEFAULT_ALGO_NAME);
+        // 当前版本暂不生效，仍旧使用原算法
+        algoName = rsConfig;
+        OP_LOGI(opName_, "[SetMc2Hcomm] selected algoName=%s, group=%s", algoName.c_str(), group);
+        mc2CcTilingConfig.SetAlgConfig(algoName);
     }
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
@@ -605,6 +625,60 @@ uint64_t QuantBmmReduceScatterTiling::GetTilingKey() const
     return tilingKey;
 }
 
+#if MC2_DFX_ENABLE
+ge::graphStatus QuantBmmReduceScatterTiling::BuildQuantWorkspaceLayout()
+{
+    static_assert(Utils::MAX_WORKSPACE_SEGMENTS >= 5U, "Quant MMRS workspace layout capacity is insufficient");
+    // launch 层不会为 mmrsv2 跳过系统 LibApi 段，kernel 直接以 workspaceGM 为用户区起点，
+    // 段表 offset 即 kernel workspaceGM 的相对偏移，不设 LIB_API 头段。
+    // GetWorkspaceSize 已按 factor 倍 cToFloatLen 累加出总分配 (A2A: send+recv+matmul; RS: result+matmul)，
+    // 其中通信缓冲在此单独成段，剩余部分 (helper 声明 + A2A 预留) 即为 matmul workspace。
+    const uint64_t resultSize = MutableRCSTilingDataA5().cToFloatLen;
+    const uint64_t commBufSize = isA2APath_ ? resultSize * 2U : resultSize;
+    OP_TILING_CHECK(myWorkSpaceSize_ < commBufSize,
+                    OP_LOGE(opName_, "matmul workspace size %lu is smaller than comm buffer size %lu", myWorkSpaceSize_,
+                            commBufSize),
+                    return ge::GRAPH_FAILED);
+    const uint64_t matmulWorkspaceSize = myWorkSpaceSize_ - commBufSize;
+    workspaceLayout_ = {};
+    uint32_t idx = 0;
+    uint64_t offset = 0;
+    // Direct RS: gmToFloat_ = workspaceGM. A2A: sendBuf_ = workspaceGM.
+    workspaceLayout_.segments[idx++] = {offset, resultSize, static_cast<uint8_t>(Utils::WS_SEG_MM_RESULT), {}};
+    offset += resultSize;
+    if (isA2APath_) {
+        // recvBuf_ = sendBuf_ + cfg.cToFloatLen.
+        workspaceLayout_.segments[idx++] = {offset, resultSize, static_cast<uint8_t>(Utils::WS_SEG_RECV_BUF), {}};
+        offset += resultSize;
+    }
+    if (matmulWorkspaceSize != 0U) {
+        // Direct RS: workspaceGM_ = gmToFloat_ + cfg.cToFloatLen.
+        // A2A: workspaceGM_ = recvBuf_ + cfg.cToFloatLen.
+        workspaceLayout_.segments[idx++] = {
+            offset, matmulWorkspaceSize, static_cast<uint8_t>(Utils::WS_SEG_MM_WORKSPACE), {}};
+        offset += matmulWorkspaceSize;
+    }
+    // DFX: 状态打点段前做512B对齐padding，再追加64KB STATE_DUMP段
+    const uint64_t alignment = Utils::STATE_DUMP_PER_CORE_SIZE;
+    const uint64_t padding = (alignment - offset % alignment) % alignment;
+    if (padding != 0U) {
+        workspaceLayout_.segments[idx++] = {offset, padding, static_cast<uint8_t>(Utils::WS_SEG_RESERVED), {}};
+        offset += padding;
+    }
+    workspaceLayout_.segments[idx++] = {
+        offset, Utils::STATE_DUMP_TOTAL_SIZE, static_cast<uint8_t>(Utils::WS_SEG_STATE_DUMP), {}};
+    offset += Utils::STATE_DUMP_TOTAL_SIZE;
+    workspaceLayout_.totalSize = offset;
+    workspaceLayout_.segCount = idx;
+    for (uint32_t i = 0; i < workspaceLayout_.segCount; ++i) {
+        const auto &seg = workspaceLayout_.segments[i];
+        OP_LOGI(opName_, "Quant MMRS workspace seg[%u]: type=%u, offset=%lu, size=%lu", i, seg.type, seg.offset,
+                seg.size);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+#endif // MC2_DFX_ENABLE
+
 ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
 {
     // A2A 路径需要 3 倍 cToFloatLen (senBuf + recvBuf + matmul)，否则只需 1 倍
@@ -618,6 +692,15 @@ ge::graphStatus QuantBmmReduceScatterTiling::GetWorkspaceSize()
         return ge::GRAPH_FAILED;
     }
     workspaces[0] = myWorkSpaceSize_;
+#if MC2_DFX_ENABLE
+    OP_TILING_CHECK(BuildQuantWorkspaceLayout() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName_, "Failed to build quant MMRS workspace layout"), return ge::GRAPH_FAILED);
+    // DFX: 状态打点段前 512B 对齐 padding + 64KB 打点区
+    const uint64_t alignment = Utils::STATE_DUMP_PER_CORE_SIZE;
+    const uint64_t padding = (alignment - myWorkSpaceSize_ % alignment) % alignment;
+    workspaces[0] += padding + Utils::STATE_DUMP_TOTAL_SIZE;
+    OP_LOGI(opName_, "DFX workspace totalSize=%lu, segCount=%u", workspaceLayout_.totalSize, workspaceLayout_.segCount);
+#endif
     return ge::GRAPH_SUCCESS;
 }
 
@@ -675,6 +758,9 @@ void PrintTCubeTilingL2cache(const std::string &opName, DequantBmm::Mc2L2cacheTi
 
 ge::graphStatus QuantBmmReduceScatterTiling::PostTiling()
 {
+#if MC2_DFX_ENABLE
+    quantBmmMatmulReducescatterTilingData_->dumpInfo.workspaceLayout = workspaceLayout_;
+#endif
     auto rawTilingDataPtr = context_->GetRawTilingData();
     OP_TILING_CHECK((rawTilingDataPtr == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName_, "rawTilingDataPtr"),
                     return ge::GRAPH_FAILED);
@@ -754,6 +840,14 @@ DequantBmm::Mc2SlidingWindowParams &QuantBmmReduceScatterTiling::MutableTailTCub
 
 ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
 {
+#if MC2_DFX_ENABLE
+    myWorkSpaceSize_ = 0U;
+#endif
+    // MXFP4 非转置：自适应滑窗的 N 向尾切（nTailTile>1）会导致 mm 库读取非转置 B 的 scale 出错（精度 bug，
+    // 实测 nTailTile=1（不切 N）时 MXFP4 全量用例通过；M 向尾切观察无问题，故保留）。
+    // 此处对"MXFP4 且非转置"强制 nTailTile=1（Tile/Tail 两套），其余量化/转置场景不受影响。
+    const bool forceMxNNoSplit = isMxfp4_ && !args_.isBTrans;
+
     // 主块切分
     uint32_t tempMValue = tileMValue_ == 0 ? MutableRCSTilingDataA5().rankM : tileMValue_;
     args_.mValue = ((quantMode_ == mc2tiling::Mc2QuantMode::PERTENSOR_MODE) ||
@@ -763,6 +857,9 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
 
     QuantBmmReduceScatterHelper mmTile(*this, quantBmmMatmulReducescatterTilingData_->quantBmmV3TileTiling);
     MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
+    if (forceMxNNoSplit) {
+        quantBmmMatmulReducescatterTilingData_->quantBmmV3TileTiling.adaptiveSlidingWin.nTailTile = 1;
+    }
     if (MutableRCSTilingDataA5().tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
@@ -775,6 +872,9 @@ ge::graphStatus QuantBmmReduceScatterTiling::DoAdaptSlidWindowTiling()
                        tailMValue_;
     QuantBmmReduceScatterHelper mmTail(*this, quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling);
     MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
+    if (forceMxNNoSplit) {
+        quantBmmMatmulReducescatterTilingData_->quantBmmV3TailTiling.adaptiveSlidingWin.nTailTile = 1;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -972,24 +1072,23 @@ CutResult QuantBmmReduceScatterTiling::GetTilingResult()
 {
     if (mc2tiling::IsStandardCard4P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling quantBmmScatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
-                                                              TopoType::STANDARD_CARD);
+                                                              TopoType::STANDARD_CARD,
+                                                              (commMode_ == TPL_AICPU_COMM_MODE));
         return quantBmmScatterTiling.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         MMReduceScatterFitBalanceTiling quantBmmScatterTiling(args_, KernelType::REDUCE_SCATTER_VIA_ALL_TO_ALL,
-                                                              TopoType::EIGHT_P, SocVersion::SOC950,
-                                                              (commMode_ == TPL_AICPU_COMM_MODE));
+                                                              TopoType::EIGHT_P, (commMode_ == TPL_AICPU_COMM_MODE));
         return quantBmmScatterTiling.GetTiling();
     } else {
-        SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-        MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, inputSocVersion,
-                                                  false, (commMode_ == TPL_AICPU_COMM_MODE));
+        MMPlusReduceScatter quantBmmScatterTiling(args_, args_.rankDim, KernelType::REDUCE_SCATTER, npuArch_, false,
+                                                  (commMode_ == TPL_AICPU_COMM_MODE));
         quantBmmScatterTiling.GetTiling();
         return quantBmmScatterTiling.tilingM_.cutRes;
     }
 }
 // 注册Tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MatmulReduceScatterV2, QuantBmmReduceScatterTiling,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 1);
+                                   static_cast<int32_t>(Ops::Base::DAV_3510), 1);
 } // namespace optiling
 
 #endif //_QUANT_BMM_MATMUL_REDUCE_SCATTER_TILING_CC_

@@ -125,32 +125,69 @@ void _CheckDtile(const at::Tensor &kv_cache, int64_t kv_cache_quant_mode)
                 " (kv_cache_quant_mode=", kv_cache_quant_mode, "), but the actual value is ", dtile);
 }
 
-// 校验 cache 张量（kv_cache/kr_cache）的 shape 格式字段约束。
-void CheckCacheShapes(const at::Tensor &kv_cache, const at::Tensor &kr_cache, const std::string &cache_mode,
-                      int64_t kv_cache_quant_mode, int64_t rope_dim, const c10::optional<at::Tensor> &cache_index)
+// ckvkrRepoMode=1：kv/kr 合并存储，kr_cache 必须为空 Tensor（shape 乘积为 0），
+// 维度应包含 0，支持 shape 为 (0)。此时不再按 cache_mode 校验 3D/4D 布局。
+void CheckKrCacheMergedRepo(const at::Tensor &kr_cache)
 {
-    const bool is_tnd = cache_mode == "TND";
-    if (is_tnd) {
-        TORCH_CHECK(kv_cache.dim() == DIM_3 && kr_cache.dim() == DIM_3,
-                    "when cache_mode is TND, kv_cache/kr_cache must be 3D");
-        TORCH_CHECK(kv_cache.size(kv_cache.dim() - 2) == NKV, "kv head num Nkv (kv_cache dim -2) must be ", NKV,
-                    ", but the actual value is ", kv_cache.size(kv_cache.dim() - 2));
-        TORCH_CHECK(kr_cache.size(kr_cache.dim() - 2) == NKV, "kv head num Nkv (kr_cache dim -2) must be ", NKV,
-                    ", but the actual value is ", kr_cache.size(kr_cache.dim() - 2));
-        TORCH_CHECK(kr_cache.size(kr_cache.dim() - 1) == rope_dim, "kr_cache last dim must equal Dr=", rope_dim,
-                    ", but the actual value is ", kr_cache.size(kr_cache.dim() - 1));
-        _CheckDtile(kv_cache, kv_cache_quant_mode);
-        return;
+    bool has_zero_dim = false;
+    for (int64_t i = 0; i < kr_cache.dim(); ++i) {
+        if (kr_cache.size(i) == 0) {
+            has_zero_dim = true;
+            break;
+        }
     }
+    TORCH_CHECK(kr_cache.numel() == 0 && has_zero_dim,
+                "when ckvkr_repo_mode is 1, kr_cache must be empty (numel==0) and dims must contain 0 "
+                "(shape (0) is supported), but the actual shape is ",
+                kr_cache.sizes());
+}
 
-    TORCH_CHECK(kv_cache.dim() == 4 && kr_cache.dim() == 4, "when cache_mode is ", cache_mode,
-                ", kv_cache/kr_cache must be 4D");
-    TORCH_CHECK(kv_cache.size(kv_cache.dim() - 2) == NKV, "kv head num Nkv (kv_cache dim -2) must be ", NKV,
-                ", but the actual value is ", kv_cache.size(kv_cache.dim() - 2));
+void CheckKrCacheLayout(const at::Tensor &kr_cache, int64_t rope_dim)
+{
     TORCH_CHECK(kr_cache.size(kr_cache.dim() - 2) == NKV, "kv head num Nkv (kr_cache dim -2) must be ", NKV,
                 ", but the actual value is ", kr_cache.size(kr_cache.dim() - 2));
     TORCH_CHECK(kr_cache.size(kr_cache.dim() - 1) == rope_dim, "kr_cache last dim must equal Dr=", rope_dim,
                 ", but the actual value is ", kr_cache.size(kr_cache.dim() - 1));
+}
+
+// 校验 cache 张量（kv_cache/kr_cache）的 shape 格式字段约束。
+void CheckCacheShapes(const at::Tensor &kv_cache, const at::Tensor &kr_cache, const std::string &cache_mode,
+                      int64_t kv_cache_quant_mode, int64_t rope_dim, const c10::optional<at::Tensor> &cache_index,
+                      int64_t ckvkr_repo_mode)
+{
+    const bool is_merged_repo = (ckvkr_repo_mode == MODE_1);
+    if (is_merged_repo) {
+        CheckKrCacheMergedRepo(kr_cache);
+    }
+
+    const bool is_tnd = cache_mode == "TND";
+    if (is_tnd) {
+        TORCH_CHECK(kv_cache.dim() == DIM_3, "when cache_mode is TND, kv_cache must be 3D, but the actual dim is ",
+                    kv_cache.dim());
+        if (!is_merged_repo) {
+            TORCH_CHECK(kr_cache.dim() == DIM_3, "when cache_mode is TND, kr_cache must be 3D, but the actual dim is ",
+                        kr_cache.dim());
+        }
+        TORCH_CHECK(kv_cache.size(kv_cache.dim() - 2) == NKV, "kv head num Nkv (kv_cache dim -2) must be ", NKV,
+                    ", but the actual value is ", kv_cache.size(kv_cache.dim() - 2));
+        if (!is_merged_repo) {
+            CheckKrCacheLayout(kr_cache, rope_dim);
+        }
+        _CheckDtile(kv_cache, kv_cache_quant_mode);
+        return;
+    }
+
+    TORCH_CHECK(kv_cache.dim() == 4, "when cache_mode is ", cache_mode, ", kv_cache must be 4D, but the actual dim is ",
+                kv_cache.dim());
+    if (!is_merged_repo) {
+        TORCH_CHECK(kr_cache.dim() == 4, "when cache_mode is ", cache_mode,
+                    ", kr_cache must be 4D, but the actual dim is ", kr_cache.dim());
+    }
+    TORCH_CHECK(kv_cache.size(kv_cache.dim() - 2) == NKV, "kv head num Nkv (kv_cache dim -2) must be ", NKV,
+                ", but the actual value is ", kv_cache.size(kv_cache.dim() - 2));
+    if (!is_merged_repo) {
+        CheckKrCacheLayout(kr_cache, rope_dim);
+    }
     _CheckDtile(kv_cache, kv_cache_quant_mode);
 
     const bool is_pa =
@@ -163,8 +200,10 @@ void CheckCacheShapes(const at::Tensor &kv_cache, const at::Tensor &kr_cache, co
         TORCH_CHECK(block_size >= BLOCK_SIZE_MIN && block_size <= BLOCK_SIZE_MAX && block_size % 16 == 0,
                     "BlockSize (kv_cache dim 1) must be in [", BLOCK_SIZE_MIN, ", ", BLOCK_SIZE_MAX,
                     "] and a multiple of 16, but the actual value is ", block_size);
-        TORCH_CHECK(kr_cache.size(1) == block_size, "kr_cache dim 1 must equal BlockSize (", block_size,
-                    "), but the actual value is ", kr_cache.size(1));
+        if (!is_merged_repo) {
+            TORCH_CHECK(kr_cache.size(1) == block_size, "kr_cache dim 1 must equal BlockSize (", block_size,
+                        "), but the actual value is ", kr_cache.size(1));
+        }
     }
 }
 
@@ -176,7 +215,7 @@ void CheckShapeConstraints(const at::Tensor &token_x, const at::Tensor &weight_d
                            const at::Tensor &kv_cache, const at::Tensor &kr_cache,
                            const c10::optional<at::Tensor> &rope_sin, const c10::optional<at::Tensor> &rope_cos,
                            const c10::optional<at::Tensor> &cache_index, const std::string &cache_mode,
-                           int64_t kv_cache_quant_mode)
+                           int64_t kv_cache_quant_mode, int64_t ckvkr_repo_mode)
 {
     const int64_t token_x_dim = token_x.dim();
     TORCH_CHECK(token_x_dim == DIM_2 || token_x_dim == DIM_3,
@@ -242,7 +281,7 @@ void CheckShapeConstraints(const at::Tensor &token_x, const at::Tensor &weight_d
     TORCH_CHECK(rmsnorm_gamma_ckv.dim() == 1 && rmsnorm_gamma_ckv.size(0) == kv_lora_rank,
                 "rmsnorm_gamma_ckv must be 1D with shape [", kv_lora_rank, "], but got ", rmsnorm_gamma_ckv.sizes());
 
-    CheckCacheShapes(kv_cache, kr_cache, cache_mode, kv_cache_quant_mode, rope_dim, cache_index);
+    CheckCacheShapes(kv_cache, kr_cache, cache_mode, kv_cache_quant_mode, rope_dim, cache_index, ckvkr_repo_mode);
 }
 
 bool IsFullQuantKvScene(int64_t weight_quant_mode, int64_t kv_cache_quant_mode)
@@ -403,7 +442,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> mla_prolo
     TORCH_CHECK(weight_uk.dim() == DIM_3, "weight_uk dim num should be 3, but the actual value is ", weight_uk.dim());
     CheckShapeConstraints(token_x, weight_dq, weight_uq_qr, weight_uk, weight_dkv_kr, rmsnorm_gamma_cq,
                           rmsnorm_gamma_ckv, kv_cache, kr_cache, rope_sin, rope_cos, cache_index, cache_mode,
-                          kv_cache_quant_mode);
+                          kv_cache_quant_mode, ckvkr_repo_mode);
 
     const bool is_hifloat8 =
         IsHifloat8Scene(weight_quant_mode, token_x, weight_dq, weight_uq_qr, weight_dkv_kr, token_x_dtype,
@@ -477,9 +516,42 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> mla_prolo
         query, query_rope, dequant_scale_q_nope, query_norm, dequant_scale_q_norm);
 }
 
+// 图模式配套接口：
+// clone kv_cache/kr_cache 后再走原地实现，返回 7 个 Tensor（前 5 个输出 + 两份 cache）。
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> mla_prolog_functional(
+    const at::Tensor &token_x, const at::Tensor &weight_dq, const at::Tensor &weight_uq_qr, const at::Tensor &weight_uk,
+    const at::Tensor &weight_dkv_kr, const at::Tensor &rmsnorm_gamma_cq, const at::Tensor &rmsnorm_gamma_ckv,
+    const at::Tensor &kv_cache, const at::Tensor &kr_cache, const c10::optional<at::Tensor> &rope_sin,
+    const c10::optional<at::Tensor> &rope_cos, const c10::optional<at::Tensor> &cache_index,
+    const c10::optional<at::Tensor> &dequant_scale_x, const c10::optional<at::Tensor> &dequant_scale_w_dq,
+    const c10::optional<at::Tensor> &dequant_scale_w_uq_qr, const c10::optional<at::Tensor> &dequant_scale_w_dkv_kr,
+    const c10::optional<at::Tensor> &quant_scale_ckv, const c10::optional<at::Tensor> &quant_scale_ckr,
+    const c10::optional<at::Tensor> &smooth_scales_cq, const c10::optional<at::Tensor> &actual_seq_len,
+    const c10::optional<at::Tensor> &k_nope_clip_alpha, double rmsnorm_epsilon_cq, double rmsnorm_epsilon_ckv,
+    const std::string &cache_mode, bool query_norm_flag, int64_t weight_quant_mode, int64_t kv_cache_quant_mode,
+    int64_t query_quant_mode, int64_t ckvkr_repo_mode, int64_t quant_scale_repo_mode, int64_t tile_size,
+    double qc_qr_scale, double kc_scale, const c10::optional<int64_t> &token_x_dtype,
+    const c10::optional<int64_t> &weight_dq_dtype, const c10::optional<int64_t> &weight_uq_qr_dtype,
+    const c10::optional<int64_t> &weight_dkv_kr_dtype, const c10::optional<int64_t> &kv_cache_dtype)
+{
+    at::Tensor kv_cache_inplace = kv_cache.clone();
+    at::Tensor kr_cache_inplace = kr_cache.clone();
+    auto outs = mla_prolog(
+        token_x, weight_dq, weight_uq_qr, weight_uk, weight_dkv_kr, rmsnorm_gamma_cq, rmsnorm_gamma_ckv,
+        kv_cache_inplace, kr_cache_inplace, rope_sin, rope_cos, cache_index, dequant_scale_x, dequant_scale_w_dq,
+        dequant_scale_w_uq_qr, dequant_scale_w_dkv_kr, quant_scale_ckv, quant_scale_ckr, smooth_scales_cq,
+        actual_seq_len, k_nope_clip_alpha, rmsnorm_epsilon_cq, rmsnorm_epsilon_ckv, cache_mode, query_norm_flag,
+        weight_quant_mode, kv_cache_quant_mode, query_quant_mode, ckvkr_repo_mode, quant_scale_repo_mode, tile_size,
+        qc_qr_scale, kc_scale, token_x_dtype, weight_dq_dtype, weight_uq_qr_dtype, weight_dkv_kr_dtype, kv_cache_dtype);
+    return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(
+        std::get<0>(outs), std::get<1>(outs), std::get<2>(outs), std::get<3>(outs), std::get<4>(outs), kv_cache_inplace,
+        kr_cache_inplace);
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("mla_prolog", &mla_prolog, "mla_prolog");
+    m.def("mla_prolog_functional", &mla_prolog_functional, "mla_prolog_functional");
 }
 
 } // namespace op_api

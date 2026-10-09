@@ -18,7 +18,7 @@
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mla.h"
 #include "fia_block_vec_fullquant_mla.h"
-#include "fia_block_vec_flashdecode_fullquant.h"
+#include "fia_block_vec_flashdecode_arch35.h"
 #include "memory_copy_arch35_fused_infer.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -224,7 +224,6 @@ public:
         constInfo.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
-        constInfo.isKvContinuous = true;
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
         constInfo.keyStrides.bnStride = fiaBaseParams.keyStrides.bnStride;
@@ -591,7 +590,7 @@ public:
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
 
-        info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+        info.actMSizeAlign = (info.actMSize + 31) >> 5 << 5;
         info.actVecMSize = (info.actMSize + 1) >> 1;
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {

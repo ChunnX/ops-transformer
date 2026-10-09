@@ -14,17 +14,17 @@ if(NOT PROJECT_SOURCE_DIR)
     else()
         include(FetchContent)
 
-        set(CANN_CMAKE_TAG "master-057")
+        set(CANN_CMAKE_TAG "master-058")
         if(CANN_3RD_LIB_PATH AND EXISTS "${CANN_3RD_LIB_PATH}/cmake-${CANN_CMAKE_TAG}.tar.gz")
             FetchContent_Declare(
                 cann-cmake
                 URL "${CANN_3RD_LIB_PATH}/cmake-${CANN_CMAKE_TAG}.tar.gz"
-                URL_HASH SHA256=ff015168a8e09838b7a40576b91c0fc94ddd6cd30d7991be842368f83fcd9f11
+                URL_HASH SHA256=03d63afb6ea714208d39bdbc02276eeeb0793a28137c7c8f765a55ff1a5f3e18
             )
         else()
             FetchContent_Declare(
                 cann-cmake
-                GIT_REPOSITORY https://gitcode.com/cann/cmake.git
+                GIT_REPOSITORY https://atomgit.com/cann/cmake.git
                 GIT_TAG        ${CANN_CMAKE_TAG}
                 GIT_SHALLOW    TRUE
             )

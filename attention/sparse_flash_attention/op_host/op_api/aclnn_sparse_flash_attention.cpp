@@ -9,6 +9,8 @@
  */
 
 #include <cstring>
+#include <memory>
+#include <vector>
 #include "graph/types.h"
 #include "aclnn_sparse_flash_attention.h"
 
@@ -43,12 +45,10 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGetWorkspaceSize(
 extern aclnnStatus aclnnInnerSparseFlashAttention(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                   const aclrtStream stream);
 
-class TensorHolder {
+class SparseFlashAttentionOutputHolder {
 public:
-    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName)
+    SparseFlashAttentionOutputHolder(const aclTensor *&output, aclDataType dataType)
     {
-        inner_ = nullptr;
-        name_ = varName;
         if (output == nullptr) {
             std::vector<int64_t> shape = {0};
             int64_t addr = 0xff;
@@ -58,7 +58,7 @@ public:
         }
     }
 
-    ~TensorHolder()
+    ~SparseFlashAttentionOutputHolder()
     {
         if (inner_) {
             aclDestroyTensor(inner_);
@@ -66,20 +66,8 @@ public:
         }
     }
 
-    void CheckTensorConditionalNotNull(bool conditional) const
-    {
-        if (inner_ && conditional) {
-            OP_LOGW("Check %s != nullptr failed!", name_.c_str());
-        } else if (!inner_ && !conditional) {
-            OP_LOGW("Check %s == nullptr failed!", name_.c_str());
-        }
-    }
-
-    bool IsTensorNotNull() const { return inner_ == nullptr; }
-
 private:
-    const aclTensor *inner_;
-    std::string name_;
+    const aclTensor *inner_ = nullptr;
 };
 
 aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
@@ -92,16 +80,19 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     aclOpExecutor **executor)
 {
     const aclTensor *valueTensor = (value == nullptr) ? key : value;
+    // SparseFlashAttentionOutputHolder 声明于 if/else 外层作用域，确保生命周期覆盖下方 inner GetWorkspaceSize 调用
+    std::unique_ptr<SparseFlashAttentionOutputHolder> softmaxMaxHolder;
+    std::unique_ptr<SparseFlashAttentionOutputHolder> softmaxSumHolder;
     if (returnSoftmaxLse) {
         if (softmaxMax == nullptr || softmaxSum == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
                     "when returnSoftmaxLse is true, softmaxMax and softmaxSum cannot be nullptr.");
-            return ge::GRAPH_FAILED;
+            return ACLNN_ERR_PARAM_NULLPTR;
         }
     } else {
         if (softmaxMax == nullptr && softmaxSum == nullptr) {
-            auto softmaxMaxHolder = TensorHolder(softmaxMax, aclDataType::ACL_FLOAT, std::string("softmaxMax"));
-            auto softmaxSumHolder = TensorHolder(softmaxSum, aclDataType::ACL_FLOAT, std::string("softmaxSum"));
+            softmaxMaxHolder = std::make_unique<SparseFlashAttentionOutputHolder>(softmaxMax, aclDataType::ACL_FLOAT);
+            softmaxSumHolder = std::make_unique<SparseFlashAttentionOutputHolder>(softmaxSum, aclDataType::ACL_FLOAT);
             if (softmaxMax == nullptr) {
                 OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Failed to create the holder of tensor softmaxMax!");
                 return ge::GRAPH_FAILED;

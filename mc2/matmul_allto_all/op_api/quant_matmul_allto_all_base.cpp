@@ -24,6 +24,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/platform.h"
+#include "op_host/util/op_const_def.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "mc2_log_compat.h"
@@ -241,7 +242,7 @@ static bool CheckKCBiasDtypesValid(const aclTensor *x1, const aclTensor *x2, con
     return true;
 }
 
-// 950数据类型校验
+// A5数据类型校验
 // 量化模式下X支持的FP8数据类型（PerToken量化、PerChannel量化）(A5)
 static const std::initializer_list<op::DataType> X_DTYPE_FP8_SUPPORT_LIST_A5 = {op::DataType::DT_FLOAT8_E4M3FN,
                                                                                 op::DataType::DT_FLOAT8_E5M2};
@@ -321,7 +322,7 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const int
         static_cast<QuantModeType>(x2QuantMode) == QuantModeType::PERCHANNEL_QUANT) {
         if (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B) {
             isAllDtypesValid = CheckKCBiasDtypesValid(x1, x2, x1Scale, x2Scale, biasOptional, output);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             isAllDtypesValid = CheckKCQuantDtypesValidA5(x1, x2, x1Scale, x2Scale, biasOptional, output);
         }
     } else if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
@@ -381,22 +382,22 @@ static bool ReFormatNotND(const aclTensor *x1, const aclTensor *x2, const aclTen
                           const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *output)
 {
     // 内部只处理ND格式，这里做reformat操作
-    if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
-        OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
-        x1 = l0op::ReFormat(x1, op::Format::FORMAT_ND);
-        CHECK_RET(x1 != nullptr, false);
-    }
-    if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
-        OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
-        x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
-        CHECK_RET(x2 != nullptr, false);
-    }
     if (biasOptional != nullptr) {
         if (biasOptional->GetStorageFormat() != op::Format::FORMAT_ND) {
             OP_LOGW("bias origin format is %s.", op::ToString(biasOptional->GetStorageFormat()).GetString());
             biasOptional = l0op::ReFormat(biasOptional, op::Format::FORMAT_ND);
             CHECK_RET(biasOptional != nullptr, false);
         }
+    }
+    if (x2->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGW("x2 origin format is %s.", op::ToString(x2->GetStorageFormat()).GetString());
+        x2 = l0op::ReFormat(x2, op::Format::FORMAT_ND);
+        CHECK_RET(x2 != nullptr, false);
+    }
+    if (x1->GetStorageFormat() != op::Format::FORMAT_ND) {
+        OP_LOGW("x1 origin format is %s.", op::ToString(x1->GetStorageFormat()).GetString());
+        x1 = l0op::ReFormat(x1, op::Format::FORMAT_ND);
+        CHECK_RET(x1 != nullptr, false);
     }
     if (x1Scale->GetStorageFormat() != op::Format::FORMAT_ND) {
         OP_LOGW("x1Scale origin format is %s.", op::ToString(x1Scale->GetStorageFormat()).GetString());
@@ -477,9 +478,9 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
     aclnnStatus checkX2Ret = CheckX2Valid("quant_matmul_allto_all", x2);
-    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret);                  // 先检查x2是否合法，避免非法操作
-    auto transX2 = x2;                                                   // 复制一个x2
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
+    auto transX2 = x2;                                  // 复制一个x2
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
             IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
@@ -559,7 +560,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllBase(void *workspace, uint64_t workspaceSize
         return ACLNN_ERR_INNER;
     }
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
             void *arg = NnopbaseGetUserHandle(executor);
             uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
             uint8_t commMode = static_cast<uint8_t>(handleVal);

@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR&950DT系列产品</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -237,7 +237,7 @@ aclnnStatus aclnnNsaCompressGrad(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>传入的input、weight、outputGrad、inputGrad或weightGrad是空指针。</td>
+      <td>传入的input、weight、outputGrad、inputGradOut或weightGradOut是空指针。</td>
     </tr>
     <tr>
       <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
@@ -248,7 +248,7 @@ aclnnStatus aclnnNsaCompressGrad(
       <td>input和weight的shape无法做broadcast。</td>
     </tr>
     <tr>
-      <td>layoutOptional不合法。</td>
+      <td>layoutOptionalOptional不合法。</td>
     </tr>
   </tbody>
   </table>
@@ -300,6 +300,7 @@ aclnnStatus aclnnNsaCompressGrad(
 
 - 确定性计算：
   - aclnnNsaCompressGrad默认确定性实现。
+- 本接口不支持非连续输出。
 - compressBlockSize和compressStride必须是16的整数倍，且compressBlockSize > compressStride
 
 ## 调用示例
@@ -436,18 +437,18 @@ int main() {
     // 2. 构造输入与输出，需要根据API的接口自定义构造
     int64_t headNum = 64;
     int64_t headDim = 128;
-    int64_t blockSize = 32;
-    int64_t blockStride = 16;
+    int64_t compressBlockSize = 32;
+    int64_t compressStride = 16;
     int64_t blockNum = 15;
     int64_t seqLensSum = 272;
     int64_t seqLen = 3;
     std::vector<int64_t> outputGradShape = {blockNum, headNum, headDim};
     std::vector<int64_t> inputKVShape = {seqLensSum, headNum, headDim};
-    std::vector<int64_t> weightShape = {blockSize, headNum};
+    std::vector<int64_t> weightShape = {compressBlockSize, headNum};
     std::vector<int64_t> inputGradOutShape = {seqLensSum, headNum, headDim};
-    std::vector<int64_t> weightGradOutShape = {blockSize, headNum};
-    int64_t SeqLenType = 0;
-    char layOut[] = "TND";
+    std::vector<int64_t> weightGradOutShape = {compressBlockSize, headNum};
+    int64_t actSeqLenType = 0;
+    char layoutOptionalOptional[] = "TND";
 
     void* outputGradDeviceAddr = nullptr;
     void* inputKVDeviceAddr = nullptr;
@@ -462,14 +463,15 @@ int main() {
     aclTensor* weightGradOut = nullptr;
 
     std::vector<float> inputGradOutHostData(seqLensSum * headNum * headDim, 0.0);
-    std::vector<float> weightGradOutHostData(blockSize * headNum, 0.0);
+    std::vector<float> weightGradOutHostData(compressBlockSize * headNum, 0.0);
 
     std::vector<float> outputGradHostData(blockNum * headNum * headDim, 1.0);
     std::vector<float> inputKVHostData(seqLensSum * headNum * headDim, 1.0);
-    std::vector<float> weightHostData(blockSize * headNum, 1.0);
-    std::vector<int64_t> actSeqLenOptionalHostData = {0, 128, 272};
+    std::vector<float> weightHostData(compressBlockSize * headNum, 1.0);
+    std::vector<int64_t> actSeqLenOptionalOptionalHostData = {0, 128, 272};
 
-    aclIntArray *actSeqLenOptional = aclCreateIntArray(actSeqLenOptionalHostData.data(), actSeqLenOptionalHostData.size());
+    aclIntArray *actSeqLenOptionalOptional = aclCreateIntArray(actSeqLenOptionalOptionalHostData.data(),
+                                                               actSeqLenOptionalOptionalHostData.size());
 
     // 创建dy aclTensor
     ret = CreateAclTensor(outputGradHostData, outputGradShape, &outputGradDeviceAddr, aclDataType::ACL_FLOAT16,
@@ -493,7 +495,8 @@ int main() {
     aclOpExecutor* executor;
     // 调用aclnnNsaCompressGrad第一段接口
     ret = aclnnNsaCompressGradGetWorkspaceSize(
-        outputGrad, inputKV, weight, actSeqLenOptional, blockSize, blockStride, SeqLenType, layOut,
+        outputGrad, inputKV, weight, actSeqLenOptionalOptional, compressBlockSize, compressStride, actSeqLenType,
+        layoutOptionalOptional,
         inputGradOut, weightGradOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaCompressGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存

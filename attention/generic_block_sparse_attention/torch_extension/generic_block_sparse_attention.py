@@ -37,6 +37,15 @@ class QuantMode(IntEnum):
     FP8_E4M3_STATIC_CAST_P = 5
 
 
+class ResidualBlockMode(IntEnum):
+    """residual_block_mode 取值，与 aclnn residualBlockMode 一致。可直接当 int 传入。"""
+
+    # 尾块是否参与计算由sparseBlockIdx确定
+    MARKED_BY_SPARSE_BLK_IDX = 0
+    # 不完整的尾块一定参与计算，但不包含在sparseBlockIdx中
+    INCOMPLETE_BLK_KEPT_BUT_NOT_IN_SPARSE_BLK_IDX = 1
+
+
 class GenericBlockSparseAttentionOpBuilder(OpBuilder):
     def __init__(self):
         super().__init__("generic_block_sparse_attention", category="attention")
@@ -51,10 +60,11 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             "int num_heads_q, int num_heads_kv, int head_dim, "
             "int[] block_shape, *, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
-            "int? max_seqlen_q=-1, int? max_seqlen_kv=-1, bool? is_packed_gqa=True, "
-            'str? layout_q="TND", str? layout_kv="PA_BBND", '
+            "int? max_seqlen_q=-1, int? max_seqlen_kv=-1, "
+            'str? layout_q="TND", str? layout_kv="PA_BBND", int layout_sparse_pattern=4, '
             "int? mask_mode=1, int? quant_mode=0, int? softmax_precision=1, "
-            "int? win_left=-1, int? win_right=-1) -> Tensor",
+            "int? win_left=-1, int? win_right=-1, "
+            "int? residual_block_mode=0, bool is_consistent_topk=False) -> Tensor",
             "generic_block_sparse_attention("
             "Tensor q, Tensor k, Tensor v, "
             "Tensor sparse_block_idx, Tensor sparse_block_count, "
@@ -70,9 +80,9 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             "Tensor? seqused_q=None, "
             "Tensor? seqused_kv=None, "
             "Tensor? block_table=None, "
-            "bool is_packed_gqa=True, "
             'str layout_q="TND", '
             'str layout_kv="PA_BBND", '
+            "int layout_sparse_pattern=4, "
             "float softmax_scale=0.0, "
             "int mask_mode=1, "
             "int quant_mode=0, "
@@ -81,6 +91,8 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             "int win_left=-1, "
             "int win_right=-1, "
             "bool return_softmax_lse=False, "
+            "int residual_block_mode=0, "
+            "bool is_consistent_topk=False, "
             "ScalarType? attention_out_dtype=None"
             ") -> (Tensor, Tensor)",
         ]
@@ -101,14 +113,18 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             seqused_kv: Optional[torch.Tensor] = None,
             max_seqlen_q: Optional[int] = -1,
             max_seqlen_kv: Optional[int] = -1,
-            is_packed_gqa: Optional[bool] = True,
             layout_q: Optional[str] = "TND",
             layout_kv: Optional[str] = "PA_BBND",
+            layout_sparse_pattern: Optional[int] = 4,
             mask_mode: Optional[Union[MaskMode, int]] = MaskMode.CAUSAL,
             quant_mode: Optional[Union[QuantMode, int]] = QuantMode.NO_QUANT,
             softmax_precision: Optional[int] = 1,
             win_left: Optional[int] = -1,
             win_right: Optional[int] = -1,
+            residual_block_mode: Optional[
+                Union[ResidualBlockMode, int]
+            ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+            is_consistent_topk: Optional[bool] = False,
         ):
             return torch.empty((GBSA_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
@@ -132,9 +148,9 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
             block_table: Optional[torch.Tensor] = None,
-            is_packed_gqa: Optional[bool] = True,
             layout_q: Optional[str] = "TND",
             layout_kv: Optional[str] = "PA_BBND",
+            layout_sparse_pattern: Optional[int] = 4,
             softmax_scale: Optional[float] = 0.0,
             mask_mode: Optional[Union[MaskMode, int]] = MaskMode.CAUSAL,
             quant_mode: Optional[Union[QuantMode, int]] = QuantMode.NO_QUANT,
@@ -143,6 +159,10 @@ class GenericBlockSparseAttentionOpBuilder(OpBuilder):
             win_left: Optional[int] = -1,
             win_right: Optional[int] = -1,
             return_softmax_lse: Optional[bool] = False,
+            residual_block_mode: Optional[
+                Union[ResidualBlockMode, int]
+            ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+            is_consistent_topk: Optional[bool] = False,
             attention_out_dtype: Optional[torch.dtype] = None,
         ):
             # 与 C++ 实现保持一致：quant_mode != NO_QUANT 时 attention_out_dtype 必填
@@ -190,22 +210,33 @@ def generic_block_sparse_attention_metadata(
     seqused_kv: Optional[torch.Tensor] = None,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
-    is_packed_gqa: Optional[bool] = True,
     layout_q: Optional[str] = "TND",
     layout_kv: Optional[str] = "PA_BBND",
+    layout_sparse_pattern: Optional[int] = 4,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.CAUSAL,
     quant_mode: Optional[Union[QuantMode, int]] = QuantMode.NO_QUANT,
     softmax_precision: Optional[int] = 1,
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
+    residual_block_mode: Optional[
+        Union[ResidualBlockMode, int]
+    ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+    is_consistent_topk: Optional[bool] = False,
 ):
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
-    is_packed_gqa = True if is_packed_gqa is None else is_packed_gqa
+    layout_sparse_pattern = (
+        4 if layout_sparse_pattern is None else layout_sparse_pattern
+    )
     layout_q = "TND" if layout_q is None else layout_q
     layout_kv = "PA_BBND" if layout_kv is None else layout_kv
     mask_mode = int(MaskMode.CAUSAL) if mask_mode is None else int(mask_mode)
     quant_mode = int(QuantMode.NO_QUANT) if quant_mode is None else int(quant_mode)
+    residual_block_mode = (
+        int(ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX)
+        if residual_block_mode is None
+        else int(residual_block_mode)
+    )
     softmax_precision = 1 if softmax_precision is None else softmax_precision
     win_left = -1 if win_left is None else win_left
     win_right = -1 if win_right is None else win_right
@@ -228,14 +259,16 @@ def generic_block_sparse_attention_metadata(
         num_heads_kv,
         head_dim,
         block_shape,
-        is_packed_gqa,
         layout_q,
         layout_kv,
+        layout_sparse_pattern,
         mask_mode,
         quant_mode,
         softmax_precision,
         win_left,
         win_right,
+        residual_block_mode,
+        is_consistent_topk,
         output,
     )
 
@@ -258,14 +291,18 @@ def generic_block_sparse_attention_metadata_fallback(
     seqused_kv: Optional[torch.Tensor] = None,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
-    is_packed_gqa: Optional[bool] = True,
     layout_q: Optional[str] = "TND",
     layout_kv: Optional[str] = "PA_BBND",
+    layout_sparse_pattern: Optional[int] = 4,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.CAUSAL,
     quant_mode: Optional[Union[QuantMode, int]] = QuantMode.NO_QUANT,
     softmax_precision: Optional[int] = 1,
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
+    residual_block_mode: Optional[
+        Union[ResidualBlockMode, int]
+    ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+    is_consistent_topk: Optional[bool] = False,
 ):
     return _generic_block_sparse_attention_metadata(
         sparse_block_idx,
@@ -280,7 +317,7 @@ def generic_block_sparse_attention_metadata_fallback(
         seqused_kv=seqused_kv,
         max_seqlen_q=max_seqlen_q,
         max_seqlen_kv=max_seqlen_kv,
-        is_packed_gqa=is_packed_gqa,
+        layout_sparse_pattern=layout_sparse_pattern,
         layout_q=layout_q,
         layout_kv=layout_kv,
         mask_mode=mask_mode,
@@ -288,6 +325,8 @@ def generic_block_sparse_attention_metadata_fallback(
         softmax_precision=softmax_precision,
         win_left=win_left,
         win_right=win_right,
+        residual_block_mode=residual_block_mode,
+        is_consistent_topk=is_consistent_topk,
     )
 
 
@@ -311,9 +350,9 @@ def generic_block_sparse_attention(
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
     block_table: Optional[torch.Tensor] = None,
-    is_packed_gqa: Optional[bool] = True,
     layout_q: Optional[str] = "TND",
     layout_kv: Optional[str] = "PA_BBND",
+    layout_sparse_pattern: Optional[int] = 4,
     softmax_scale: Optional[float] = 0.0,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.CAUSAL,
     quant_mode: Optional[Union[QuantMode, int]] = QuantMode.NO_QUANT,
@@ -322,6 +361,10 @@ def generic_block_sparse_attention(
     win_left: Optional[int] = -1,
     win_right: Optional[int] = -1,
     return_softmax_lse: Optional[bool] = False,
+    residual_block_mode: Optional[
+        Union[ResidualBlockMode, int]
+    ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+    is_consistent_topk: Optional[bool] = False,
     attention_out_dtype: Optional[torch.dtype] = None,
 ):
     op_module = generic_block_sparse_attention_op_builder.load()
@@ -343,9 +386,9 @@ def generic_block_sparse_attention(
         seqused_q,
         seqused_kv,
         block_table,
-        is_packed_gqa,
         layout_q,
         layout_kv,
+        layout_sparse_pattern,
         softmax_scale,
         mask_mode,
         quant_mode,
@@ -354,6 +397,8 @@ def generic_block_sparse_attention(
         win_left,
         win_right,
         return_softmax_lse,
+        residual_block_mode,
+        is_consistent_topk,
         attention_out_dtype,
     )
 
@@ -367,5 +412,7 @@ generic_block_sparse_attention_metadata = (
 
 generic_block_sparse_attention.MaskMode = MaskMode
 generic_block_sparse_attention.QuantMode = QuantMode
+generic_block_sparse_attention.ResidualBlockMode = ResidualBlockMode
 generic_block_sparse_attention_metadata.MaskMode = MaskMode
 generic_block_sparse_attention_metadata.QuantMode = QuantMode
+generic_block_sparse_attention_metadata.ResidualBlockMode = ResidualBlockMode

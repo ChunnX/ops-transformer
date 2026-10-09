@@ -16,13 +16,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_ONLY_HPP
 
-#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
-#include "../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
-#include "../template_linear_algebra_v2/epilogue/mega_moe_epilogue_dispatch_policy.hpp"
-#include "../template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
-#include "../template_linear_algebra_v2/mega_moe_matrix_coord.hpp"
-#include "../template_linear_algebra_v2/layout/mega_moe_layout.hpp"
-#include "../template_linear_algebra_v2/detail/tla_v2_callback.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/epilogue/dispatch_policy.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "catlass/layout/layout.hpp"
+#include "catlass/detail/callback.hpp"
 
 #include "const_args.hpp"
 #include "hccl_shmem.hpp"
@@ -66,11 +66,8 @@ public:
         HcclShmem<IS_A2> shmem;
         int64_t offsetD;
         Layout3D tokenPerExpertLayout;
-        // 路由表 UB 缓存（可选）：置 true 时 tokenPerExpert / preSumBeforeRank 标量读取
-        // 走调用方刷新好的 UB 副本，索引为 [dstEpIdx * expertPerRank + groupIdx]，不再直接读 GM
-        // 三字段须成组赋值：useUbRouteCache=true 时 ubTokenPerExpert / ubPreSumBeforeRank
-        // 必须已由调用方完成 SetGlobalBuffer/SetSize，否则回落 GM 直接读
         bool useUbRouteCache{false};
+        int32_t ubRouteStride{0};
         AscendC::LocalTensor<int32_t> ubTokenPerExpert;
         AscendC::LocalTensor<int32_t> ubPreSumBeforeRank;
 
@@ -136,11 +133,11 @@ public:
     CATLASS_DEVICE
     ~BlockEpilogue() {}
 
-    // 路由表标量读取：优先走 UB 缓存（紧凑索引），否则回落 GM（保持既有直接读路径）
     CATLASS_DEVICE int32_t GetLenRankInExpert(int32_t dstEpIdx, int32_t groupIdx) const
     {
         if (params.useUbRouteCache) {
-            return params.ubTokenPerExpert.GetValue(dstEpIdx * params.expertPerRank + groupIdx);
+            int32_t stride = params.ubRouteStride > 0 ? params.ubRouteStride : params.expertPerRank;
+            return params.ubTokenPerExpert.GetValue(dstEpIdx * stride + groupIdx);
         }
         return tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
     }

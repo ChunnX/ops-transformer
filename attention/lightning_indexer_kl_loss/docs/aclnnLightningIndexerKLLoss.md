@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR&950DT系列产品</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 
@@ -40,7 +40,7 @@
   $$
 
   $$
-  \log\_P = \log(\text{clamp\_min}(\tilde{y}, \varepsilon))
+  \log\_P = \log(\text{clamp\_min}(P, \varepsilon))
   $$
 
   $$
@@ -51,9 +51,9 @@
   \text{loss} = \sum((\log\_P - \log\_Y) \cdot \text{weight})
   $$
 
-  其中 $\varepsilon$ 为 `eps` 参数$。
+  其中 $\varepsilon$ 为 `eps` 参数。
 
-  weight 的选择由 `weight_type` 控制：
+  weight 的选择由 `weightType` 控制：
 
   - `'logits'`：weight = y，即原始未归一化分数
   - `'probs'`：weight = P，即归一化概率
@@ -236,7 +236,7 @@ aclnnStatus aclnnLightningIndexerKLLoss(
 - 输入shape限制：
   - 支持 shape 为 (B, S, K) 或 (T, K)，B的取值范围为1\~512，最后一维 K 的取值范围为 1\~8192。
 - `eps` 必须大于 0。
-- `weight_type` 必须为 `'logits'` 或 `'probs'`。
+- `weightType` 必须为 `'logits'` 或 `'probs'`。
 
 ## 调用示例
 

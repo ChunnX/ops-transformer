@@ -44,6 +44,10 @@ REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttention, KvQuantSparseFlashAttent
 constexpr uint32_t PRE_LOAD_NUM = 2;
 constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
 constexpr int32_t SPARSE_MODE_BAND = 4;
+constexpr int32_t KEY_QUANT_MODE_TQ4 = 3; // 3:TQ4
+// 缓存有效 mte2 size 的环缓冲每个 AIV 占用的字节数：长度 * 份数 * 512B对齐长度
+constexpr uint64_t VALID_SIZE_RING_BYTES = 4 * 128 * 4;
+constexpr uint64_t AIV_PER_AIC = 2;
 
 static const std::string QUERY_NAME = "query";
 static const std::string KEY_NAME = "key";
@@ -122,26 +126,16 @@ static const std::map<QSFALayout, size_t> QSFA_LAYOUT_DIM_MAP = {
     {QSFALayout::PA_BSND, DIM_NUM_FOUR},
 };
 
-static std::vector<int64_t> ToVector(const gert::Shape &shape)
-{
-    size_t shapeSize = shape.GetDimNum();
-    std::vector<int64_t> shapeVec(shapeSize, 0);
-
-    for (size_t i = 0; i < shapeSize; i++) {
-        shapeVec[i] = shape.GetDim(i);
-    }
-    return shapeVec;
-}
-
 static std::string ToStringRaw(const gert::Shape &shape)
 {
     std::ostringstream oss;
-    auto v = ToVector(shape);
-    if (v.size() > 0) {
-        for (size_t i = 0; i < v.size() - 1; ++i) {
-            oss << v[i] << ", ";
-        }
-        oss << v[v.size() - 1];
+    const size_t qsfaRank = shape.GetDimNum();
+    if (qsfaRank == 0U) {
+        return oss.str();
+    }
+    oss << shape.GetDim(0);
+    for (size_t qsfaDim = 1; qsfaDim < qsfaRank; ++qsfaDim) {
+        oss << ", " << shape.GetDim(qsfaDim);
     }
     return oss.str();
 }
@@ -300,7 +294,7 @@ void QSFAMlaTiling::CalcVectorizeFlag()
     }
     if (qsfaInfo_->kvLayout == QSFALayout::PA_BSND) {
         constexpr uint32_t S2_NUM_PER_LOOP = 128U;
-        int64_t blockSize = qsfaInfo_->blockSize;
+        uint64_t blockSize = static_cast<uint64_t>(qsfaInfo_->blockSize);
         uint32_t blocksizeFlag = static_cast<uint32_t>((blockSize & (blockSize - 1)) == 0);
         uint32_t sparseBlockCountFlag =
             static_cast<uint32_t>((static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) & (S2_NUM_PER_LOOP - 1U)) == 0U);
@@ -312,8 +306,8 @@ void QSFAMlaTiling::CalcVectorizeFlag()
             Align<uint32_t>(qsfaInfo_->maxBlockNumPerBatch * sizeof(int32_t), 512U) +
             Align<uint32_t>(static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int32_t), BYTE_BLOCK) +
             alignedSparseBlockCount * sizeof(int64_t);
-        vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag && sparseBlockCountFlag &&
-                                               sparseModeFlag);
+        vectorizeFlag_ = static_cast<uint32_t>(vectorizeUbSize <= UB_SIZE && blocksizeFlag != 0 &&
+                                               sparseBlockCountFlag != 0 && sparseModeFlag != 0);
     }
 }
 
@@ -507,7 +501,7 @@ void QSFAMlaTiling::GetWorkspaceSize()
                 (S2_BASE_SIZE * D_SIZE * GetTypeSize(qsfaInfo_->inputQType) * TRIPLE_BUFFER_NUM * (aicNum >> 1));
         }
         // 稀疏kv物理地址向量化：仅向量化开启时预计算物理地址表（挂在V0结果区之后）
-        if (vectorizeFlag_) {
+        if (vectorizeFlag_ != 0) {
             uint32_t totalBS1 =
                 (qsfaInfo_->qLayout == QSFALayout::TND) ? qsfaInfo_->s1Size : (qsfaInfo_->bSize * qsfaInfo_->s1Size);
             workspaceSize_ += totalBS1 * static_cast<uint32_t>(qsfaInfo_->sparseBlockCount) * sizeof(int64_t);
@@ -539,8 +533,11 @@ void QSFAMlaTiling::GetWorkspaceSize()
         // 4:bufNum  512:s2Base  512:D  64:dRope  2:sizeOf(half)
         workspaceSize_ += 4 * 512 * (512 + 64) * 2 * actCoreNum;
         // 缓存有效mte2 size的长度 份数  512B对齐的长度  sizeof(int32_t)   aiv核数
-        workspaceSize_ +=
-            4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
+        workspaceSize_ += VALID_SIZE_RING_BYTES * (AIV_PER_AIC * actCoreNum);
+        // TQ4 additionally stages one FP16 scale ring of the same size.
+        if (qsfaInfo_->keyQuantMode == KEY_QUANT_MODE_TQ4) {
+            workspaceSize_ += VALID_SIZE_RING_BYTES * (AIV_PER_AIC * actCoreNum);
+        }
     }
 
     CalcFDWorkSpace(actCoreNum);
@@ -902,10 +899,8 @@ ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
     if (quantScaleRepoMode_ == 1) {
         OP_CHECK_IF(
             (opParamInfo_.keyDequantScale.tensor != nullptr || opParamInfo_.valueDequantScale.tensor != nullptr),
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                opName_, "key_dequant_scale and value_dequant_scale",
-                "When quant_scale_repo_mode is 1(combine), dequant scales are combined with kv data, "
-                "key_dequant_scale and value_dequant_scale should not be provided"),
+            OP_LOGW(opName_, "When quant_scale_repo_mode is 1(combine), dequant scales are combined with kv data, "
+                             "key_dequant_scale and value_dequant_scale should not be provided"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -974,20 +969,19 @@ ge::graphStatus QSFATilingCheck::CheckParaExistence()
     return CheckParaExistenceMla();
 }
 
-static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const std::string &name,
+static ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor, const std::string &name,
                                            const char *opName)
 {
     if (tensor == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, name.c_str(), name + " must be provided");
         return ge::GRAPH_FAILED;
     }
-    int64_t qsfaShapeSize = tensor->GetShapeSize();
-    if (qsfaShapeSize <= 0) {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, name.c_str(), std::to_string(qsfaShapeSize).c_str(),
+    size = tensor->GetShapeSize();
+    if (size <= 0) {
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, name.c_str(), std::to_string(size).c_str(),
                                                   "The shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(qsfaShapeSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1167,7 +1161,7 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensQDType()
 
 ge::graphStatus QSFATilingCheck::CheckActualSeqLensQShape()
 {
-    uint32_t qsfaShapeSize = 0;
+    int64_t qsfaShapeSize = 0;
     if (GetActualSeqLenSize(qsfaShapeSize, opParamInfo_.actualSeqLengthsQ.tensor, "actual_seq_lengths_query",
                             opName_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -1212,7 +1206,7 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensDType()
 
 ge::graphStatus QSFATilingCheck::CheckActualSeqLensShape()
 {
-    uint32_t qsfaShapeSizeKv = 0;
+    int64_t qsfaShapeSizeKv = 0;
     if (GetActualSeqLenSize(qsfaShapeSizeKv, opParamInfo_.actualSeqLengths.tensor, "actual_seq_lengths_kv", opName_) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -1342,10 +1336,24 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim()
                     "The head num of query only support 576, but got " + std::to_string(qHeadDim_)),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(kHeadDim_ != 656, // 656:当前不泛化
+    // INT8 affine slots are 656 bytes; TQ4 packs 512 int4 values, 64 BF16
+    // RoPE values and one FP16 scale into a 386-byte slot.
+    OP_CHECK_IF(kHeadDim_ != 656 && !(keyQuantMode_ == 3 && kHeadDim_ == 386),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
-                    "The head num of key only support 656, but got " + std::to_string(kHeadDim_)),
+                    "The key slot dimension must be 656 (INT8) or 386 (TQ4), but got " + std::to_string(kHeadDim_)),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(keyQuantMode_ == 3 && kHeadDim_ != 386,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+                    "TQ4 key slot dimension must be 386, but got " + std::to_string(kHeadDim_)),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(keyQuantMode_ == 3 && vHeadDim_ != 386,
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "value", ToStringRaw(opParamInfo_.value.shape->GetStorageShape()).c_str(),
+                    "TQ4 value slot dimension must be 386, but got " + std::to_string(vHeadDim_)),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1398,16 +1406,29 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantAttr() const
                                                       "Attention_mode should be 2(MLA-absorb)"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(keyQuantMode_ != 2, // 2:per-tile
+    OP_CHECK_IF(keyQuantMode_ != 2 && keyQuantMode_ != 3, // 2:per-tile, 3:TQ4
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_quant_mode", std::to_string(keyQuantMode_).c_str(),
-                                                      "Key_quant_mode should be 2(per-tile)"),
+                                                      "Key_quant_mode should be 2(per-tile) or 3(TQ4)"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
-        valueQuantMode_ != 2, // 2:per-tile
+        valueQuantMode_ != 2 && valueQuantMode_ != 3, // 2:per-tile, 3:TQ4
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "value_quant_mode", std::to_string(valueQuantMode_).c_str(),
-                                              "Value_quant_mode should be 2(per-tile)"),
+                                              "Value_quant_mode should be 2(per-tile) or 3(TQ4)"),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF((keyQuantMode_ == 3) != (valueQuantMode_ == 3),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName_, "key_quant_mode/value_quant_mode",
+                    (std::to_string(keyQuantMode_) + "/" + std::to_string(valueQuantMode_)).c_str(),
+                    "TQ4 key and value quant modes must both be 3"),
+                return ge::GRAPH_FAILED);
+
+    // TQ4 仅在 arch22(Atlas A2/A3) kernel 实现，A5(950/arch35) kernel 无该分支
+    OP_CHECK_IF(qsfaInfo_.isA5 && keyQuantMode_ == KEY_QUANT_MODE_TQ4,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key_quant_mode", std::to_string(keyQuantMode_).c_str(),
+                                                      "TQ4 is supported on Atlas A2/A3 only, but not on Ascend 950"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(quantScaleRepoMode_ != 1, // 1:combine
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_scale_repo_mode",
@@ -1444,7 +1465,7 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantPa() const
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_CHECK_IF(blockSize_ <= 0 || blockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
+    OP_CHECK_IF((blockSize_ <= 0) || (blockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE)),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
                     "When page attention is enabled, block_size(" + std::to_string(blockSize_) +
@@ -1576,7 +1597,7 @@ static size_t GetAxisIdx(const QSFAAxis &axis, const QSFALayout &layout)
     return std::distance(axes.begin(), axisIt);
 }
 
-static uint32_t GetAxisNum(const gert::Shape &shape, const QSFAAxis &axis, const QSFALayout &layout)
+static int64_t GetAxisNum(const gert::Shape &shape, const QSFAAxis &axis, const QSFALayout &layout)
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : kInvalidDimValue;
 }
@@ -1671,7 +1692,7 @@ ge::graphStatus QSFAInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(int64_t &size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, "actual_seq_lengths_query", opName_);
 }
@@ -2047,7 +2068,7 @@ ge::graphStatus QSFAInfoParser::GetGSize()
 
 ge::graphStatus QSFAInfoParser::GetActualseqInfo()
 {
-    maxActualseq_ = static_cast<uint32_t>(s2Size_);
+    maxActualseq_ = s2Size_;
     if (opParamInfo_.actualSeqLengths.tensor != nullptr) {
         actualLenDimsKV_ = opParamInfo_.actualSeqLengths.tensor->GetShapeSize();
     }

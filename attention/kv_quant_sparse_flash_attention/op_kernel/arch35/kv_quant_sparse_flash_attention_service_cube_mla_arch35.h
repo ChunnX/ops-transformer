@@ -24,28 +24,10 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "kv_quant_sparse_flash_attention_common_arch35.h"
-
-#if __has_include("../../common/op_kernel/offset_calculator.h")
-#include "../../common/op_kernel/offset_calculator.h"
-#else
-#include "../common/offset_calculator.h"
-#endif
-
-#if __has_include("../../common/op_kernel/matmul.h")
-#include "../../common/op_kernel/matmul.h"
-#else
-#include "../common/matmul.h"
-#endif
-#if __has_include("../../common/op_kernel/CopyInL1.h")
-#include "../../common/op_kernel/CopyInL1.h"
-#else
-#include "../common/CopyInL1.h"
-#endif
-#if __has_include("../../common/op_kernel/FixpipeOut.h")
-#include "../../common/op_kernel/FixpipeOut.h"
-#else
-#include "../common/FixpipeOut.h"
-#endif
+#include "../../../common/op_kernel/offset_calculator.h"
+#include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/CopyInL1.h"
+#include "../../../common/op_kernel/FixpipeOut.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -80,39 +62,40 @@ public:
     static constexpr uint32_t dBaseMatmulSize = 128;
 
     __aicore__ inline QSFAMatmulService(){};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr,
-                                         __gm__ uint8_t *query);
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
-                                       Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                       RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void InitCubeBlock(TPipe* pipe, BufferManager<BufferType::L1>* qsfaL1BufferManagerPtr,
+                                         __gm__ uint8_t* query);
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t* cuSeqlensQ, const ConstInfo& constInfo);
+    __aicore__ inline void UninitLocalBuffer();
+    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& output,
+                                       Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf,
+                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
+                                       RunInfo& runInfo, ConstInfo& constInfo);
 
     __aicore__ inline void IterateBmm2(
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
-        ConstInfo &constInfo);
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputLeftBuffers,
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf, RunInfo& runInfo,
+        ConstInfo& constInfo);
 
 private:
     __aicore__ inline void InitLocalBuffer();
-    __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
-    __aicore__ inline void CalcS1Coord(RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void InitGmTensor(__gm__ uint8_t* cuSeqlensQ, const ConstInfo& constInfo);
+    __aicore__ inline void CalcS1Coord(RunInfo& runInfo, ConstInfo& constInfo);
 
-    __aicore__ inline void IterateBmm1QSFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                           Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                           RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void PrepareLeftMatrixBmm1QSFA(Buffer<BufferType::L1> &inputLeftBuf, RunInfo &runInfo,
-                                                     ConstInfo &constInfo);
+    __aicore__ inline void IterateBmm1QSFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+                                           Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf,
+                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
+                                           RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void PrepareLeftMatrixBmm1QSFA(Buffer<BufferType::L1>& inputLeftBuf, RunInfo& runInfo,
+                                                     ConstInfo& constInfo);
 
     // --------------------Bmm2--------------------------
     __aicore__ inline void IterateBmm2QSFA(
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
-        ConstInfo &constInfo);
-    TPipe *tPipe;
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputLeftBuffers,
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf, RunInfo& runInfo,
+        ConstInfo& constInfo);
+    TPipe* tPipe;
     /* =====================GM变量==================== */
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
     FaGmTensor<Q_T, Q_FORMAT, int32_t> queryGm;
@@ -127,7 +110,7 @@ private:
     // GS1循环间开pingpong；D大于256使用单块Buffer，S1循环间驻留；fp32场景单块不驻留
     BuffersPolicySingleBuffer<BufferType::L1> l1QBuffers;
     // L0空间buffer manager
-    BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr;
+    BufferManager<BufferType::L1>* qsfaL1BufferManagerPtr;
     BufferManager<BufferType::L0A> l0aBufferManager;
     BufferManager<BufferType::L0B> l0bBufferManager;
     BufferManager<BufferType::L0C> l0cBufferManager;
@@ -140,19 +123,19 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitCubeBlock(
-    TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BuffMgr, __gm__ uint8_t *query)
+    TPipe* pipe, BufferManager<BufferType::L1>* qsfaL1BuffMgr, __gm__ uint8_t* query)
 {
     if ASCEND_IS_AIC {
         tPipe = pipe;
         qsfaL1BufferManagerPtr = qsfaL1BuffMgr;
-        this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
+        this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T*)query);
         InitLocalBuffer();
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *qsfaActualSeqLengthsQ,
-                                                                       const ConstInfo &constInfo)
+__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t* qsfaActualSeqLengthsQ,
+                                                                       const ConstInfo& constInfo)
 {
     if ASCEND_IS_AIC {
         InitGmTensor(qsfaActualSeqLengthsQ, constInfo);
@@ -184,31 +167,50 @@ __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer()
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *qsfaActualSeqLengthsQ,
-                                                                      const ConstInfo &constInfo)
+__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::UninitLocalBuffer()
+{
+    if ASCEND_IS_AIC {
+        l1QBuffers.Uninit((*qsfaL1BufferManagerPtr));
+        mmL0ABuffers.Uninit(l0aBufferManager);
+        mmL0BBuffers.Uninit(l0bBufferManager);
+        mmL0CBuffers.Uninit(l0cBufferManager);
+        if constexpr (IS_SPLIT_G) {
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[0]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[1]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(mte1ToMte2Id[2]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[0]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[1]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(mte2ToMte1Id[2]);
+        }
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t* qsfaActualSeqLengthsQ,
+                                                                      const ConstInfo& constInfo)
 {
     if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
                                             constInfo.dSize);
     } else { // QSFA_LAYOUT::TND
         GlobalTensor<int32_t> actualSeqQLen;
-        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)qsfaActualSeqLengthsQ);
+        actualSeqQLen.SetGlobalBuffer((__gm__ int32_t*)qsfaActualSeqLengthsQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSize, actualSeqQLen,
                                             constInfo.actualSeqLenSize);
     }
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::CalcS1Coord(RunInfo &runInfo,
-                                                                                              ConstInfo &constInfo)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::CalcS1Coord(RunInfo& runInfo,
+                                                                                              ConstInfo& constInfo)
 {
     // 计算s1方向偏移
     coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * runInfo.qSNumInOneBlock;
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::IterateBmm1(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, RunInfo& runInfo, ConstInfo& constInfo)
 {
     CalcS1Coord(runInfo, constInfo);
 
@@ -216,23 +218,22 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::IterateBmm2(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputLeftBuffers,
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf, RunInfo& runInfo, ConstInfo& constInfo)
 {
     IterateBmm2QSFA(outputBuf, inputLeftBuffers, inputRightBuf, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::IterateBmm1QSFA(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, RunInfo& runInfo, ConstInfo& constInfo)
 {
     Buffer<BufferType::L1> inputLeftBuf;
     PrepareLeftMatrixBmm1QSFA(inputLeftBuf, runInfo, constInfo);
 
     // 加载当前轮的右矩阵到L1
-    inputRightBuf.WaitCrossCore(); // 核间同步，这里需要根据V0操作处理同步，确保取tensor时，数据已经准备好
 
     if constexpr (IS_SPLIT_G) {
         SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
@@ -243,6 +244,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
         DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
         SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
         WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
+    } else {
+        inputRightBuf.WaitCrossCore(); // 核间同步，这里需要根据V0操作处理同步，确保取tensor时，数据已经准备好
     }
 
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
@@ -290,7 +293,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::PrepareLeftMatrixBmm1QSFA(
-    Buffer<BufferType::L1> &inputLeftBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::L1>& inputLeftBuf, RunInfo& runInfo, ConstInfo& constInfo)
 {
     // 左矩阵复用，S2的第一次循环加载左矩阵
     // 加载左矩阵到L1, 全载
@@ -312,9 +315,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::IterateBmm2QSFA(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputLeftBuffers,
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf, RunInfo& runInfo, ConstInfo& constInfo)
 {
     inputRightBuf.WaitCrossCore();
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
@@ -330,7 +333,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
         inputRightBuf.GetTensor<Q_T>(),                                 // 右矩阵V nope
         mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), qsfaParam);
 
-    inputRightBuf.SetCrossCore();       // bmm2才释放KV，在这里释放
     mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
     mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
 
@@ -359,20 +361,21 @@ TEMPLATES_DEF
 class QSFAMatmulServiceDummy {
 public:
     __aicore__ inline QSFAMatmulServiceDummy(){};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr,
-                                         __gm__ uint8_t *query)
+    __aicore__ inline void InitCubeBlock(TPipe* pipe, BufferManager<BufferType::L1>* qsfaL1BufferManagerPtr,
+                                         __gm__ uint8_t* query)
     {}
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo) {}
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                       Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo)
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t* cuSeqlensQ, const ConstInfo& constInfo) {}
+    __aicore__ inline void UninitLocalBuffer() {}
+    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+                                       Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf,
+                                       RunInfo& runInfo, ConstInfo& constInfo)
     {}
 
     __aicore__ inline void IterateBmm2(
-        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
-        ConstInfo &constInfo)
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
+        BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputLeftBuffers,
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf, RunInfo& runInfo,
+        ConstInfo& constInfo)
     {}
 };
 

@@ -17,9 +17,7 @@
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../sparse_flash_mla_common.h"
-#if __has_include("common/static_buffer.h")
 #include "common/static_buffer.h"
-#endif
 #include "common/smla_common_defs.h"
 
 // ===== V 侧主流程 =====
@@ -62,47 +60,47 @@ using AttentionCommon::Align64Func;
 #define TEMPLATE_INTF \
     template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool IS_FD, SMLA_LAYOUT LAYOUT_T, \
               SMLA_LAYOUT KV_LAYOUT_T, SMLATemplateMode TEMPLATE_MODE, bool IS_SPLIT_G, bool IS_BATCH_CONSISTENCY, \
-              bool IS_VEC_S2PHYADDR>
+              bool IS_VEC_S2PHYADDR, TopkValueMode TOPK_VALUE_MODE>
 
 #define TEMPLATE_INTF_ARGS \
     Q_T, KV_T, T, OUTPUT_T, IS_FD, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE, IS_SPLIT_G, IS_BATCH_CONSISTENCY, \
-        IS_VEC_S2PHYADDR
+        IS_VEC_S2PHYADDR, TOPK_VALUE_MODE
 
-#define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
+#define SMLA_CUBE_TRAIT_TYPES(X) \
     X(Q_T) \
     X(KV_T) \
     X(T) \
     X(OUTPUT_T)
 
-#define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
+#define SMLA_CUBE_TRAIT_CONSTANTS(X) \
     X(IS_FD, bool, false) \
     X(LAYOUT_T, SMLA_LAYOUT, SMLA_LAYOUT::BSND) \
     X(KV_LAYOUT_T, SMLA_LAYOUT, SMLA_LAYOUT::PA_BBND) \
     X(TEMPLATE_MODE, SMLATemplateMode, SMLATemplateMode::CSA_TEMPLATE_MODE) \
     X(IS_SPLIT_G, bool, false) \
     X(IS_BATCH_CONSISTENCY, bool, false) \
-    X(IS_VEC_S2PHYADDR, bool, false)
+    X(IS_VEC_S2PHYADDR, bool, false) \
+    X(TOPK_VALUE_MODE, TopkValueMode, TopkValueMode::TOPK_INDEX_MODE)
 
 /* 1. 生成带默认值的模版Template */
-#define GEN_TYPE_PARAM(name) typename name,
-#define GEN_CONST_PARAM(name, type, default_val) type name = default_val,
+#define SMLA_TEMPLATE_TYPE(name) typename name,
+#define SMLA_TEMPLATE_CONSTANT(name, type, default_val) type name = default_val,
 
 #define TEMPLATES_DEF \
-    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TYPE_PARAM) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_CONST_PARAM) bool end = \
+    template <SMLA_CUBE_TRAIT_TYPES(SMLA_TEMPLATE_TYPE) SMLA_CUBE_TRAIT_CONSTANTS(SMLA_TEMPLATE_CONSTANT) bool end = \
                   true>
 
 /* 2. 生成不带带默认值的模版Template */
-#define GEN_TEMPLATE_TYPE_NODEF(name) typename name,
-#define GEN_TEMPLATE_CONST_NODEF(name, type, default_val) type name,
+#define SMLA_REQUIRED_TYPE(name) typename name,
+#define SMLA_REQUIRED_CONSTANT(name, type, default_val) type name,
 #define TEMPLATES_DEF_NO_DEFAULT \
-    template <CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TEMPLATE_TYPE_NODEF) \
-                  CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TEMPLATE_CONST_NODEF) bool end>
+    template <SMLA_CUBE_TRAIT_TYPES(SMLA_REQUIRED_TYPE) SMLA_CUBE_TRAIT_CONSTANTS(SMLA_REQUIRED_CONSTANT) bool end>
 
 /* 3. 生成有默认值的Args */
-#define GEN_ARG_NAME(name, ...) name,
+#define SMLA_TEMPLATE_ARGUMENT(name, ...) name,
 #define TEMPLATE_ARGS \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) \
-    CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) \
+    SMLA_CUBE_TRAIT_TYPES(SMLA_TEMPLATE_ARGUMENT) \
+    SMLA_CUBE_TRAIT_CONSTANTS(SMLA_TEMPLATE_ARGUMENT) \
     end
 
 #endif

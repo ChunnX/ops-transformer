@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR&950DT系列产品</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -216,7 +216,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>输入</td>
       <td>与输入首次做矩阵乘的降维矩阵。</td>
       <td>-</td>
-      <td>INT8、FLOAT16、BFLOAT16</td>
+      <td>INT8、BFLOAT16</td>
       <td>NZ</td>
       <td>[qLoraDim + keyTotalDim,hiddenSize]</td>
       <td>-</td>
@@ -225,7 +225,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>deScale0</td>
       <td>输入</td>
       <td>输入首次做矩阵乘的降维矩阵中的系数。</td>
-      <td>input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT。</td>
+      <td>input的dtype为FLOAT16时支持INT64，输入BFLOAT16时支持FLOAT。</td>
       <td>INT64、FLOAT</td>
       <td>ND</td>
       <td>[qLoraDim + keyTotalDim]</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>输入</td>
       <td>权重矩阵。</td>
       <td>-</td>
-      <td>INT8、FLOAT16、BFLOAT16</td>
+      <td>INT8、BFLOAT16</td>
       <td>NZ</td>
       <td>[headNum * (qNoRopeDim + qRopeDim),qLoraDim]</td>
       <td>-</td>
@@ -295,7 +295,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>deScale1</td>
       <td>输入</td>
       <td>参与wuq矩阵乘的系数。</td>
-      <td>input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT。</td>
+      <td>input的dtype为FLOAT16时支持INT64，输入BFLOAT16时支持FLOAT。</td>
       <td>INT64、FLOAT</td>
       <td>ND</td>
       <td>[headNum * (qNoRopeDim + qRopeDim)]</td>
@@ -359,12 +359,13 @@ aclnnStatus aclnnMlaPreprocessV2(
         <li>cacheMode为0：shape为[blockNum,blockSize,1,576]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
         <li>cacheMode为1：shape为[blockNum,blockSize,1,512]，tensor的shape为拆分情况，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
         <li>cacheMode为2：shape为[blockNum,16,blockSize,32]，dtype为int8，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
-        <li>cacheMode为3：shape为[blockNum,32,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为3：shape为[blockNum,32,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
+        <li>仅支持首轴非连续；除首轴外的其余轴必须连续</li></ul>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
       <td>-</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>kvCacheRope</td>
@@ -373,12 +374,13 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>可选参数，支出传入空指针，输入格式随cacheMode变化：<ul>
         <li>cacheMode为0：不传入。</li>
         <li>cacheMode为1：shape为[blockNum,blockSize,1,64]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
+        <li>仅支持首轴非连续；除首轴外的其余轴必须连续</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
       <td>-</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>slotMapping</td>
@@ -740,16 +742,16 @@ aclnnStatus aclnnMlaPreprocessV2(
   - aclnnMlaPreprocessV2默认确定性实现。
 - shape格式字段含义及约束
     - tokenNum：tokenNum表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
+    - hiddenSize：hiddenSize表示隐藏层的大小，取值范围：2048~10240，为256的倍数
     - headNum：表示多头数，取值范围：1~128
-    - blockNum：PagedAttention场景下的块数，取值范围：192
-    - blockSize：PagedAttention场景下的块大小，取值范围：128
+    - blockNum：PagedAttention场景下的块数，取值固定为：192
+    - blockSize：PagedAttention场景下的块大小，取值固定为：128
     - qloraDim：表示Q矩阵的LoRA输入维度，取值范围：32~4096，为32的倍数
     - keyTotalDim：表示Key部分的总维度，取值固定为：576（512主维度+64 rope维度）
     - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
     - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
 - rope模式约束
-    - mla_preprocess算子中的Rotary Embedding（RoPE）操作采用half模式，暂不支持interleave模式
+    - mla_preprocess_v2算子中的Rotary Position Embedding（RoPE）操作采用half模式，暂不支持interleave模式
 
 ## 调用示例
 
@@ -939,8 +941,8 @@ int CreateAclTensorNZ(const std::vector<T>& shape,  void** deviceAddr, void** ho
     ret = aclrtMalloc(hostAddr, size,   ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc NZ tensor device failed. ERROR: %d\n", ret); return ret);
     // 调用aclCreateTensor接口创建aclTensor
-    *tensor = aclCreateTensor(shape.data(), shape.size  (), dataType, nullptr, 0,   aclFormat::ACL_FORMAT_FRACTAL_NZ,
-                              shape.data(), shape.size  (), *deviceAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0,   aclFormat::ACL_FORMAT_FRACTAL_NZ,
+                              shape.data(), shape.size(), *deviceAddr);
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
     ret = aclrtMemcpy(*deviceAddr, size, *hostAddr,   GetShapeSize(shape)*aclDataTypeSize(dataType),  ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy  failed. ERROR: %d\n", ret); return ret);
@@ -1116,7 +1118,7 @@ int main() {
   // 转换三个NZ格式变量的shape
   ret = TransToNZShape(wdqkvShape, sizeof(int8_t));
   CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed. \n"); return ret);
-  ret = TransToNZShape(wuqShape, sizeof  (int8_t));
+  ret = TransToNZShape(wuqShape, sizeof(int8_t));
   CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed. \n"); return ret);
 
   ret = CreateAclTensorND(inputShape, &inputDeviceAddr, &inputHostAddr, aclDataType::ACL_FLOAT16, &input);
@@ -1262,6 +1264,11 @@ int main() {
   aclDestroyTensor(slotmapping);
   aclDestroyTensor(ctkvScale);
   aclDestroyTensor(qNopeScale);
+  aclDestroyTensor(qOut);
+  aclDestroyTensor(kvCacheOut);
+  aclDestroyTensor(qRopeOut);
+  aclDestroyTensor(krCacheOut);
+  aclDestroyTensor(qDownOut);
 
   // 7. 释放device 资源
   aclrtFree(inputDeviceAddr);
@@ -1288,6 +1295,11 @@ int main() {
   aclrtFree(slotmappingDeviceAddr);
   aclrtFree(ctkvScaleDeviceAddr);
   aclrtFree(qNopeScaleDeviceAddr);
+  aclrtFree(qOutDeviceAddr);
+  aclrtFree(kvCacheOutDeviceAddr);
+  aclrtFree(qRopeOutDeviceAddr);
+  aclrtFree(krCacheOutDeviceAddr);
+  aclrtFree(qDownOutDeviceAddr);
 
   // 8. 释放host 资源
   aclrtFree(inputHostAddr);
@@ -1314,6 +1326,11 @@ int main() {
   aclrtFree(slotmappingHostAddr);
   aclrtFree(ctkvScaleHostAddr);
   aclrtFree(qNopeScaleHostAddr);
+  aclrtFree(qOutHostAddr);
+  aclrtFree(kvCacheOutHostAddr);
+  aclrtFree(qRopeOutHostAddr);
+  aclrtFree(krCacheOutHostAddr);
+  aclrtFree(qDownOutHostAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }

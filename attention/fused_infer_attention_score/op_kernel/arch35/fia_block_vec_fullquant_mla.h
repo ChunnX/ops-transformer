@@ -17,25 +17,13 @@
 
 #include "kernel_operator.h"
 #include "adv_api/activation/softmax.h"
-#if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast_arch35.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode_arch35.h"
-#else
-#include "../../common/arch35/flash_attention_score_common_regbase_arch35.h"
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
-#include "../../common/arch35/vf/vf_flashupdate_new.h"
-#include "../../common/arch35/vf/vf_div_cast_arch35.h"
-#include "../../common/arch35/vf/vf_flash_decode_arch35.h"
-#endif
 #include "fia_public_define_arch35.h"
-#if __has_include("../../../common/op_kernel/vector_common.h")
 #include "../../../common/op_kernel/vector_common.h"
-#else
-#include "../../common/vector_common.h"
-#endif
 #include "memory_copy_arch35_fused_infer.h"
 
 using namespace AscendC;
@@ -91,7 +79,7 @@ public:
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
-    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     using flashdecodeGmType = typename std::conditional<FLASH_DECODE, GlobalTensor<float>, int8_t>::type;
 
     using MM1_OUT_T = T;
@@ -456,7 +444,7 @@ public:
         float slopes = 0.0f;
         float posShift = 0.0f;
         uint32_t pseStride = 0;
-        uint32_t actVecMSizeAlign16 = runInfo.actMSizeAlign32 >> 1;
+        uint32_t actVecMSizeAlign16 = runInfo.actMSizeAlign >> 1;
 
         if constexpr (HAS_MASK) {
             attenMaskUb = this->attenMaskInQue[0].template AllocTensor<uint8_t>();
@@ -791,6 +779,24 @@ public:
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
 
+    __aicore__ inline bool CalcBlockNeedRowInvalid(RunInfoX &runInfo, int64_t s1FirstValidToken,
+                                                   int64_t s1LastValidToken)
+    {
+        int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+        int32_t vecMEndIdx = vecMStartIdx + runInfo.actVecMSize - 1;
+        int32_t s1StartTdx;
+        int32_t s1EndTdx;
+        bool ret = false;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_SBH ||
+                      layout == LayOutTypeEnum::LAYOUT_TND) {
+            // S1G layout
+            s1StartTdx = vecMStartIdx / constInfo.realGSize;
+            s1EndTdx = vecMEndIdx / constInfo.realGSize;
+            ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+        }
+        return ret;
+    }
+
     template <typename VEC2_RES_T>
     __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t mStartVec, int64_t mDealSize,
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
@@ -806,6 +812,18 @@ public:
                 constInfo.isRowInvalidOpen || ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) && hasValidRow);
             if (!batchNeedRowInvalid) {
                 return;
+            }
+
+            bool blockNeedRowInvalid = CalcBlockNeedRowInvalid(runInfo, s1FirstValidToken, s1LastValidToken);
+            blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
+
+            if (blockNeedRowInvalid) {
+                LocalTensor<float> maxTensor =
+                    softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
+                if constexpr (!POST_QUANT) {
+                    RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
+                                              static_cast<uint32_t>(dSizeAligned64));
+                }
             }
         }
     }
@@ -894,7 +912,7 @@ class FAFullQuantMlaBlockVecDummy {
 public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
-    using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
+    using ConstInfoX = ConstInfo_t;
     using OUT_T = OUTPUT_T;
     __aicore__ inline FAFullQuantMlaBlockVecDummy(ConstInfoX &constInfo)
         : constInfo(constInfo){};

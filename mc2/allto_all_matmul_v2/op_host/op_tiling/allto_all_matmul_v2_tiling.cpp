@@ -13,14 +13,15 @@
  * \brief Tiling implementation for AlltoAllMatmulV2
  */
 
-#include "arch35/allto_all_matmul_v2_tiling_base.h"
-
 #include <cstdio>
 #include <string>
+#include <cstring>
 #include <register/op_def_registry.h>
 #include <register/op_impl_registry.h>
 #include "graph/types.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "mc2_exception_dump.h"
+#include "op_host/tiling_templates_registry.h"
 
 using namespace ge;
 
@@ -37,7 +38,7 @@ static ge::graphStatus AlltoAllMatmulV2TilingFunc(gert::TilingContext *context)
     }
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch != NpuArch::DAV_3510) {
+    if (npuArch != Ops::Base::DAV_3510) {
         OP_LOGE_WITHOUT_REPORT(context->GetNodeName(),
                                "[platform] AlltoAllMatmulV2 only supports DAV_3510, current arch is not supported");
         return ge::GRAPH_FAILED;
@@ -57,4 +58,24 @@ IMPL_OP_OPTILING(AlltoAllMatmulV2)
     .Tiling(AlltoAllMatmulV2TilingFunc)
     .TilingParse<AlltoAllMatmulV2CompileInfo>(TilingParseForAlltoAllMatmulV2);
 
+#if MC2_DFX_ENABLE
+inline void AlltoAllMatmulV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    const char *socName = aclrtGetSocName();
+    if (std::strstr(socName, "Ascend950") == nullptr) {
+        return;
+    }
+    Mc2Exception::Mc2DumpTilingAndWorkspace(args, "AlltoAllMatmulV2",
+                                            9U,  // tilingGmArgIdx
+                                            8U); // workspaceGmArgIdx
+    Mc2Exception::Mc2DumpUrmaContext(args, "AlltoAllMatmulV2",
+                                     0U,  // contextArgIdx
+                                     9U); // tilingGmArgIdx
+}
+
+__attribute__((constructor)) void RegisterAlltoAllMatmulV2ExceptionFunc()
+{
+    IMPL_OP(AlltoAllMatmulV2).ExceptionDumpParseFunc(AlltoAllMatmulV2ExceptionImplWrapper);
+}
+#endif // MC2_DFX_ENABLE
 } // namespace MC2Tiling

@@ -10,7 +10,7 @@
 
 /*!
  * \file fragment_tensor.h
- * \brief FragmentTensor：FragmentTensor：多个 GM fragment 的统一抽象，支持 Slice / Copy / Scatter。
+ * \brief FragmentTensor：FragmentTensor：多个 GM fragment 的统一抽象，支持 slice / Copy / Scatter。
  */
 
 #pragma once
@@ -58,7 +58,7 @@ struct FragmentParam {
 template <uint32_t Dims, size_t... Is>
 __aicore__ inline auto MakeCoordFromArrayImpl(const uint64_t (&arr)[Dims], AscendC::Std::index_sequence<Is...>)
 {
-    return AscendC::Te::MakeCoord(static_cast<int64_t>(arr[Is])...);
+    return asc::te::make_coord(static_cast<int64_t>(arr[Is])...);
 }
 
 template <uint32_t Dims>
@@ -70,7 +70,7 @@ __aicore__ inline auto MakeCoordFromArray(const uint64_t (&arr)[Dims])
 template <uint32_t Dims, size_t... Is>
 __aicore__ inline auto MakeShapeFromArrayImpl(const uint64_t (&arr)[Dims], AscendC::Std::index_sequence<Is...>)
 {
-    return AscendC::Te::MakeShape(static_cast<int64_t>(arr[Is])...);
+    return asc::te::make_shape(static_cast<int64_t>(arr[Is])...);
 }
 
 template <uint32_t Dims>
@@ -96,7 +96,7 @@ public:
      * \note addrList 必须在 FragmentTensor 整个生命周期内保持有效，
      *       本类只保存指针，不拷贝数组内容。调用方须保证 addrList 非空。
      */
-    __aicore__ inline FragmentTensor(const FragmentParam<Dims> &fragParam, GM_ADDR const *addrList)
+    __aicore__ inline FragmentTensor(const FragmentParam<Dims>& fragParam, GM_ADDR const* addrList)
         : fragParam_(fragParam)
     {
         if (addrList != nullptr) {
@@ -108,14 +108,14 @@ public:
 
     __aicore__ inline auto GetFragment(uint32_t idx) const
     {
-        auto fragmentAddr = reinterpret_cast<__gm__ ElementType *>(addrList_[idx]);
+        auto fragmentAddr = reinterpret_cast<__gm__ ElementType*>(addrList_[idx]);
 
         uint64_t fragmentShape[Dims];
         ArrayCopy(fragmentShape, fragParam_.assembledShape, AscendC::Std::make_index_sequence<Dims>{});
         fragmentShape[fragParam_.assembleAxis] = fragParam_.fragmentSize;
 
-        auto memPtr = AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(fragmentAddr);
-        return AscendC::Te::MakeTensor(memPtr, MakeLayout(fragmentShape));
+        auto memPtr = asc::te::make_mem_ptr<asc::te::location::gm>(fragmentAddr);
+        return asc::te::make_tensor(memPtr, MakeLayout(fragmentShape));
     }
 
     __aicore__ inline uint64_t GetFragmentSize() const
@@ -143,14 +143,14 @@ public:
         return addrList_[idx];
     }
 
-    __aicore__ inline void UpdateAddrList(GM_ADDR const *addrList)
+    __aicore__ inline void UpdateAddrList(GM_ADDR const* addrList)
     {
         if (addrList != nullptr) {
             addrList_ = addrList;
         }
     }
 
-    __aicore__ inline const FragmentParam<Dims> &GetFragParam() const
+    __aicore__ inline const FragmentParam<Dims>& GetFragParam() const
     {
         return fragParam_;
     }
@@ -164,8 +164,9 @@ public:
         return sliceShape_[d];
     }
 
+    // 逻辑切片（记录 coord/shape，不做地址解析），与 asc::te::tensor::slice 同名同义，支持泛型代码统一调用
     template <typename CoordType, typename ShapeType>
-    __aicore__ inline auto Slice(const CoordType &coord, const ShapeType &shape) const
+    __aicore__ inline auto slice(const CoordType& coord, const ShapeType& shape) const
     {
         FragmentTensor result(*this);
         SliceImpl(result.sliceCoord_, result.sliceShape_, coord, shape, AscendC::Std::make_index_sequence<Dims>{});
@@ -242,7 +243,7 @@ public:
     /*!
      * \brief 获取Fragment信息（按槽位填充，this 的 sliceCoord/sliceShape 提供非 assembleAxis 值）
      */
-    __aicore__ inline FragmentInfo GetFragmentInfo(uint32_t localIdx, const FragmentComposition &comp) const
+    __aicore__ inline FragmentInfo GetFragmentInfo(uint32_t localIdx, const FragmentComposition& comp) const
     {
         FragmentInfo info;
 
@@ -287,11 +288,11 @@ private:
     }
 
     template <typename CoordType, typename ShapeType, size_t... Is>
-    __aicore__ inline void SliceImpl(uint64_t (&coord)[Dims], uint64_t (&shape)[Dims], const CoordType &inCoord,
-                                     const ShapeType &inShape, AscendC::Std::index_sequence<Is...>) const
+    __aicore__ inline void SliceImpl(uint64_t (&coord)[Dims], uint64_t (&shape)[Dims], const CoordType& inCoord,
+                                     const ShapeType& inShape, AscendC::Std::index_sequence<Is...>) const
     {
-        ((coord[Is] = sliceCoord_[Is] + AscendC::Te::Get<Is>(inCoord)), ...);
-        ((shape[Is] = AscendC::Te::Get<Is>(inShape)), ...);
+        ((coord[Is] = sliceCoord_[Is] + asc::te::get<Is>(inCoord)), ...);
+        ((shape[Is] = asc::te::get<Is>(inShape)), ...);
     }
 
     template <size_t... Is>
@@ -306,15 +307,15 @@ private:
     }
 
     FragmentParam<Dims> fragParam_;
-    GM_ADDR const *addrList_{nullptr};
+    GM_ADDR const* addrList_{nullptr};
     uint64_t sliceCoord_[Dims]{};
     uint64_t sliceShape_[Dims]{};
 };
 
 template <bool isScatter, typename CopyHandle, typename TensorType, uint32_t Dims, uint32_t MaxF, typename GmLayoutF,
           typename ElemT>
-__aicore__ inline void FragmentSliceCopy(CopyHandle copyHandle, TensorType &tensor,
-                                         const FragmentTensor<Dims, MaxF, GmLayoutF, ElemT> &fragmentTensor)
+__aicore__ inline void FragmentSliceCopy(CopyHandle copyHandle, TensorType& tensor,
+                                         const FragmentTensor<Dims, MaxF, GmLayoutF, ElemT>& fragmentTensor)
 {
     const auto assembleAxis = fragmentTensor.GetSplitAxis();
     auto composition = fragmentTensor.ComputeFragmentComposition(fragmentTensor.GetSliceCoord(assembleAxis),
@@ -323,62 +324,60 @@ __aicore__ inline void FragmentSliceCopy(CopyHandle copyHandle, TensorType &tens
     for (uint32_t idx = 0; idx < composition.totalFragmentCnt; ++idx) {
         auto info = fragmentTensor.GetFragmentInfo(idx, composition);
 
-        if constexpr (isScatter) {
-            const uint64_t realFragmentSize = fragmentTensor.GetRealFragmentSize();
-            if (info.fragCoord[assembleAxis] >= realFragmentSize) {
-                continue;
-            }
-            uint64_t remain = realFragmentSize - info.fragCoord[assembleAxis];
-            if (info.copyShape[assembleAxis] > remain) {
-                info.copyShape[assembleAxis] = remain;
-            }
+        const uint64_t realFragmentSize = fragmentTensor.GetRealFragmentSize();
+        if (info.fragCoord[assembleAxis] >= realFragmentSize) {
+            continue;
+        }
+        uint64_t remain = realFragmentSize - info.fragCoord[assembleAxis];
+        if (info.copyShape[assembleAxis] > remain) {
+            info.copyShape[assembleAxis] = remain;
         }
 
         auto fragment = fragmentTensor.GetFragment(info.fragmentIdx);
         auto fragSlice =
-            fragment.Slice(MakeCoordFromArray<Dims>(info.fragCoord), MakeShapeFromArray<Dims>(info.copyShape));
+            fragment.slice(MakeCoordFromArray<Dims>(info.fragCoord), MakeShapeFromArray<Dims>(info.copyShape));
         auto tensorSlice =
-            tensor.Slice(MakeCoordFromArray<Dims>(info.localCoord), MakeShapeFromArray<Dims>(info.copyShape));
+            tensor.slice(MakeCoordFromArray<Dims>(info.localCoord), MakeShapeFromArray<Dims>(info.copyShape));
         if constexpr (isScatter) {
-            AscendC::Te::Copy(copyHandle, fragSlice, tensorSlice);
+            asc::te::copy(copyHandle, fragSlice, tensorSlice);
         } else {
-            AscendC::Te::Copy(copyHandle, tensorSlice, fragSlice);
+            asc::te::copy(copyHandle, tensorSlice, fragSlice);
         }
     }
 }
 
 // L1 tensor K 轴补零，复用 Blaze PadZero 底层 API。
 template <typename TensorL1>
-__aicore__ inline void PadMxKAL1Zero(TensorL1 &tensorL1, uint64_t kAxis)
+__aicore__ inline void PadMxKAL1Zero(TensorL1& tensorL1, uint64_t kAxis)
 {
-    using type = typename TensorL1::elementType;
-    auto layoutL1 = tensorL1.Layout();
-    auto kAxisL1Align = AscendC::Std::get<0>(AscendC::Std::get<1>(layoutL1.Shape())) *
-                        AscendC::Std::get<1>(AscendC::Std::get<1>(layoutL1.Shape()));
+    using type = typename TensorL1::element_type;
+    auto layoutL1 = tensorL1.layout();
+    auto kAxisL1Align = AscendC::Std::get<0>(AscendC::Std::get<1>(layoutL1.shape())) *
+                        AscendC::Std::get<1>(AscendC::Std::get<1>(layoutL1.shape()));
 
-    if constexpr (AscendC::Te::IsSatisfiedPtnFormatV<TensorL1, AscendC::Te::NZLayoutPtn>) {
+    if constexpr (asc::te::is_satisfied_ptn_format_v<TensorL1, asc::te::nz_layout_ptn>) {
         if constexpr (Blaze::Gemm::Tile::PadMxKL1Base::IsMxFp4<type>()) {
             return;
         }
-        if (kAxisL1Align - kAxis < AscendC::Te::C0_SIZE<type>) {
+        if (kAxisL1Align - kAxis < asc::te::c0_size<type>) {
             return;
         }
-        auto mAlign = AscendC::Std::get<0>(AscendC::Std::get<0>(layoutL1.Shape())) *
-                      AscendC::Std::get<1>(AscendC::Std::get<0>(layoutL1.Shape()));
-        auto kAxisND2NZAlign = AscendC::Std::ceil_align(kAxis, AscendC::Te::C0_SIZE<type>);
-        auto sliceTensor = tensorL1.Slice(AscendC::Te::MakeCoord(0, kAxisND2NZAlign),
-                                          AscendC::Te::MakeShape(mAlign, kAxisL1Align - kAxisND2NZAlign));
+        auto mAlign = AscendC::Std::get<0>(AscendC::Std::get<0>(layoutL1.shape())) *
+                      AscendC::Std::get<1>(AscendC::Std::get<0>(layoutL1.shape()));
+        auto kAxisND2NZAlign = AscendC::Std::ceil_align(kAxis, asc::te::c0_size<type>);
+        auto sliceTensor = tensorL1.slice(asc::te::make_coord(0, kAxisND2NZAlign),
+                                          asc::te::make_shape(mAlign, kAxisL1Align - kAxisND2NZAlign));
         Blaze::Gemm::Tile::PadMxKL1Base::PadZero(sliceTensor, 1, mAlign, 0);
-    } else if constexpr (AscendC::Te::IsSatisfiedPtnFormatV<TensorL1, AscendC::Te::ZNLayoutPtn>) {
+    } else if constexpr (asc::te::is_satisfied_ptn_format_v<TensorL1, asc::te::zn_layout_ptn>) {
         if (kAxis == kAxisL1Align) {
             return;
         }
-        auto m1 = AscendC::Std::get<1>(AscendC::Std::get<0>(layoutL1.Shape()));
-        auto m0 = AscendC::Std::get<0>(AscendC::Std::get<0>(layoutL1.Shape()));
-        auto dstRowStride = AscendC::Std::get<1>(AscendC::Std::get<0>(layoutL1.Stride()));
-        auto dstGap = (dstRowStride / AscendC::Te::C0_ELEMENT<type>)-kAxisL1Align + kAxis;
+        auto m1 = AscendC::Std::get<1>(AscendC::Std::get<0>(layoutL1.shape()));
+        auto m0 = AscendC::Std::get<0>(AscendC::Std::get<0>(layoutL1.shape()));
+        auto dstRowStride = AscendC::Std::get<1>(AscendC::Std::get<0>(layoutL1.stride()));
+        auto dstGap = (dstRowStride / asc::te::c0_element<type>)-kAxisL1Align + kAxis;
         auto sliceTensor =
-            tensorL1.Slice(AscendC::Te::MakeCoord(0, kAxis), AscendC::Te::MakeShape(m1 * m0, kAxisL1Align - kAxis));
+            tensorL1.slice(asc::te::make_coord(0, kAxis), asc::te::make_shape(m1 * m0, kAxisL1Align - kAxis));
         Blaze::Gemm::Tile::PadMxKL1Base::PadZero(sliceTensor, m1, kAxisL1Align - kAxis, dstGap);
     }
 }

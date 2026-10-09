@@ -9,6 +9,7 @@
  */
 
 #include <dlfcn.h>
+#include <vector>
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz.h"
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
 #include "aclnn_grouped_matmul_finalize_routing_v3.h"
@@ -83,6 +84,8 @@ static const int ND_K_VALUE_ALIGN = 64;
 
 static const int64_t K_VALUE_2048 = 2048;
 static const int64_t K_VALUE_128 = 128;
+static const int64_t ACLNN_OUT_DTYPE_FLOAT32 = 0;
+static const int64_t ACLNN_OUT_DTYPE_BF16 = 2;
 
 static const int64_t N_VALUE_7168 = 7168;
 static const int64_t N_VALUE_256 = 256;
@@ -91,26 +94,25 @@ static const int64_t N_VALUE_64 = 64;
 static const int64_t PER_INT4_IN_U32 = 8;
 static const int64_t PER_INT4_IN_U8 = 2;
 
-static const std::initializer_list<op::DataType> IN_TYPE_SUPPORT_LIST = {op::DataType::DT_INT8, op::DataType::DT_INT4};
-static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST = {
-    op::DataType::DT_FLOAT, op::DataType::DT_INT64, op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> OFFSET_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
-static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64,
-                                                                                op::DataType::DT_INT32};
+static const std::vector<op::DataType> IN_TYPE_SUPPORT_LIST = {op::DataType::DT_INT8, op::DataType::DT_INT4};
+static const std::vector<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT, op::DataType::DT_INT64,
+                                                                  op::DataType::DT_BF16};
+static const std::vector<op::DataType> BIAS_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::vector<op::DataType> OFFSET_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::vector<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
+static const std::vector<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64, op::DataType::DT_INT32};
 
 // w4a8 support dtype
-static const std::initializer_list<op::DataType> W4A8_BIAS_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> W4A8_IN1_TYPE_SUPPORT_LIST = {op::DataType::DT_INT8};
-static const std::initializer_list<op::DataType> W4A8_IN2_TYPE_SUPPORT_LIST = {op::DataType::DT_INT4};
-static const std::initializer_list<op::DataType> W4A8_OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> W4A8_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
-static const std::initializer_list<op::DataType> W4A8_ROW_INDEX_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
+static const std::vector<op::DataType> W4A8_BIAS_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::vector<op::DataType> W4A8_IN1_TYPE_SUPPORT_LIST = {op::DataType::DT_INT8};
+static const std::vector<op::DataType> W4A8_IN2_TYPE_SUPPORT_LIST = {op::DataType::DT_INT4};
+static const std::vector<op::DataType> W4A8_OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::vector<op::DataType> W4A8_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
+static const std::vector<op::DataType> W4A8_ROW_INDEX_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
 
 // CheckW4orW8 Params
 struct CheckW4orW8DimParams {
@@ -240,7 +242,7 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
     OP_CHECK_MIN_DIM(params.x1, MIN_DIM_NUM_ND, return false);
     OP_CHECK_MIN_DIM(params.out, MIN_DIM_NUM_ND, return false);
 
-    if (CheckType(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
+    if (gmm::CheckDTypeInVector(params.x2->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
         OP_CHECK_WRONG_DIMENSION(params.scale, MX_SCALE_DIM, return false);
         if (params.bias != nullptr) {
             OP_CHECK_WRONG_DIMENSION(params.bias, TWO_DIM_NUM, return false);
@@ -257,7 +259,7 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
         OP_CHECK_WRONG_DIMENSION(params.scale, SCALE_DIM, return false);
     }
 
-    if (CheckType(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
+    if (gmm::CheckDTypeInVector(params.x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX)) {
         OP_CHECK_WRONG_DIMENSION(params.pertokenScaleOptional, MX_PERTOKEN_SCALE_DIM, return false);
     } else if (params.pertokenScaleOptional != nullptr) {
         OP_CHECK_WRONG_DIMENSION(params.pertokenScaleOptional, 1, return false);
@@ -559,6 +561,27 @@ static bool IsMxA8W4(const GroupedMatmulParams &params)
 {
     return params.x1->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
            params.x2->GetDataType() == DataType::DT_FLOAT4_E2M1;
+}
+
+static bool IsMxBf16OutputSupported(const GroupedMatmulParams &params)
+{
+    if (params.x1 == nullptr || params.x2 == nullptr) {
+        return false;
+    }
+    const auto xDtype = params.x1->GetDataType();
+    const auto weightDtype = params.x2->GetDataType();
+    const bool isMxFp4 = xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1;
+    const bool isMxFp8E4M3 = xDtype == DataType::DT_FLOAT8_E4M3FN && weightDtype == DataType::DT_FLOAT8_E4M3FN;
+    return params.x2->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ && (isMxFp4 || isMxFp8E4M3);
+}
+
+static int64_t GetL0OutputDtype(const GroupedMatmulParams &params)
+{
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && IsMxBf16OutputSupported(params) &&
+        params.out->GetDataType() == DataType::DT_BF16) {
+        return ACLNN_OUT_DTYPE_BF16;
+    }
+    return params.dtype;
 }
 
 static aclnnStatus CheckParams(GroupedMatmulParams &params)
@@ -891,8 +914,8 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     auto ret = WeightNZCaseProcess(x2, transposeX2, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    if (scale != nullptr && CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
-        CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
+    if (scale != nullptr && gmm::CheckDTypeInVector(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+        gmm::CheckDTypeInVector(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
         bool transposeScale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposeScale, executor);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -967,9 +990,10 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     int64_t outputBS = params.out->GetViewShape().GetDim(outDimNum - PENULTIMATE_DIM);
 
     // 调用l0算子GroupedMatmulFinalizeRouting进行计算，包含infershape
+    int64_t l0Dtype = GetL0OutputDtype(params2);
     auto matmulRet = l0op::GroupedMatmulFinalizeRouting(
         reformatedX1, params2.x2, params2.scale, reformatedBias, reformatedPertokenScaleOptional, reformatedGroupList,
-        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, 0, params.shareInputWeight,
+        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, l0Dtype, params.shareInputWeight,
         params.shareInputOffset, params.transposeX1, params.transposeX2, outputBS, params.groupListType,
         params.tuningConfig, executor);
     ret = PostMatmulCalcProcess(matmulRet, params, executor);
@@ -1052,7 +1076,8 @@ static inline aclnnStatus CheckWeightNzFormat(const aclTensor *x1, const aclTens
 }
 
 static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams &params, bool transposeX, bool transposeW,
-                                            const char *opName = "GroupedMatmulFinalizeRoutingWeightNz")
+                                            const char *opName = "GroupedMatmulFinalizeRoutingWeightNz",
+                                            bool supportBfloat16 = false)
 {
     // 支持sharedInput输入为空, 不支持logit为空
     auto scene = params.x != nullptr && params.w != nullptr && params.scaleOptional != nullptr &&
@@ -1064,8 +1089,9 @@ static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams &param
         return ACLNN_ERR_PARAM_NULLPTR;
     }
 
-    if (params.dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s dtype must be 0 (FLOAT32), but is %lld.", opName, params.dtype);
+    if (params.dtype != ACLNN_OUT_DTYPE_FLOAT32 && !(supportBfloat16 && params.dtype == ACLNN_OUT_DTYPE_BF16)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s dtype must be 0 (FLOAT32) or 2 (BFLOAT16), but is %lld.", opName,
+                params.dtype);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -1178,11 +1204,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
                    DFX_OUT(out));
     auto checkInputRet = CheckInputParamsForWeightNzV2(x1, x2, antiquantScaleOptional, antiquantOffsetOptional);
     CHECK_RET(checkInputRet == ACLNN_SUCCESS, checkInputRet);
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "GroupedMatmulFinalizeRoutingWeightNzV2 dtype must be 0 (FLOAT32), but is %lld.", dtype);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
@@ -1239,7 +1260,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
 
         CheckSupportSceneParams sceneParams{x1,    tmpWeight, scale, pertokenScaleOptional, groupList, sharedInput,
                                             logit, rowIndex,  dtype};
-        auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2, "GroupedMatmulFinalizeRoutingWeightNzV2");
+        auto ret0 =
+            CheckSupportScene(sceneParams, transposeX1, transposeX2, "GroupedMatmulFinalizeRoutingWeightNzV2", true);
         CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
         finalWeight = tmpWeight;
     }
@@ -1263,6 +1285,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
                                      .SetOffset(offsetOptional)
                                      .SetTuningConfig(tuningConfigOptional)
                                      .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
+                                     .SetDtype(dtype)
                                      .SetTranspose(transposeX1, transposeX2)
                                      .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());
@@ -1418,11 +1441,12 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     CHECK_RET(out != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingV2,
-                   DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional,
-                          sharedInputOptional, logitOptional, rowIndexOptional, dtype, sharedInputWeight,
-                          sharedInputOffset, transposeX1, transposeX2, groupListType),
-                   DFX_OUT(out));
+    L2_DFX_PHASE_1(
+        aclnnGroupedMatmulFinalizeRoutingV2,
+        DFX_IN(x1, x2, scaleOptional, biasOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
+               pertokenScaleOptional, groupListOptional, sharedInputOptional, logitOptional, rowIndexOptional, dtype,
+               sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
+        DFX_OUT(out));
     auto ret0 = ValidateV2Inputs(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional,
                                  logitOptional, rowIndexOptional, antiquantScaleOptional, antiquantOffsetOptional,
                                  dtype, transposeX1, transposeX2);
@@ -1536,11 +1560,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
     CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
-    if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0 (FLOAT32), but is %lld.",
-                dtype);
-        return ACLNN_ERR_PARAM_INVALID;
-    } else if (viewDimNum < MIN_DIM_NUM_ND) {
+    if (viewDimNum < MIN_DIM_NUM_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "aclnnGroupedMatmulFinalizeRoutingV3 weightNd x2's view dimNum should be greater than 1, but is %lld.",
                 viewDimNum);
@@ -1572,14 +1592,19 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    bool isMXValid = CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
-                     CheckType(tmpWeightV3->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
+    bool isMXValid = gmm::CheckDTypeInVector(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+                     gmm::CheckDTypeInVector(tmpWeightV3->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && !isMXValid) {
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             "aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize", "x and weight",
             "x=" + std::string(op::ToString(x1->GetDataType()).GetString()) +
                 ", weight=" + op::ToString(tmpWeightV3->GetDataType()).GetString(),
             "for mx, the dtypes of x and weight must be within the range {FLOAT8_E5M2, FLOAT8_E4M3FN, FLOAT4_E2M1}");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (dtype != ACLNN_OUT_DTYPE_FLOAT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 dtype must be 0 (FLOAT32), but is %lld.",
+                dtype);
         return ACLNN_ERR_PARAM_INVALID;
     }
     auto uniqueExecutor = CREATE_EXECUTOR();

@@ -1,26 +1,26 @@
 # aclnnPoolKeyIndexer
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/pool_key_indexer)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/attention/pool_key_indexer)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -630,17 +630,17 @@ aclnnStatus aclnnPoolKeyIndexer(
   - 输出维度约束：sparseIndicesOut和sparseValuesOut的B、S1（或T1）维度必须与query对应维度一致。
 - 输入属性限制：
   - topk需满足topk % pool_size == 0，pool_size支持[1, 128]，topk支持[1, 2048]以及3072、4096、5120、6144、7168、8192。
-  - block_size取值为16的倍数，最大支持1024。
+  - block_size取值为16的倍数，最大支持2048。
   - 当layoutKeyOptional为PA_BBND且poolKey为0轴非连续输入时，keyStride0应传入poolKey的实际stride(0)（元素单位，且不小于block_size * N2 * D）；keyStride0为-1时表示未指定，按连续输入推导；keyStride0指定值与poolKey运行时实际stride冲突时报错。
   - 当layoutKeyOptional为PA_BBND且kDescaleOptional为0轴非连续输入时（量化场景），kDescaleStride0应传入kDescaleOptional的实际stride(0)（元素单位，且不小于连续stride：quantMode为0时为block_size * N2，quantMode为1时为block_size * N2 * (D / 32)）；kDescaleStride0为-1时表示未指定，按连续输入推导；kDescaleStride0指定值与kDescaleOptional运行时实际stride冲突时报错。
 - 输入数据类型限制：
   - 参数query、poolKey的数据类型应保持一致。
   - 非量化场景（quantMode为-1）下，参数weights的数据类型应与query、poolKey保持一致；量化场景（quantMode为0或1）下，参数weights为FLOAT16或BFLOAT16。
   <!-- npu="950" id8 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：支持FLOAT8_E4M3FN（query、poolKey）数据类型，并支持量化场景（quantMode为0时反量化系数为FLOAT，quantMode为1时反量化系数为FLOAT8_E8M0）。
+  - <term>Ascend 950PR&950DT系列产品</term>：支持FLOAT8_E4M3FN（query、poolKey）数据类型，并支持量化场景（quantMode为0时反量化系数为FLOAT，quantMode为1时反量化系数为FLOAT8_E8M0）。
   <!-- end id8 -->
   <!-- npu="A3,910b" id7 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持FLOAT8_E4M3FN与FLOAT8_E8M0数据类型，不支持量化场景。
+  - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：不支持FLOAT8_E4M3FN与FLOAT8_E8M0数据类型，不支持量化场景。
   <!-- end id7 -->
 - 输入数据布局限制：
   - 参数query、poolKey的数据布局（layoutQueryOptional与layoutKeyOptional）需保持一致，PageAttention场景（layoutKeyOptional为PA_BBND时）除外。

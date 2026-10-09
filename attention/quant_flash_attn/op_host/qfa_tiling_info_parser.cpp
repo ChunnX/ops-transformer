@@ -31,7 +31,7 @@ namespace quant_flash_attn {
 
 ge::graphStatus QfaInfoParser::GetEmptyTensorFlag()
 {
-    auto checkEmptyTensor = [this](const gert::StorageShape *shape, const std::string &name) -> bool {
+    auto checkEmptyTensor = [this](const gert::StorageShape* shape, const std::string& name) -> bool {
         if (shape == nullptr) {
             return false;
         }
@@ -112,7 +112,7 @@ ge::graphStatus QfaInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::GetCuSeqLenQSize(int64_t &size)
+ge::graphStatus QfaInfoParser::GetCuSeqLenQSize(int64_t& size)
 {
     if (opParamInfo_.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName_, CU_SEQLENS_Q_NAME.c_str());
@@ -147,7 +147,7 @@ ge::graphStatus QfaInfoParser::GetNpuInfo()
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
     npuArch_ = ascendcPlatform.GetCurNpuArch();
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (npuArch_ != NpuArch::DAV_3510 && npuArch_ != NpuArch::DAV_9201) {
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
@@ -189,12 +189,23 @@ void QfaInfoParser::GetOptionalInputParaSinksInfo()
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
 }
 
+void QfaInfoParser::GetOptionalInputParaVTailInfo()
+{
+    opParamInfo_.vTail.tensor = context_->GetOptionalInputTensor(V_TAIL_INDEX);
+    opParamInfo_.vTail.desc = context_->GetOptionalInputDesc(V_TAIL_INDEX);
+    opParamInfo_.blockTableTail.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_TAIL_INDEX);
+    opParamInfo_.blockTableTail.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_TAIL_INDEX);
+    opParamInfo_.sequsedVTail.tensor = context_->GetOptionalInputTensor(SEQUSED_V_TAIL_INDEX);
+    opParamInfo_.sequsedVTail.desc = context_->GetOptionalInputDesc(SEQUSED_V_TAIL_INDEX);
+}
+
 void QfaInfoParser::GetOptionalInputParaInfo()
 {
     GetOptionalInputParaQuantInfo();
     GetOptionalInputParaSeqLengthInfo();
     GetOptionalInputParaMaskInfo();
     GetOptionalInputParaSinksInfo();
+    GetOptionalInputParaVTailInfo();
 }
 
 void QfaInfoParser::GetInputParaInfo()
@@ -529,7 +540,7 @@ ge::graphStatus QfaInfoParser::GetActualSeqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
     qfaInfo.blockSize = blockSize_;
@@ -549,7 +560,27 @@ void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.maxSeqKv = maxSeqKv_;
 }
 
-void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateVTailInfo(QfaTilingInfo& qfaInfo)
+{
+    // l0op层会将未传入的optional输入替换为空占位tensor(非nullptr但shapeSize==0),
+    // 必须三重判空(tensor指针/shape尺寸/desc), 与sequsedQ的防御模式一致, 否则默认调用被误判为启用尾块
+    auto isEmptyOptional = [](const QfaOptionalParaInfo& para) {
+        return (para.tensor == nullptr) || (para.desc == nullptr) ||
+               (para.tensor->GetStorageShape().GetShapeSize() == 0);
+    };
+    qfaInfo.hasVTail = !isEmptyOptional(opParamInfo_.vTail) && !isEmptyOptional(opParamInfo_.sequsedVTail);
+    qfaInfo.tailMaxBlockNum = 0;
+    qfaInfo.vTailStrides = nullptr;
+    if (qfaInfo.hasVTail && context_->InputIsView(V_TAIL_INDEX)) {
+        qfaInfo.vTailStrides = context_->GetInputStride(V_TAIL_INDEX);
+    }
+    if (qfaInfo.hasVTail && !isEmptyOptional(opParamInfo_.blockTableTail) &&
+        (opParamInfo_.blockTableTail.tensor->GetStorageShape().GetDimNum() >= arch35QFA::DIM_NUM_2)) {
+        qfaInfo.tailMaxBlockNum = opParamInfo_.blockTableTail.tensor->GetStorageShape().GetDim(1);
+    }
+}
+
+void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.qLayout = layoutQ_;
     qfaInfo.kvLayout = layoutKV_;
@@ -557,12 +588,12 @@ void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.layoutQDescale = layoutQDescale_;
 }
 
-void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.quantMode = quantMode_;
 }
 
-void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.bSize = bSize_;
     qfaInfo.n1Size = n1Size_;
@@ -576,7 +607,7 @@ void QfaInfoParser::GenerateAxisInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.kTSize = keyTSize_;
 }
 
-void QfaInfoParser::GenerateDtypeInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateDtypeInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.inputQType = inputQType_;
     qfaInfo.inputKvType = inputKvType_;
@@ -586,7 +617,7 @@ void QfaInfoParser::GenerateDtypeInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.vDescaleType = vDescaleType_;
 }
 
-void QfaInfoParser::GenerateInfo(QfaTilingInfo &qfaInfo)
+void QfaInfoParser::GenerateInfo(QfaTilingInfo& qfaInfo)
 {
     qfaInfo.opName = opName_;
     qfaInfo.platformInfo = platformInfo_;
@@ -599,6 +630,7 @@ void QfaInfoParser::GenerateInfo(QfaTilingInfo &qfaInfo)
     GenerateAxisInfo(qfaInfo);
     GenerateDtypeInfo(qfaInfo);
     GenerateQuantInfo(qfaInfo);
+    GenerateVTailInfo(qfaInfo);
     qfaInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
     qfaInfo.emptyTensorFlag = emptyTensorFlag_;
 
@@ -634,39 +666,6 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
         return ge::GRAPH_FAILED;
     }
 
-    uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
-    using QM = QfaQuantMode;
-    if (quantMode_ == QM::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
-        if (qDescaleDimNum != 1) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, Q_DESCALE_NAME.c_str(),
-                                                     (std::to_string(qDescaleDimNum) + "D").c_str(),
-                                                     "In HIF8 scenario, the shape dim of q_descale must be 1D");
-            return ge::GRAPH_FAILED;
-        }
-    } else if (quantMode_ ==
-               QM::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
-        if (qDescaleDimNum != 2) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
-                "In GQA_FP8_FULLQUANT scenario, the shape dim of q_descale must be 2D");
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
-        if (isDecode && qDescaleDimNum != 5) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
-                "In MxFP8 decode scenario(layout_q_descale=N2TGD), the shape dim of q_descale must be 5D");
-            return ge::GRAPH_FAILED;
-        }
-        if (!isDecode && qDescaleDimNum != 4) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                opName_, Q_DESCALE_NAME.c_str(), (std::to_string(qDescaleDimNum) + "D").c_str(),
-                "In MxFP8 prefill scenario(layout_q_descale=TND), the shape dim of q_descale must be 4D");
-            return ge::GRAPH_FAILED;
-        }
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -690,7 +689,7 @@ ge::graphStatus QfaInfoParser::ParseFeatureInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
+ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo& qfaInfo)
 {
     OP_LOGI(qfaInfo.opName, "enter QfaInfoParser::Parse!");
     if (context_ == nullptr) {

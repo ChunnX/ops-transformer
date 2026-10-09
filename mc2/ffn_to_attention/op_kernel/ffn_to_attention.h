@@ -46,6 +46,10 @@ public:
     __aicore__ inline void Process();
 
 private:
+    __aicore__ inline uint32_t GetCoreSendTokenCount();
+    __aicore__ inline void SendTokenDataToWindow(uint32_t tokenCnt, GlobalTensor<xType> &tokenDataGMTensor,
+                                                 GlobalTensor<int32_t> &tokenInfoTableGMTensor,
+                                                 DataCopyExtParams &xCopyParams, DataCopyExtParams &dataCopyParams);
     __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
     __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint32_t YOffset);
     TPipe *tpipe_{nullptr};
@@ -169,21 +173,44 @@ __aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::ReadToken
 }
 
 template <TemplateFFNToAttentionTypeClass>
+__aicore__ inline uint32_t FFNToAttention<TemplateFFNToAttentionTypeFunc>::GetCoreSendTokenCount()
+{
+    uint32_t calStartTokenId = 0;
+    uint32_t sendTokenNum = actualTokenNum_ / aivNum_;
+    uint32_t remainderRankNum = actualTokenNum_ % aivNum_;
+    if (aivId_ < remainderRankNum) { // 前remainderRankNum个aiv需要多发1个卡的数据
+        sendTokenNum += 1;
+        calStartTokenId += aivId_;
+    } else {
+        calStartTokenId += remainderRankNum;
+    }
+    if (calStartTokenId >= actualTokenNum_) {
+        sendTokenNum = 0;
+    }
+    return sendTokenNum;
+}
+
+template <TemplateFFNToAttentionTypeClass>
+__aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::SendTokenDataToWindow(
+    uint32_t tokenCnt, GlobalTensor<xType> &tokenDataGMTensor, GlobalTensor<int32_t> &tokenInfoTableGMTensor,
+    DataCopyExtParams &xCopyParams, DataCopyExtParams &dataCopyParams)
+{
+    if (tokenCnt == 0) {
+        SyncFunc<AscendC::HardEvent::S_MTE3>();
+    }
+    xQueue_.EnQue(xTmpTensor_);
+    xTmpTensor_ = xQueue_.DeQue<xType>();
+    DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams); // 数据搬入token_data位置上
+    xQueue_.FreeTensor<xType>(xTmpTensor_);
+    PipeBarrier<PIPE_MTE3>();
+    DataCopyPad(tokenInfoTableGMTensor, statusTensor_, dataCopyParams); // 状态位
+}
+
+template <TemplateFFNToAttentionTypeClass>
 __aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        uint32_t calStartTokenId = 0;
-        uint32_t sendTokenNum = actualTokenNum_ / aivNum_;
-        uint32_t remainderRankNum = actualTokenNum_ % aivNum_;
-        if (aivId_ < remainderRankNum) { // 前remainderRankNum个aiv需要多发1个卡的数据
-            sendTokenNum += 1;
-            calStartTokenId += aivId_;
-        } else {
-            calStartTokenId += remainderRankNum;
-        }
-        if (calStartTokenId >= actualTokenNum_) {
-            sendTokenNum = 0;
-        }
+        uint32_t sendTokenNum = GetCoreSendTokenCount();
         GM_ADDR curRankWinAddr;
         GlobalTensor<xType> tokenDataGMTensor;
         GlobalTensor<int32_t> tokenInfoTableGMTensor;
@@ -219,15 +246,7 @@ __aicore__ inline void FFNToAttention<TemplateFFNToAttentionTypeFunc>::Process()
                 (__gm__ xType *)(curRankWinAddr + winTokenInfoTableSize_ + tokenDataOffset));
 
             // 5. 复制数据到win区
-            if (tokenCnt == 0) {
-                SyncFunc<AscendC::HardEvent::S_MTE3>();
-            }
-            xQueue_.EnQue(xTmpTensor_);
-            xTmpTensor_ = xQueue_.DeQue<xType>();
-            DataCopyPad(tokenDataGMTensor, xTmpTensor_, xCopyParams); // 数据搬入token_data位置上
-            xQueue_.FreeTensor<xType>(xTmpTensor_);
-            PipeBarrier<PIPE_MTE3>();
-            DataCopyPad(tokenInfoTableGMTensor, statusTensor_, dataCopyParams); // 状态位
+            SendTokenDataToWindow(tokenCnt, tokenDataGMTensor, tokenInfoTableGMTensor, xCopyParams, dataCopyParams);
         }
     }
 }

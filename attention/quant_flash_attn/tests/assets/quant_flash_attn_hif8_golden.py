@@ -27,6 +27,30 @@ try:
 except ImportError:
     torch_npu = None
 
+logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
+logger = logging.getLogger(__name__)
+
+try:
+    # 优先custom单算子包(18输入schema含v_tail三件套);
+    # builtin整包的15输入schema先注册会导致custom注册被拒, 故不可先import builtin.ops
+    # (与 pytest 侧 common/quant_flash_attn_golden.py 同款fallback链)
+    from cann_ops_transformer_custom.ops.attention.quant_flash_attn import (
+        quant_flash_attn,
+        quant_flash_attn_metadata,
+    )
+
+    _HAS_NPU = True
+except ImportError:
+    try:
+        from cann_ops_transformer.ops import quant_flash_attn, quant_flash_attn_metadata
+
+        _HAS_NPU = True
+    except (ImportError, RuntimeError) as e:
+        quant_flash_attn = None
+        quant_flash_attn_metadata = None
+        logging.warning("Failed to import quant_flash_attn (custom / builtin): %s", e)
+        _HAS_NPU = False
+
 try:
     from . import generate_hifloat8_data as hif8_codec
 except ImportError:
@@ -195,10 +219,10 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale):
     S_ij = S_ij.masked_fill(mask_j, float("-inf"))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
+    m_block_j = m_block_j - ln_p_scale
     m_block_j = torch.max(mi, m_block_j)
-    m_block_j_copy = m_block_j - ln_p_scale
 
-    P_ij_raw = torch.exp(S_ij - m_block_j_copy)
+    P_ij_raw = torch.exp(S_ij - m_block_j)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = hif8_cast_p(P_ij_raw)
 

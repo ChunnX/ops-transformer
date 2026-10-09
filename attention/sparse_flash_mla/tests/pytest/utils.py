@@ -12,6 +12,7 @@
 import ast
 import math
 import itertools
+import re
 import numpy as np
 import os
 import pandas as pd
@@ -34,6 +35,45 @@ str_map_dict = {
     "BF16": torch.bfloat16,
     "FP16": torch.float16,
 }
+
+_EXTENDED_RANGE_TOKEN_RE = re.compile(
+    r"(?<![\w.'\"])([+-]?)(inf|nan)(?![\w.'\"])", re.IGNORECASE
+)
+
+
+def parse_datarange(value):
+    """Parse a range while allowing only the INF/NAN numeric extensions."""
+    if value is None or not isinstance(value, str):
+        return value
+    try:
+        return ast.literal_eval(value)
+    except (ValueError, SyntaxError):
+        tokens = {}
+
+        def replace_token(match):
+            sign, token = match.group(1), match.group(2).lower()
+            key = f"__range_token_{len(tokens)}__"
+            if token == "nan":
+                if sign == "-":
+                    raise ValueError("data range does not support negative NaN")
+                tokens[key] = math.nan
+            else:
+                tokens[key] = -math.inf if sign == "-" else math.inf
+            return repr(key)
+
+        substituted = _EXTENDED_RANGE_TOKEN_RE.sub(replace_token, value)
+        parsed = ast.literal_eval(substituted)
+
+        def restore(item):
+            if isinstance(item, str) and item in tokens:
+                return tokens[item]
+            if isinstance(item, list):
+                return [restore(child) for child in item]
+            if isinstance(item, tuple):
+                return tuple(restore(child) for child in item)
+            return item
+
+        return restore(parsed)
 
 
 def normalize_topk_mode(value):
@@ -323,6 +363,7 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
             "cmp_kv_datarange": params.get("cmp_kv_datarange", ["[-2, 2]"]),
             "random_seq": params.get("random_seq", [False]),
             "return_softmax_lse": params.get("return_softmax_lse", [False]),
+            "topk_value_mode": params.get("topk_value_mode", [1]),
             "ori_topk_length": params.get("ori_topk_length", [None]),
             "cmp_topk_length": params.get("cmp_topk_length", [None]),
             "batch_consistency": params.get("batch_consistency", [False]),
@@ -472,7 +513,7 @@ def generate_case_with_default_param(
     case_param.setdefault("testcase_name", "case_" + str(int(time.time() * 1000000)))
     case_param.update(
         {
-            "q_datarange": ast.literal_eval(param_combinations.get("q_datarange"))
+            "q_datarange": parse_datarange(param_combinations.get("q_datarange"))
             if isinstance(param_combinations.get("q_datarange"), str)
             else (
                 param_combinations.get("q_datarange")
@@ -483,7 +524,7 @@ def generate_case_with_default_param(
     )
     case_param.update(
         {
-            "ori_kv_datarange": ast.literal_eval(
+            "ori_kv_datarange": parse_datarange(
                 param_combinations.get("ori_kv_datarange")
             )
             if isinstance(param_combinations.get("ori_kv_datarange"), str)
@@ -496,7 +537,7 @@ def generate_case_with_default_param(
     )
     case_param.update(
         {
-            "cmp_kv_datarange": ast.literal_eval(
+            "cmp_kv_datarange": parse_datarange(
                 param_combinations.get("cmp_kv_datarange")
             )
             if isinstance(param_combinations.get("cmp_kv_datarange"), str)
@@ -588,10 +629,14 @@ def generate_case_with_default_param(
             ]
             print("seqused_cmp_kv auto set to: ", case_param["seqused_cmp_kv"])
         if case_param["cmp_residual_kv"] is None:
-            case_param["cmp_residual_kv"] = [
-                length % effective_cmp_ratio for length in case_param["seqused_ori_kv"]
-            ]
-            print("cmp_residual_kv auto set to: ", case_param["cmp_residual_kv"])
+            if case_param.get("cmp_mask_mode") == 0 or effective_cmp_ratio == 1:
+                case_param["cmp_residual_kv"] = None
+            else:
+                case_param["cmp_residual_kv"] = [
+                    length % effective_cmp_ratio
+                    for length in case_param["seqused_ori_kv"]
+                ]
+                print("cmp_residual_kv auto set to: ", case_param["cmp_residual_kv"])
         if layout_kv == "TND":
             if case_param["cu_seqlens_cmp_kv"] is None:
                 cmp_full_lengths = [
@@ -623,12 +668,12 @@ def generate_case_with_default_param(
             cur_ori_kv_block_num = math.ceil(cur_ori_act_kv / case_param["block_size1"])
             ori_block_num_per_batch.append(cur_ori_kv_block_num)
             ori_block_num_sum += cur_ori_kv_block_num
-            if (
-                has_cmp_kv
-                and effective_cmp_ratio is not None
-                and case_param["block_size2"] is not None
-            ):
-                cur_cmp_act_kv = math.floor(cur_ori_act_kv / effective_cmp_ratio)
+        if (
+            has_cmp_kv
+            and effective_cmp_ratio is not None
+            and case_param["block_size2"] is not None
+        ):
+            for cur_cmp_act_kv in case_param["seqused_cmp_kv"]:
                 cur_cmp_kv_block_num = math.ceil(
                     cur_cmp_act_kv / case_param["block_size2"]
                 )

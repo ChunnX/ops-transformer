@@ -255,6 +255,10 @@ int LaunchOneThreadAlltoAllvQuantGroupedMatMul(Args &args)
         aclrtFree(mmWScaleDeviceAddr);
     if (workspaceSize > 0)
         aclrtFree(workspaceAddr);
+    if (sendCounts != nullptr)
+        aclDestroyIntArray(sendCounts);
+    if (recvCounts != nullptr)
+        aclDestroyIntArray(recvCounts);
 
     HcclCommDestroy(args.hcclComm);
     aclrtDestroyStream(args.stream);
@@ -265,7 +269,7 @@ int LaunchOneThreadAlltoAllvQuantGroupedMatMul(Args &args)
 
 int main(int argc, char *argv[])
 {
-    // 本样例基于Ascend 950PR/Ascend 950DT实现
+    // 本样例基于Atlas A5实现
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
 

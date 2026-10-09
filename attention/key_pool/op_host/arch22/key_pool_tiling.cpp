@@ -20,7 +20,7 @@
 #include <graph/utils/type_utils.h>
 #include "err/ops_err.h"
 #include "register/op_def_registry.h"
-#include "key_pool_tiling.h"
+#include "key_pool_tiling_arch22.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -198,7 +198,11 @@ ge::graphStatus KeyPoolTiling::SetInnerSplitInfo()
         constexpr uint32_t SPLIT_K_THRESHOLD_FACTOR = 4U;
         uint64_t mTaskNum = static_cast<uint64_t>(dBaseNum) * mBaseNum;
         if (mTaskNum * SPLIT_K_THRESHOLD_FACTOR < baseParams_->usedCoreNum) {
-            baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
+            // Each Split-K part must own at least one 128-wide K block. Empty
+            // parts do not produce a Cube partial sum but were read by Vector
+            // as stale workspace data.
+            uint32_t candidateKBaseNum = baseParams_->usedCoreNum / dBaseNum;
+            baseParams_->kBaseNum = candidateKBaseNum < kAlignNum ? candidateKBaseNum : kAlignNum;
             baseParams_->kBaseSize = kAlignNum / baseParams_->kBaseNum * 128;
         }
         for (uint32_t i = 0; i < baseParams_->usedCoreNum; i++) {
@@ -829,8 +833,17 @@ ge::graphStatus KeyPoolTiling::CheckDtypeConsistency() const
 
 ge::graphStatus KeyPoolTiling::CheckDimNumConsistency() const
 {
-    OP_CHECK_IF(context_->pooledKey.shape->GetStorageShape().GetDimNum() != KEY_POOL_DIM_NUM_3,
-                OP_LOGE(context_->opName, "pooledKey must be a BSH rank-3 tensor"), return ge::GRAPH_FAILED);
+    const auto &outputShape = context_->pooledKey.shape->GetStorageShape();
+    const bool isBsh = context_->layout == LayoutType::LAYOUT_BSH;
+    const uint32_t rank = isBsh ? KEY_POOL_DIM_NUM_3 : KEY_POOL_DIM_NUM_2;
+    OP_CHECK_IF(outputShape.GetDimNum() != rank,
+                OP_LOGE(context_->opName, "pooledKey rank must match hidden_states rank"), return ge::GRAPH_FAILED);
+    const uint32_t capacity = isBsh ? (baseParams_->seqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio :
+                                      std::min(baseParams_->tokenSize,
+                                               baseParams_->tokenSize / baseParams_->cmpRatio + baseParams_->batchSize);
+    OP_CHECK_IF(outputShape.GetDim(rank - 1) != baseParams_->headDim || outputShape.GetDim(rank - 2) != capacity ||
+                    (isBsh && outputShape.GetDim(0) != baseParams_->batchSize),
+                OP_LOGE(context_->opName, "pooledKey shape must use current-input capacity"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

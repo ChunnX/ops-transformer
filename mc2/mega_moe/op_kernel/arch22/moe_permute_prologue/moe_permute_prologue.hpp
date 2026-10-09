@@ -20,8 +20,9 @@
 #define MC2_MOE_PERMUTE_PROLOGUE_HPP
 
 #include "kernel_operator.h"
-#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
-#include "../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "../utils/const_args.hpp"
 
 namespace MoePermute {
 
@@ -139,8 +140,10 @@ public:
         }
         if constexpr (std::is_same_v<ElementDst, int8_t>) {
             // 量化临时缓冲：work [0,h) + abs/max 复用 [h,2h)；int32/half 复用 work，取 2*hidden 个 float
+            constexpr int32_t QUANT_TMP_FLOATS_PER_HIDDEN = 2; // work + abs/max 复用区
             tmpBuffer = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
-            ubOffset += RoundUp<Catlass::BYTE_PER_BLK>(static_cast<uint32_t>(2 * hidden * sizeof(float)));
+            ubOffset += RoundUp<Catlass::BYTE_PER_BLK>(
+                static_cast<uint32_t>(QUANT_TMP_FLOATS_PER_HIDDEN * hidden * sizeof(float)));
         }
     }
 
@@ -227,10 +230,6 @@ public:
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        // 全数据缓存 clean+invalidate 已统一放到调用侧（mega_moe_kernel_a3.hpp，prologue
-        // 调用后）：确保本核此前 UB→GM 的写（tokenPerExpert 等）对下游
-        // （allgather/cumsum）及对端 dispatch 立即可见，规避跨 chunk 复用 workspace 时的
-        // cache 陈旧读竞态。
         countCopyParams = AscendC::DataCopyExtParams{1, params_.alignedNumExpertsBytes, 0, 0, 0};
         AscendC::DataCopyPad(gmTokenPerExpert, totalExpertCount, countCopyParams);
         // SyncAll 自带全流水同步，此处无需额外的 PipeBarrier

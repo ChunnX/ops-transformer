@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mc2_tiling_utils.h
@@ -29,7 +29,7 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_type.h"
 #include "../../../3rd/mat_mul_v3/op_host/op_tiling/arch35/matmul_v3_base_tiling_advanced.h"
-#include "platform/soc_spec.h"
+#include "op_host/util/op_const_def.h"
 
 namespace mc2tiling {
 constexpr uint32_t STANDARD_CARD_4P = 4;
@@ -41,7 +41,7 @@ constexpr uint32_t COMM_PAIRWISE = (COMM_MESH << 3U);
 constexpr uint32_t COMM_UNDEFINED = 0xFFFFFFFFU;
 constexpr uint8_t COMM_ALG_FULL_MESH_HOST = 6;
 constexpr uint64_t CHECK_VALUE_ODD = 2;
-constexpr uint32_t AIC_NUM_950 = 32;
+constexpr uint32_t AIC_NUM_A5 = 32;
 constexpr uint64_t MC2_TILINGKEY_OFFSET = uint64_t(1000000000000000000UL); // 10^18
 constexpr size_t RES_LEN = 64;
 constexpr size_t MAX_MSG_NUM = 16;
@@ -141,6 +141,13 @@ uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group, cons
 
 bool CheckDataTypeVaild(ge::DataType type, std::initializer_list<ge::DataType> supportDtypeList);
 
+// 解析commAlg属性：未配置(空或"0")时按HCCL环境变量回退选择分层/全互联方案；
+// 返回GRAPH_FAILED表示commAlg取值非法，由调用方负责打印错误日志
+ge::graphStatus ParseCommAlgWithEnvFallback(const char *entityName, const char *commAlg, bool &isLayered);
+
+// 读取HCCL环境变量判断是否使用分层(HCCL_INTRA_PCIE_ENABLE=1且HCCL_INTRA_ROCE_ENABLE=0)
+bool IsHcclPcieLayered(const char *entityName);
+
 void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args, const mc2tiling::TilingArgs &args,
                         const char *opName);
 ge::graphStatus GetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<int32_t> &priorities, const char *opName);
@@ -216,9 +223,9 @@ const std::map<ge::DataType, mc2tiling::HcclDataType> HCCL_DATA_TYPE = {
     {ge::DataType::DT_HIFLOAT8, mc2tiling::HcclDataType::HCCL_DATA_TYPE_HIF8}};
 
 const std::map<NpuArch, std::set<uint32_t>> supportedRankSizeSet = {
-    {NpuArch::DAV_2002, {1, 2, 4}},
-    {NpuArch::DAV_2201, {1, 2, 4, 8}},
-    {NpuArch::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
+    {Ops::Base::DAV_2002, {1, 2, 4}},
+    {Ops::Base::DAV_2201, {1, 2, 4, 8}},
+    {Ops::Base::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
 };
 
 const std::set<ge::Format> SUPPORTED_FORMAT = {ge::FORMAT_NCL,  ge::FORMAT_NCDHW, ge::FORMAT_DHWCN,
@@ -247,7 +254,7 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
                                     bool isLayered)
 {
     auto attrs = context->GetAttrs();
-    if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
+    if (mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510) {
         // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
         // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
         hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
@@ -268,22 +275,175 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
     return ge::GRAPH_SUCCESS;
 }
 
-// 临时判断是否为标卡4p形态(4卡，950)
+// 临时判断是否为标卡4p形态(4卡，A5)
 inline bool IsStandardCard4P(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((rankDim == STANDARD_CARD_4P) && (npuArch == NpuArch::DAV_3510));
+    return ((rankDim == STANDARD_CARD_4P) && (npuArch == Ops::Base::DAV_3510));
 }
 
-// 判断是否为8P形态(8卡，950)
+// 判断是否为8P形态(8卡，A5)
 inline bool Is8P(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((rankDim == EIGHT_P_8P) && (npuArch == NpuArch::DAV_3510));
+    return ((rankDim == EIGHT_P_8P) && (npuArch == Ops::Base::DAV_3510));
 }
 
 // 判断是否使用 All2All + Vec Reduce 通路（StandardCard 4P 或 8P）
 inline bool IsUseA2APath(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((npuArch == NpuArch::DAV_3510) && (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
+    return ((npuArch == Ops::Base::DAV_3510) && (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
+}
+
+// ===== MKN 条件表 tiling 参数公共工具 =====
+
+// 按条件表查值：命中 m/k/n 区间条目返回其键值，否则返回 defaultValue
+inline int32_t GetValueFromMKNConditionMap(int32_t m, int32_t k, int32_t n, int32_t defaultValue,
+                                           const std::map<int, std::vector<std::vector<int>>> &conditionMap)
+{
+    // 条件向量列索引：[M_ST, M_END, K_ST, K_END, N_ST, N_END]
+    constexpr int32_t CONDITION_M_ST = 0;
+    constexpr int32_t CONDITION_M_END = 1;
+    constexpr int32_t CONDITION_K_ST = 2;
+    constexpr int32_t CONDITION_K_END = 3;
+    constexpr int32_t CONDITION_N_ST = 4;
+    constexpr int32_t CONDITION_N_END = 5;
+    int32_t value = defaultValue;
+    for (auto &item : conditionMap) {
+        for (auto &condition : item.second) {
+            bool inRange = m > condition[CONDITION_M_ST] && m <= condition[CONDITION_M_END] &&
+                           k > condition[CONDITION_K_ST] && k <= condition[CONDITION_K_END] &&
+                           n > condition[CONDITION_N_ST] && n <= condition[CONDITION_N_END];
+            if (inRange) {
+                return item.first;
+            }
+        }
+    }
+    return value;
+}
+
+// 遍历 tiling 参数表：带条件表的项按 MKN 条件查值，否则取 value（-1 表示跳过不赋值）
+template <typename TilingValueT>
+inline void SetTilingParamsFromConditionMap(int32_t m, int32_t k, int32_t n,
+                                            const std::map<int *, TilingValueT> &tilingParamMap)
+{
+    for (auto &item : tilingParamMap) {
+        auto value = item.second.value;
+        auto conditionMap = item.second.conditionMap;
+        if (!conditionMap.empty()) {
+            *item.first = GetValueFromMKNConditionMap(m, k, n, value, conditionMap);
+        } else if (value != -1) {
+            *item.first = value;
+        }
+    }
+}
+
+// CoCTiling 参数尾处理：ubMoveNum 折算半 KB 单位，并推导 k0/n0 基础块
+template <typename CoCTilingT>
+inline void FinalizeCoCTilingParam(CoCTilingT &cocTilingData)
+{
+    constexpr int32_t HALF_KBYTE = 512;  // 半 KB 折算单位
+    constexpr int32_t DEFAULT_ROW = 128; // 默认 m0 行数
+    constexpr int32_t DEFAULT_COL = 256; // 默认 k0/n0 列数
+    cocTilingData.ubMoveNum = cocTilingData.ubMoveNum * HALF_KBYTE;
+    if (cocTilingData.m0 >= DEFAULT_ROW) {
+        cocTilingData.k0 = DEFAULT_COL;
+        cocTilingData.n0 = cocTilingData.m0 == DEFAULT_ROW ? DEFAULT_COL : DEFAULT_ROW;
+    }
+}
+
+// 校验 HCCL BUFF 空间大小：获取失败仅告警跳过；成功但小于最小值则报错
+inline ge::graphStatus CheckHcclBuffSize(const gert::TilingContext *context, uint32_t attrGroupIndex,
+                                         int32_t minBuffBytes, const char *nodeName)
+{
+    constexpr int32_t MB_SIZE_BYTES = 1024 * 1024; // MB 换算字节数
+    auto attrs = context->GetAttrs();
+    auto group = attrs->GetAttrPointer<char>(static_cast<int>(attrGroupIndex));
+    uint64_t hcclBuffSize = 0ULL;
+    auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, nodeName);
+    if (cclRet == ge::GRAPH_SUCCESS) {
+        OP_TILING_CHECK(hcclBuffSize < static_cast<uint64_t>(minBuffBytes),
+                        OP_LOGE(nodeName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
+                                hcclBuffSize, static_cast<uint64_t>(minBuffBytes), minBuffBytes / MB_SIZE_BYTES),
+                        return ge::GRAPH_FAILED);
+    } else {
+        OP_LOGW(nodeName, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// 设置 hccl 通信任务配置（MultiPut=level0:fullmesh）并填充 tiling 数据
+template <typename TilingDataT>
+inline ge::graphStatus SetHcclCcTilingConfig(const gert::TilingContext *context, uint32_t attrGroupIndex,
+                                             TilingDataT *tilingData)
+{
+    constexpr uint32_t MC2_CC_OP_TYPE_BATCH_WRITE = 18; // batch write
+    auto attrs = context->GetAttrs();
+    auto group = attrs->GetAttrPointer<char>(static_cast<int>(attrGroupIndex));
+    const std::string algConfig = "MultiPut=level0:fullmesh";
+    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, MC2_CC_OP_TYPE_BATCH_WRITE, algConfig);
+    mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling);
+    mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling);
+    return ge::GRAPH_SUCCESS;
+}
+
+// ===== 非量化 A3 tiling 公共校验 =====
+
+// 工具函数：判断指定 value 是否存在于 list 中
+inline bool IsContains(const std::vector<uint32_t> &list, uint32_t value)
+{
+    return std::count(list.begin(), list.end(), value) > 0;
+}
+
+// 非量化场景校验 bias 数据类型：x1 为 BF16 要求 FLOAT；x1 为 FLOAT16 要求与 x1 一致
+inline ge::graphStatus CheckNonQuantBiasDataType(const gert::CompileTimeTensorDesc *biasTensorDesc,
+                                                 ge::DataType x1Dtype, const char *opName)
+{
+    if (biasTensorDesc != nullptr) {
+        ge::DataType biasDtype = biasTensorDesc->GetDataType();
+        if (x1Dtype == ge::DT_BF16) {
+            OP_TILING_CHECK(
+                (biasDtype != ge::DT_FLOAT),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
+                                                      "The dtype of bias must be FLOAT32 when x1 is BF16"),
+                return ge::GRAPH_FAILED);
+        } else if (x1Dtype == ge::DT_FLOAT16) {
+            OP_TILING_CHECK((x1Dtype != biasDtype),
+                            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                                opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
+                                "The dtype of bias must be the same as that of x1 when x1 is FLOAT16"),
+                            return ge::GRAPH_FAILED);
+        } else {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
+                                                  "The dtype of bias must be FLOAT16 or BF16 in non-quantized scene");
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// ===== M 维按通信轮次切分公共工具 =====
+
+// 按通信轮次上限切分 M 维：tileLen 按 128 字节对齐（2 字节 dtype 对齐 64 元素，4 字节对齐 32 元素）；
+// commTurn 超过 maxTileCnt 时截断为 maxTileCnt，返回切分后的单份行数
+inline uint32_t SplitMValueByCommTurn(uint64_t mValue, uint64_t &commTurn, uint64_t dtypeSize, uint32_t maxTileCnt = 64)
+{
+    if (commTurn >= maxTileCnt) {
+        commTurn = maxTileCnt;
+    }
+
+    uint64_t tileLen = 1;
+    if (mValue > commTurn) {
+        tileLen = mValue / commTurn;
+    }
+
+    if (dtypeSize == 2) { // 数据长度为2字节, 则向 2*64 = 128 对齐
+        tileLen = AlignUp<uint64_t>(tileLen, 64);
+    } else if (dtypeSize == 4) { // 4 is float32 type size, 用于对齐到 128
+        tileLen = AlignUp<uint64_t>(tileLen, 32);
+    }
+    if (mValue > tileLen) {
+        return static_cast<uint32_t>(tileLen);
+    }
+    return static_cast<uint32_t>(mValue);
 }
 } // namespace mc2tiling
 

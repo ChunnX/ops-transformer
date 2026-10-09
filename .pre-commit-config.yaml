@@ -21,6 +21,8 @@ repos:
     rev: v4.6.0
     hooks:
       - id: trailing-whitespace
+        # md 保留行尾双空格（markdown 硬换行语法），其余尾随空白照删
+        args: ["--markdown-linebreak-ext=md"]
       - id: end-of-file-fixer
       - id: check-yaml
         args: ["--allow-multiple-documents"]
@@ -57,6 +59,8 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
+        # 包装 entry：输出 tee 到 pre-commit_reports/codespell.log（仍跑在托管 venv）
+        entry: bash scripts/run_codespell.sh
         args: [
             "-L",
             "CANN,cann,NNAL,nnal,ASCEND,ascend,EnQue,CopyIn,ArchType,AND,ND,tbe,copyin,alog,wIh,dout,indexs,inH,padD,outWeight",
@@ -75,6 +79,14 @@ repos:
         always_run: true
         stages: [pre-commit]
         verbose: true
+      - id: compile-scope-whitelist-check
+        name: Compile Scope Whitelist Check
+        entry: python3 cmake/scripts/parse_compile_scope.py --check
+        language: system
+        pass_filenames: false
+        files: ^tests/compile_scope_whitelist\.yaml$
+        stages: [pre-commit]
+        verbose: true
 
   # OAT 合规性检查 (Open Source Audit Tool)
   - repo: local
@@ -83,6 +95,7 @@ repos:
         name: OAT Compliance Check
         entry: bash scripts/oat_check.sh
         language: system
+        require_serial: true
         pass_filenames: true
         types: [file]
         stages: [pre-commit]

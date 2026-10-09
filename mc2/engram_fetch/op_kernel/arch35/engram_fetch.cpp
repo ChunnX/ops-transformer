@@ -17,8 +17,7 @@
 #include "version/asc_devkit_version.h"
 #include "version/hcomm_version.h"
 
-#if (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)) && \
-    (HCOMM_MAJOR > 9 || (HCOMM_MAJOR == 9 && HCOMM_MINOR > 0))
+#if (ASC_DEVKIT_VERSION_NUM >= 90200000) && (HCOMM_VERSION_NUM >= 90200000)
 #define ENABLE_ENGRAM_FETCH_KERNEL
 #endif
 
@@ -36,9 +35,9 @@
 
 using namespace Mc2Kernel;
 
-template <uint32_t EngramFetchMode>
-__global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR localStorageAddr, GM_ADDR fetched,
-                                        GM_ADDR permOut, GM_ADDR sendCountsOut, GM_ADDR recvCountsOut,
+template <uint32_t EngramFetchMode, bool EngramHasSf>
+__global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR localStorageAddr, GM_ADDR sfTable,
+                                        GM_ADDR fetched, GM_ADDR permOut, GM_ADDR sendCountsOut, GM_ADDR recvCountsOut,
                                         GM_ADDR recvLocalEntryOut, GM_ADDR numRecvOut, GM_ADDR fetchedSf,
                                         GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
@@ -49,14 +48,14 @@ __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM
     if constexpr (EngramFetchMode == ENGRAM_FETCH_DEFAULT_MODE) {
         AscendC::TPipe pipe;
         EngramFetchArch35 op;
-        op.Init(commContext, indices, fetched, fetchedSf, workspaceGM, &pipe, &tilingData);
-        op.Process();
+        op.Init(commContext, indices, fetched, sfTable, fetchedSf, workspaceGM, &pipe, &tilingData);
+        op.Process<EngramHasSf>();
     } else if constexpr (EngramFetchMode == ENGRAM_FETCH_TRAIN_MODE) {
         AscendC::TPipe pipe;
         EngramFetchTrainArch35 op;
-        op.Init(commContext, indices, fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
-                workspaceGM, localStorageAddr, &pipe, &tilingData);
-        op.Process();
+        op.Init<EngramHasSf>(commContext, indices, fetched, fetchedSf, permOut, sendCountsOut, recvCountsOut,
+                             recvLocalEntryOut, numRecvOut, workspaceGM, localStorageAddr, sfTable, &pipe, &tilingData);
+        op.Process<EngramHasSf>();
     }
 #endif
 }

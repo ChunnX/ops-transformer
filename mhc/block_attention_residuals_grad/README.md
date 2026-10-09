@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                      |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                               |    ×     |
-| <term>Atlas 训练系列产品</term>                               |    ×     |
+| <term>Ascend 950PR&950DT系列产品</term>                      |    √     |
+| <term>Atlas A3系列产品</term>     |    √     |
+| <term>Atlas A2系列产品</term>     |    √     |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×     |
+| <term>Atlas推理系列产品</term>                               |    ×     |
+| <term>Atlas训练系列产品</term>                               |    ×     |
 
 ## 功能说明
 
@@ -194,7 +194,7 @@ $$
 
 ## 约束说明
 
-- $T \ge 1$，$0 \le N \le 128$，$H \ge 1$；各张量中的 $T$、$H$ 以及 `invNorm/probs` 的第 2 维 $N+1$ 需保持一致。
+- $T \ge 64$，$0 \le N \le 128$，$2048 \le H \le 500000$；各张量中的 $T$、$H$ 以及 `invNorm/probs` 的第 2 维 $N+1$ 需保持一致。
 - 主输入 `partialBlock/blockRes/projWeight/normWeight/gradHiddenStates` 支持 FLOAT16、BFLOAT16、FLOAT32，dtype 需一致；`invNorm/probs` 仅支持 FLOAT32。
 - 输入支持非连续 Tensor，接口内部会先转为 Contiguous 再计算。
 - 输出 dtype 与对应主输入保持一致。

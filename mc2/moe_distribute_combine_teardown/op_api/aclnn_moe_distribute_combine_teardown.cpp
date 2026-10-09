@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_moe_distribute_combine_teardown.cpp
@@ -22,9 +22,12 @@
 #include "mc2_log_compat.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
+#include "op_host/util/op_const_def.h"
+#include "common/op_api/mc2_context.h"
 
 namespace {
 
+using namespace Mc2Aclnn;
 using namespace op;
 
 enum class NnopbaseHcclServerType : uint32_t {
@@ -75,12 +78,13 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *quantE
 } // namespace
 
 extern "C" aclnnStatus aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
-    const aclTensor *expandX, const aclTensor *quantExpandX, const aclTensor *expertIds, const aclTensor *expandIdx,
-    const aclTensor *expertScales, const aclTensor *commCmdInfo, const aclTensor *xActiveMaskOptional,
-    const aclTensor *sharedExpertXOptional, const char *groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg, aclTensor *xOut,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    aclTensor *mc2Context, const aclTensor *expandX, const aclTensor *quantExpandX, const aclTensor *expertIds,
+    const aclTensor *expandIdx, const aclTensor *expertScales, const aclTensor *commCmdInfo,
+    const aclTensor *xActiveMaskOptional, const aclTensor *sharedExpertXOptional, int64_t epWorldSize, int64_t epRankId,
+    int64_t moeExpertNum, int64_t cclBuffSize, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
+    aclTensor *xOut, uint64_t *workspaceSize, aclOpExecutor **executor);
+
 extern "C" aclnnStatus aclnnInnerMoeDistributeCombineTeardown(void *workspace, uint64_t workspaceSize,
                                                               aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
@@ -94,7 +98,7 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_moe_distribute_combine_teardown get_workspace_size start");
-    if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() != Ops::Base::DAV_3510) {
         OP_LOGE_LIBOPAPI_REPORT("aclnnMoeDistributeCombineTeardown", "Unsupported npuArch");
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -102,13 +106,20 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
     auto ret_param = CheckParams(expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, groupEp, xOut);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
-    aclnnStatus ret = aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
-        expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
-        sharedExpertXOptional, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum, expertShardType,
-        sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, const_cast<char *>(commAlg), xOut,
-        workspaceSize, executor);
+    aclnnStatus retStatus;
+    uint64_t hcclBuffSize = 0;
+    aclTensor *mc2Context = nullptr;
+    const char *opName = "moe_distribute_a2av_setup_teardown";
+    retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context,
+                                                          CommProtocol::COMM_PROTOCOL_UBC_CTP);
+    CHECK_RET(retStatus == ACLNN_SUCCESS, retStatus);
+    retStatus = aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
+        mc2Context, expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
+        sharedExpertXOptional, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, expertShardType, sharedExpertNum,
+        sharedExpertRankNum, globalBs, commQuantMode, commType, const_cast<char *>(commAlg), xOut, workspaceSize,
+        executor);
     OP_LOGD("aclnn_moe_distribute_combine_teardown get_workspace_size success");
-    return ret;
+    return retStatus;
 }
 
 extern "C" aclnnStatus aclnnMoeDistributeCombineTeardown(void *workspace, uint64_t workspaceSize,

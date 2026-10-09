@@ -27,8 +27,10 @@ static const std::unordered_set<ge::DataType> SCALE_TYPE_SUPPORT_SET = {ge::DT_U
                                                                         ge::DT_BF16, ge::DT_FLOAT8_E8M0};
 static const std::unordered_set<ge::DataType> PERTOEKN_SCALE_TYPE_SUPPORT_SET = {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
 constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
-constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
-constexpr int64_t GROUP_LIST_TYPE_SPARSE_M = 2L;
+constexpr size_t X_SHAPE_DIM_SPLIT_M = 2UL;
+constexpr size_t W_SHAPE_DIM_SPLIT_M = 3UL;
+constexpr size_t X_SHAPE_DIM_SPLIT_K = 2UL;
+constexpr size_t W_SHAPE_DIM_SPLIT_K = 2UL;
 
 static bool inline IsNonEmpty(const gert::Shape *shape)
 {
@@ -111,8 +113,8 @@ x is %s, weight is %s.",
         LogicXOR((xDtype == ge::DataType::DT_FLOAT8_E4M3FN || xDtype == ge::DataType::DT_FLOAT8_E5M2),
                  (weightDtype == ge::DataType::DT_FLOAT8_E4M3FN || weightDtype == ge::DataType::DT_FLOAT8_E5M2)),
         OP_LOGE(context->GetNodeName(),
-                "When x input dtype is FLOAT8, then the weight input dtype must be FLOAT8, vice versa, actual x is %s, \
-weight is %s.",
+                "When x input dtype is FLOAT8, then the weight input dtype must be FLOAT8, vice versa, actual x is %s, "
+                "weight is %s.",
                 ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
                 ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
         return ge::GRAPH_FAILED);
@@ -120,8 +122,8 @@ weight is %s.",
         LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E2M1 || xDtype == ge::DataType::DT_FLOAT4_E1M2),
                  (weightDtype == ge::DataType::DT_FLOAT4_E2M1 || weightDtype == ge::DataType::DT_FLOAT4_E1M2)),
         OP_LOGE(context->GetNodeName(),
-                "When x input dtype is FLOAT4, then the weight input dtype must be FLOAT4, vice versa, actual x is %s, \
-weight is %s.",
+                "When x input dtype is FLOAT4, then the weight input dtype must be FLOAT4, vice versa, actual x is %s, "
+                "weight is %s.",
                 ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
                 ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
         return ge::GRAPH_FAILED);
@@ -324,8 +326,9 @@ actual dim num is %zu.",
             return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(scaleDimNum != weightdimNum_,
-                OP_LOGE(context->GetNodeName(), "The dim num of scale[%zu] should be equal to that of weight[%zu] when \
-groupType is %ld.",
+                OP_LOGE(context->GetNodeName(),
+                        "The dim num of scale[%zu] should be equal to that of weight[%zu] when "
+                        "groupType is %ld.",
                         scaleDimNum, weightdimNum_, gmmAttrs.groupType),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(
@@ -363,22 +366,23 @@ must be equal to the N value in weight [%ld] divided by 128.",
         return ge::GRAPH_FAILED);
     if (gmmAttrs.groupType == GMM_SPLIT_M) {
         int64_t expectScaleKValue = (weightKDim_ + PERTILE_GROUP_SIZE - 1) / PERTILE_GROUP_SIZE;
-        OP_CHECK_IF(
-            perTokenKDim != scaleKDim || scaleKDim != expectScaleKValue,
-            OP_LOGE(context->GetNodeName(), "When quantification mode is G-B quantification, and groupType is 0 (split \
-M), the K dim of per_token_scale [%ld] should equal the K dim of scale [%ld], and its value should be equal to the K \
-dim of weight [%ld] divided by 128, rounded up to the next integer.",
-                    perTokenKDim, scaleNDim, weightNDim_),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(perTokenKDim != scaleKDim || scaleKDim != expectScaleKValue,
+                    OP_LOGE(context->GetNodeName(),
+                            "When quantification mode is G-B quantification, and groupType is 0 (split "
+                            "M), the K dim of per_token_scale [%ld] should equal the K dim of scale [%ld], and its "
+                            "value should be equal to the K dim of weight [%ld] divided by 128, rounded up to the next "
+                            "integer.",
+                            perTokenKDim, scaleNDim, weightNDim_),
+                    return ge::GRAPH_FAILED);
     } else {
         int64_t expectScaleKValue = (weightKDim_ / PERTILE_GROUP_SIZE) + groupNum_;
-        OP_CHECK_IF(
-            perTokenKDim != scaleKDim || scaleKDim != expectScaleKValue,
-            OP_LOGE(context->GetNodeName(), "When quantification mode is G-B quantification, and groupType is 2 (split \
-K), the K dim of per_token_scale [%ld] should equal the K dim of scale [%ld], its value must be equal to the K dim of \
-weight [%ld] divided by 128, plus the groupSize [%ld].",
-                    perTokenKDim, scaleKDim, weightKDim_, groupNum_),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(perTokenKDim != scaleKDim || scaleKDim != expectScaleKValue,
+                    OP_LOGE(context->GetNodeName(),
+                            "When quantification mode is G-B quantification, and groupType is 2 (split "
+                            "K), the K dim of per_token_scale [%ld] should equal the K dim of scale [%ld], its value "
+                            "must be equal to the K dim of weight [%ld] divided by 128, plus the groupSize [%ld].",
+                            perTokenKDim, scaleKDim, weightKDim_, groupNum_),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -497,7 +501,7 @@ ge::graphStatus GroupedMatmulQuantChecker::GetGroupNumValue(const gert::InferSha
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, groupListTypePtr);
-    if (*groupListTypePtr == GROUP_LIST_TYPE_SPARSE_M) {
+    if (*groupListTypePtr == GROUP_LIST_SPARSE) {
         OP_CHECK_IF(groupListShape->GetDimNum() != GROUP_LIST_SPARSE_DIM_NUM,
                     OP_LOGE(context->GetNodeName(),
                             "When groupListType is 2, groupList dim num should be [%zu], but the actual is [%zu].",
@@ -540,7 +544,7 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckShapeValid(const gert::InferShap
     OP_CHECK_IF(CheckShapeForGrouplist(context) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "CheckShapeForGrouplist failed."), return ge::GRAPH_FAILED);
     if (gmmAttrs.groupType == GMM_SPLIT_M) {
-        OP_CHECK_IF(xdimNum_ != 2 && weightdimNum_ != 3,
+        OP_CHECK_IF(xdimNum_ != X_SHAPE_DIM_SPLIT_M || weightdimNum_ != W_SHAPE_DIM_SPLIT_M,
                     OP_LOGE(context->GetNodeName(),
                             "When split m, x dim num should be 2, weight dim num should be 3, y dim num should be 2 \
 but the actual x dim num is [%zu], actual weight dim num is [%zu].",
@@ -553,7 +557,7 @@ but the actual x dim num is [%zu], actual weight dim num is [%zu].",
                     groupNum_, weightShape->GetDim(0)),
             return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(xdimNum_ != 2 && weightdimNum_ != 2,
+        OP_CHECK_IF(xdimNum_ != X_SHAPE_DIM_SPLIT_K || weightdimNum_ != W_SHAPE_DIM_SPLIT_K,
                     OP_LOGE(context->GetNodeName(),
                             "When split k, x dim num should be 2, weight dim num should be 2, y dim num should be 3 \
 but the actual x dim num is [%zu], actual weight dim num is [%zu].",
@@ -667,14 +671,14 @@ is not supported, but the actual x dtype is [%s] and actual scale dtype is [%s].
     }
     if ((xDtype == ge::DT_HIFLOAT8 || xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN) &&
         perTokenScaleDtype != ge::DT_UNDEFINED) {
-        OP_CHECK_IF(
-            scaleDtype != perTokenScaleDtype ||
-                (scaleDtype != ge::DataType::DT_FLOAT && scaleDtype != ge::DataType::DT_FLOAT8_E8M0),
-            OP_LOGE(context->GetNodeName(), "When data type of x is float8/hifloat8, data type of scale [%s] should be \
-equal to per_token_scale's dtype [%s], and be float32/float8_e8m0.",
-                    ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString(),
-                    ge::TypeUtils::DataTypeToAscendString(perTokenScaleDtype).GetString()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(scaleDtype != perTokenScaleDtype ||
+                        (scaleDtype != ge::DataType::DT_FLOAT && scaleDtype != ge::DataType::DT_FLOAT8_E8M0),
+                    OP_LOGE(context->GetNodeName(),
+                            "When data type of x is float8/hifloat8, data type of scale [%s] should be equal to "
+                            "per_token_scale's dtype [%s], and be float32/float8_e8m0.",
+                            ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString(),
+                            ge::TypeUtils::DataTypeToAscendString(perTokenScaleDtype).GetString()),
+                    return ge::GRAPH_FAILED);
     } else if (xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_FLOAT4_E1M2) {
         OP_CHECK_IF(scaleDtype != ge::DataType::DT_FLOAT8_E8M0,
                     OP_LOGE(context->GetNodeName(), "When data type of x is float4, data type of scale [%s] should be \

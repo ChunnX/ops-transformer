@@ -23,6 +23,7 @@
 #include <tiling/platform/platform_ascendc.h>
 #include "err/ops_err.h"
 #include "platform/soc_spec.h"
+#include "fia_tiling_schedule_recorder.h"
 
 #ifdef ASCENDC_OP_TEST
 #define ASCENDC_EXTERN_C extern "C"
@@ -109,7 +110,7 @@ protected:
 
     [[nodiscard]] ge::graphStatus SetScheduleMode(ScheduleMode scheduleMode) const
     {
-        return context_->SetScheduleMode(static_cast<uint32_t>(scheduleMode));
+        return FiaTilingScheduleRecorder::Set(context_, static_cast<uint32_t>(scheduleMode));
     }
 
     template <typename T>

@@ -38,7 +38,7 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
             "int? cmp_ratio=None, int? ori_mask_mode=None, int? cmp_mask_mode=None, int? ori_win_left=None,"
             "int? ori_win_right=None, str? layout_q=None, str? layout_kv=None, bool? has_ori_kv=None,"
             "bool? has_cmp_kv=None) -> Tensor",
-            "quant_sparse_flash_mla(Tensor q, *,"
+            "quant_sparse_flash_mla(Tensor q, int quant_mode, *,"
             "Tensor? ori_kv=None, Tensor? cmp_kv=None, "
             "Tensor? q_descale=None, "
             "Tensor? ori_kv_descale=None, Tensor? cmp_kv_descale=None, "
@@ -50,7 +50,6 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
             "Tensor? cmp_residual_kv=None, "
             "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "
             "Tensor? sinks=None, Tensor? metadata=None, "
-            "int quant_mode=None, "
             "float softmax_scale=None, int cmp_ratio=1, "
             "int ori_mask_mode=0, int cmp_mask_mode=0, "
             "int ori_win_left=-1, int ori_win_right=-1, "
@@ -100,6 +99,7 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
         @impl(get_as_library(), self.name, "Meta")
         def quant_sparse_flash_mla_meta(
             q,
+            quant_mode,
             ori_kv=None,
             cmp_kv=None,
             q_descale=None,
@@ -120,7 +120,6 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
             cmp_topk_length=None,
             sinks=None,
             metadata=None,
-            quant_mode=None,
             softmax_scale=None,
             cmp_ratio=1,
             ori_mask_mode=0,
@@ -137,7 +136,7 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
             if ori_kv is not None and ori_kv.numel() == 0:
                 raise ValueError("The shape size of ori_kv should not be 0")
             attn_out = torch.empty(
-                q.shape, dtype=torch.bfloat16, device="meta"
+                q.shape, dtype=torch.bfloat16, device=q.device
             )  # 暂只支持bf16
             if return_softmax_lse:
                 if layout_q == "TND":
@@ -149,7 +148,7 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
                                 int(q.shape[1] / ori_kv.shape[2]),
                             ],
                             dtype=torch.float32,
-                            device="meta",
+                            device=q.device,
                         )
                     else:
                         softmax_lse = torch.empty(
@@ -159,7 +158,7 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
                                 int(q.shape[1] / ori_kv.shape[1]),
                             ],
                             dtype=torch.float32,
-                            device="meta",
+                            device=q.device,
                         )
                 else:
                     softmax_lse = torch.empty(
@@ -170,10 +169,10 @@ class QuantSparseFlashMlaOpBuilder(OpBuilder):
                             int(q.shape[2] / ori_kv.shape[2]),
                         ],
                         dtype=torch.float32,
-                        device="meta",
+                        device=q.device,
                     )
             else:
-                softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
+                softmax_lse = torch.empty([], dtype=torch.float32, device=q.device)
             return (attn_out, softmax_lse)
 
 
@@ -337,6 +336,7 @@ torch.compiler.allow_in_graph(quant_sparse_flash_mla_metadata)
 @impl(get_as_library(), quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
 def quant_sparse_flash_mla(
     q,
+    quant_mode,
     ori_kv=None,
     cmp_kv=None,
     q_descale=None,
@@ -357,7 +357,6 @@ def quant_sparse_flash_mla(
     cmp_topk_length=None,
     sinks=None,
     metadata=None,
-    quant_mode=None,
     softmax_scale=None,
     cmp_ratio=1,
     ori_mask_mode=0,
@@ -376,6 +375,7 @@ def quant_sparse_flash_mla(
     op_module = quant_sparse_flash_mla_op_builder.load()
     return op_module.quant_sparse_flash_mla(
         q,
+        quant_mode,
         ori_kv,
         cmp_kv,
         q_descale,
@@ -396,7 +396,6 @@ def quant_sparse_flash_mla(
         cmp_topk_length,
         sinks,
         metadata,
-        quant_mode,
         softmax_scale,
         cmp_ratio,
         ori_mask_mode,

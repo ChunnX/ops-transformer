@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -489,7 +489,7 @@ aclnnStatus aclnnQkvRmsNormRopeCache(
 - 输入shape限制：
     * B<sub>qkv</sub>为输入qkv的batch_size，S<sub>qkv</sub>为输入qkv的sequence length，大小由qkvSize决定。
     * N<sub>qkv</sub>为输入qkv的head number。D<sub>qkv</sub>为输入qkv的head dim，目前仅支持128。D<sub>q</sub>、D<sub>k</sub>和D<sub>k</sub>分别为q、k、v的head dim，要求D<sub>qkv</sub> = D<sub>q</sub> = D<sub>k</sub> = D<sub>v</sub>，D<sub>qkv</sub>需要满足（D<sub>qkv</sub>*qkv数据类型占字节数）可以被32整除。
-    * 根据rope规则，D<sub>k</sub>和D<sub>q</sub>为偶数。若cacheMode为PA_NZ场景下，D<sub>k</sub>、D<sub>q</sub>需32B对齐；BlockSize需32B对齐。
+    * 根据rope规则，D<sub>k</sub>和D<sub>q</sub>为偶数。若cacheMode为PA_NZ场景下，D<sub>k</sub>、D<sub>q</sub>需32 Byte对齐；BlockSize需32 Byte对齐。
     * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为int8，则需要满足BlockSize % 32 = 0；若cache的数据类型为float16，则需要满足BlockSize % 16 = 0；若kCache与vCache参数的dtype不一致，BlockSize需同时满足BlockSize % 32 = 0和BlockSize % 16 = 0。
     * BlockNum为写入cache的内存块数，大小由用户输入场景决定，要求BlockNum >= Ceil(S<sub>qkv</sub> / BlockSize) * B<sub>qkv</sub>。
     * 使用requireMemory表示存放数据所需的空间大小，需满足：requireMemory >= (B<sub>qkv</sub> *S<sub>qkv</sub>* N<sub>qkv</sub> *D<sub>qkv</sub> + 2* D<sub>qkv</sub> + 2 *B<sub>qkv</sub>* S<sub>qkv</sub> *D<sub>qkv</sub> + B<sub>qkv</sub>* S<sub>qkv</sub> *N<sub>q</sub>* D<sub>qkv</sub> + BlockNum *BlockSize* N<sub>v</sub> *D<sub>qkv</sub> + BlockNum* BlockSize *N<sub>k</sub>* D<sub>qkv</sub>) *sizeof(FLOAT16) + B<sub>qkv</sub>* S<sub>qkv</sub> *sizeof(INT64) + (2* N<sub>k</sub> *D<sub>qkv</sub> + 2* N<sub>v</sub>) * sizeof(FLOAT)，当计算出requireMemory的大小超过当前AI处理器的GM空间总大小，不支持使用该接口。

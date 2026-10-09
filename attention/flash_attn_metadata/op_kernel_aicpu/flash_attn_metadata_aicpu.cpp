@@ -30,7 +30,7 @@ constexpr uint32_t FA_KERNEL_STATUS_PARAM_INVALID = 1;
 using namespace optiling;
 
 namespace aicpu {
-uint32_t FlashAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t FlashAttnMetadataCpuKernel::Compute(CpuKernelContext& ctx)
 {
     bool success = Prepare(ctx);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Prepare data failed!");
@@ -54,7 +54,7 @@ uint32_t FlashAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     return FA_KERNEL_STATUS_OK;
 }
 
-bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext& ctx)
 {
     // input
     cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensQ));
@@ -95,9 +95,9 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 
 bool FlashAttnMetadataCpuKernel::ParamsInit()
 {
-    InitDeviceInfo();
     InitBaseInfo();
     InitLoadBalanceParams();
+    InitDeviceInfo();
     return true;
 }
 
@@ -199,10 +199,29 @@ bool FlashAttnMetadataCpuKernel::CheckActualKvSeq()
 
 void FlashAttnMetadataCpuKernel::InitDeviceInfo()
 {
-    deviceInfo.aicCoreMaxNum = aicCoreNum_;
-    deviceInfo.aivCoreMaxNum = aivCoreNum_;
-    deviceInfo.aicCoreMinNum = aicCoreNum_;
-    deviceInfo.aivCoreMinNum = aivCoreNum_;
+    // Keep aicCoreNum_/aivCoreNum_ unchanged: they define metadata strides and the FAG layout.
+    uint32_t maxUsedAicCores = optiling::flash_attn::fa_tiling_util::GetMaxUsedAicCores(
+        aicCoreNum_, baseInfo.batchSize, numHeadsKv_, numHeadsQ_ / numHeadsKv_, maxSeqlenQ_, maxSeqlenKv_, mBaseSize_,
+        s2BaseSize_);
+    uint32_t maxUsedAivCores = maxUsedAicCores * (aivCoreNum_ / aicCoreNum_);
+    deviceInfo.aicCoreMaxNum = maxUsedAicCores;
+    deviceInfo.aivCoreMaxNum = maxUsedAivCores;
+    deviceInfo.aicCoreMinNum = maxUsedAicCores;
+    deviceInfo.aivCoreMinNum = maxUsedAivCores;
+}
+
+int64_t FlashAttnMetadataCpuKernel::CostFunc(uint32_t basicM, uint32_t basicS2)
+{
+    const uint32_t mAlignCoef = 16U;
+    const uint32_t s2AlignCoef = 64U;
+    const float mCoef = -0.037f;
+    const float s2Coef = 0.11f;
+    const float constant = 3.45f;
+
+    float alignBasicM = static_cast<float>(load_balance::CeilDiv(basicM, mAlignCoef));
+    float alignBasicS2 = static_cast<float>(load_balance::CeilDiv(basicS2, s2AlignCoef));
+
+    return static_cast<int64_t>(mCoef * alignBasicM + s2Coef * alignBasicS2 + constant);
 }
 
 void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
@@ -217,6 +236,13 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     optiling::flash_attn::fa_tiling_util::AdjustSinnerAndSouter(headDimV_, gSize, maxSeqlenQ_, maxSeqlenKv_, maskMode_,
                                                                 baseInfo.preToken, baseInfo.nextToken, qlayout,
                                                                 mBaseSize_, s2BaseSize_);
+    // 不合轴 DN(预埋): 路由开关打开时按 BN1_S1 分核(B轴*N1轴, M轴=纯S1); 判定逻辑与 host
+    // 侧 UpdateTilingKeyTemplateId 共享 fa_tiling_util::GetFlashAttnTemplateId, 保证 metadata
+    // 分核模式与 kernel 模板选择严格一致; 开关关闭时维持原 BN2_S1G 分核, 不影响现网行为。
+    bool dnUnmergedRouted = optiling::flash_attn::fa_tiling_util::DN_UNMERGED_ROUTE_ENABLED &&
+                            optiling::flash_attn::fa_tiling_util::GetFlashAttnTemplateId(
+                                static_cast<uint32_t>(headDim_), static_cast<uint32_t>(headDimV_)) ==
+                                optiling::flash_attn::fa_tiling_util::FA_TEMPLATE_DN_UNMERGED;
     mBaseSize_ *= (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
@@ -224,7 +250,9 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     param.fdTolerance = 10;             // 10: tolerance block
     param.fdLeastBlock = 3;             // 3: least block
     param.fdOn = true;
-    param.outputLayout = load_balance::OutputLayout::BN2_S1G;
+    param.costFunc = FlashAttnMetadataCpuKernel::CostFunc;
+    param.kernelSplitMode =
+        dnUnmergedRouted ? load_balance::KernelSplitMode::BN1_S1_S2 : load_balance::KernelSplitMode::BN2_S1G_S2;
 }
 
 void FlashAttnMetadataCpuKernel::InitBaseInfo()
@@ -242,8 +270,8 @@ void FlashAttnMetadataCpuKernel::InitBaseInfo()
     }
     baseInfo.attenMaskFlag = (maskMode != load_balance::SparseMode::BUTT);
     baseInfo.sparseMode = static_cast<uint32_t>(maskMode);
-    baseInfo.preToken = (winLeft_ == -1) ? std::numeric_limits<uint32_t>::max() : static_cast<uint32_t>(winLeft_);
-    baseInfo.nextToken = (winRight_ == -1) ? std::numeric_limits<uint32_t>::max() : static_cast<uint32_t>(winRight_);
+    baseInfo.preToken = (winLeft_ == -1) ? static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) : winLeft_;
+    baseInfo.nextToken = (winRight_ == -1) ? static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) : winRight_;
     baseInfo.layoutQuery = load_balance::ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = load_balance::ConvertToLayout(layoutKv_);
     baseInfo.queryType = load_balance::DataType::FP16;
@@ -254,12 +282,12 @@ void FlashAttnMetadataCpuKernel::InitBaseInfo()
     baseInfo.actualQuerySeqSize = actualSeqlenQ_;
 }
 
-bool FlashAttnMetadataCpuKernel::BalanceSchedule(load_balance::SectionStreamKResult &splitRes)
+bool FlashAttnMetadataCpuKernel::BalanceSchedule(load_balance::SectionStreamKResult& splitRes)
 {
     return load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
 }
 
-bool FlashAttnMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult &splitRes)
+bool FlashAttnMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult& splitRes)
 {
     detail::FaMetadata faMetadata(aicCoreNum_, aivCoreNum_, splitRes.sectionNum, metadata_->GetData());
     faMetadata.Clear(); // set to all 0
@@ -270,8 +298,8 @@ bool FlashAttnMetadataCpuKernel::GenMetadata(load_balance::SectionStreamKResult 
     return true;
 }
 
-void FlashAttnMetadataCpuKernel::SetMetadataHead(const load_balance::SectionStreamKResult &splitRes,
-                                                 optiling::detail::FaMetadata &faMetadata)
+void FlashAttnMetadataCpuKernel::SetMetadataHead(const load_balance::SectionStreamKResult& splitRes,
+                                                 optiling::detail::FaMetadata& faMetadata)
 {
     faMetadata.SetHeadMetadata(HEAD_SECTION_NUM_INDEX, splitRes.sectionNum);
     faMetadata.SetHeadMetadata(HEAD_M_BASE_SIZE_INDEX, mBaseSize_);
@@ -282,17 +310,17 @@ void FlashAttnMetadataCpuKernel::SetMetadataHead(const load_balance::SectionStre
     }
     faMetadata.SetHeadMetadata(HEAD_AIC_NUM_INDEX, aicCoreNum_);
     faMetadata.SetHeadMetadata(HEAD_AIV_NUM_INDEX, aivCoreNum_);
-    faMetadata.SetHeadMetadata(HEAD_OUTPUT_LAYOUT_INDEX, static_cast<FA_METADATA_T>(param.outputLayout));
+    faMetadata.SetHeadMetadata(HEAD_OUTPUT_LAYOUT_INDEX, static_cast<FA_METADATA_T>(param.kernelSplitMode));
 }
 
-void FlashAttnMetadataCpuKernel::SetMetadataFa(const load_balance::SectionStreamKResult &splitRes,
-                                               optiling::detail::FaMetadata &faMetadata)
+void FlashAttnMetadataCpuKernel::SetMetadataFa(const load_balance::SectionStreamKResult& splitRes,
+                                               optiling::detail::FaMetadata& faMetadata)
 {
     load_balance::SectionStreamKFaResult dummyHead{static_cast<uint32_t>(aicCoreNum_)}; // all zeror dummy head
     for (uint32_t secIdx = 0; secIdx < splitRes.sectionNum; ++secIdx) {
-        auto &faRes = splitRes.sectionFaResult[secIdx];
+        auto& faRes = splitRes.sectionFaResult[secIdx];
         for (uint32_t aicIdx = 0; aicIdx < faRes.usedCoreNum; ++aicIdx) {
-            auto &prevFaRes = (secIdx == 0U) ? dummyHead : splitRes.sectionFaResult[secIdx - 1U];
+            auto& prevFaRes = (secIdx == 0U) ? dummyHead : splitRes.sectionFaResult[secIdx - 1U];
             auto prevLastCore = (secIdx == 0U) ? 0U : prevFaRes.usedCoreNum - 1U;
             FA_METADATA_T bnStart = (aicIdx == 0) ? prevFaRes.bNEnd[prevLastCore] : faRes.bNEnd[aicIdx - 1U];
             FA_METADATA_T mStart = (aicIdx == 0) ? prevFaRes.mEnd[prevLastCore] : faRes.mEnd[aicIdx - 1U];
@@ -310,11 +338,11 @@ void FlashAttnMetadataCpuKernel::SetMetadataFa(const load_balance::SectionStream
     }
 }
 
-void FlashAttnMetadataCpuKernel::SetMetadataFd(const load_balance::SectionStreamKResult &splitRes,
-                                               optiling::detail::FaMetadata &faMetadata)
+void FlashAttnMetadataCpuKernel::SetMetadataFd(const load_balance::SectionStreamKResult& splitRes,
+                                               optiling::detail::FaMetadata& faMetadata)
 {
     for (uint32_t secIdx = 0; secIdx < splitRes.sectionNum; ++secIdx) {
-        auto &fdRes = splitRes.sectionFdResult[secIdx];
+        auto& fdRes = splitRes.sectionFdResult[secIdx];
         for (uint32_t aivIdx = 0; aivIdx < fdRes.usedVecNum; ++aivIdx) {
             uint32_t t = fdRes.taskIdx[aivIdx];
             faMetadata.SetFdMetadata(secIdx, aivIdx, FD_BN_IDX_INDEX, fdRes.bNIdx[t]);
@@ -328,7 +356,7 @@ void FlashAttnMetadataCpuKernel::SetMetadataFd(const load_balance::SectionStream
 }
 
 namespace {
-static const char *kernelType = "FlashAttnMetadata";
+static const char* kernelType = "FlashAttnMetadata";
 REGISTER_CPU_KERNEL(kernelType, FlashAttnMetadataCpuKernel);
 } // namespace
 
