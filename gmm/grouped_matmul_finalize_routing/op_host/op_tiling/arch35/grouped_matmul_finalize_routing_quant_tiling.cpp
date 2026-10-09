@@ -216,8 +216,26 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::CheckOptionalInputsForRouting()
             rowIndexType_ = 1;
         }
     } else if (inputParams_.aDtype != ge::DT_INT8) {
-        OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
-                    OP_LOGE(context_->GetNodeName(), "RowIndex check failed."), return false);
+        // WeightNz declares INT32/INT64 rowIndex; the ND variant stays INT64 only.
+        if (IsMicroScaling() && inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+            auto rowIndexDesc = context_->GetOptionalInputDesc(ROW_INDEX_INDEX);
+            if (rowIndexDesc != nullptr) {
+                auto rowIndexDtype = rowIndexDesc->GetDataType();
+                if (rowIndexDtype == ge::DT_INT32) {
+                    rowIndexType_ = 1;
+                }
+                OP_CHECK_IF(!(rowIndexDtype == ge::DT_INT64 || rowIndexDtype == ge::DT_INT32),
+                            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                                inputParams_.opType, "row_index",
+                                ge::TypeUtils::DataTypeToSerialString(rowIndexDtype),
+                                "when output is DT_FLOAT in mx quant mode with WeightNz format, row_index must be "
+                                "within the range DT_INT64/DT_INT32"),
+                            return false);
+            }
+        } else {
+            OP_CHECK_IF(!CheckOptional(ROW_INDEX_INDEX, "RowIndex", ge::DT_INT64),
+                        OP_LOGE(context_->GetNodeName(), "RowIndex check failed."), return false);
+        }
     } else if (context_->GetOptionalInputDesc(ROW_INDEX_INDEX) != nullptr) {
         auto rowIndexDtype = context_->GetOptionalInputDesc(ROW_INDEX_INDEX)->GetDataType();
         if (rowIndexDtype == ge::DT_INT32) {

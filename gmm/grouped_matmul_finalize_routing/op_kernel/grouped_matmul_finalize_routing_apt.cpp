@@ -88,14 +88,16 @@ struct GmmFrMxLayoutBSelector<BTRANS, false> {
     using type = AscendC::Std::conditional_t<BTRANS == 0, AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>;
 };
 
-template <int BTRANS, int LOGITTYPE>
+template <int BTRANS, int LOGITTYPE, int ROWINDEXTYPE>
 __aicore__ inline void RunGmmFrMx(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bias, GM_ADDR pertokenScale,
                                   GM_ADDR groupList, GM_ADDR shareInput, GM_ADDR logit, GM_ADDR rowIndex,
                                   GM_ADDR offset, GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     using LayoutB = typename GmmFrMxLayoutBSelector<BTRANS, GMM_FR_WEIGHT_NZ>::type;
     using LogitType = AscendC::Std::conditional_t<LOGITTYPE == LOGIT_BF16_TYPE, bfloat16_t, float>;
-    grouped_matmul_finalize_routing_mx<AscendC::Te::NDExtLayoutPtn, LayoutB, LogitType>(
+    // ROWINDEXTYPE 0 is int64_t, 1 is int32_t; WeightNz declares both, ND stays int64.
+    using RowIndexType = AscendC::Std::conditional_t<ROWINDEXTYPE == 1, int32_t, int64_t>;
+    grouped_matmul_finalize_routing_mx<AscendC::Te::NDExtLayoutPtn, LayoutB, LogitType, RowIndexType>(
         x, w, scale, bias, pertokenScale, groupList, shareInput, logit, rowIndex, offset, y, workspaceGM, tilingGM);
 }
 
@@ -136,11 +138,11 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
     AscendC::TPipe pipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
-        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                 y, workspaceGM, tilingGM);
+        RunGmmFrMx<0, LOGITTYPE, 1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
-        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                 y, workspaceGM, tilingGM);
+        RunGmmFrMx<1, LOGITTYPE, 1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     }
 #endif
 #else
@@ -188,31 +190,45 @@ __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w,
     }
 #elif ORIG_DTYPE_X == DT_FLOAT4_E1M2 || ORIG_DTYPE_X == DT_FLOAT4_E2M1
     if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                  y, workspaceGM, tilingGM);
+        RunGmmFrMx<0, LOGITTYPE, 0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                  y, workspaceGM, tilingGM);
+        RunGmmFrMx<1, LOGITTYPE, 0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                 y, workspaceGM, tilingGM);
+        RunGmmFrMx<0, LOGITTYPE, 0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                 y, workspaceGM, tilingGM);
+        RunGmmFrMx<1, LOGITTYPE, 0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
+    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
+        // WeightNz declares INT32/INT64 rowIndex; FP32 output accepts both.
+        RunGmmFrMx<0, LOGITTYPE, 1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
+    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
+        RunGmmFrMx<1, LOGITTYPE, 1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     }
 #else
     if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                  y, workspaceGM, tilingGM);
+        RunGmmFrMx<0, LOGITTYPE, 0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     } else if constexpr (!GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                  y, workspaceGM, tilingGM);
+        RunGmmFrMx<1, LOGITTYPE, 0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<0, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                 y, workspaceGM, tilingGM);
+        RunGmmFrMx<0, LOGITTYPE, 0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 0) {
-        RunGmmFrMx<1, LOGITTYPE>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset,
-                                 y, workspaceGM, tilingGM);
+        RunGmmFrMx<1, LOGITTYPE, 0>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
+    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 0 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
+        // WeightNz declares INT32/INT64 rowIndex; FP32 output accepts both.
+        RunGmmFrMx<0, LOGITTYPE, 1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
+    } else if constexpr (GMM_FR_WEIGHT_NZ && ATRANS == 0 && BTRANS == 1 && SCALETYPE == 0 && ROWINDEXTYPE == 1) {
+        RunGmmFrMx<1, LOGITTYPE, 1>(x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index,
+                                    offset, y, workspaceGM, tilingGM);
     } else if constexpr (ATRANS == 0 && BTRANS == 0 && SCALETYPE == 1 && ROWINDEXTYPE == 0) {
         grouped_matmul_finalize_routing_pertoken_dequant<asc::te::nd_ext_layout_ptn, asc::te::nz_layout_ptn, 1, 0>(
             x, w, scale, bias, pertoken_scale, group_list, share_input, logit, row_index, offset, y, workspaceGM,
