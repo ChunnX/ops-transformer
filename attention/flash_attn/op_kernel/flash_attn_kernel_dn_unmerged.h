@@ -9,17 +9,23 @@
  */
 
 /*!
- * \file flash_attn_kernel_nd.h
- * \brief FlashAttentionNoQuantGqaKernelNd —— Nd 路径专用 kernel 模板（独立类）。
+ * \file flash_attn_kernel_dn.h
+ * \brief FlashAttentionNoQuantGqaKernelDnUnmerged —— Dn 路径专用 kernel 模板（独立类）。
  */
 
-#ifndef FLASH_ATTN_KERNEL_ND_H_
-#define FLASH_ATTN_KERNEL_ND_H_
+#ifndef FLASH_ATTN_KERNEL_DN_UNMERGED_H_
+#define FLASH_ATTN_KERNEL_DN_UNMERGED_H_
 
-#include "../utils/flash_attn_common_def.h"
+#include "utils/flash_attn_common_def.h"
 
-#include "flash_attn_block_cube_nd.h"
-#include "flash_attn_block_vec_nd.h"
+#if __NPU_ARCH__ == 3510
+#include "arch35/flash_attn_block_cube_dn_unmerged.h"
+#include "arch35/flash_attn_block_vec_dn_unmerged.h"
+#else
+#include "arch92/flash_attn_block_cube_dn_unmerged_arch92.h"
+#include "arch92/flash_attn_block_vec_dn_unmerged_arch92.h"
+#endif
+
 #include "memory_copy_arch35.h"
 #include "flash_attn_block_vec_flashdecode.h"
 
@@ -30,7 +36,7 @@
 #endif
 
 #include "flash_attn_tiling_data.h"
-#include "../../../common/op_kernel/arch_info.h"
+#include "../../common/op_kernel/arch_info.h"
 
 using namespace AscendC;
 using namespace optiling;
@@ -39,7 +45,7 @@ using namespace AscendC::Impl::Detail;
 namespace FlashAttnKernel {
 using ArchInfo::CV_RATIO;
 template <typename FA_T, typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionNoQuantGqaKernelNd {
+class FlashAttentionNoQuantGqaKernelDnUnmerged {
 public:
     using T = float;
     using SEQLEN_T = uint32_t;
@@ -65,7 +71,7 @@ public:
     SeqLensTool<LAYOUT_T, SEQLEN_T> qSeqLensTool_;
     SeqLensTool<LAYOUT_KV, SEQLEN_T> kvSeqLensTool_;
 
-    __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tilingData_;
+    __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tilingData_;
 
     // block define
     CubeBlockType cubeBlock_;
@@ -77,13 +83,13 @@ public:
     GlobalTensor<uint32_t> fdMetaDataGm_;
     // metadata
     uint32_t sectionNum_;
-    uint32_t metadataAicNum_;
-    uint32_t metadataAivNum_;
-    // fa metadata
-    uint32_t bN2Start_;
-    uint32_t bN2End_;
-    uint32_t gS1OStart_;
-    uint32_t gS1OEnd_;
+    uint32_t metadata_aic_num_;
+    uint32_t metadata_aiv_num_;
+    // fa metadata(BN1_S1 不合轴分核: bn 轴 = b*n1, M 轴 = 纯 s1 的 mBaseSize 块序号)
+    uint32_t bn1Start_;
+    uint32_t bn1End_;
+    uint32_t s1OStart_;
+    uint32_t s1OEnd_;
     uint32_t s2OStart_;
     uint32_t s2OEnd_;
     uint32_t coreFirstTmpOutWsPos_;
@@ -96,39 +102,38 @@ public:
     uint32_t curS2Start_;
     uint32_t curS2End_ = 0;
     uint32_t prevBIdx_;
-    uint32_t prevBN2Idx_;
-    uint32_t prevGS1Idx_;
+    uint32_t prevBn1Idx_;
+    uint32_t prevS1Idx_;
     uint32_t mloop_ = 0;
     bool headS2Split_ = false;
     bool tailS2Split_ = false;
     uint32_t s2FirstToken_ = 0;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionNoQuantGqaKernelNd()
+    __aicore__ inline FlashAttentionNoQuantGqaKernelDnUnmerged()
         : cubeBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
           vecFaBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_),
           vecFdBlock_(constInfo_, qSeqLensTool_, kvSeqLensTool_){};
 
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                                __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *learnableSink,
-                                __gm__ uint8_t *attenMask, __gm__ uint8_t *fiaMetaData, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tiling)
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                                __gm__ uint8_t* blockTable, __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* cuSeqLensKv,
+                                __gm__ uint8_t* seqUsedQ, __gm__ uint8_t* seqUsedKv, __gm__ uint8_t* learnableSink,
+                                __gm__ uint8_t* attenMask, __gm__ uint8_t* fiaMetaData, __gm__ uint8_t* attentionOut,
+                                __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
+                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tiling)
     {
         tilingData_ = tiling;
 
         InitConstInfo();
 
-        sectionNum_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_SECTION_NUM_INDEX];
-        metadataAicNum_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_AIC_NUM_INDEX];
-        metadataAivNum_ = ((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_AIV_NUM_INDEX];
-        constInfo_.enableFlashDecode =
-            static_cast<bool>(((__gm__ uint32_t *)fiaMetaData)[METADATA_HEADER_HAS_FD_INDEX]);
+        sectionNum_ = ((__gm__ uint32_t*)fiaMetaData)[METADATA_HEADER_SECTION_NUM_INDEX];
+        metadata_aic_num_ = ((__gm__ uint32_t*)fiaMetaData)[METADATA_HEADER_AIC_NUM_INDEX];
+        metadata_aiv_num_ = ((__gm__ uint32_t*)fiaMetaData)[METADATA_HEADER_AIV_NUM_INDEX];
+        constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t*)fiaMetaData)[METADATA_HEADER_HAS_FD_INDEX]);
         constInfo_.learnableSinkFlag = (learnableSink != nullptr);
 
-        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + METADATA_HEADER_OFFSET),
-                                      sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t*)(fiaMetaData + METADATA_HEADER_OFFSET),
+                                      sectionNum_ * metadata_aic_num_ * METADATA_STRIDE);
 
         qSeqLensTool_.Init(cuSeqLensQ, constInfo_.cuSeqLensQSize, seqUsedQ, constInfo_.seqUsedQSize, constInfo_.s1Size);
         kvSeqLensTool_.Init(cuSeqLensKv, constInfo_.cuSeqLensKVSize, seqUsedKv, constInfo_.seqUsedKvSize,
@@ -142,9 +147,9 @@ public:
             vecFaBlock_.ClearOutput();
             if (constInfo_.enableFlashDecode) {
                 fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(fiaMetaData + METADATA_HEADER_OFFSET +
-                                        sectionNum_ * metadataAicNum_ * METADATA_STRIDE * sizeof(uint32_t)),
-                    sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
+                    (__gm__ uint32_t*)(fiaMetaData + METADATA_HEADER_OFFSET +
+                                       sectionNum_ * metadata_aic_num_ * METADATA_STRIDE * sizeof(uint32_t)),
+                    sectionNum_ * metadata_aiv_num_ * METADATA_STRIDE);
                 vecFdBlock_.InitBlock(learnableSink, softmaxLse, attentionOut);
                 vecFdBlock_.InitGlobalTensor(vecFaBlock_.softmaxFDMaxGm_, vecFaBlock_.softmaxFDSumGm_,
                                              vecFaBlock_.accumOutGm_);
@@ -164,6 +169,7 @@ public:
         constInfo_.bSize = tilingData_->flashAttnBaseParams.bSize;
         constInfo_.t1Size = tilingData_->flashAttnBaseParams.t1Size;
         constInfo_.t2Size = tilingData_->flashAttnBaseParams.t2Size;
+        constInfo_.n1Size = tilingData_->flashAttnBaseParams.n1Size;
         constInfo_.n2Size = tilingData_->flashAttnBaseParams.n2Size;
         constInfo_.gSize = tilingData_->flashAttnBaseParams.gSize;
         constInfo_.s1Size = tilingData_->flashAttnBaseParams.s1Size;
@@ -211,11 +217,11 @@ public:
     {
         // AICPU metadata format: 16 fields per AIC core, 0-indexed (no leading CORE_ENABLE).
         // Kernel field constants ( FLASH_ATTN_BN2_START_INDEX=1, etc.) are 1-based, so subtract 1.
-        return METADATA_STRIDE * metadataAicNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadata_aic_num_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return METADATA_STRIDE * metadataAivNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadata_aiv_num_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void FlashAttention(uint32_t sectionIdx)
@@ -234,30 +240,31 @@ public:
         headS2Split_ = false;
         tailS2Split_ = false;
 
-        uint32_t bN2Cur = bN2Start_;
-        uint32_t gS1Cur = gS1OStart_;
+        uint32_t bn1Cur = bn1Start_;
+        // s1Cur 语义为纯 s1 轴坐标(元素粒度); metadata 的 M_START/M_END 为 mBaseSize 块序号, 此处换算
+        uint32_t s1Cur = s1OStart_ * mBaseSize;
         uint32_t s2Cur = s2OStart_;
-        prevBN2Idx_ = bN2Cur;
-        prevGS1Idx_ = gS1Cur;
+        prevBn1Idx_ = bn1Cur;
+        prevS1Idx_ = s1Cur;
 
         bool shouldDispatchTask = true;
         uint32_t validTaskCount = 0; // 未执行(有效)的任务数
         while (shouldDispatchTask || validTaskCount) {
             // 分发任务
-            shouldDispatchTask = ShouldDispatchTask(bN2Cur, gS1Cur, s2Cur);
+            shouldDispatchTask = ShouldDispatchTask(bn1Cur, s1Cur, s2Cur);
             if (shouldDispatchTask) {
-                TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bN2Cur, gS1Cur, s2Cur);
+                TASK_DEAL_MODE taskDealMode = GetTaskDealMode(bn1Cur, s1Cur, s2Cur);
                 if (taskDealMode == TASK_DEAL_MODE::CREATE_TASK) {
                     // 创建任务
-                    CreateTask(createdTaskCount, bN2Cur, gS1Cur, s2Cur, taskRunInfo);
+                    CreateTask(createdTaskCount, bn1Cur, s1Cur, s2Cur, taskRunInfo);
                     createdTaskCount++;
                     validTaskCount++;
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+                    UpdateAxisInfo(taskDealMode, bn1Cur, s1Cur, s2Cur);
                 } else if (taskDealMode == TASK_DEAL_MODE::DEAL_ZERO) {
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+                    UpdateAxisInfo(taskDealMode, bn1Cur, s1Cur, s2Cur);
                     continue;
                 } else {
-                    UpdateAxisInfo(taskDealMode, bN2Cur, gS1Cur, s2Cur);
+                    UpdateAxisInfo(taskDealMode, bn1Cur, s1Cur, s2Cur);
                     continue;
                 }
             }
@@ -272,44 +279,54 @@ public:
         }
     }
 
-    __aicore__ inline bool ShouldDispatchTask(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+    __aicore__ inline bool ShouldDispatchTask(uint32_t bn1Cur, uint32_t s1Cur, uint32_t s2Cur)
     {
-        if (bN2Cur != bN2End_) {
-            return bN2Cur < bN2End_;
+        if (bn1Cur != bn1End_) {
+            return bn1Cur < bn1End_;
         }
-        if (gS1Cur != gS1OEnd_) {
-            return gS1Cur < gS1OEnd_;
+        uint32_t s1EndCoord = s1OEnd_ * mBaseSize;
+        if (s1Cur != s1EndCoord) {
+            return s1Cur < s1EndCoord;
         }
         return s2Cur < s2OEnd_;
     }
 
-    __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur)
+    // 纯 s1 轴步进: 每任务为一个 query 头(n1)的 [s1Cur, min(s1Cur+mBaseSize, actSeqLensQ_)) 块
+    __aicore__ inline uint32_t GetS1Step(uint32_t s1Cur)
     {
-        bool isFirstTask = (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_) && (s2Cur == s2OStart_);
-        uint32_t bIdx = bN2Cur / constInfo_.n2Size;
+        uint32_t step = mBaseSize;
+        if (s1Cur + step > actSeqLensQ_) {
+            step = static_cast<uint32_t>(actSeqLensQ_) - s1Cur;
+        }
+        return step;
+    }
+
+    __aicore__ inline TASK_DEAL_MODE GetTaskDealMode(uint32_t bn1Cur, uint32_t s1Cur, uint32_t s2Cur)
+    {
+        bool isFirstTask = (bn1Cur == bn1Start_) && (s1Cur == s1OStart_ * mBaseSize) && (s2Cur == s2OStart_);
+        uint32_t bIdx = bn1Cur / constInfo_.n1Size;
         if (isFirstTask || prevBIdx_ != bIdx) {
             prevBIdx_ = bIdx;
             actSeqLensQ_ = qSeqLensTool_.GetActualSeqLength(bIdx);
             actSeqLensKv_ = kvSeqLensTool_.GetActualSeqLength(bIdx);
         }
         uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ_ * constInfo_.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
-            if (gS1Cur == 0 && s2Cur == 0) {
+        uint64_t s1LoopTimes = (actSeqLensQ_ + mBaseSize - 1) / mBaseSize;
+        if (s2LoopTimes == 0 || s1LoopTimes == 0) {
+            if (s1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
             return TASK_DEAL_MODE::SKIP_ZERO;
         }
-        // 计算每一行的起止点，只有当换行时（bN2Cur、gS1Cur更新）才需要重新计算
-        if (isFirstTask || bN2Cur != prevBN2Idx_ || gS1Cur != prevGS1Idx_) {
+        // 计算每一行的起止点，只有当换行时（bn1Cur、s1Cur更新）才需要重新计算
+        if (isFirstTask || bn1Cur != prevBn1Idx_ || s1Cur != prevS1Idx_) {
             if constexpr (!HAS_MASK) {
-                CalcCurS2StartEndNoSparse(bN2Cur, gS1Cur);
+                CalcCurS2StartEndNoSparse(bn1Cur, s1Cur);
             } else {
-                CalcCurS2StartEndWithSparse(bN2Cur, gS1Cur);
+                CalcCurS2StartEndWithSparse(bn1Cur, s1Cur);
             }
-            prevBN2Idx_ = bN2Cur;
-            prevGS1Idx_ = gS1Cur;
+            prevBn1Idx_ = bn1Cur;
+            prevS1Idx_ = s1Cur;
         }
         // S2有效块区间为[curS2Start_, curS2End_), s2Cur尚未到达有效区间且该行有有效块,
         // 需快进到curS2Start继续计算, 不能跳行 (BAND等sparse模式curS2Start常>0)
@@ -328,8 +345,8 @@ public:
         return TASK_DEAL_MODE::CREATE_TASK;
     }
 
-    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &preTokenLeftUp,
-                                                 int64_t &nextTokenLeftUp)
+    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t& preTokenLeftUp,
+                                                 int64_t& nextTokenLeftUp)
     {
         preTokenLeftUp = constInfo_.preTokens;
         nextTokenLeftUp = constInfo_.nextTokens;
@@ -347,24 +364,25 @@ public:
         }
     }
 
-    __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bN2Cur, uint32_t gS1Cur)
+    __aicore__ inline void CalcCurS2StartEndNoSparse(uint32_t bn1Cur, uint32_t s1Cur)
     {
+        // s1Cur 为纯 s1 坐标(元素粒度)
         s2FirstToken_ = 0;
         curS2Start_ = 0U;
         curS2End_ = (static_cast<uint32_t>(actSeqLensKv_) + s2BaseSize - 1) / s2BaseSize;
 
-        if ((bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
+        if ((bn1Cur == bn1Start_) && (s1Cur == s1OStart_ * mBaseSize)) {
             headS2Split_ = s2OStart_ != 0U;
             curS2Start_ = s2OStart_;
         }
 
-        if ((bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
+        if ((bn1Cur == bn1End_) && (s1Cur == s1OEnd_ * mBaseSize)) {
             tailS2Split_ = s2OEnd_ != 0U;
             curS2End_ = s2OEnd_;
         }
     }
 
-    __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bN2Cur, uint32_t gS1Cur)
+    __aicore__ inline void CalcCurS2StartEndWithSparse(uint32_t bn1Cur, uint32_t s1Cur)
     {
         s2FirstToken_ = 0;
         // 1. Calc preTokenLeftUp, nextTokenLeftUp
@@ -372,29 +390,11 @@ public:
         int64_t nextTokenLeftUp = 0;
         GetPreNextTokenLeftUp(actSeqLensQ_, actSeqLensKv_, preTokenLeftUp, nextTokenLeftUp);
 
-        // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
-        int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken =
-            AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                 static_cast<int64_t>(actSeqLensQ_) * static_cast<int64_t>(constInfo_.gSize)) -
-            1;
-        int64_t s1FirstToken = 0;
-        int64_t s1LastToken = 0;
-        if constexpr (GetOutUbFormat<LAYOUT_T>() == UbFormat::S1G) {
-            s1FirstToken = static_cast<int64_t>(s1GFirstToken / constInfo_.gSize);
-            s1LastToken = static_cast<int64_t>(s1GLastToken / constInfo_.gSize);
-        } else {
-            if (s1GFirstToken / static_cast<int64_t>(actSeqLensQ_) ==
-                s1GLastToken / static_cast<int64_t>(actSeqLensQ_)) {
-                // start and end locate in one G
-                s1FirstToken = s1GFirstToken % static_cast<int64_t>(actSeqLensQ_);
-                s1LastToken = s1GLastToken % static_cast<int64_t>(actSeqLensQ_);
-            } else {
-                // start and end locate in tow or more G, but working same as crossing one complete block
-                s1FirstToken = 0;
-                s1LastToken = static_cast<int64_t>(actSeqLensQ_);
-            }
-        }
+        // 2. calc index of s2FirstToken, s2LastToken by s1 token range(纯 s1, 不合轴无 gs1 概念)
+        int64_t s1FirstToken = static_cast<int64_t>(s1Cur);
+        int64_t s1LastToken = AttentionCommon::Min(s1FirstToken + static_cast<int64_t>(GetS1Step(s1Cur)),
+                                                   static_cast<int64_t>(actSeqLensQ_)) -
+                              1;
 
         // 3. trans index of token to index of block
         uint32_t s2StartWithSparse = 0U;
@@ -420,11 +420,11 @@ public:
         curS2Start_ = s2StartWithSparse;
         curS2End_ = s2EndWithSparse;
 
-        if (bN2Cur == bN2Start_ && gS1Cur == gS1OStart_) { // first line
+        if (bn1Cur == bn1Start_ && s1Cur == s1OStart_ * mBaseSize) { // first line
             headS2Split_ = s2OStart_ > s2StartWithSparse ? true : false;
             curS2Start_ = AttentionCommon::Max(s2StartWithSparse, s2OStart_);
         }
-        if (bN2Cur == bN2End_ && gS1Cur == gS1OEnd_) { // last line
+        if (bn1Cur == bn1End_ && s1Cur == s1OEnd_ * mBaseSize) { // last line
             tailS2Split_ = s2OEnd_ > 0U ? true : false;
             curS2End_ = s2OEnd_ > 0U ? AttentionCommon::Min(s2EndWithSparse, s2OEnd_) : s2EndWithSparse;
         }
@@ -433,7 +433,7 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfo &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+        RunInfo& runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
 
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
@@ -443,7 +443,7 @@ public:
             }
         }
         if (loop >= PRELOAD_N) {
-            RunInfo &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
+            RunInfo& runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
             if (runInfoNegN.isValid) {
                 if ASCEND_IS_AIC {
                     ComputeMm2(runInfoNegN);
@@ -455,60 +455,50 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfo &runInfo)
+    __aicore__ inline void ComputeMm1(RunInfo& runInfo)
     {
         cubeBlock_.IterateBmm1(runInfo);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfo &runInfo)
+    __aicore__ inline void ComputeMm2(RunInfo& runInfo)
     {
         cubeBlock_.IterateBmm2(runInfo);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfo &runInfo)
+    __aicore__ inline void ComputeVec1(RunInfo& runInfo)
     {
         vecFaBlock_.ProcessVec1(runInfo);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfo &runInfo)
+    __aicore__ inline void ComputeVec2(RunInfo& runInfo)
     {
         vecFaBlock_.ProcessVec2(runInfo);
     }
 
-    __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
+    __aicore__ inline void CreateTask(uint64_t loop, uint32_t bn1Cur, uint32_t s1Cur, uint32_t s2Cur,
                                       RunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfo &runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
-        CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
+        RunInfo& runInfo = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+        CalcParams(loop, bn1Cur, s1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfo &info)
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bn1Cur, uint32_t s1Cur, uint32_t s2Cur, RunInfo& info)
     {
         info.loop = loop;
         info.mloop = mloop_;
         info.isFirstFdBlock = (s2Cur == (s2FirstToken_ / s2BaseSize));
-        info.bIdx = bN2Cur / constInfo_.n2Size;
-        info.n2Idx = bN2Cur % constInfo_.n2Size;
-        info.gS1Idx = gS1Cur * mBaseSize;
-        if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
-            // S1G layout
-            info.s1Idx = info.gS1Idx / constInfo_.gSize;
-            info.gIdx = info.gS1Idx % constInfo_.gSize;
-        } else {
-            // GS1 layout
-            info.s1Idx = info.gS1Idx % actSeqLensQ_;
-            info.gIdx = info.gS1Idx / actSeqLensQ_;
-        }
+        // 不合轴: bn1 = b*n1, 任务为单个 query 头(n1)的纯 s1 块; K/V 按 n2 = n1/gSize 共享
+        info.bIdx = bn1Cur / constInfo_.n1Size;
+        info.n1Idx = bn1Cur % constInfo_.n1Size;
+        info.n2Idx = info.n1Idx / constInfo_.gSize;
+        info.gIdx = info.n1Idx % constInfo_.gSize;
+        info.s1Idx = s1Cur;
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ_;
         info.actS2Size = actSeqLensKv_;
 
-        info.actMSize = mBaseSize;
-        uint64_t gS1Size = info.actS1Size * constInfo_.gSize;
-        if (((gS1Cur + 1) * mBaseSize) > gS1Size) {
-            info.actMSize = gS1Size - gS1Cur * mBaseSize;
-        }
+        info.actMSize = GetS1Step(s1Cur);
         info.actSingleLoopS2Size = s2BaseSize;
         if (((s2Cur + 1) * s2BaseSize) > info.actS2Size) {
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
@@ -519,41 +509,40 @@ public:
         GetPreNextTokenLeftUp(actSeqLensQ_, actSeqLensKv_, info.preTokensLeftUp, info.nextTokensLeftUp);
 
         // 情况1: loop不等于0时, 第一个S2 inner循环就是第一个S2 outer循环, 即s2Cur=0
-        // 情况2: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
-        // 情况3: loop=0时, 如果(bN2Start, gS1OStart, s2Start)任务无效,
+        // 情况2: loop=0时, 如果(bn1Start, s1OStart, s2Start)任务有效, 对于当前核, 为第一个S2 inner循环
+        // 情况3: loop=0时, 如果(bn1Start, s1OStart, s2Start)任务无效,
         // 下一个有效任务一定是某个head的第一个S2外切块，s2Cur=0
         info.isFirstS2Loop = ((loop == 0) || (s2Cur == curS2Start_));
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = coreFirstTmpOutWsPos_;
         info.isLastS2Loop = (s2Cur + 1 == curS2End_);
-        info.actVecMSize = (info.actMSize + CV_RATIO - 1) / CV_RATIO;
+        info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
+        info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 / CV_RATIO);
         info.vecMbaseIdx = 0;
         if (constInfo_.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
-        if (bN2Start_ == bN2End_ && gS1OStart_ == gS1OEnd_) {
-            // 所有任务属于同一个S1G
+        if (bn1Start_ == bn1End_ && s1OStart_ == s1OEnd_) {
+            // 所有任务属于同一个 (b,n1)
             info.isS2SplitCore = true;
         } else {
-            if (headS2Split_ && (bN2Cur == bN2Start_) && (gS1Cur == gS1OStart_)) {
-                // 当前任务属于第一个S1G, 并且第一个S1G的S2被切分了
+            if (headS2Split_ && (bn1Cur == bn1Start_) && (s1Cur == s1OStart_ * mBaseSize)) {
+                // 当前任务属于第一个 (b,n1), 并且它的 S2 被切分了
                 info.isS2SplitCore = true;
-            } else if (tailS2Split_ && (bN2Cur == bN2End_) && (gS1Cur == gS1OEnd_)) {
-                // 当前任务属于最后一个S1G, 并且最后一个S1G的S2被切分了
+            } else if (tailS2Split_ && (bn1Cur == bn1End_) && (s1Cur == s1OEnd_ * mBaseSize)) {
+                // 当前任务属于最后一个 (b,n1), 并且它的 S2 被切分了
                 info.isS2SplitCore = true;
                 info.faTmpOutWsPos = headS2Split_ ? (info.faTmpOutWsPos + 1) : info.faTmpOutWsPos;
             }
         }
     }
 
-    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
-                                          uint32_t &s2Cur)
+    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t& bn1Cur, uint32_t& s1Cur,
+                                          uint32_t& s2Cur)
     {
         uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ_ * constInfo_.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
 
         // 尚未到达有效区间, 快进s2Cur到curS2Start, 不跳行
         if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
@@ -567,15 +556,15 @@ public:
                 return;
             }
         }
-        // 当前BN2未处理完
+        // 当前 (b,n1) 未处理完
         s2Cur = 0;
-        if (gS1Cur + 1 < gS1LoopTimes) {
-            gS1Cur++;
+        if (s1Cur < actSeqLensQ_) {
+            s1Cur += GetS1Step(s1Cur);
             return;
         }
-        // 当前BN2已处理完
-        gS1Cur = 0;
-        bN2Cur++;
+        // 当前 (b,n1) 已处理完
+        s1Cur = 0;
+        bn1Cur++;
     }
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
@@ -593,14 +582,13 @@ public:
 
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx)
     {
-        bN2Start_ =
-            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_START_INDEX, sectionIdx));
-        gS1OStart_ =
-            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
+        bn1Start_ =
+            faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN1_START_INDEX, sectionIdx));
+        s1OStart_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_START_INDEX, sectionIdx));
         s2OStart_ =
             faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_START_INDEX, sectionIdx));
-        bN2End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN2_END_INDEX, sectionIdx));
-        gS1OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
+        bn1End_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_BN1_END_INDEX, sectionIdx));
+        s1OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_M_END_INDEX, sectionIdx));
         s2OEnd_ = faMetaDataGm_.GetValue(GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_S2_END_INDEX, sectionIdx));
         coreFirstTmpOutWsPos_ = faMetaDataGm_.GetValue(
             GetFAMetaDataIndex(constInfo_.aicIdx, FLASH_ATTN_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, sectionIdx));
@@ -613,8 +601,8 @@ public:
         if (!fdParams_.fdCoreEnable) {
             return;
         }
-        fdParams_.fdBN2Idx =
-            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_BN2_IDX_INDEX, sectionIdx));
+        fdParams_.fdBN1Idx =
+            fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_BN1_IDX_INDEX, sectionIdx));
         fdParams_.fdMIdx = fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_M_IDX_INDEX, sectionIdx));
         fdParams_.fdWorkspaceIdx =
             fdMetaDataGm_.GetValue(GetFDMetaDataIndex(constInfo_.aivIdx, FA_FD_WORKSPACE_IDX_INDEX, sectionIdx));
@@ -631,8 +619,8 @@ public:
             vecFaBlock_.InitCrossCoreSync();
             vecFaBlock_.AllocEventID();
         } else {
-            cubeBlock_.InitCrossCoreSync();
             cubeBlock_.InitBuffers();
+            cubeBlock_.InitCrossCoreSync();
             cubeBlock_.AllocEventID();
         }
         for (uint32_t sectionIdx = 0; sectionIdx < sectionNum_; sectionIdx++) {
@@ -651,8 +639,8 @@ public:
             cubeBlock_.UnInitCrossCoreSync();
         }
     }
-}; // FlashAttentionNoQuantGqaKernelNd
+}; // FlashAttentionNoQuantGqaKernelDnUnmerged
 
 } // namespace FlashAttnKernel
 
-#endif // FLASH_ATTN_KERNEL_ND_H_
+#endif // FLASH_ATTN_KERNEL_DN_UNMERGED_H_

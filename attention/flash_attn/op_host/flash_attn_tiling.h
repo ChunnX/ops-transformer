@@ -18,7 +18,7 @@
 
 #include <cstdint>
 #include <register/op_impl_registry.h>
-#include "../op_kernel/arch35/flash_attn_tiling_data.h"
+#include "../op_kernel/flash_attn_tiling_data.h"
 #include "flash_attn_tiling_common.h"
 
 namespace optiling {
@@ -26,8 +26,8 @@ namespace optiling {
 // FlashAttn 使用common中的公共结构
 // using FlashAttnTilingData = FlashAttnSimplifiedTilingData;
 
-ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context);
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttn(gert::TilingParseContext *context);
+ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext* context);
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForFlashAttn(gert::TilingParseContext* context);
 
 } // namespace optiling
 
