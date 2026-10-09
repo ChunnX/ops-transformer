@@ -172,7 +172,9 @@ def _qscale_shape(total_q, n_q, n_kv, num_groups, q_scale_layout):
         return (total_q, n_q, num_groups // 2, 2)
     if q_scale_layout == "N2TGD":
         if n_kv <= 0 or n_q % n_kv != 0:
-            raise ValueError(f"N_q must be divisible by N_kv, got N_q={n_q}, N_kv={n_kv}")
+            raise ValueError(
+                f"N_q must be divisible by N_kv, got N_q={n_q}, N_kv={n_kv}"
+            )
         return (n_kv, total_q, n_q // n_kv, num_groups // 2, 2)
     raise ValueError(f"unsupported q_scale_layout: {q_scale_layout}")
 
@@ -182,7 +184,9 @@ def _derive_case(case):
     quant_mode = case.get("quant_mode", 1)
     quant_mode = 1 if quant_mode is None else int(quant_mode)
     if quant_mode != 1:
-        raise ValueError(f"pytest_paramset_to_csv only supports MXFP8 (quant_mode=1), got {quant_mode}")
+        raise ValueError(
+            f"pytest_paramset_to_csv only supports MXFP8 (quant_mode=1), got {quant_mode}"
+        )
 
     B = int(case["B"])
     N_q = int(case["N_q"])
@@ -199,7 +203,9 @@ def _derive_case(case):
     p_scale = case.get("p_scale")
     p_scale = 1.0 if p_scale is None else float(p_scale)
     softmax_scale = case.get("softmax_scale")
-    softmax_scale = (1.0 / math.sqrt(D)) if softmax_scale is None else float(softmax_scale)
+    softmax_scale = (
+        (1.0 / math.sqrt(D)) if softmax_scale is None else float(softmax_scale)
+    )
 
     cu_q = case.get("cu_seqlens_q")
     cu_kv = case.get("cu_seqlens_kv")
@@ -235,7 +241,9 @@ def _derive_case(case):
         max_blocks = max(_ceil_div(a, block_size) for a in act_kv)
         k_shape = _pa_kv_shape(blocks, N_kv, D, block_size, kv_layout)
         v_shape = k_shape
-        k_descale_shape = _pa_kscale_shape(blocks, N_kv, num_groups, block_size, kv_layout)
+        k_descale_shape = _pa_kscale_shape(
+            blocks, N_kv, num_groups, block_size, kv_layout
+        )
         vscale_pack_block = _ceil_div(block_size, VSCALE_PACK)
         vscale_blocks = sum(
             _ceil_div(_ceil_div(a, VSCALE_PACK), vscale_pack_block) for a in act_kv
@@ -320,8 +328,12 @@ def _derive_case(case):
         "win_left": -1,
         "win_right": -1,
         "enable_v_tail": 1 if enable_v_tail else None,
-        "max_seqlen_q": int(case["max_seqlen_q"]) if case.get("max_seqlen_q") is not None else -1,
-        "max_seqlen_kv": int(case["max_seqlen_kv"]) if case.get("max_seqlen_kv") is not None else -1,
+        "max_seqlen_q": int(case["max_seqlen_q"])
+        if case.get("max_seqlen_q") is not None
+        else -1,
+        "max_seqlen_kv": int(case["max_seqlen_kv"])
+        if case.get("max_seqlen_kv") is not None
+        else -1,
         "layout_q": "TND",
         "layout_q_descale": q_scale_layout,
         "layout_kv": layout_kv,
@@ -381,7 +393,9 @@ def main():
         help="paramset 模块名(不含.py)",
     )
     parser.add_argument("--output", default="qfa_mxfp8.csv", help="输出 CSV 路径")
-    parser.add_argument("--dry-run", action="store_true", help="只打印生成结果, 不写文件")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="只打印生成结果, 不写文件"
+    )
     args = parser.parse_args()
 
     cases, skip = _load_cases(args.paramset)
@@ -409,7 +423,9 @@ def main():
         writer.writerow(_HEADER)
         for row in rows:
             writer.writerow(row)
-        print(f"\n生成 {written} 个 case (跳过 {skipped} 个) (dry-run)", file=sys.stderr)
+        print(
+            f"\n生成 {written} 个 case (跳过 {skipped} 个) (dry-run)", file=sys.stderr
+        )
         return
 
     with open(out_path, "w", encoding="utf-8", newline="") as f:

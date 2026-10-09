@@ -202,6 +202,7 @@ def list_sheet_names(xlsx_path):
     wb_doc = minidom.parseString(wb_xml)
     return [s.getAttribute("name") for s in wb_doc.getElementsByTagName("sheet")]
 
+
 _FILE_HEADER = """\
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
@@ -366,9 +367,7 @@ def build_test_params(data_rows, cols):
         if not name:
             continue  # 跳过 testcase_name 为空的整行
         parsed = _parse_row(row, cols)
-        test_params[name] = {
-            key: _render_value(key, parsed[key]) for key, _ in _FIELDS
-        }
+        test_params[name] = {key: _render_value(key, parsed[key]) for key, _ in _FIELDS}
     return test_params
 
 
