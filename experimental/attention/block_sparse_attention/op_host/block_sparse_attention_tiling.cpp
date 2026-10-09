@@ -696,17 +696,18 @@ ge::graphStatus BSATiling::CheckSparsePattern(gert::TilingContext *bsaContext, c
     maxQBlockNum_ = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_2));
     maxKvBlockNum_ = static_cast<uint32_t>(blockSparseMaskShape->GetStorageShape().GetDim(DIM_3));
 
-    uint32_t expectedMaxQBlockNum = CeilDiv(maxQSeqlen_, blockShapeX_);
-    uint32_t expectedMaxKVBlockNum = CeilDiv(maxKvSeqlen_, blockShapeY_);
-    std::string shapeDescription = "(batch, numHeads, maxQBlockNum, maxKVBlockNum)";
-
-    if (blockSparseMaskBatch != batch_ || blockSparseMaskNumHeads != numHeads_ ||
-        maxQBlockNum_ != expectedMaxQBlockNum || maxKvBlockNum_ != expectedMaxKVBlockNum) {
+    if (blockSparseMaskBatch != batch_) {
         OP_LOGE(bsaContext->GetNodeName(),
-                "The shape of blockSparseMask must be consistent with %s. The expected shape is (%u, %u, %u, %u), but "
-                "the current shape is (%u, %u, %u, %u).",
-                shapeDescription.c_str(), batch_, numHeads_, expectedMaxQBlockNum, expectedMaxKVBlockNum,
-                blockSparseMaskBatch, blockSparseMaskNumHeads, maxQBlockNum_, maxKvBlockNum_);
+                "BlockSparseMask must have consistent batch with context,"
+                "but got BlockSparseMask batch(dim0): %u, context batch: %u.",
+                blockSparseMaskBatch, batch_);
+        return ge::GRAPH_FAILED;
+    }
+    if (blockSparseMaskNumHeads != numHeads_) {
+        OP_LOGE(bsaContext->GetNodeName(),
+                "BlockSparseMask must have consistent numHeads with context,"
+                "but got BlockSparseMask numHeads(dim1): %u, context numHeads: %u.",
+                blockSparseMaskNumHeads, numHeads_);
         return ge::GRAPH_FAILED;
     }
 
