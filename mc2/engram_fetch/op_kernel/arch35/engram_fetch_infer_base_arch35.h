@@ -57,17 +57,17 @@ public:
 protected:
     // Common inference init: GM inputs, comm context, tiling fields and the relay queue.
     __aicore__ inline void InitInferBase(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR sfTable,
-                                         GM_ADDR fetchedSf, AscendC::TPipe *pipe,
-                                         const EngramFetchTilingData *tilingData)
+                                         GM_ADDR fetchedSf, AscendC::TPipe* pipe,
+                                         const EngramFetchTilingData* tilingData)
     {
         tpipe_ = pipe;
         indicesGM_ = indices;
         fetchedGM_ = fetched;
         fetchedSfGM_ = fetchedSf;
-        sfTableGM_ = reinterpret_cast<__gm__ uint8_t *>(sfTable);
+        sfTableGM_ = reinterpret_cast<__gm__ uint8_t*>(sfTable);
         aivId_ = AscendC::GetBlockIdx();
 
-        ctxPtr_ = (__gm__ EngramCommContext *)commContext;
+        ctxPtr_ = (__gm__ EngramCommContext*)commContext;
         rankId_ = ctxPtr_->rankId;
         numRanks_ = ctxPtr_->rankSize;
 
@@ -110,7 +110,7 @@ protected:
     __aicore__ inline void CopyIndicesToUb(uint32_t indicesBatchStart, uint32_t indicesBatchLen)
     {
         AscendC::GlobalTensor<int32_t> indicesGlobal;
-        indicesGlobal.SetGlobalBuffer((__gm__ int32_t *)indicesGM_);
+        indicesGlobal.SetGlobalBuffer((__gm__ int32_t*)indicesGM_);
         AscendC::LocalTensor<int32_t> indicesLocal = indicesBuf_.Get<int32_t>();
         AscendC::DataCopyExtParams params{1U, indicesBatchLen * static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U};
         AscendC::DataCopyPadExtParams<int32_t> pad{false, 0, 0, 0};
@@ -124,8 +124,8 @@ protected:
         GM_ADDR sfDst = fetchedSfGM_ + globalTokenIdx * sfBytes;
         AscendC::GlobalTensor<uint8_t> sfSrcGm;
         AscendC::GlobalTensor<uint8_t> sfDstGm;
-        sfSrcGm.SetGlobalBuffer((__gm__ uint8_t *)sfSrc);
-        sfDstGm.SetGlobalBuffer((__gm__ uint8_t *)sfDst);
+        sfSrcGm.SetGlobalBuffer((__gm__ uint8_t*)sfSrc);
+        sfDstGm.SetGlobalBuffer((__gm__ uint8_t*)sfDst);
         AscendC::LocalTensor<uint8_t> sfTmp = relayQue_.AllocTensor<uint8_t>();
         AscendC::DataCopyExtParams sfCopyIn{1U, sfBytes, 0U, 0U, 0U};
         AscendC::DataCopyPadExtParams<uint8_t> sfPadIn{false, 0, 0, 0};
@@ -142,8 +142,8 @@ protected:
     {
         AscendC::GlobalTensor<uint8_t> srcGm;
         AscendC::GlobalTensor<uint8_t> dstGm;
-        srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
-        dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
+        srcGm.SetGlobalBuffer((__gm__ uint8_t*)src);
+        dstGm.SetGlobalBuffer((__gm__ uint8_t*)dst);
 
         uint32_t tileLen = tileBytes_;
         uint64_t off = 0;
@@ -164,12 +164,12 @@ protected:
         }
     }
 
-    AscendC::TPipe *tpipe_{nullptr};
+    AscendC::TPipe* tpipe_{nullptr};
     GM_ADDR indicesGM_{nullptr};
     GM_ADDR fetchedGM_{nullptr};
-    __gm__ uint8_t *sfTableGM_{nullptr};
+    __gm__ uint8_t* sfTableGM_{nullptr};
     GM_ADDR fetchedSfGM_{nullptr};
-    __gm__ EngramCommContext *ctxPtr_{nullptr};
+    __gm__ EngramCommContext* ctxPtr_{nullptr};
 
     uint32_t aivId_{0};
     uint32_t rankId_{0};
