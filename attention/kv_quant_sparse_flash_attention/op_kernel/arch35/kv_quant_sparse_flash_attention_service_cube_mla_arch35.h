@@ -62,11 +62,11 @@ public:
     static constexpr uint32_t dBaseMatmulSize = 128;
 
     __aicore__ inline QSFAMatmulService(){};
-    __aicore__ inline void InitCubeBlock(TPipe* pipe, BufferManager<BufferType::L1>* qsfaL1BufferManagerPtr,
+    __aicore__ inline void InitCubeBlock(TPipe* pipe, BufferManager<BufferType::L1>* qsfaL1BuffMgr,
                                          __gm__ uint8_t* query);
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t* cuSeqlensQ, const ConstInfo& constInfo);
+    __aicore__ inline void InitCubeInput(__gm__ uint8_t* qsfaActualSeqLengthsQ, const ConstInfo& constInfo);
     __aicore__ inline void UninitLocalBuffer();
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& output,
+    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& inputRightBuf,
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
                                        RunInfo& runInfo, ConstInfo& constInfo);
@@ -79,7 +79,7 @@ public:
 
 private:
     __aicore__ inline void InitLocalBuffer();
-    __aicore__ inline void InitGmTensor(__gm__ uint8_t* cuSeqlensQ, const ConstInfo& constInfo);
+    __aicore__ inline void InitGmTensor(__gm__ uint8_t* qsfaActualSeqLengthsQ, const ConstInfo& constInfo);
     __aicore__ inline void CalcS1Coord(RunInfo& runInfo, ConstInfo& constInfo);
 
     __aicore__ inline void IterateBmm1QSFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& outputBuf,
