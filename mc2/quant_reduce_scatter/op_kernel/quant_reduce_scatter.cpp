@@ -24,7 +24,7 @@
 
 using namespace AscendC;
 using namespace QuantReduceScatterImpl;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) && (__NPU_ARCH__ == 9201)
 #endif
 
 template <uint32_t quantReduceScatterCommMode>
