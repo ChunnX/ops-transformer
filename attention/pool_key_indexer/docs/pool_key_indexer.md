@@ -4,37 +4,37 @@
 
 <!-- npu="950" id1 -->
 
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 
 <!-- end id1 -->
 
 <!-- npu="A3" id2 -->
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 
 <!-- end id2 -->
 
 <!-- npu="910b" id3 -->
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 
 <!-- end id3 -->
 
 <!-- npu="310b" id4 -->
 
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 
 <!-- end id4 -->
 
 <!-- npu="310p" id5 -->
 
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 
 <!-- end id5 -->
 
 <!-- npu="910" id6 -->
 
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 
 <!-- end id6 -->
 
@@ -96,9 +96,9 @@ cann_ops_transformer.pool_key_indexer(
 | query        | Tensor   | 必选      | 公式中的输入Q。不支持空tensor。数据格式为ND。                                                                                | bfloat16、float16 | layout_q为BSND时shape为(B,S1,N1,D)；layout_q为TND时shape为(T1,N1,D)                                                        |
 | pool_key     | Tensor   | 必选      | 公式中的池化后输入K。不支持空tensor。数据格式为ND，支持非连续的Tensor（仅PA_BBND场景下0轴支持非连续）。                      | bfloat16、float16 | layout_k为BSND时shape为(B,S2,N2,D)；layout_k为TND时shape为(T2,N2,D)；layout_k为PA_BBND时shape为(block_num,block_size,N2,D) |
 | weights      | Tensor   | 必选      | 公式中的输入W。不支持空tensor。数据格式为ND。                                                                                | bfloat16、float16 | layout_q为BSND时shape为(B,S1,N1)；layout_q为TND时shape为(T1,N1)                                                            |
-| pool_tail_k  | Tensor   | 必选      | 表示每个Batch中最后一个pool未满pool_size时的有效token数。取值范围[0, pool_size-1]。数据格式为ND。                            | int32             | (B,)                                                                                                                       |
-| actual_seq_q | Tensor   | 可选      | 表示不同Batch中Query的有效Sequence Length。仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。    | int32             | (B,) 或 (B+1,)                                                                                                             |
-| actual_seq_k | Tensor   | 可选      | 表示不同Batch中pool_key的有效Sequence Length。仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32             | (B,) 或 (B+1,)                                                                                                             |
+| pool_tail_k  | Tensor   | 必选      | 表示每个Batch中最后一个pool未满pool_size时的有效token数。取值范围[0, pool_size-1]。数据格式为ND。                            | int64             | (B,)                                                                                                                       |
+| actual_seq_q | Tensor   | 可选      | 表示不同Batch中Query的有效Sequence Length。仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。    | int64             | (B,) 或 (B+1,)                                                                                                             |
+| actual_seq_k | Tensor   | 可选      | 表示不同Batch中pool_key的有效Sequence Length。仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int64             | (B,) 或 (B+1,)                                                                                                             |
 | block_table  | Tensor   | 可选      | 表示PageAttention中KV存储使用的block映射表。仅layout_k为PA_BBND场景下必传。数据格式为ND。                                    | int32             | (B, max_block_num_per_seq)                                                                                                 |
 | q_descale    | Tensor   | 可选      | 表示Query的反量化系数。仅quant_mode>=0时有效。数据格式为ND。                                                                 | float             | layout_q为BSND时shape为(B,S1,N1)；layout_q为TND时shape为(T1,N1)                                                            |
 | k_descale    | Tensor   | 可选      | 表示pool_key的反量化系数。仅quant_mode>=0时有效。数据格式为ND。                                                              | float             | layout_k为BSND时shape为(B,S2,N2)；layout_k为TND时shape为(T2,N2)；layout_k为PA_BBND时shape为(block_num,block_size,N2)       |
@@ -136,7 +136,7 @@ cann_ops_transformer.pool_key_indexer(
 
 <!-- npu="A3,910b" id7 -->
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
+- <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>:
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当layout_k为PA_BBND时，必须传入actual_seq_k。
   - 当layout_q为BSND时，不支持传入actual_seq_q；当layout_k为BSND时，不支持传入actual_seq_k。
@@ -146,7 +146,7 @@ cann_ops_transformer.pool_key_indexer(
 
 <!-- npu="950" id8 -->
 
-- <term>Ascend 950PR/Ascend 950DT</term>:
+- <term>Ascend 950PR&950DT系列产品</term>:
   - 当layout_q为BSND时，不支持传入actual_seq_q；当layout_k为BSND或PA_BBND时，不支持传入actual_seq_k。
   - 当layout_q为TND时，必须传入actual_seq_q。
   - quant_mode支持-1（不量化）、0（FP8 per-token-head量化）、1（mxFP8量化）。

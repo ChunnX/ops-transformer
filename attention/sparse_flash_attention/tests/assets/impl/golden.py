@@ -284,6 +284,9 @@ def cpu_sparse_flash_attention_aclnn(*args, testcase_name=None, **kwargs):
 __golden__ = {
     "e2e": {
         "torch_npu.npu_sparse_flash_attention": "cpu_sparse_flash_attention",
+        "torch.ops.cann_ops_transformer.sparse_flash_attention": (
+            "cpu_sparse_flash_attention"
+        ),
     },
     "aclnn": {
         "aclnnSparseFlashAttention": "cpu_sparse_flash_attention_aclnn",

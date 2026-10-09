@@ -99,6 +99,21 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("v_tail")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND})
+            .IgnoreContiguous();
+        this->Input("block_table_tail")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("seqused_v_tail")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("attn_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16})
@@ -134,6 +149,7 @@ public:
             .ExtendCfgInfo("opFile.value", "quant_flash_attn");
 
         this->AICore().AddConfig("ascend950", aicore_config_95);
+        this->AICore().AddConfig("ascend960dt", aicore_config_95);
     }
 };
 

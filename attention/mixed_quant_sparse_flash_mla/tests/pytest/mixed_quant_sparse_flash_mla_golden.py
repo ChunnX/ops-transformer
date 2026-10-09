@@ -305,9 +305,8 @@ class GeneralizedSFAQuant:
     def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
         """Return the S2 reduction-block size used by batch-consistency metadata."""
         total_s2_size = ori_s2_size + cmp_s2_size
-        # Match the kernel's integer ``s2Load / 32`` quotient before aligning
-        # to the 128-token S2 base block.
-        raw_reduce_size = total_s2_size // 32
+        # 先向上整除 32，再向上对齐到 128-token 基础块，与 metadata 和 kernel 保持一致。
+        raw_reduce_size = (total_s2_size + 31) // 32
         return max(((raw_reduce_size + 127) // 128) * 128, 128)
 
     @staticmethod
@@ -339,19 +338,17 @@ class GeneralizedSFAQuant:
     def _calculate_local_s2_block(
         self,
         q_fp32,
-        k_block_fp32,
+        k_tiles_fp32,
         initial_score_max,
-        s2_base_size=128,
     ):
         """Calculate one NPU reduction block and retain its local softmax state."""
         score_max = initial_score_max.clone()
         sumexp = torch.ones_like(score_max, dtype=torch.float32)
         acc_o = torch.zeros(
-            (q_fp32.shape[0], k_block_fp32.shape[-1]), dtype=torch.float32
+            (q_fp32.shape[0], k_tiles_fp32[0].shape[-1]), dtype=torch.float32
         )
 
-        for s2_start in range(0, k_block_fp32.shape[0], s2_base_size):
-            k_tile = k_block_fp32[s2_start : s2_start + s2_base_size]
+        for k_tile in k_tiles_fp32:
             score_max, sumexp, acc_o = self._update_s2_tile(
                 q_fp32,
                 k_tile,
@@ -376,26 +373,27 @@ class GeneralizedSFAQuant:
         cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
         reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
 
-        # Metadata splits ORI and CMP independently, so a reduction block never
-        # crosses the boundary between the two KV regions.
+        # ORI、CMP 分别划分规约块，ORI 尾块结束后再开始 CMP 的规约。
         blocks = []
         for k_tensor in (ori_k_fp32, cmp_k_fp32):
-            if k_tensor is None:
+            if k_tensor is None or k_tensor.shape[0] == 0:
                 continue
-            for start in range(0, k_tensor.shape[0], reduce_size):
-                blocks.append(k_tensor[start : start + reduce_size])
+            blocks.extend(
+                list(block.split(128, dim=0))
+                for block in k_tensor.split(reduce_size, dim=0)
+            )
 
         merged_lse = None
         merged_sum = None
         merged_o = None
-        for block_id, k_block in enumerate(blocks):
+        for block_id, k_tiles in enumerate(blocks):
             initial_max = (
                 sinks.clone()
                 if block_id == 0 and sinks is not None
                 else torch.full((q_fp32.shape[0],), -torch.inf, dtype=torch.float32)
             )
             local_max, local_sum, local_o = self._calculate_local_s2_block(
-                q_fp32, k_block, initial_max
+                q_fp32, k_tiles, initial_max
             )
             if merged_lse is None:
                 merged_lse = local_max
@@ -1339,6 +1337,44 @@ def gen_sparse_indices_tnd(
                         )
 
     return sparse_data, topk_length
+
+
+def convert_sparse_indices_to_pa_offsets(
+    sparse_indices, block_table, block_size, layout_q, cu_seqlens_q
+):
+    """Convert logical sparse indices to physical PA token offsets for mode 2."""
+    if sparse_indices is None or block_table is None:
+        return sparse_indices
+
+    physical_offsets = sparse_indices.clone()
+    for batch_idx in range(block_table.shape[0]):
+        if layout_q == "BSND":
+            logical_slice = sparse_indices[batch_idx]
+            physical_slice = physical_offsets[batch_idx]
+        elif layout_q == "TND":
+            q_start = int(cu_seqlens_q[batch_idx])
+            q_end = int(cu_seqlens_q[batch_idx + 1])
+            logical_slice = sparse_indices[q_start:q_end]
+            physical_slice = physical_offsets[q_start:q_end]
+        else:
+            raise ValueError(f"unsupported layout_q for sparse indices: {layout_q}")
+
+        valid_mask = logical_slice >= 0
+        if not valid_mask.any().item():
+            continue
+        logical_values = logical_slice[valid_mask].to(torch.int64)
+        logical_block_ids = torch.div(logical_values, block_size, rounding_mode="floor")
+        in_block_offsets = logical_values % block_size
+        physical_block_ids = block_table[
+            batch_idx, logical_block_ids.to(torch.long)
+        ].to(torch.int64)
+        if (physical_block_ids < 0).any().item():
+            raise ValueError("sparse index maps to an invalid PA block table entry")
+        physical_slice[valid_mask] = (
+            physical_block_ids * block_size + in_block_offsets
+        ).to(physical_offsets.dtype)
+
+    return physical_offsets
 
 
 def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
@@ -2800,6 +2836,25 @@ def gen_data(params, generate_golden=True):
         cmp_k_bnsd = None
         cmp_topk_length = None
 
+    # Keep logical indices for CPU Golden, and convert only the operator inputs.
+    ori_sparse_indices_for_op = ori_sparse_indices
+    cmp_sparse_indices_for_op = cmp_sparse_indices
+    if topk_value_mode == 2 and layout_kv == "PA_BBND":
+        ori_sparse_indices_for_op = convert_sparse_indices_to_pa_offsets(
+            ori_sparse_indices,
+            ori_block_table,
+            block_size1,
+            layout_q,
+            cu_seqlens_q,
+        )
+        cmp_sparse_indices_for_op = convert_sparse_indices_to_pa_offsets(
+            cmp_sparse_indices,
+            cmp_block_table,
+            block_size2,
+            layout_q,
+            cu_seqlens_q,
+        )
+
     # Golden tensors above retain FP8 semantics. Only the tensors crossing the
     # operator/save boundary are reinterpreted as uint8 when requested.
     ori_k_in_pa_shape = reinterpret_kv_for_operator(ori_k_in_pa_shape, ori_kv_type)
@@ -2961,8 +3016,8 @@ def gen_data(params, generate_golden=True):
             "q": q,
             "ori_kv": ori_k_in_pa_shape,
             "cmp_kv": cmp_k_in_pa_shape,
-            "ori_sparse_indices": ori_sparse_indices,
-            "cmp_sparse_indices": cmp_sparse_indices,
+            "ori_sparse_indices": ori_sparse_indices_for_op,
+            "cmp_sparse_indices": cmp_sparse_indices_for_op,
             "ori_topk_length": ori_topk_length,
             "cmp_topk_length": cmp_topk_length,
             "ori_block_table": ori_block_table,

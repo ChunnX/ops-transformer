@@ -39,6 +39,8 @@ namespace MegaMoeImpl {
 // URMA 的 rank 槽位超过预留区时动态扩展；MTE 保持原 60 KiB 固定布局。
 constexpr int64_t PEERMEM_MIN_RANK_SYNC_SIZE = 1024 * 48LL;
 constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
+// MTE count 区固定预留 2048 个 int32 槽，容量覆盖总专家数上限。
+constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = 8LL * 1024LL;
 constexpr int64_t PEERMEM_SYNC_COUNT_REGION_SIZE = PEERMEM_DATA_OFFSET - PEERMEM_MIN_RANK_SYNC_SIZE;
 constexpr int64_t PEERMEM_SYNC_SLOT_SIZE = static_cast<int64_t>(INT_CACHELINE) * sizeof(int32_t);
 
@@ -116,6 +118,20 @@ HOST_DEVICE int64_t CalcExpertCountRecvSize(int64_t moeExpertPerRank, int64_t ep
     return Ops::Base::CeilAlign(moeExpertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
 }
 
+// dedupMode 的值就是门控后实际开启的去重模式：
+// 0 = dispatch 关、combine 关；1 = dispatch 关、combine 开；
+// 2 = dispatch 开、combine 关；3 = dispatch 开、combine 开。
+// 下面两个判断函数是唯一入口，host 和 kernel 都用它们，不要在别处自己写数值比较。
+HOST_DEVICE constexpr bool IsDispatchDedupOn(int32_t dedupMode)
+{
+    return dedupMode == 2 || dedupMode == 3;
+}
+
+HOST_DEVICE constexpr bool IsCombineDedupOn(int32_t dedupMode)
+{
+    return dedupMode == 1 || dedupMode == 3;
+}
+
 // 单 token 的量化记录字节数 = 量化数据 + mx scale（prefetch 场景再拼 topk 权重），按 32B 对齐。
 HOST_DEVICE int64_t CalcQuantTokenScaleBytes(int64_t h, uint32_t elemsPerByte, int64_t topK, bool topkWeightsPrefetch)
 {
@@ -131,6 +147,14 @@ HOST_DEVICE int64_t CalcQuantTokenScaleBytes(int64_t h, uint32_t elemsPerByte, i
         tokenScaleBytes = Ops::Base::CeilAlign(tokenScaleBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
     }
     return static_cast<int64_t>(tokenScaleBytes);
+}
+
+// 去重 rowDesc 每行的 int32 数：头 2 个 + 成员三元组 3*topK 个，向上对齐到 8 个 int32（32B），
+// 使描述符批量搬运天然 32B 对齐。字段语义见 mega_moe_constants.h 的 DEDUP_ROW_* 注释。
+HOST_DEVICE int64_t CalcDedupRowDescStrideInt32(int64_t topK)
+{
+    int64_t rawInt32 = static_cast<int64_t>(DEDUP_ROW_DESC_HEADER_INT32) + 3LL * topK;
+    return Ops::Base::CeilAlign(rawInt32, static_cast<int64_t>(INT32_PER_256B));
 }
 
 // combine 接收区单 token 记录字节数：须与 kernel InitCombineBuffers 的 combine record 布局一致。
@@ -186,7 +210,9 @@ HOST_DEVICE PeermemLayoutSizes CalcPeermemLayoutSizes(const PeermemSizeParams &p
     } else {
         sizes.maskRecvSize = CalcMaskRecvSize(sizes.maskAlignSize, params.moeExpertPerRank, params.epWorldSize);
     }
-    sizes.expertCountRecvSize = CalcExpertCountRecvSize(params.moeExpertPerRank, params.epWorldSize);
+    sizes.expertCountRecvSize = params.topoType == TOPO_TYPE_MTE ?
+                                    PEERMEM_MTE_COUNT_REGION_SIZE :
+                                    CalcExpertCountRecvSize(params.moeExpertPerRank, params.epWorldSize);
     sizes.tokenScaleBytes =
         CalcQuantTokenScaleBytes(params.h, params.elemsPerByte, params.topK, params.topkWeightsPrefetch);
     sizes.dispatchRecordAreaSize = Ops::Base::CeilAlign(params.numMaxTokensPerRank * sizes.tokenScaleBytes, ALIGN_512);
@@ -206,7 +232,8 @@ HOST_DEVICE PeermemLayoutSizes CalcPeermemLayoutSizes(const PeermemSizeParams &p
 
 /*
  * peermem 窗口所需的最小字节数，逐段与下方 PeermemInfo 构造函数的偏移推进同源：
- *   同步区(dataOffset) + mask 接收区 + count 接收区 + dispatch 接收区 + combine 接收区。
+ *   MTE：同步区 + 固定 count 接收区 + route 接收区 + dispatch 接收区 + combine 接收区。
+ *   URMA：同步区 + mask 接收区 + count 接收区 + dispatch 接收区 + combine 接收区。
  * host 侧 tiling 用它校验用户传入的 cclBufferSize，不再各自手写一份布局公式。
  */
 HOST_DEVICE int64_t CalcPeermemLeastSize(const PeermemSizeParams &params)
@@ -239,7 +266,7 @@ struct PeermemInfo {
         params.epWorldSize = static_cast<int64_t>(tilingData->epWorldSize);
         params.yDtypeSize = static_cast<int64_t>(sizeof(bfloat16_t));
         params.elemsPerByte = elemsPerByte;
-        params.topkWeightsPrefetch = tilingData->topkWeightsPrefetch == 1;
+        params.topkWeightsPrefetch = (tilingData->topkWeightsPrefetch == 1 || IsCombineDedupOn(tilingData->dedupMode));
         params.isQuantCombine = tilingData->combineQuantMode != COMBINE_NO_QUANT;
         params.topoType = tilingData->topoType;
         params.serverNum = static_cast<int64_t>(serverNum);
@@ -247,11 +274,18 @@ struct PeermemInfo {
 
         rankSyncInWorldPtr = base;
         int64_t offset = sizes.dataOffset;
-        maskRecvPtr = base + offset;
-        offset += sizes.maskRecvSize;
-
-        expertCountRecvPtr = base + offset;
-        offset += sizes.expertCountRecvSize;
+        if (tilingData->topoType == TOPO_TYPE_MTE) {
+            // count 固定在 [60 KiB, 68 KiB)，避免可变路由区覆盖历史 count 槽。
+            expertCountRecvPtr = base + offset;
+            offset += sizes.expertCountRecvSize;
+            maskRecvPtr = base + offset;
+            offset += sizes.maskRecvSize;
+        } else {
+            maskRecvPtr = base + offset;
+            offset += sizes.maskRecvSize;
+            expertCountRecvPtr = base + offset;
+            offset += sizes.expertCountRecvSize;
+        }
 
         if (tilingData->topoType == TOPO_TYPE_MTE) {
             quantTokenScalePtr = base + offset;

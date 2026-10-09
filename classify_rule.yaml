@@ -62,18 +62,11 @@ transformer-1@ops-transformer:
     src:
         release:
             huawei_style:
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/ifa_public_define.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/incre_flash_attention.cpp
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/incre_flash_attention_allvec_new.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch22/
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fia_tiling_info.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fia_tiling_info.cpp
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_base.h
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_shape.cpp
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_templates_registry.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_gqa.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_gqa.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/
                 - ops/ops-transformer/attention/common/op_kernel/buffers_policy.h
                 - ops/ops-transformer/attention/common/op_kernel/attn_buffer_manager.h
                 - ops/ops-transformer/attention/common/op_kernel/attn_buffer.h
@@ -114,11 +107,6 @@ transformer-1@ops-transformer:
             kernel_style: null
         unrelease:
             test_code:
-                - ops/ops-transformer/attention/incre_flash_attention/README.md
-                - ops/ops-transformer/attention/incre_flash_attention/CMakeLists.txt
-                - ops/ops-transformer/attention/incre_flash_attention/tests/
-                - ops/ops-transformer/attention/incre_flash_attention/docs/
-                - ops/ops-transformer/attention/incre_flash_attention/examples/
                 - ops/ops-transformer/attention/flash_attn/tests/
                 - ops/ops-transformer/attention/recurrent_gated_delta_rule/tests/
                 - ops/ops-transformer/attention/recurrent_gated_delta_rule/examples/
@@ -130,7 +118,7 @@ transformer-1@ops-transformer:
             - ops/ops-transformer/attention/*/op_kernel/
             - ops/ops-transformer/attention/*/op_api/
             - ops/ops-transformer/attention/*/op_graph/
-            - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fia_tiling_info.h
+            - ops/ops-transformer/attention/fused_infer_attention_score/op_host/*.h
             - ops/ops-transformer/attention/flash_attn/op_host/flash_attn_tiling.h
             - ops/ops-transformer/attention/flash_attn/op_host/flash_attn_tiling_common.h
             - ops/ops-transformer/attention/flash_attn/op_host/fa_tiling_info.h
@@ -150,6 +138,9 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/quant_lightning_indexer/op_kernel/arch35/
                 - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/op_host/
                 - ops/ops-transformer/attention/kv_quant_sparse_flash_attention/op_kernel/
+                - ops/ops-transformer/attention/mixed_quant_flash_attn/op_host/
+                - ops/ops-transformer/attention/mixed_quant_flash_attn/op_kernel/
+                - ops/ops-transformer/attention/mixed_quant_flash_attn/op_api/
                 - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/op_host/
                 - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/op_kernel/
                 - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/op_api/
@@ -186,6 +177,9 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/quant_sparse_flash_mla/tests/
                 - ops/ops-transformer/attention/quant_sparse_flash_mla/docs/
                 - ops/ops-transformer/attention/quant_sparse_flash_mla/examples/
+                - ops/ops-transformer/attention/mixed_quant_flash_attn/tests/
+                - ops/ops-transformer/attention/mixed_quant_flash_attn/docs/
+                - ops/ops-transformer/attention/mixed_quant_flash_attn/examples/
                 - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/tests/
                 - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/docs/
                 - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/examples/

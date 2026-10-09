@@ -712,6 +712,23 @@ attention:
     options:
       - kv_quant_sparse_flash_attention
 
+  kda_input_proj:
+    module: True
+    src:
+      - attention/kda_input_proj
+    exclude:
+      - attention/kda_input_proj/docs
+      - attention/kda_input_proj/README.md
+    ut_cov_exclude:
+      - attention/kda_input_proj/tests
+      - attention/kda_input_proj/examples
+      - attention/kda_input_proj/op_kernel
+    test:
+      examples: False
+      ut: True
+    options:
+      - kda_input_proj
+
   kv_quant_sparse_flash_attention_v2:
     module: True
     src:
@@ -1940,6 +1957,22 @@ mc2:
       options:
         - ffn_to_attention
 
+    ffn_to_attention_v2:
+      module: True
+      src:
+        - mc2/ffn_to_attention_v2
+        - mc2/common
+      exclude:
+        - mc2/ffn_to_attention_v2/docs
+        - mc2/ffn_to_attention_v2/README.md
+      ut_cov_exclude:
+        - mc2/ffn_to_attention_v2/op_graph
+        - mc2/ffn_to_attention_v2/op_kernel
+      test:
+        examples: False
+      options:
+        - ffn_to_attention_v2
+
     moe_distribute_buffer_reset:
       module: True
       src:
@@ -2196,6 +2229,22 @@ mc2:
         examples: False
       options:
         - attention_to_ffn
+
+    attention_to_ffn_v2:
+      module: True
+      src:
+        - mc2/attention_to_ffn_v2
+        - mc2/common
+      exclude:
+        - mc2/attention_to_ffn_v2/docs
+        - mc2/attention_to_ffn_v2/README.md
+      ut_cov_exclude:
+        - mc2/attention_to_ffn_v2/op_graph
+        - mc2/attention_to_ffn_v2/op_kernel
+      test:
+        examples: False
+      options:
+        - attention_to_ffn_v2
 
 mhc:
   mhc_sinkhorn:

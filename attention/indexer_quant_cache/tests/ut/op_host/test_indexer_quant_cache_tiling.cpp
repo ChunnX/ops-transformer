@@ -11,8 +11,11 @@
 #include <gtest/gtest.h>
 #include <iostream>
 #include <limits>
+#include "securec.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling_case_executor.h"
+#include "../../../op_host/indexer_quant_cache_tiling_arch35.h"
+#include "../../../op_host/indexer_quant_cache_contract.h"
 
 // ---------------------------------------------------------------------------
 // 4D-only 契约 (mirror kv_compress_epilog):
@@ -23,6 +26,8 @@
 //   - 所有模式(0/1/2/3)均校验 cache_scale; mode2(HiFloat8) 无例外(scaleCol=1, 末维须 >= 1)。
 // 下列用例 x=[1024,128] (d=128): scaleCol mode0/3=4, mode1/2=1; cacheCol mode3=64, 其余=128。
 // ---------------------------------------------------------------------------
+
+static optiling::IndexerQuantCacheCompileInfo compileInfo{48, 196608};
 
 class IndexerQuantCacheTiling : public testing::Test {
 protected:
@@ -41,69 +46,72 @@ protected:
 // mode1 Normal: scaleCol=1, cache headDim>=d(128), scale headDim>=1。
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_normal)
 {
-    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
-                                                {
-                                                    {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{2048, 1, 1, 1}, {2048, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                    {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                    {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-                                                    {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                                    {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                                                },
-                                                nullptr, "Ascend950");
+    gert::TilingContextPara optilingContextPara(
+        "IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{2048, 1, 1, 1}, {2048, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        &compileInfo, "Ascend950");
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 // mode0 MX-FP8: scaleCol=CeilDiv(128,32)=4, scale headDim 必须 >= 4。
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_mxfp8)
 {
-    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
-                                                {
-                                                    {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{2048, 1, 1, 4}, {2048, 1, 1, 4}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-                                                    {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                    {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                                    {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                                    {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                                                },
-                                                nullptr, "Ascend950");
+    gert::TilingContextPara optilingContextPara(
+        "IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{2048, 1, 1, 4}, {2048, 1, 1, 4}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        &compileInfo, "Ascend950");
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 // mode3 MX-FP4: cache 末维为 fp4 元素(>=d=128), scaleCol=4。cacheCol(byte)=64, rowStride=128/2=64>=64。
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_mxfp4)
 {
-    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
-                                                {
-                                                    {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
-                                                    {{{2048, 1, 1, 4}, {2048, 1, 1, 4}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-                                                    {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                    {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {{{}, {}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
-                                                    {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-                                                    {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                                    {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                                                },
-                                                nullptr, "Ascend950");
+    gert::TilingContextPara optilingContextPara(
+        "IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
+            {{{2048, 1, 1, 4}, {2048, 1, 1, 4}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        &compileInfo, "Ascend950");
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
@@ -112,93 +120,97 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_mxfp4)
 // 实现无法表达该偏移, 故直接拒绝而非产出错误数据。
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_mxfp4_odd_headdim_rejected)
 {
-    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
-                                                {
-                                                    {{{2048, 1, 1, 129}, {2048, 1, 1, 129}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
-                                                    {{{2048, 1, 1, 4}, {2048, 1, 1, 4}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-                                                    {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                    {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {{{}, {}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
-                                                    {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
-                                                    {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                                    {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                                                },
-                                                nullptr, "Ascend950");
+    gert::TilingContextPara optilingContextPara(
+        "IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 129}, {2048, 1, 1, 129}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
+            {{{2048, 1, 1, 4}, {2048, 1, 1, 4}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        &compileInfo, "Ascend950");
     ExecuteTestCase(optilingContextPara, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
 // cache headDim > d (256 > 128) -> 成功 (Reading B: 行可更宽, 只写 d, 其余保留)。
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_cache_wide_headdim_ok)
 {
-    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
-                                                {
-                                                    {{{2048, 1, 1, 256}, {2048, 1, 1, 256}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{2048, 1, 1, 1}, {2048, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                    {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                    {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
-                                                    {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                                    {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                                                },
-                                                nullptr, "Ascend950");
+    gert::TilingContextPara optilingContextPara(
+        "IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 256}, {2048, 1, 1, 256}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{2048, 1, 1, 1}, {2048, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        &compileInfo, "Ascend950");
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
 // HIFLOAT8(mode2) 无例外: cache 4D 合法, cache_scale 为 2D(非 4D) -> GRAPH_FAILED。
-// kernel 在 mode2 下仍为每 token 散写 1 个 float scale, 故必须校验 cache_scale 为合法 4D。
+// mode2 preserves scale, but still validates its descriptor.
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_hifloat_scale_non4d_rejected)
 {
-    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
-                                                {
-                                                    {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{2048, 1}, {2048, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}, // 2D scale, mode2 现已校验 -> 拒绝
-                                                    {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                    {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                                    {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                                    {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                                                },
-                                                nullptr, "Ascend950");
+    gert::TilingContextPara optilingContextPara(
+        "IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{2048, 1}, {2048, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}, // 2D scale, mode2 现已校验 -> 拒绝
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        &compileInfo, "Ascend950");
     ExecuteTestCase(optilingContextPara, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
 // HIFLOAT8(mode2): cache 4D 合法 + cache_scale 合法 4D (scaleCol=1, 末维>=1) -> 成功。
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_hifloat_scale_4d_ok)
 {
-    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
-                                                {
-                                                    {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{2048, 1, 1, 1}, {2048, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}, // 4D scale, scaleCol=1
-                                                    {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                                    {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                                    {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-                                                },
-                                                {
-                                                    {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-                                                    {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                                    {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                                                },
-                                                nullptr, "Ascend950");
+    gert::TilingContextPara optilingContextPara(
+        "IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{2048, 1, 1, 1}, {2048, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND}, // 4D scale, scaleCol=1
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        &compileInfo, "Ascend950");
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
@@ -224,7 +236,7 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_cache_2d_rejected)
                                      {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
                                      {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                  },
-                                 nullptr, "Ascend950");
+                                 &compileInfo, "Ascend950");
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
@@ -247,7 +259,7 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_cache_dim2_not_one_re
                                      {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
                                      {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                  },
-                                 nullptr, "Ascend950");
+                                 &compileInfo, "Ascend950");
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
@@ -270,30 +282,31 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_cache_headdim_lt_d_re
                                      {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
                                      {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                  },
-                                 nullptr, "Ascend950");
+                                 &compileInfo, "Ascend950");
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
 // mode0 MX-FP8: cache_scale headDim(2) < scaleCol(4) -> GRAPH_FAILED。
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_scale_headdim_lt_scalecol_rejected)
 {
-    gert::TilingContextPara para("IndexerQuantCache",
-                                 {
-                                     {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                     {{{2048, 1, 1, 2}, {2048, 1, 1, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND}, // 2 < scaleCol(4)
-                                     {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-                                     {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
-                                 },
-                                 {
-                                     {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-                                     {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-                                 },
-                                 {
-                                     {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                                     {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-                                     {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
-                                 },
-                                 nullptr, "Ascend950");
+    gert::TilingContextPara para(
+        "IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 128}, {2048, 1, 1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{2048, 1, 1, 2}, {2048, 1, 1, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND}, // 2 < scaleCol(4)
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        &compileInfo, "Ascend950");
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
@@ -316,7 +329,7 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_scale_non4d_rejected)
                                      {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
                                      {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                  },
-                                 nullptr, "Ascend950");
+                                 &compileInfo, "Ascend950");
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
 }
 
@@ -340,7 +353,7 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_d_eq_8192_ok)
                                      {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
                                      {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                  },
-                                 nullptr, "Ascend950");
+                                 &compileInfo, "Ascend950");
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
@@ -363,6 +376,207 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_d_gt_8192_rejected)
                                      {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
                                      {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
                                  },
-                                 nullptr, "Ascend950");
+                                 &compileInfo, "Ascend950");
     ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+}
+
+TEST(IndexerQuantCacheContract, ModeDtypePairs)
+{
+    using indexer_quant_cache::IsValidQuantTypes;
+    for (auto x : {ge::DT_FLOAT16, ge::DT_BF16}) {
+        EXPECT_TRUE(IsValidQuantTypes(0, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E8M0, x, ge::DT_INT32));
+        EXPECT_TRUE(IsValidQuantTypes(1, ge::DT_UINT8, ge::DT_FLOAT, x, ge::DT_INT32));
+        EXPECT_TRUE(IsValidQuantTypes(2, ge::DT_UINT8, ge::DT_FLOAT, x, ge::DT_INT32));
+        EXPECT_TRUE(IsValidQuantTypes(3, ge::DT_FLOAT4_E1M2, ge::DT_FLOAT8_E8M0, x, ge::DT_INT32));
+        EXPECT_FALSE(IsValidQuantTypes(0, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT, x, ge::DT_INT32));
+        EXPECT_TRUE(IsValidQuantTypes(2, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT, x, ge::DT_INT32));
+        EXPECT_TRUE(IsValidQuantTypes(2, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT, x, ge::DT_INT32));
+        EXPECT_FALSE(IsValidQuantTypes(3, ge::DT_UINT8, ge::DT_FLOAT8_E8M0, x, ge::DT_INT32));
+        EXPECT_FALSE(IsValidQuantTypes(4, ge::DT_UINT8, ge::DT_FLOAT, x, ge::DT_INT32));
+        EXPECT_FALSE(IsValidQuantTypes(1, ge::DT_UINT8, ge::DT_FLOAT, x, ge::DT_INT64));
+    }
+    EXPECT_FALSE(IsValidQuantTypes(1, ge::DT_UINT8, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_INT32));
+}
+
+TEST_F(IndexerQuantCacheTiling, EmptyBatchRejected)
+{
+    gert::TilingContextPara para("IndexerQuantCache",
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                     {{{0, 32}, {0, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                     {{{0}, {0}}, ge::DT_INT32, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                     {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                     {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                 },
+                                 &compileInfo, "Ascend950");
+    ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+}
+
+TEST_F(IndexerQuantCacheTiling, InsufficientUbRejected)
+{
+    constexpr uint32_t testCoreCount = 64;
+    constexpr uint64_t insufficientUbBytes = 32;
+    gert::TilingContextPara para("IndexerQuantCache",
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                     {{{1, 32}, {1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                     {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                     {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                     {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                 },
+                                 &compileInfo, "Ascend950", testCoreCount, insufficientUbBytes);
+    ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+}
+
+TEST_F(IndexerQuantCacheTiling, InvalidModeDtypeRejected)
+{
+    gert::TilingContextPara para("IndexerQuantCache",
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                     {{{1, 32}, {1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                     {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                     {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                     {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                 },
+                                 &compileInfo, "Ascend950");
+    ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+}
+
+TEST_F(IndexerQuantCacheTiling, Mxfp4UbIncludesAlignedScaleAndScratch)
+{
+    constexpr uint64_t testUbBytes = 1024;
+    constexpr int64_t rowQueueBytes = 320;
+    constexpr int64_t indexAndScratchBytes = 96;
+    constexpr int64_t expectedRowFactor = 2;
+    constexpr size_t fieldsBeforeRowFactor = 7;
+    gert::TilingContextPara para("IndexerQuantCache",
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+                                     {{{4096, 32}, {4096, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                     {{{4096}, {4096}}, ge::DT_INT32, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+                                     {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                     {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                 },
+                                 &compileInfo, "Ascend950", 1, testUbBytes);
+    TilingInfo info;
+    ASSERT_TRUE(ExecuteTiling(para, info));
+    // rowFactor follows seven int64 fields in the serialized TilingData.
+    constexpr size_t rowFactorOffset = fieldsBeforeRowFactor * sizeof(int64_t);
+    ASSERT_GE(info.tilingDataSize, rowFactorOffset + sizeof(int64_t));
+    int64_t rowFactor = 0;
+    ASSERT_EQ(memcpy_s(&rowFactor, sizeof(rowFactor), info.tilingData.get() + rowFactorOffset, sizeof(rowFactor)), EOK);
+    // d=32: double-buffered x/cache/64-byte-aligned scale use 320 bytes per row;
+    // index + two uint16 scratch buffers use another 96 bytes. Three rows need 1056 > 1024.
+    EXPECT_EQ(rowFactor, expectedRowFactor);
+    EXPECT_LE(rowFactor * rowQueueBytes + indexAndScratchBytes, testUbBytes);
+}
+TEST_F(IndexerQuantCacheTiling, BatchProductOverflowRejected)
+{
+    gert::TilingContextPara para("IndexerQuantCache",
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                     {{{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(), 32},
+                                       {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(), 32}},
+                                      ge::DT_FLOAT16,
+                                      ge::FORMAT_ND},
+                                     {{{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()},
+                                       {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()}},
+                                      ge::DT_INT32,
+                                      ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{4, 1, 1, 1}, {4, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                     {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                     {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                 },
+                                 &compileInfo, "Ascend950");
+    ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+}
+
+TEST_F(IndexerQuantCacheTiling, CacheScaleExtraBlocksAccepted)
+{
+    gert::TilingContextPara para("IndexerQuantCache",
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{8, 1, 1, 1}, {8, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                     {{{1, 32}, {1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                     {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {{{4, 1, 1, 32}, {4, 1, 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                                     {{{8, 1, 1, 1}, {8, 1, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                 },
+                                 {
+                                     {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                     {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                     {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+                                 },
+                                 &compileInfo, "Ascend950");
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
+}
+
+TEST_F(IndexerQuantCacheTiling, InvalidCacheBlockDimensionsRejected)
+{
+    const int64_t maxDim = std::numeric_limits<int64_t>::max();
+    const int64_t cases[][4] = {{0, 1, 4, 1}, {4, 0, 4, 1},      {4, 1, 0, 1},
+                                {4, 1, 4, 0}, {maxDim, 2, 4, 1}, {4, 1, maxDim, 2}};
+    for (const auto &dims : cases) {
+        SCOPED_TRACE(::testing::Message() << dims[0] << "," << dims[1] << "," << dims[2] << "," << dims[3]);
+        gert::TilingContextPara para(
+            "IndexerQuantCache",
+            {
+                {{{dims[0], dims[1], 1, 32}, {dims[0], dims[1], 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                {{{dims[2], dims[3], 1, 1}, {dims[2], dims[3], 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                {{{1, 32}, {1, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
+            },
+            {
+                {{{dims[0], dims[1], 1, 32}, {dims[0], dims[1], 1, 32}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+                {{{dims[2], dims[3], 1, 1}, {dims[2], dims[3], 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            },
+            {
+                {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+            },
+            &compileInfo, "Ascend950");
+        ExecuteTestCase(para, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+    }
 }
