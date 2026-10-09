@@ -707,3 +707,216 @@ def check_result_return_value(expect, result, params):
     if result == "Failed":
         display_error_output(real_data, data_compe, err_idx, err_diff[0:max_error_idx])
     return result, fulfill_percent
+
+
+# -----------------------------------------------------------------------------------------------------------
+# candidate (source / candidate_mode==1) comparison
+#
+# Provenance: candidate-source impl design §5.2 and
+# two-level topk design §10.2.  The candidate output is an UNORDERED set of
+# block ids per row (MrgSort tie-break is not guaranteed to match torch), padded with -1.
+# The comparison contract is therefore:
+#   1. multiset gate         : valid (non -1) block-id SETS equal -> PASS (order-insensitive)
+#   2. boundary tolerance    : sets differ but every swapped block's golden blkScore is within
+#                              `thres` relative of its pair -> PASS (bf16 tie arbitration)
+#   3. -1 slot hard check    : per-row -1 count must match exactly -> else FAIL (hard contract)
+#   4. duplicate hard check  : a block id repeated within a row -> FAIL
+#   5. pin hard check        : the pinned (+inf) block must be present in the NPU row -> FAIL
+# -----------------------------------------------------------------------------------------------------------
+
+
+def _candidate_to_numpy(tensor):
+    if tensor is None:
+        return None
+    if isinstance(tensor, np.ndarray):
+        return tensor
+    return tensor.detach().cpu().numpy()
+
+
+def _candidate_row_shape(params):
+    """Return (total_rows, layout_query) for the candidate output from the 27-field params."""
+    (
+        batch_size,
+        q_seq,
+        _k_seq,
+        q_t_size,
+        _k_t_size,
+        _q_head_num,
+        k_head_num,
+        _head_dim,
+        _block_size,
+        _block_num,
+        _qk_dtype,
+        _cu_seqlens_q,
+        _cu_seqlens_k,
+        _seqused_q,
+        _seqused_k,
+        _cmp_residual_k,
+        _output_idx_offset,
+        layout_query,
+        _layout_key,
+        _topk,
+        _mask_mode,
+        _query_datarange,
+        _key_datarange,
+        _weights_datarange,
+        _cmp_ratio,
+        _return_value,
+        _max_seqlen_q,
+    ) = params
+    if layout_query == "BSND":
+        return batch_size * q_seq * k_head_num, layout_query
+    if layout_query == "TND":
+        return q_t_size * k_head_num, layout_query
+    return 0, layout_query
+
+
+def compare_candidate_row(cpu_row, npu_row, blk_score_row=None, thres=0.001):
+    """Compare one candidate row.  Returns (passed: bool, reason: str)."""
+    cpu_row = np.asarray(cpu_row)
+    npu_row = np.asarray(npu_row)
+    if cpu_row.shape != npu_row.shape:
+        return False, "shape_mismatch"
+
+    cpu_neg1 = int((cpu_row == -1).sum())
+    npu_neg1 = int((npu_row == -1).sum())
+    # (3) -1 slot hard check
+    if cpu_neg1 != npu_neg1:
+        return False, f"neg1_count(cpu={cpu_neg1},npu={npu_neg1})"
+
+    cpu_valid = cpu_row[cpu_row != -1]
+    npu_valid = npu_row[npu_row != -1]
+    # (4) duplicate hard check
+    if len(set(npu_valid.tolist())) != len(npu_valid):
+        return False, "duplicate_block_id"
+
+    cpu_set = set(cpu_valid.tolist())
+    npu_set = set(npu_valid.tolist())
+    # (1) multiset gate
+    if cpu_set == npu_set:
+        return True, "set_equal"
+
+    if blk_score_row is None:
+        return False, "set_diff(no_blk_score)"
+
+    blk = np.asarray(blk_score_row)
+    # (5) pin hard check: golden +inf block(s) must survive in the NPU output
+    pin_blocks = np.where(np.isposinf(blk))[0]
+    for pb in pin_blocks:
+        if int(pb) not in npu_set:
+            return False, f"pin_missing(block={int(pb)})"
+
+    # (2) boundary tolerance for the swapped blocks
+    only_npu = sorted(npu_set - cpu_set)
+    only_cpu = sorted(cpu_set - npu_set)
+    if len(only_npu) != len(only_cpu):
+        return False, "set_diff_count"
+    for a, b in zip(only_npu, only_cpu):
+        if a >= blk.shape[-1] or b >= blk.shape[-1]:
+            return False, "blk_index_oob"
+        sa = float(blk[a])
+        sb = float(blk[b])
+        if math.isinf(sa) or math.isinf(sb):
+            return False, "pin_swap"
+        denom = max(abs(sa), abs(sb), 1e-6)
+        if abs(sa - sb) / denom > thres:
+            return False, f"boundary(blk{a}={sa:.6g},blk{b}={sb:.6g})"
+    return True, "boundary_tolerated"
+
+
+def check_result_candidate(
+    expect,
+    result,
+    params,
+    candidate_topk_blocks,
+    candidate_block_size,
+    expect_blk_score=None,
+    thres=0.001,
+):
+    """Row-level candidate block-id set comparison + -1 slot hard check.
+
+    Args:
+        expect: CPU golden candidate_topk_indices (BSND [B,S1,N2,K] / TND [T,N2,K]).
+        result: NPU candidate_topk_indices (same layout).
+        params: the 27-field LIV2 param tuple (used for layout / row count).
+        candidate_topk_blocks: K (output width).  -1 (off) -> both outputs empty -> Pass.
+        candidate_block_size: candidate block size (recorded for logging).
+        expect_blk_score: optional row-major [total_rows, NBmax] golden block-amax matrix
+            (pin == +inf) enabling boundary-tolerance + pin arbitration.
+        thres: relative tolerance for boundary tie arbitration.
+
+    Returns:
+        (result_str, fulfill_percent) where result_str in {"Pass", "Failed"}.
+    """
+    cpu = _candidate_to_numpy(expect)
+    npu = _candidate_to_numpy(result)
+
+    # off / empty contract: both sides empty -> Pass
+    cpu_size = 0 if cpu is None else cpu.size
+    npu_size = 0 if npu is None else npu.size
+    if cpu_size == 0 and npu_size == 0:
+        print_log(
+            'candidate output is empty on both sides (off / (0,)); data_compare is "Pass"'
+        )
+        return "Pass", 100.0
+    if cpu is None or npu is None:
+        print_log("candidate compare failed: one side is None while the other is not")
+        return "Failed", 0.0
+    if cpu_size != npu_size:
+        print_log(
+            f"candidate size mismatch: cpu={cpu_size} npu={npu_size} (K={candidate_topk_blocks})"
+        )
+        return "Failed", 0.0
+
+    total_rows, layout_query = _candidate_row_shape(params)
+    K = int(candidate_topk_blocks)
+    if total_rows <= 0 or K <= 0:
+        print_log(
+            f"candidate degenerate shape: total_rows={total_rows} K={K} layout={layout_query}"
+        )
+        return "Failed", 0.0
+
+    cpu_rows = cpu.reshape([total_rows, K])
+    npu_rows = npu.reshape([total_rows, K])
+    blk_rows = None
+    if expect_blk_score is not None:
+        blk = _candidate_to_numpy(expect_blk_score)
+        nb = blk.shape[-1]
+        blk_rows = blk.reshape([total_rows, nb])
+
+    pass_rows = 0
+    fail_reasons = {}
+    first_failures = []
+    for r in range(total_rows):
+        blk_row = blk_rows[r] if blk_rows is not None else None
+        ok, reason = compare_candidate_row(cpu_rows[r], npu_rows[r], blk_row, thres)
+        if ok:
+            pass_rows += 1
+        else:
+            key = reason.split("(")[0]
+            fail_reasons[key] = fail_reasons.get(key, 0) + 1
+            if len(first_failures) < 10:
+                first_failures.append(
+                    (r, reason, cpu_rows[r].tolist(), npu_rows[r].tolist())
+                )
+
+    fulfill_percent = float(pass_rows) / float(total_rows) * 100.0
+    result_str = "Pass" if pass_rows == total_rows else "Failed"
+    print_log(
+        "---------------------------------------------------------------------------------------"
+    )
+    print_log(
+        f"candidate compare: layout={layout_query} total_rows={total_rows} K={K} "
+        f"block_size={candidate_block_size}"
+    )
+    print_log(
+        f"pass_rows={pass_rows}/{total_rows} fulfill={fulfill_percent:.4f}% result={result_str}"
+    )
+    if fail_reasons:
+        print_log(f"fail_reasons={fail_reasons}")
+    for r, reason, cpu_row, npu_row in first_failures:
+        print_log(f"  row {r}: {reason}\n    cpu={cpu_row}\n    npu={npu_row}")
+    print_log(
+        "---------------------------------------------------------------------------------------"
+    )
+    return result_str, fulfill_percent

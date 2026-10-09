@@ -29,7 +29,7 @@ namespace {
         (void)printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -38,7 +38,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -59,8 +59,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -85,25 +85,41 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
-struct TensorResources {
-    void *queryDeviceAddr = nullptr;
-    void *keyDeviceAddr = nullptr;
-    void *weightsDeviceAddr = nullptr;
-    void *cmpResidualKDeviceAddr = nullptr;
-    void *metadataDeviceAddr = nullptr;
-    void *sparseIndicesDeviceAddr = nullptr;
-    void *sparseValuesDeviceAddr = nullptr;
+// candidate (two-level topk)：off 模式输出为 (0,) 空 tensor 占位（预留接口）
+int CreateEmptyAclTensor(aclTensor** tensor)
+{
+    std::vector<int64_t> shape = {0};
+    std::vector<int64_t> strides = {1};
+    *tensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_INT32, strides.data(), 0,
+                              aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
+    return 0;
+}
 
-    aclTensor *queryTensor = nullptr;
-    aclTensor *keyTensor = nullptr;
-    aclTensor *weightsTensor = nullptr;
-    aclTensor *cmpResidualKTensor = nullptr;
-    aclTensor *metadataTensor = nullptr;
-    aclTensor *sparseIndicesTensor = nullptr;
-    aclTensor *sparseValuesTensor = nullptr;
+struct TensorResources {
+    void* queryDeviceAddr = nullptr;
+    void* keyDeviceAddr = nullptr;
+    void* weightsDeviceAddr = nullptr;
+    void* cmpResidualKDeviceAddr = nullptr;
+    void* metadataDeviceAddr = nullptr;
+    void* sparseIndicesDeviceAddr = nullptr;
+    void* sparseValuesDeviceAddr = nullptr;
+    // candidate (two-level topk)：off 模式输出为 (0,) 空 tensor（预留接口占位）
+    aclTensor* candidateTopkIndicesTensor = nullptr;
+    aclTensor* candidateBlockLengthTensor = nullptr;
+    // candidate source 模式输出：on 时为 [B,S1,N2,candTopkBlocks] 实 tensor（block_length 仍恒空）
+    void* candidateSrcIndicesDeviceAddr = nullptr;
+    aclTensor* candidateSrcIndicesTensor = nullptr;
+
+    aclTensor* queryTensor = nullptr;
+    aclTensor* keyTensor = nullptr;
+    aclTensor* weightsTensor = nullptr;
+    aclTensor* cmpResidualKTensor = nullptr;
+    aclTensor* metadataTensor = nullptr;
+    aclTensor* sparseIndicesTensor = nullptr;
+    aclTensor* sparseValuesTensor = nullptr;
 };
 
-int InitializeTensors(TensorResources &resources)
+int InitializeTensors(TensorResources& resources)
 {
     int64_t B = 2;
     int64_t S1 = 64;
@@ -180,10 +196,20 @@ int InitializeTensors(TensorResources &resources)
         return ret;
     }
 
+    // candidate (two-level topk)：off 模式的两个 (0,) 空 tensor 占位（candidate_topk_blocks=-1 时输出恒空）
+    ret = CreateEmptyAclTensor(&resources.candidateTopkIndicesTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
+    ret = CreateEmptyAclTensor(&resources.candidateBlockLengthTensor);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        return ret;
+    }
+
     return ACL_SUCCESS;
 }
 
-int GenerateMetadata(TensorResources &resources, aclrtStream stream, int64_t B, int64_t S1, int64_t S2, int64_t N1,
+int GenerateMetadata(TensorResources& resources, aclrtStream stream, int64_t B, int64_t S1, int64_t S2, int64_t N1,
                      int64_t N2, int64_t D, int64_t topk, int64_t maskMode, int64_t cmpRatio)
 {
     constexpr const char layoutQ[] = "BSND";
@@ -202,7 +228,7 @@ int GenerateMetadata(TensorResources &resources, aclrtStream stream, int64_t B, 
         return -1;
     }
 
-    aclOpExecutor *executor;
+    aclOpExecutor* executor;
     uint64_t workspaceSize = 0;
     int ret = aclnnLightningIndexerV2MetadataGetWorkspaceSize(
         nullptr, nullptr, nullptr, nullptr, nullptr, N1, N2, D, topk, B, S1, S2, layoutQCopy, layoutKCopy, maskMode,
@@ -212,7 +238,7 @@ int GenerateMetadata(TensorResources &resources, aclrtStream stream, int64_t B, 
         return ret;
     }
 
-    void *metadataWsAddr = nullptr;
+    void* metadataWsAddr = nullptr;
     if (workspaceSize > 0ULL) {
         ret = aclrtMalloc(&metadataWsAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -244,8 +270,8 @@ int GenerateMetadata(TensorResources &resources, aclrtStream stream, int64_t B, 
     }
     return ACL_SUCCESS;
 }
-int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, void **workspaceAddr,
-                              uint64_t *workspaceSize)
+int ExecuteLightningIndexerV2(TensorResources& resources, aclrtStream stream, void** workspaceAddr,
+                              uint64_t* workspaceSize)
 {
     int64_t topk = 32;
     int64_t maxSeqlenQ = -1;
@@ -268,13 +294,15 @@ int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, vo
         LOG_PRINT("memcpy_s layoutKey failed. ERROR: %d\n", memcpyRet);
         return -1;
     }
-    aclOpExecutor *executor;
+    aclOpExecutor* executor;
 
+    // candidate (two-level topk)：off 模式回归（candidate_topk_blocks=-1），candidate 输出传空 tensor 占位
     int ret = aclnnLightningIndexerV2GetWorkspaceSize(
         resources.queryTensor, resources.keyTensor, resources.weightsTensor, nullptr, nullptr, nullptr, nullptr,
         resources.cmpResidualKTensor, nullptr, nullptr, resources.metadataTensor, topk, maxSeqlenQ, layoutQuery,
-        layoutKey, maskMode, cmpRatio, returnValue, resources.sparseIndicesTensor, resources.sparseValuesTensor,
-        workspaceSize, &executor);
+        layoutKey, maskMode, cmpRatio, returnValue, static_cast<int64_t>(-1) /* candidate_topk_blocks: off */,
+        static_cast<int64_t>(8) /* candidate_block_size */, resources.sparseIndicesTensor, resources.sparseValuesTensor,
+        resources.candidateTopkIndicesTensor, resources.candidateBlockLengthTensor, workspaceSize, &executor);
 
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnLightningIndexerV2GetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -298,7 +326,83 @@ int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, vo
     return ACL_SUCCESS;
 }
 
-int PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
+// candidate source 模式输出构造：candidateTopkIndicesOut 为 [B,S1,N2,candTopkBlocks] int32
+// （block_length 恒空，复用 off 模式的 (0,) 占位 tensor）。仅在 source 调用前创建。
+int InitializeCandidateSourceTensors(TensorResources& resources)
+{
+    constexpr int64_t CAND_TOPK_BLOCKS = 64; // (0, 2048] 且 64 的倍数
+    int64_t B = 2;
+    int64_t S1 = 64;
+    int64_t N2 = 1;
+    std::vector<int64_t> candidateIndicesShape = {B, S1, N2, CAND_TOPK_BLOCKS};
+    int64_t candidateIndicesSize = GetShapeSize(candidateIndicesShape);
+    std::vector<int32_t> candidateIndicesHostData(candidateIndicesSize, 0);
+    return CreateAclTensor(candidateIndicesHostData, candidateIndicesShape, &resources.candidateSrcIndicesDeviceAddr,
+                           aclDataType::ACL_INT32, &resources.candidateSrcIndicesTensor);
+}
+
+// candidate (two-level topk) source 模式调用示例：candidate_topk_blocks=64（(0,2048] 且 64 的倍数）
+// 时开启，candidate_topk_indices 输出候选块索引（块号或 -1、无序、相对块号），
+// candidate_block_length 为预留接口恒空。candidate 仅 ascend910b/ascend910_93（DAV_2201）支持，
+// ascend950（DAV_3510）上启用会被 host 校验拒绝，调用方需按 arch 门控。
+int ExecuteLightningIndexerV2CandidateSource(TensorResources& resources, aclrtStream stream, void** workspaceAddr,
+                                             uint64_t* workspaceSize)
+{
+    int64_t topk = 32;
+    int64_t maxSeqlenQ = -1;
+    int64_t maskMode = 3;
+    int64_t cmpRatio = 4;
+    int64_t returnValue = 0;          // candidate 与 return_value 互斥，固定 0
+    int64_t candidateTopkBlocks = 64; // source on：(0, 2048] 且 64 的倍数
+    int64_t candidateBlockSize = 8;   // [2, 64] 且 2 的幂（缺省 8）
+    constexpr const char layoutQueryStr[] = "BSND";
+    constexpr const char layoutKeyStr[] = "BSND";
+    constexpr size_t layoutQueryLen = sizeof(layoutQueryStr);
+    constexpr size_t layoutKeyLen = sizeof(layoutKeyStr);
+    char layoutQuery[layoutQueryLen];
+    char layoutKey[layoutKeyLen];
+    errno_t memcpyRet = memcpy_s(layoutQuery, sizeof(layoutQuery), layoutQueryStr, layoutQueryLen);
+    if (!CHECK_RET(memcpyRet == 0)) {
+        LOG_PRINT("memcpy_s layoutQuery failed. ERROR: %d\n", memcpyRet);
+        return -1;
+    }
+    memcpyRet = memcpy_s(layoutKey, sizeof(layoutKey), layoutKeyStr, layoutKeyLen);
+    if (!CHECK_RET(memcpyRet == 0)) {
+        LOG_PRINT("memcpy_s layoutKey failed. ERROR: %d\n", memcpyRet);
+        return -1;
+    }
+    aclOpExecutor* executor;
+
+    int ret = aclnnLightningIndexerV2GetWorkspaceSize(
+        resources.queryTensor, resources.keyTensor, resources.weightsTensor, nullptr, nullptr, nullptr, nullptr,
+        resources.cmpResidualKTensor, nullptr, nullptr, nullptr /* metadata: arch22 kernel 不消费，传 nullptr 即可 */,
+        topk, maxSeqlenQ, layoutQuery, layoutKey, maskMode, cmpRatio, returnValue, candidateTopkBlocks,
+        candidateBlockSize, resources.sparseIndicesTensor, resources.sparseValuesTensor,
+        resources.candidateSrcIndicesTensor, resources.candidateBlockLengthTensor, workspaceSize, &executor);
+
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclnnLightningIndexerV2GetWorkspaceSize(candidate source) failed. ERROR: %d\n", ret);
+        return ret;
+    }
+
+    if (*workspaceSize > 0ULL) {
+        ret = aclrtMalloc(workspaceAddr, *workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) {
+            LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret);
+            return ret;
+        }
+    }
+
+    ret = aclnnLightningIndexerV2(*workspaceAddr, *workspaceSize, executor, stream);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclnnLightningIndexerV2(candidate source) failed. ERROR: %d\n", ret);
+        return ret;
+    }
+
+    return ACL_SUCCESS;
+}
+
+int PrintOutResult(const char* name, std::vector<int64_t>& shape, void** deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<int32_t> resultData(size, 0);
@@ -309,12 +413,12 @@ int PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
         return ret;
     }
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("sparse_indices result[%ld] is: %d\n", i, resultData[i]);
+        LOG_PRINT("%s result[%ld] is: %d\n", name, i, resultData[i]);
     }
     return ACL_SUCCESS;
 }
 
-void CleanupResources(TensorResources &resources, void *workspaceAddr, aclrtStream stream, int32_t deviceId)
+void CleanupResources(TensorResources& resources, void* workspaceAddr, aclrtStream stream, int32_t deviceId)
 {
     if (resources.queryTensor) {
         aclDestroyTensor(resources.queryTensor);
@@ -338,6 +442,16 @@ void CleanupResources(TensorResources &resources, void *workspaceAddr, aclrtStre
         aclDestroyTensor(resources.sparseValuesTensor);
     }
 
+    if (resources.candidateTopkIndicesTensor) {
+        aclDestroyTensor(resources.candidateTopkIndicesTensor);
+    }
+    if (resources.candidateBlockLengthTensor) {
+        aclDestroyTensor(resources.candidateBlockLengthTensor);
+    }
+    if (resources.candidateSrcIndicesTensor) {
+        aclDestroyTensor(resources.candidateSrcIndicesTensor);
+    }
+
     if (resources.queryDeviceAddr) {
         aclrtFree(resources.queryDeviceAddr);
     }
@@ -356,6 +470,9 @@ void CleanupResources(TensorResources &resources, void *workspaceAddr, aclrtStre
     if (resources.sparseValuesDeviceAddr) {
         aclrtFree(resources.sparseValuesDeviceAddr);
     }
+    if (resources.candidateSrcIndicesDeviceAddr) {
+        aclrtFree(resources.candidateSrcIndicesDeviceAddr);
+    }
 
     if (workspaceAddr) {
         aclrtFree(workspaceAddr);
@@ -371,13 +488,16 @@ void CleanupResources(TensorResources &resources, void *workspaceAddr, aclrtStre
 
 int main()
 {
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+    // 主干支持 ascend950（arch35，metadata 前置分核流程）与 ascend910b/ascend910_93（arch22，
+    // candidate 两级 TopK source 模式）；其余 arch 直接退出
+    const NpuArch npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
+    if (npuArch != NpuArch::DAV_3510 && npuArch != NpuArch::DAV_2201) {
         return 0;
     }
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     TensorResources resources = {};
-    void *workspaceAddr = nullptr;
+    void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
     int64_t B = 2;
     int64_t S1 = 64;
@@ -386,7 +506,9 @@ int main()
     int64_t N1 = 16;
     int64_t D = 128;
     int64_t topk = 32;
+    int64_t candidateTopkBlocks = 64; // source 示例：(0, 2048] 且 64 的倍数
     std::vector<int64_t> sparseIndicesShape = {B, S1, N2, topk};
+    std::vector<int64_t> candidateIndicesShape = {B, S1, N2, candidateTopkBlocks};
     int ret = ACL_SUCCESS;
 
     ret = Init(deviceId, &stream);
@@ -401,12 +523,16 @@ int main()
         CleanupResources(resources, workspaceAddr, stream, deviceId);
         return ret;
     }
-    ret = GenerateMetadata(resources, stream, B, S1, S2, N1, N2, D, topk, 3, 4);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("GenerateMetadata failed. ERROR: %d\n", ret);
-        CleanupResources(resources, workspaceAddr, stream, deviceId);
-        return ret;
+    if (npuArch == NpuArch::DAV_3510) {
+        // 950（arch35）：metadata 前置算子必传，先完成分核信息生成（主干既有流程）
+        ret = GenerateMetadata(resources, stream, B, S1, S2, N1, N2, D, topk, 3, 4);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) {
+            LOG_PRINT("GenerateMetadata failed. ERROR: %d\n", ret);
+            CleanupResources(resources, workspaceAddr, stream, deviceId);
+            return ret;
+        }
     }
+    // 1) off 模式回归：candidate_topk_blocks=-1，candidate 输出为空 tensor 占位（旧调用点行为一致）
     ret = ExecuteLightningIndexerV2(resources, stream, &workspaceAddr, &workspaceSize);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("ExecuteLightningIndexerV2 failed. ERROR: %d\n", ret);
@@ -421,7 +547,39 @@ int main()
         return ret;
     }
 
-    PrintOutResult(sparseIndicesShape, &resources.sparseIndicesDeviceAddr);
+    PrintOutResult("sparse_indices", sparseIndicesShape, &resources.sparseIndicesDeviceAddr);
+
+    // 2) candidate source 模式示例：仅 ascend910b/ascend910_93（arch22）支持，
+    //    ascend950 上启用会被 host 校验拒绝（candidate 仅 910B/910_93）
+    if (npuArch == NpuArch::DAV_2201) {
+        // 释放 off 模式 workspace，source 模式按自身 GetWorkspaceSize 重新分配
+        if (workspaceAddr) {
+            aclrtFree(workspaceAddr);
+            workspaceAddr = nullptr;
+            workspaceSize = 0;
+        }
+        ret = InitializeCandidateSourceTensors(resources);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) {
+            LOG_PRINT("InitializeCandidateSourceTensors failed. ERROR: %d\n", ret);
+            CleanupResources(resources, workspaceAddr, stream, deviceId);
+            return ret;
+        }
+        ret = ExecuteLightningIndexerV2CandidateSource(resources, stream, &workspaceAddr, &workspaceSize);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) {
+            LOG_PRINT("ExecuteLightningIndexerV2CandidateSource failed. ERROR: %d\n", ret);
+            CleanupResources(resources, workspaceAddr, stream, deviceId);
+            return ret;
+        }
+
+        ret = aclrtSynchronizeStream(stream);
+        if (!CHECK_RET(ret == ACL_SUCCESS)) {
+            LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
+            CleanupResources(resources, workspaceAddr, stream, deviceId);
+            return ret;
+        }
+
+        PrintOutResult("candidate_topk_indices", candidateIndicesShape, &resources.candidateSrcIndicesDeviceAddr);
+    }
 
     CleanupResources(resources, workspaceAddr, stream, deviceId);
     return 0;

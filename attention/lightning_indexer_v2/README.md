@@ -172,6 +172,20 @@
   <td>-</td>
   </tr>
   <tr>
+  <td>candidateTopkBlocks</td>
+  <td>属性</td>
+  <td>候选块两级TopK开关与输出宽度：-1（默认）为关闭，输出与单级TopK完全一致；有效值(0, 2048]且为64的倍数时开启candidate source模式，输出每query行前candidateTopkBlocks个最高分候选块索引。仅Atlas A2/A3系列产品（Ascend 910B/910_93）支持开启；Ascend 950系列上开启该模式会被host侧校验拒绝（算子本体在950上仍支持，关闭candidate即正常路径）。</td>
+  <td>INT64</td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>candidateBlockSize</td>
+  <td>属性</td>
+  <td>候选块大小（位置数），[2, 64]且为2的幂，默认8。source与consumer侧（sparse_lightning_indexer）必须一致。</td>
+  <td>INT64</td>
+  <td>-</td>
+  </tr>
+  <tr>
   <td>sparseIndices</td>
   <td>输出</td>
   <td>公式中的Indices输出。</td>
@@ -183,6 +197,20 @@
   <td>输出</td>
   <td>公式中的Indices对应的Values输出。</td>
   <td>FLOAT</td>
+  <td>ND</td>
+  </tr>
+  <tr>
+  <td>candidateTopkIndices</td>
+  <td>输出</td>
+  <td>candidate source模式输出的候选块索引：BSND为[B, S1, N2, candidateTopkBlocks]、TND为[T, N2, candidateTopkBlocks]；值为batch内压缩后位置域的相对块号（块号×candidateBlockSize为起始位置）或-1（无效槽），槽位无序；不加outputIdxOffset。candidateTopkBlocks=-1时输出空tensor (0,)。与sparseIndices同源，块级候选计算不影响位置级结果。跨层共享时作为sparse_lightning_indexer的candidateTopkIndices输入，仅同一forward内有效。</td>
+  <td>INT32</td>
+  <td>ND</td>
+  </tr>
+  <tr>
+  <td>candidateBlockLength</td>
+  <td>输出</td>
+  <td>预留接口，当前恒输出空tensor (0,)。</td>
+  <td>INT32</td>
   <td>ND</td>
   </tr>
   </tbody>
@@ -198,6 +226,11 @@
 - pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32Byte对齐。
 - 参数q、k的数据类型应保持一致。
 - sparseIndices无效部分填-1；sparseValues无效部分填-inf。
+- candidate（两级TopK候选源，仅Atlas A2/A3系列产品即Ascend 910B/910_93支持开启；Ascend 950系列上开启会被host侧tiling校验拒绝并返回错误，算子本体在950上仍支持）：
+  - candidateTopkBlocks != -1（开启source模式）时，topk必须<=2048，且不支持returnValue=1（互斥）。
+  - candidateTopkBlocks取值(0, 2048]且为64的倍数；candidateTopkIndices无效部分填-1，值为相对块号（batch内、压缩后位置域）。
+  - candidate_block_size须为[2, 64]内2的幂（candidate关闭时同样校验该取值范围）；与consumer侧（sparse_lightning_indexer）的candidate_block_size保持一致——该一致性为调用方契约，框架层无法跨算子校验（两侧host各自仅校验值域；错配行为未定义）。
+  - candidateBlockLength为预留接口，恒为空tensor。
 - 传入的cmpResidualKOptional中的每一个元素的值都应小于传入的压缩率cmpRatio。
 - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>:
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。

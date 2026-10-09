@@ -33,6 +33,8 @@
   2. 通过激活函数$ReLU$过滤无效负相关信号后，得到当前Token与所有前序Token的相关性分数向量。
   3. 将其与权重系数`w`（$W$）相乘后，沿g的方向，选取前$Top-k$个索引值得到输出$sparseIndices$，并输出对应的$sparseValues$，作为Attention的输入。
 
+  `lightning_indexer_candidate`接口为两级TopK候选源（source）模式入口：`candidate_topk_blocks`非-1时，在位置级Top-k之外并行执行块级候选选择，额外输出候选块索引`candidate_topk_indices`（batch内相对块号，无效槽填-1，供`sparse_lightning_indexer`消费）与预留输出`candidate_block_length`（恒空）；不影响`sparse_indices`/`sparse_values`结果。仅Atlas A2/A3系列产品（Ascend 910B/910_93）支持开启，Ascend 950系列上开启会被host侧校验拒绝。
+
 - **计算公式**：
 
   $$
@@ -89,6 +91,33 @@ cann_ops_transformer.lightning_indexer(
 ) -> (Tensor, Tensor)
 ```
 
+```python
+cann_ops_transformer.lightning_indexer_candidate(
+  q,
+  k,
+  w,
+  topk,
+  *,
+  cu_seqlens_q=None,
+  cu_seqlens_k=None,
+  seqused_q=None,
+  seqused_k=None,
+  cmp_residual_k=None,
+  block_table=None,
+  output_idx_offset=None,
+  metadata=None,
+  max_seqlen_q=-1,
+  layout_q="BSND",
+  layout_k="BSND",
+  mask_mode=0,
+  cmp_ratio=1,
+  candidate_topk_blocks=-1,
+  candidate_block_size=8
+) -> (Tensor, Tensor, Tensor, Tensor)
+```
+
+> **说明：** `lightning_indexer_candidate`为两级TopK候选源（source）模式入口，`candidate_topk_blocks`缺省-1表示关闭，开启时取值需合法（(0, 2048]且64的倍数），取值校验由host侧完成。`lightning_indexer`入口内部固定以candidate关闭（candidate_topk_blocks=-1）调用aclnn接口，行为与单级TopK完全一致。
+
 ## 参数说明
 
 >**说明：**<br>
@@ -139,6 +168,15 @@ cann_ops_transformer.lightning_indexer(
 | cmp_ratio | int | 可选 | 用于稀疏计算，表示k的压缩倍数。支持1-128，默认值为1。 | int64 | - |
 | return_value | int | 可选 | 代表是否需要返回Indices对应的Values值。0代表不返回，1代表返回值，默认值为0。 | int64 | - |
 
+### lightning_indexer_candidate
+
+入参与`lightning_indexer`相同（无return_value参数，固定为0），额外增加以下两个参数：
+
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| candidate_topk_blocks | int | 可选 | 两级TopK候选源模式的候选块数量。缺省值-1表示关闭。开启时支持(0, 2048]且必须是64的倍数；开启时要求topk≤2048。仅Atlas A2/A3系列产品（Ascend 910B/910_93）支持开启，Ascend 950系列传入非-1值会被host侧校验拒绝报错。 | int64 | - |
+| candidate_block_size | int | 可选 | 候选块大小，即压缩后K空间中每个候选块包含的位置数。支持[2, 64]内的2的幂，默认值为8；关闭candidate时同样校验。需与下游消费算子sparse_lightning_indexer的配置保持一致。 | int64 | - |
+
 ## 返回值说明
 
 ### lightning_indexer_metadata
@@ -153,6 +191,17 @@ cann_ops_transformer.lightning_indexer(
 |--------|----------|-----------|------|----------|-------------|
 | sparse_indices | Tensor | 必选 | 公式中的Indices输出。不支持空tensor。无效部分填-1。数据格式为ND。 | int32 | layout_q为BSND时shape为(b,q_s,k_n,topk)；layout_q为TND时shape为(q_t,k_n,topk) |
 | sparse_values | Tensor | 条件输出 | 公式中的Indices对应的Values输出。当return_value为1时输出对应值；当return_value为0时输出shape为[0]的空tensor。无效部分填-inf。数据格式为ND。 | float | layout_q为BSND时shape为(b,q_s,k_n,topk)；layout_q为TND时shape为(q_t,k_n,topk)；return_value为0时shape为(0,) |
+
+### lightning_indexer_candidate
+
+返回4元组`(sparse_indices, sparse_values, candidate_topk_indices, candidate_block_length)`：
+
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
+|--------|----------|-----------|------|----------|-------------|
+| sparse_indices | Tensor | 必选 | 同`lightning_indexer`，candidate模式不影响其结果。 | int32 | 同`lightning_indexer` |
+| sparse_values | Tensor | 必选 | 恒为shape(0,)的空tensor（candidate与return_value互斥，固定不返回值）。 | float | (0,) |
+| candidate_topk_indices | Tensor | 条件输出 | candidate_topk_blocks开启时输出候选块索引：batch内压缩K位置空间的相对块号（块j覆盖[j×candidate_block_size,(j+1)×candidate_block_size)），无效槽填-1，不叠加output_idx_offset，槽位顺序不作为消费契约。 | int32 | 开启且layout_q为BSND时shape为(b,q_s,k_n,candidate_topk_blocks)；开启且layout_q为TND时shape为(q_t,k_n,candidate_topk_blocks)；关闭时shape为(0,) |
+| candidate_block_length | Tensor | 必选 | 预留接口，恒为空tensor，kernel不消费。 | int32 | (0,) |
 
 ## 约束说明
 
@@ -169,7 +218,7 @@ cann_ops_transformer.lightning_indexer(
 - 该接口的TopK排序过程对NaN排序是未定义行为。
 - 当layout_q为BSND时，不支持传入cu_seqlens_q；当layout_k为BSND或PA_BBND时，不支持传入cu_seqlens_k。
 - 当传入的cmp_ratio > 1且mask_mode = 3时，必须传入cmp_residual_k，其余情况不传入。
-- sparse_indices无效部分填-1；sparse_values无效部分填-inf。
+- sparse_indices无效部分填-1；sparse_values无效部分填-inf；candidate_topk_indices无效槽位填-1。
 <!-- npu="A3,910b" id7 -->
 - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>:
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
@@ -179,6 +228,7 @@ cann_ops_transformer.lightning_indexer(
   - layout_k为PA_BBND时必须传入seqused_k；为BSND或TND时可选传入。
   - cmp_ratio支持[1, 128]。
   - 支持return_value功能，0代表不返回对应值，1代表返回FLOAT32类型的sparse_values。
+  - 两级TopK候选源（source）模式（lightning_indexer_candidate）仅在本系列产品上支持开启：candidate_topk_blocks传入非-1即开启；开启时topk仅支持[1, 2048]，candidate_topk_indices需接收4元组返回值中的第3个输出；关闭时（含 lightning_indexer 入口）行为与单级TopK完全一致。
 <!-- end id7 -->
 <!-- npu="950" id8 -->
 - <term>Ascend 950PR&950DT系列产品</term>:
@@ -188,6 +238,7 @@ cann_ops_transformer.lightning_indexer(
   - 当传入output_idx_offset时，支持大于等于0的索引偏移值；且应满足约束：加上传入的索引偏移值后，得到的sparseIndice值不超过INT32的最大值。
   - 当layout_q为TND时，必须传入cu_seqlens_q，如果也传入seqused_q，应保证由seqused_q传入的各个batch的q长度不超过根据cu_seqlens_q计算出的各个batch的q序列长度。当某个batch由seqused_q传入的q序列长度seqlen1小于由cu_seqlens_q计算出的q长度seqlen2时，会启用TND Padding功能，将该batch的seqlen2与seqlen1的差值部分的q输出的sparse_indices和sparse_values全部置为无效值。部分长序列场景下，如果需要填充的无效数据过多，由于硬件限制可能会导致aicore执行超时，可以通过(seqlen2 - seqlen1) * topk来计算需要填充的数据量，建议将这个数据量控制在4亿以内。
   - 参数metadata必须传入，shape为(1024,)。
+  - 两级TopK候选源（source）模式（lightning_indexer_candidate）在本系列产品上不支持开启：candidate_topk_blocks传入非-1会被host侧校验拒绝报错（candidate仅Atlas A2/A3系列即Ascend 910B/910_93支持）；保持缺省-1（关闭）时本系列产品行为不受影响。
 <!-- end id8 -->
 
 
@@ -200,6 +251,7 @@ cann_ops_transformer.lightning_indexer(
 |   SeqLens参数组   | cu_seqlens_q、cu_seqlens_k、seqused_q、seqused_k、max_seqlen_q |
 |   稀疏压缩参数组    | cmp_ratio、cmp_residual_k |
 | Paged Attention参数组 | block_table |
+|   Candidate参数组    | candidate_topk_blocks、candidate_block_size、candidate_topk_indices、candidate_block_length |
 
 
 
@@ -598,6 +650,47 @@ mask_mode参数解释
       return_value=0
   )
   print(f"sparse_indices shape: {sparse_indices.shape}")
+  ```
+
+- 两级TopK候选源（candidate source）模式调用（仅Atlas A2/A3系列产品即Ascend 910B/910_93支持开启）：
+
+  ```python
+  import torch
+  import torch_npu
+  from cann_ops_transformer.ops import lightning_indexer_candidate
+
+  B = 2
+  S1 = 64
+  S2 = 130
+  N1 = 16
+  N2 = 1
+  D = 128
+  topk = 128
+  cmp_ratio = 4
+  candidate_topk_blocks = 2048  # (0, 2048]且64的倍数；传-1关闭candidate
+  candidate_block_size = 8      # [2, 64]内的2的幂
+
+  S2_compressed = S2 // cmp_ratio
+  res_k = S2 % cmp_ratio
+
+  q = torch.randn(B, S1, N1, D, dtype=torch.float16).npu()
+  k = torch.randn(B, S2_compressed, N2, D, dtype=torch.float16).npu()
+  w = torch.randn(B, S1, N1, dtype=torch.float32).npu()
+  cmp_residual_k = torch.tensor([res_k] * B, dtype=torch.int32).npu()
+
+  # 返回4元组：sparse_indices, sparse_values(恒空), candidate_topk_indices, candidate_block_length(恒空)
+  sparse_indices, sparse_values, candidate_topk_indices, candidate_block_length = \
+      lightning_indexer_candidate(
+          q, k, w, topk,
+          cmp_residual_k=cmp_residual_k,
+          layout_q="BSND",
+          layout_k="BSND",
+          mask_mode=3,
+          cmp_ratio=cmp_ratio,
+          candidate_topk_blocks=candidate_topk_blocks,
+          candidate_block_size=candidate_block_size
+      )
+  print(f"candidate_topk_indices shape: {candidate_topk_indices.shape}")  # (B, S1, N2, candidate_topk_blocks)
   ```
 
 - TorchAir（aclgraph）图模式调用：

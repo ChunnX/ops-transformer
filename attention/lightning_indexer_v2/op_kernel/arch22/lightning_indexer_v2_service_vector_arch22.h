@@ -33,6 +33,22 @@ constexpr uint32_t EVENTID_V_TO_MTE2_PING = 0;
 constexpr uint32_t EVENTID_V_TO_MTE2_PONG = 1;
 constexpr uint32_t EVENTID_V_TO_MTE2_TMPUB = 2;
 
+// 相邻配对解交织（candidate 块内 amax 折叠树用）：dst[i] = src[2i]（even）或 src[2i+1]（odd）。
+// GatherMask pattern 1/2 为 32B 块内偶/奇索引筛选（8 选 4 紧凑输出），与 ExtractIndex 同族用法。
+__aicore__ inline void GatherMaskDeinterleave(const LocalTensor<float>& dst, const LocalTensor<float>& src,
+                                              int32_t srcNum, bool even)
+{
+    AscendC::GatherMaskParams params;
+    params.repeatTimes = (srcNum * static_cast<int32_t>(sizeof(float)) + 255) / 256; // 256B per repeat
+    params.src0BlockStride = 1;
+    params.src0RepeatStride = B32_VEC_REPEAT_STRIDE;
+    params.src1RepeatStride = 0;
+    uint64_t rsvdCnt = 0;
+    uint8_t pattern = even ? 1 : 2;
+    AscendC::GatherMask(dst, src, pattern, false, static_cast<uint32_t>(0), params, rsvdCnt);
+    AscendC::PipeBarrier<PIPE_V>();
+}
+
 template <typename LIT>
 class LightningIndexerV2ServiceVector {
 public:
@@ -47,18 +63,29 @@ public:
     using MM1_OUT_T = float;
 
     __aicore__ inline LightningIndexerV2ServiceVector() {}
-    __aicore__ inline void ProcessVec(const LIV2Common::RunInfo &info);
+    __aicore__ inline void ProcessVec(const LIV2Common::RunInfo& info);
     __aicore__ inline void ProcessLD();
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitParams(const struct LIV2Common::ConstInfo &constInfo,
-                                      const LIV2TilingData *__restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitParams(const struct LIV2Common::ConstInfo& constInfo,
+                                      const LIV2TilingData* __restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
                                                 GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
                                                 GlobalTensor<int32_t> indiceOutGm, GlobalTensor<OUT_V_T> valueOutGm);
+    // candidate (two-level topk)：source 模式输出 GM 绑定（输入 GM 本算子恒空，签名保留供 sparse 克隆对齐）
+    __aicore__ inline void InitVecCandidateTensor(GlobalTensor<int32_t> candidateTopkIndexInGm,
+                                                  GlobalTensor<int32_t> candidateTopkIndexOutGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void InitLDBuffers(TPipe *pipe);
+    __aicore__ inline void InitLDBuffers(TPipe* pipe);
+    // candidate (two-level topk) source 链
+    __aicore__ inline void ProcessCandBlockTopk(const LIV2Common::RunInfo& info, int32_t cuS1Idx, int32_t cuS2Len,
+                                                int32_t cuRealAcSeq, int32_t innerS1Idx,
+                                                const LocalTensor<float>& sortScoreUb);
+    __aicore__ inline void CopyOutCandTopkIndex(const LIV2Common::RunInfo& info, int32_t cuS1Idx, int32_t innerS1Idx);
+    // candidate source 全选快速路径行末直出（可达块数 ≤ K：输出恒为 [0..N) + (-1) 补齐）
+    __aicore__ inline void CopyOutCandTopkIndexFullSel(const LIV2Common::RunInfo& info, int32_t cuS1Idx,
+                                                       int32_t realBlockNumTotal);
 
 protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
@@ -67,6 +94,8 @@ protected:
     GlobalTensor<W_T> weightsGm;
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<OUT_V_T> valueOutGm;
+    GlobalTensor<int32_t> candidateTopkIndexInGm;  // 本算子恒空（consumer 链归 sparse 算子）
+    GlobalTensor<int32_t> candidateTopkIndexOutGm; // source 输出
     // ================================ 常量区 ================================
 
 private:
@@ -88,10 +117,14 @@ private:
     TBuf<> ldOutValueBuf_;
     TBuf<> ldOutIdxBuf_;
 
+    // tmp buff for candidate (two-level topk) source：块级 topk 累加器 [CeilDiv(s1BaseSize,2), 2048, 2]
+    TBuf<TPosition::VECCALC> blockSortOutBuf_;
+
     LocalTensor<float> tmpUb_;
     LocalTensor<int32_t> globalTopkIndice_;
     LocalTensor<float> globalTopkUb_;
     LocalTensor<float> SortedBasicBlock_;
+    LocalTensor<float> globalBlockTopkUb_; // candidate source 块级累加器（mode=1 分配）
 
     int32_t blockId_ = -1;
     // para for vector
@@ -110,12 +143,14 @@ private:
 
     constexpr static uint32_t REDUCE_BANK_CONFLICT_OFFSETS = 256;
     constexpr static uint32_t REDUCE_BANK_CONFLICT_NUM = REDUCE_BANK_CONFLICT_OFFSETS / sizeof(float);
+    // candidate source 块级累加器每行容量（value+idx 对）：BASE_TOPK 对
+    constexpr static uint32_t CAND_BLOCK_ACC_PAIR_SIZE = BASE_TOPK * 2;
 
     struct LIV2Common::ConstInfo constInfo_;
 };
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe* pipe)
 {
     uint32_t outNeedBufSize = (BASE_TOPK * 2) * 2 * sizeof(float);
     uint32_t reduceCacheSize = REDUCE_BANK_CONFLICT_OFFSETS + groupInner_ * s2BaseSize_ * sizeof(float);
@@ -134,16 +169,29 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
     tmpUb_ = tmpBuf_.Get<float>();
     globalTopkIndice_ = indexBuf_.Get<int32_t>();
     globalTopkUb_ = sortOutBuf_.Get<float>();
-    SortedBasicBlock_ = globalTopkUb_[virTopK * 2 * 2];
+    // candidate on（s1Base=4）时 sortOutBuf 仅 8192 floats，SortedBasicBlock_ 偏移越界；
+    // D6 保证该缓存粗排路径不再执行，on 时不绑定该视图
+    if (constInfo_.candidateMode != CANDIDATE_MODE_SOURCE) {
+        SortedBasicBlock_ = globalTopkUb_[virTopK * 2 * 2];
+    }
     globalTopkNum_ = 0;
 
+    // candidate (two-level topk) source：块级累加器分配与初始化（off 不占 UB）
+    // UB 预算：off 基础 ≈141.6KB + 32KB = ≈173.6KB ≤ 192KB（s1Base=4 置换 sortOutBuf 64→32KB）
+    if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) {
+        pipe->InitBuffer(blockSortOutBuf_, CeilDiv(s1BaseSize_, 2) * CAND_BLOCK_ACC_PAIR_SIZE * sizeof(float)); // 32KB
+        globalBlockTopkUb_ = blockSortOutBuf_.Get<float>();
+        InitSortOutBuf(globalBlockTopkUb_, CeilDiv(s1BaseSize_, 2) * CAND_BLOCK_ACC_PAIR_SIZE);
+    }
+
     // 基本块执行前初始化UB和GM
-    // step1. 初始化一个有序索引 0 - s2BaseSize_
+    // ArithProgression 豁免边界（R1 检视答复）：count 恒 s2BaseSize_=512（>64，不进 (8,64] 标量分支），
+    // 且位于 InitBuffers（流水开始前，无在飞 V 指令）——流水中段禁用（见 ProcessCandBlockTopk 禁则注释）
     ArithProgression<int32_t>(globalTopkIndice_, 0, 1, s2BaseSize_);
-    // step2. globalTopkUb_ [CeilDiv(s1BaseSize_, 2), BASE_TOPK, 2]   -inf,-1
+    // globalTopkUb_ 布局 [CeilDiv(s1BaseSize_, 2), virTopK, 2]，填充交错的 -inf/-1（value/index 对）
     InitSortOutBuf(globalTopkUb_, CeilDiv(s1BaseSize_, 2) * virTopK * 2);
 
-    // step3. 初始化vec1ParamGm，是否进行LD的标志位设为-1(needFd=-1)
+    // vec1ParamGm 整区初始化为 -1：LD 轮询标志 needFd=-1 表示尚无待处理数据，vector 侧写 WS 后置 1
     // vec1ResIn32Gm = [aic, 2, s1BaseSize_, 16] int32
     // ws清零 [needFd, s2AcSeq, s2Start, s2End, isS2End, bn2idx, s1Idx, ......]
     LocalTensor<float> tmpfBuff = outQueue_.AllocTensor<float>();
@@ -158,7 +206,7 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitBuffers(TPipe *
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitLDBuffers(TPipe *pipe)
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitLDBuffers(TPipe* pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(ldToBeMrgBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float)); // 2：value + index
@@ -168,8 +216,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitLDBuffers(TPipe
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitParams(const struct LIV2Common::ConstInfo &constInfo,
-                                                                        const LIV2TilingData *__restrict tilingData)
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitParams(const struct LIV2Common::ConstInfo& constInfo,
+                                                                        const LIV2TilingData* __restrict tilingData)
 {
     this->constInfo_ = constInfo;
     blockS2StartIdx_ = 0;
@@ -197,6 +245,14 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitVec1GlobalTenso
     this->weightsGm = weightsGm;
     this->indiceOutGm = indiceOutGm;
     this->valueOutGm = valueOutGm;
+}
+
+template <typename LIT>
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::InitVecCandidateTensor(
+    GlobalTensor<int32_t> candidateTopkIndexInGm, GlobalTensor<int32_t> candidateTopkIndexOutGm)
+{
+    this->candidateTopkIndexInGm = candidateTopkIndexInGm;
+    this->candidateTopkIndexOutGm = candidateTopkIndexOutGm;
 }
 
 template <typename LIT>
@@ -235,14 +291,294 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CleanInvalidOutput(
         valueULocal = outQueue_.DeQue<uint32_t>();
 
         GlobalTensor<uint32_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
+        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t*)valueOutGm.GetPhyAddr());
         LIServiceVec::CopyOut(valueOutGmTmp[invalidS1offset], valueULocal, constInfo_.sparseCount);
         outQueue_.FreeTensor(valueULocal);
     }
+    // candidate (two-level topk) source：同步对 candidate_topk_indices 填 -1
+    // （行偏移 = sparse 行偏移 / sparseCount * candidateTopkBlocks，调用侧保证 offset 为 sparseCount 整数倍）
+    if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE && candidateTopkIndexOutGm.GetPhyAddr() != 0) {
+        uint64_t candOffset =
+            static_cast<uint64_t>(invalidS1offset) / constInfo_.sparseCount * constInfo_.candidateTopkBlocks;
+        LocalTensor<float> candULocal = outQueue_.AllocTensor<float>();
+        LocalTensor<int32_t> candIdxLocal = candULocal.template ReinterpretCast<int32_t>();
+        Duplicate(candIdxLocal, constInfo_.INVALID_IDX, constInfo_.candidateTopkBlocks);
+        outQueue_.EnQue<float>(candULocal);
+        candULocal = outQueue_.DeQue<float>();
+        LIServiceVec::CopyOut(candidateTopkIndexOutGm[candOffset], candIdxLocal, constInfo_.candidateTopkBlocks);
+        outQueue_.FreeTensor(candULocal);
+    }
+}
+
+// candidate (two-level topk) source 链 S5a/S6a：块化 amax + pad(-inf) + pin(+inf) + 块级排序/归并。
+// 输入 sortScoreUb：当前 tile 的 score 行 [0, s2BaseSize)（已 -inf pad，cuS2Len 之后为 -inf）。
+// 自 QLI v2 ProcessCandBlockTopk 移植，两处适配：
+// 1) 块内 amax 按 blockSize（[2,64] 2 的幂）通用化：bs>=8 走 BlockReduceMax(32B 块 8:1) +
+//    log2(bs/8) 轮折叠；bs<8 时 BlockReduceMax 粒度不足，改走 log2(bs) 轮 GatherMask 相邻配对 Max 树；
+// 2) scratch 不用 tmpBuf_：LIV2 的 CopyIn 是 ping/pong 双缓冲 MTE2 交叠流水，下一 tile 的 MTE2 写在
+//    WaitFlag<V_MTE2>(ping)（本 tile DoScale(ping) 末置位）后即可启动，早于本函数的 V 读——tmpBuf_
+//    全域均为 CopyIn 目标，S5a 期间使用会被踩（QLI 为 SetWaitFlag 全排空模式无此问题）。故 scratch
+//    全部取自 outQueue_ 窗口（sort 阶段空闲；先于位置级 tmpSortBuf 分配，串行不重叠）。
+template <typename LIT>
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessCandBlockTopk(const LIV2Common::RunInfo& info,
+                                                                                  int32_t cuS1Idx, int32_t cuS2Len,
+                                                                                  int32_t cuRealAcSeq,
+                                                                                  int32_t innerS1Idx,
+                                                                                  const LocalTensor<float>& sortScoreUb)
+{
+    int32_t blockSize = static_cast<int32_t>(constInfo_.candidateBlockSize);
+    int32_t blkLen = s2BaseSize_;          // LIV2: cuS2LenVecAlign 恒 512（-inf pad 后的对齐长度）
+    int32_t blockNum = blkLen / blockSize; // 含尾块（pad -inf 后按对齐长度计）
+    int32_t realBlockNum = (cuS2Len + blockSize - 1) / blockSize; // 含有效位置的块数
+    // 向量 count 按 64 对齐（块数不足 64 补齐，stale 区由 pad 链归一 -inf 覆盖）
+    int32_t blockNumPad = (blockNum < 64) ? 64 : blockNum;
+    int32_t tileBlockBase = info.s2Idx * s2BaseSize_ / blockSize;
+
+    // ---- scratch 偏移地图（outQueue_ 窗口 ≥8256 floats）----
+    // 固定区 [0,1024)：treePing[0,256) treePong[256,512) gatherEven[512,768) gatherOdd[768,1024)
+    // 动态区 P=1024 起（blockNumPad 对齐）：blkPairs[scores|idx] + idxScr/thrI/offI/tI/pRaw/pNeg 各
+    // blockNumPad + blkSortTmp(2*(candidateTopkBlocks+blockNumPad))；
+    // 最坏 bs=2/candBlocks=2048：1024 + 8*256 + 2*(2048+256) = 7680 ≤ 8256 ✓
+    // 【白盒检视 §2.4 加固 2026-09-23】"需随 outQueue 尺寸变化复审计"由下述编译期断言机制化保障：
+    // 尾偏移 = 1024 + 10*blockNumPad + 2*candidateTopkBlocks，blockNumPad 在 bs=2 取最大 256
+    constexpr int32_t CAND_SCRATCH_BLK_PAD_MAX = 256;   // s2BaseSize(512) / candidate_block_size 最小值(2)
+    constexpr int32_t CAND_SCRATCH_TOPK_BLK_MAX = 2048; // host 硬校验上界（CANDIDATE_TOPK_BLOCKS_FIX）
+    constexpr int32_t CAND_SCRATCH_WORST_FLOATS = 1024 + 10 * CAND_SCRATCH_BLK_PAD_MAX + 2 * CAND_SCRATCH_TOPK_BLK_MAX;
+    // 与 InitBuffers outNeedBufSize 同源：max(BASE_TOPK*2*2*4B, 256B + groupInner(16)*s2Base(512)*4B)/4B
+    constexpr int32_t OUT_QUEUE_CAPACITY_FLOATS = (256 + 16 * 512 * 4) / 4;
+    static_assert(CAND_SCRATCH_WORST_FLOATS <= OUT_QUEUE_CAPACITY_FLOATS,
+                  "cand block-level scratch worst case exceeds outQueue single-slot capacity");
+    LocalTensor<float> candScratch = outQueue_.AllocTensor<float>();
+    LocalTensor<float> treePing = candScratch[0];
+    LocalTensor<float> treePong = candScratch[256];
+    LocalTensor<float> gatherEven = candScratch[512];
+    LocalTensor<float> gatherOdd = candScratch[768];
+    int32_t p = 1024;
+    LocalTensor<float> blkPairs = candScratch[p];
+    LocalTensor<int32_t> idxScr = candScratch[p + 2 * blockNumPad].template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> thrI = candScratch[p + 3 * blockNumPad].template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> offI = candScratch[p + 4 * blockNumPad].template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> tI = candScratch[p + 5 * blockNumPad].template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> pRaw = candScratch[p + 6 * blockNumPad].template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> pNeg = candScratch[p + 7 * blockNumPad].template ReinterpretCast<int32_t>();
+    LocalTensor<float> blkSortTmp = candScratch[p + 8 * blockNumPad];
+
+    // ---- (a) S5a 块内 amax（结果落于 treePing/treePong [0, blockNum)）----
+    int32_t fold = (blockSize >= 8) ? (blockSize / 8) : blockSize; // 需折叠的因子
+    int32_t rounds = 0;
+    for (int32_t v = fold; v > 1; v >>= 1) {
+        rounds++;
+    }
+    int32_t curSrcLen = (blockSize >= 8) ? (blkLen / 8) : blkLen;
+    LocalTensor<float> prev;
+    if (blockSize >= 8) {
+        // BlockReduceMax：每 32B 块（8 fp32）出 1 个 max，紧凑输出 [0, blkLen/8)
+        BlockReduceMax(treePing, sortScoreUb, CeilDiv(blkLen, 64), 64, 1, 1, 8);
+        PipeBarrier<PIPE_V>();
+        prev = treePing;
+    } else {
+        prev = sortScoreUb; // 只读源
+    }
+    for (int32_t r = 0; r < rounds; r++) {
+        LocalTensor<float> dst = ((r % 2) == 0) ? treePing : treePong;
+        // bs>=8 且 rounds>=1 时首轮 dst 与 prev 同为 treePing：两路 GatherMask 先完成全量读
+        // （V 管道内有序 + PipeBarrier），其后 Max 再写 [0, curSrcLen/2) 无冲突
+        GatherMaskDeinterleave(gatherEven, prev, curSrcLen, true);
+        GatherMaskDeinterleave(gatherOdd, prev, curSrcLen, false);
+        Max(dst, gatherEven, gatherOdd, curSrcLen / 2);
+        PipeBarrier<PIPE_V>();
+        prev = dst;
+        curSrcLen /= 2;
+    }
+    // amax 结果拷入 blkPairs 值半区（count=blockNumPad，[blockNum, blockNumPad) stale 由 pad 链归一）
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Adds(blkPairs[off], prev[off], 0.0f, 64);
+    }
+    PipeBarrier<PIPE_V>();
+
+    // ---- (b) 块级 [scores | idx] 对构造：idx = tileBlockBase + j；j >= realBlockNum 的 pad 块置 -1 ----
+    // 全 int32 向量算术链（禁标量 SetValue：不受 PipeBarrier fence，与后续 V 读存在竞态；
+    // 禁 s32->f32 Cast：v220 无此组合）。idx' = idx - (idx+1)*isPad，isPad = clamp(idx - thr, 0, 1)，
+    // thr = tileBlockBase + realBlockNum - 1
+    LocalTensor<int32_t> blkIdx = blkPairs[blockNumPad].template ReinterpretCast<int32_t>();
+    // 禁 ArithProgression：其 (8,64] count 分支内部走标量 SetValue 写 UB（不受 PipeBarrier fence，
+    // S_V 时序敏感）且将全局向量掩码泄漏为 8 lane（该分支无 ResetMask）——流水中间调用会污染后续
+    // 位置级排序/归并（实测 sparse_indices 出现"单元素插入+右移"型随机错误）。
+    // 改为复用 InitBuffers 已构建的常量索引 globalTopkIndice_ [0,512) + 一次纯 V 的 count-based Adds。
+    Adds(idxScr, globalTopkIndice_, tileBlockBase, blockNumPad);
+    Duplicate(thrI, tileBlockBase + realBlockNum - 1, blockNumPad);
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Sub(offI[off], idxScr[off], thrI[off], 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Maxs(offI[off], offI[off], 0, 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Mins(offI[off], offI[off], 1, 64); // isPad
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Adds(tI[off], idxScr[off], 1, 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Mul(tI[off], tI[off], offI[off], 64);
+    }
+    PipeBarrier<PIPE_V>();
+    for (int32_t off = 0; off < blockNumPad; off += 64) {
+        Sub(blkIdx[off], idxScr[off], tI[off], 64);
+    }
+    PipeBarrier<PIPE_V>();
+
+    // ---- (c) pad 块 score 归一为 -inf 位型：覆盖 [realBlockNum, blockNumPad)，含 stale 区 ----
+    // score' = score + (score - NINF_bits)*(-isPad)，isPad 于 pad 位为 1；全 int32 向量
+    // （脏 score 的 (-inf,-1) 不同构对会挤进 topk 挤掉真实块）
+    if (blockNumPad > realBlockNum) {
+        LocalTensor<int32_t> scoreI = blkPairs.template ReinterpretCast<int32_t>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Duplicate(pRaw[off], -1, 64);
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mul(pRaw[off], pRaw[off], offI[off], 64); // -isPad
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Adds(pNeg[off], scoreI[off], 8388608, 64); // score - NINF_bits（NINF=0xFF800000=-8388608）
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mul(pNeg[off], pNeg[off], pRaw[off], 64);
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Add(scoreI[off], scoreI[off], pNeg[off], 64); // pad 块 -> -inf 位型
+        }
+        PipeBarrier<PIPE_V>();
+    }
+
+    // ---- (d) pin 最新 token 所在块（+inf 位型注入）：纯 int32 向量，复用 isPad 链已释放 scratch ----
+    // flag = -1 于 pin 位、0 于其余：score' = score + (score - PINF_bits) * flag，
+    // pin 位得 PINF_bits（0x7F800000 = +inf），其余不变（flag=0 使 pad 位 -inf 的中间溢出无害）
+    int32_t lastBlk = (cuRealAcSeq - 1) / blockSize;
+    int32_t pinLocal = lastBlk - tileBlockBase;
+    if (pinLocal >= 0 && pinLocal < realBlockNum) {
+        LocalTensor<int32_t> pA = thrI; // 复用 (b) 链 scratch
+        LocalTensor<int32_t> pB = offI;
+        LocalTensor<int32_t> pFlag = tI;
+        LocalTensor<int32_t> scoreI = blkPairs.template ReinterpretCast<int32_t>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            // idxScr 为全局块号，pin 必须用全局 id（tileBlockBase + pinLocal）比较
+            Adds(pRaw[off], idxScr[off], -(tileBlockBase + pinLocal), 64); // 0 于 pin 块
+        }
+        PipeBarrier<PIPE_V>();
+        Duplicate(pNeg, 0, blockNumPad);
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Sub(pNeg[off], pNeg[off], pRaw[off], 64); // -(idx-pin)
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Maxs(pA[off], pRaw[off], 0, 64);
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mins(pA[off], pA[off], 1, 64); // 1 若 idx > pin
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Maxs(pB[off], pNeg[off], 0, 64);
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mins(pB[off], pB[off], 1, 64); // 1 若 idx < pin
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Add(pFlag[off], pA[off], pB[off], 64); // isNotPin（0/1 互斥）
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Adds(pFlag[off], pFlag[off], -1, 64); // -1 于 pin，0 其余
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Adds(pRaw[off], scoreI[off], -2139095040, 64); // score - 0x7F800000（复用 pRaw）
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Mul(pRaw[off], pRaw[off], pFlag[off], 64); // (score-PINF)*flag
+        }
+        PipeBarrier<PIPE_V>();
+        for (int32_t off = 0; off < blockNumPad; off += 64) {
+            Add(scoreI[off], scoreI[off], pRaw[off], 64); // pin -> +inf 位型
+        }
+        PipeBarrier<PIPE_V>();
+    }
+
+    // ---- (e) S6a 块级排序 + 归并到块级累加器 ----
+    // blkSortTmp 需容纳 SortAll tmp（2*blockNumPad）与 MrgSort tmp（(candidateTopkBlocks+blockNumPad)*2）
+    LIServiceVec::SortAll(blkPairs, blkSortTmp, blockNumPad);
+    PipeBarrier<PIPE_V>();
+    // 候选专用合并（P3）：纯 V 回拷，防跨 tile 累加器 stale 读
+    LIServiceVec::MergeSortVecCopy(globalBlockTopkUb_[innerS1Idx * CAND_BLOCK_ACC_PAIR_SIZE],
+                                   static_cast<int32_t>(constInfo_.candidateTopkBlocks), blkPairs, blockNumPad,
+                                   blkSortTmp);
+    PipeBarrier<PIPE_V>();
+    outQueue_.FreeTensor(candScratch);
+}
+
+// candidate source：行末直出 candidate_topk_indices（前 candidate_topk_blocks 个块号）并复位该行块级累加器
+template <typename LIT>
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CopyOutCandTopkIndex(const LIV2Common::RunInfo& info,
+                                                                                  int32_t cuS1Idx, int32_t innerS1Idx)
+{
+    LocalTensor<uint32_t> candIdxULocal = outQueue_.AllocTensor<uint32_t>();
+    ExtractIndex(candIdxULocal,
+                 globalBlockTopkUb_[innerS1Idx * CAND_BLOCK_ACC_PAIR_SIZE].template ReinterpretCast<uint32_t>(),
+                 static_cast<int64_t>(constInfo_.candidateTopkBlocks));
+    PipeBarrier<PIPE_V>();
+    InitSortOutBuf(globalBlockTopkUb_[innerS1Idx * CAND_BLOCK_ACC_PAIR_SIZE], CAND_BLOCK_ACC_PAIR_SIZE);
+    outQueue_.EnQue<uint32_t>(candIdxULocal);
+    candIdxULocal = outQueue_.DeQue<uint32_t>();
+    LIServiceVec::CopyOut(candidateTopkIndexOutGm[info.candidateOutOffset + cuS1Idx * constInfo_.candidateTopkBlocks],
+                          candIdxULocal.template ReinterpretCast<int32_t>(), constInfo_.candidateTopkBlocks);
+    outQueue_.FreeTensor(candIdxULocal);
+}
+
+// candidate source 全选快速路径行末直出：块号 [0..N) + (-1) 补齐（比对契约为无序集合）。
+// 保持 inline 可内联——实测对本函数施加 noinline 会在巨型内联的 ProcessVec 调用点触发 CCE
+// 调用边界状态物化（mix_aiv 每 LIT 实例 +13KB，off 模式每 launch 固定 +µs）。
+template <typename LIT>
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::CopyOutCandTopkIndexFullSel(
+    const LIV2Common::RunInfo& info, int32_t cuS1Idx, int32_t realBlockNumTotal)
+{
+    LocalTensor<uint32_t> candIdxULocal = outQueue_.AllocTensor<uint32_t>();
+    LocalTensor<int32_t> candIdxI = candIdxULocal.template ReinterpretCast<int32_t>();
+    Duplicate(candIdxI, constInfo_.INVALID_IDX, constInfo_.candidateTopkBlocks);
+    PipeBarrier<PIPE_V>();
+    // [0..N) 块号：复用 InitBuffers 常量索引 globalTopkIndice_ [0,512)，512 分块 count-based
+    // Adds（自含尾块掩码；scalar=off 复用同一常量索引源）
+    int32_t off = 0;
+    while (off < realBlockNumTotal) {
+        int32_t chunk = realBlockNumTotal - off;
+        chunk = (chunk > s2BaseSize_) ? s2BaseSize_ : chunk;
+        Adds(candIdxI[off], globalTopkIndice_, off, chunk);
+        off += chunk;
+    }
+    PipeBarrier<PIPE_V>();
+    outQueue_.EnQue<uint32_t>(candIdxULocal);
+    candIdxULocal = outQueue_.DeQue<uint32_t>();
+    LIServiceVec::CopyOut(candidateTopkIndexOutGm[info.candidateOutOffset + cuS1Idx * constInfo_.candidateTopkBlocks],
+                          candIdxI, constInfo_.candidateTopkBlocks);
+    outQueue_.FreeTensor(candIdxULocal);
 }
 
 template <typename LIT>
-__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LIV2Common::RunInfo &info)
+__aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LIV2Common::RunInfo& info)
 {
     int32_t cuBaseS1Idx = info.gS1Idx * s1BaseSize_;
     int32_t cuBaseS2Idx = info.s2Idx * s2BaseSize_;
@@ -272,6 +608,10 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
     if (info.loop != 0 && info.s2Idx == 0) {
         // globalTopkUb_ value,index=-inf,-1
         InitSortOutBuf(globalTopkUb_, CeilDiv(s1BaseSize_, 2) * virTopK * 2);
+        // candidate source：块级累加器与位置级累加器成对重置（UT 不变量）
+        if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) {
+            InitSortOutBuf(globalBlockTopkUb_, CeilDiv(s1BaseSize_, 2) * CAND_BLOCK_ACC_PAIR_SIZE);
+        }
         blockS2StartIdx_ = 0;
     } else if (info.loop == 0) {
         blockS2StartIdx_ = info.s2Idx;
@@ -354,8 +694,24 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
             }
             Adds(sortIndiceUbInt, globalTopkIndice_, static_cast<int32_t>(cuBaseS2Idx), cuS2Len);
             PipeBarrier<PIPE_V>();
+            // candidate (two-level topk) source：S5a/S6a 块化 amax + pin + 块级排序/归并
+            // （score 行已成形、idx 已填充；块级计算不得影响位置级结果——两套独立累加器）
+            // 方案1 全选快速路径（按行判定，tile 间稳定——cuRealAcSeq 不随 tile 变化）：
+            // 可达块数 ≤ K 时输出与 score 无关（"全选"为 golden/CPU 自检断言的不变量，pin 块
+            // 天然含于全选集合，-1 槽数 = K − N），整行跳过块级 amax/排序/归并流水，行末直出。
+            // 判定值短作用域（不跨排序区存活）——长存活局部会加剧 ProcessVec 寄存器压力，
+            // 实测缓存粗排路径（off/decode）回退 +µs
+            if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) {
+                int32_t candBs = static_cast<int32_t>(constInfo_.candidateBlockSize);
+                int32_t candRealBlkTotal = (cuRealAcSeq + candBs - 1) / candBs;
+                if (candRealBlkTotal > static_cast<int32_t>(constInfo_.candidateTopkBlocks)) {
+                    ProcessCandBlockTopk(info, cuS1Idx, cuS2Len, cuRealAcSeq, innerS1Idx, sortScoreUb);
+                }
+            }
             LocalTensor<float> tmpSortBuf = outQueue_.AllocTensor<float>();
-            if (info.actS1Size > 4 || constInfo_.isSparseCountOver2K) {
+            // D6: candidate 恒走 SortAll+MergeSort（s1Base=4 下 SortedBasicBlock_ 视图越界，缓存粗排禁用）
+            if (info.actS1Size > 4 || constInfo_.isSparseCountOver2K ||
+                constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) {
                 // info.actS1Size > 4 则单个vector核内处理的 s1>2，缓存方案无法处理
                 LIServiceVec::SortAll(reduceOutBuff, tmpSortBuf,
                                       cuS2LenVecAlign); //  cuS2LenVecAlign <= s2BaseSize_, fill -inf
@@ -430,6 +786,18 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessVec(const LI
                             outValueUb, copyLen);
                     }
                     outQueue_.FreeTensor(outValueUb);
+                }
+                // candidate (two-level topk) source：行末直出 candidate_topk_indices
+                // （直出块数 = candidate_topk_blocks，与位置级 topk 无关；相对块号，不加 output_idx_offset）
+                if (constInfo_.candidateMode == CANDIDATE_MODE_SOURCE) {
+                    // 行末重算（短作用域），不依赖跨排序区的长存活局部
+                    int32_t candBs = static_cast<int32_t>(constInfo_.candidateBlockSize);
+                    int32_t candRealBlkTotal = (cuRealAcSeq + candBs - 1) / candBs;
+                    if (candRealBlkTotal <= static_cast<int32_t>(constInfo_.candidateTopkBlocks)) {
+                        CopyOutCandTopkIndexFullSel(info, cuS1Idx, candRealBlkTotal);
+                    } else {
+                        CopyOutCandTopkIndex(info, cuS1Idx, innerS1Idx);
+                    }
                 }
             } else if (needCopyWsGm) {
                 // vec1Res Gm = [aic, s1BaseSize_, 2, 2, topkOut_] float32

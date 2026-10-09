@@ -18,6 +18,12 @@
 
 namespace LIV2Common {
 
+// candidate (two-level topk) kernel 内部模式（与 host 侧 tiling.h 常量保持一致；不上参数面——
+// host 以 candidate_topk_blocks == -1 表达 off，kernel InitTilingData 推导本枚举）
+inline constexpr uint32_t CANDIDATE_MODE_SOURCE = 1;     // source: 输出候选块索引（两级 TopK 第一级）
+inline constexpr uint32_t CANDIDATE_MODE_OFF = 3;        // off: 现网行为（默认）
+inline constexpr int32_t CANDIDATE_TOPK_BLOCKS_OFF = -1; // candidate_topk_blocks 的 off 哨兵
+
 // 与tiling的layout保持一致
 enum class LI_V2_LAYOUT {
     BSND = 0,
@@ -59,6 +65,7 @@ struct RunInfo {
     uint64_t tensorKeyOffset;
     uint64_t tensorWeightsOffset;
     uint64_t indiceOutOffset;
+    uint64_t candidateOutOffset; // candidate (two-level topk) source 输出的 batch 级前缀
 
     bool isFirstS2InnerLoop;
     bool isLastS2InnerLoop;
@@ -109,6 +116,11 @@ struct ConstInfo {
     bool isAccumSeqS2 = false;                            // 是否累加模式
     bool isSparseCountOver2K = false;                     // sparseCount小于等于2048为false
     static constexpr uint32_t NEG_INF_FLOAT = 0xFF800000; // float负无穷
+
+    // candidate (two-level topk)：source 模式（candidate_topk_blocks != -1 时 InitTilingData 置 SOURCE）
+    uint32_t candidateMode = CANDIDATE_MODE_OFF;
+    uint32_t candidateTopkBlocks = 0U; // on 时的有效值 (0,2048] 且 64 的倍数；off 恒 0
+    uint32_t candidateBlockSize = 8U;  // [2,64] 2 的幂
 };
 
 struct SplitCoreInfo {

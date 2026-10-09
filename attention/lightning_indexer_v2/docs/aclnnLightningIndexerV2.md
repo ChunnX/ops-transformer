@@ -37,6 +37,10 @@
   2. 通过激活函数$ReLU$过滤无效负相关信号后，得到当前Token与所有前序Token的相关性分数向量。
   3. 将其与权重系数`w`（$W$）相乘后，沿g的方向，选取前$Top-k$个索引值得到输出$sparseIndices$，并输出对应的$sparseValues$，作为Attention的输入。
 
+- 两级TopK候选源（source）模式（可选，缺省关闭）：
+
+  当属性`candidateTopkBlocks`传入非-1（缺省-1为关闭，仅Atlas A2/A3系列产品即Ascend 910B/910_93支持开启；Ascend 950系列上开启该模式会被host侧tiling校验拒绝并返回错误，算子本体在950上仍支持，关闭candidate即正常路径）时，算子在位置级Top-k之外并行执行块级候选选择：将每个token在压缩后K位置空间上的相关性分数按`candidateBlockSize`个位置划分为一块（块内取最大分数，尾块以-inf补齐，最新可达token所在块强制入选），按分数选取前`candidateTopkBlocks`个块号写入`candidateTopkIndices`输出，供下游aclnnSparseLightningIndexer（consumer模式）两级TopK消费。候选块号为batch内相对块号（块j覆盖压缩位置区间[j×candidateBlockSize, (j+1)×candidateBlockSize)），无效槽位填-1，不叠加`outputIdxOffset`，槽位顺序不作为消费契约（按集合消费）。该模式不影响`sparseIndices`/`sparseValues`的计算结果。`candidateBlockLength`为预留接口，恒输出shape为(0,)的空tensor。
+
 ## 参数说明
 
 算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnLightningIndexerV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnLightningIndexerV2”接口执行计算。
@@ -61,8 +65,12 @@ aclnnStatus aclnnLightningIndexerV2GetWorkspaceSize(
     int64_t              maskMode,
     int64_t              cmpRatio,
     int64_t              returnValue,
+    int64_t              candidateTopkBlocks,
+    int64_t              candidateBlockSize,
     const aclTensor     *sparseIndices,
     const aclTensor     *sparseValues,
+    const aclTensor     *candidateTopkIndicesOutOptional,
+    const aclTensor     *candidateBlockLengthOutOptional,
     uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
@@ -277,7 +285,27 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>returnValue（int64_t）</td>
     <td>输入</td>
     <td>代表是否需要返回Indices对应的Values值。</td>
-    <td><ul><li>0代表不返回，1代表返回值。</li><li>建议值是0。</li></ul></td>
+    <td><ul><li>0代表不返回，1代表返回值。</li><li>建议值是0。</li><li>开启candidate模式（candidateTopkBlocks不等于-1）时必须为0。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>candidateTopkBlocks（int64_t）</td>
+    <td>输入</td>
+    <td>两级TopK候选源模式的候选块数量，即块级Top-k需要保留的候选块个数。</td>
+    <td><ul><li>缺省值-1表示关闭candidate模式，输出与单级TopK行为完全一致。</li><li>开启时支持(0, 2048]且必须是64的倍数。</li><li>仅Atlas A2/A3系列产品（Ascend 910B/910_93）支持开启；Ascend 950系列上开启会被host侧tiling校验拒绝（算子本体在950上仍支持）。</li><li>开启时要求topk≤2048且returnValue=0。</li></ul></td>
+    <td>INT64</td>
+    <td>-</td>
+    <td>-</td>
+    <td>-</td>
+    </tr>
+    <tr>
+    <td>candidateBlockSize（int64_t）</td>
+    <td>输入</td>
+    <td>候选块大小，即压缩后K空间中每个候选块包含的位置数。</td>
+    <td><ul><li>支持[2, 64]内的2的幂（2、4、8、16、32、64），缺省值是8。</li><li>candidateTopkBlocks关闭时同样校验该取值范围。</li><li>需与下游消费算子aclnnSparseLightningIndexer的配置保持一致。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -301,6 +329,26 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>FLOAT</td>
     <td>ND</td>
     <td><ul><li>returnValue为1且layoutQ为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>returnValue为1且layoutQ为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+    <td>x</td>
+    </tr>
+    <tr>
+    <td>candidateTopkIndicesOutOptional（aclTensor*）</td>
+    <td>输出</td>
+    <td>两级TopK候选源模式的候选块索引输出。</td>
+    <td><ul><li>candidateTopkBlocks开启时必须传入实际tensor。</li><li>candidateTopkBlocks关闭时输出shape为(0,)的空tensor，可传入空tensor占位。</li><li>块号为batch内相对块号（压缩K空间），无效槽位填-1，不叠加outputIdxOffset；消费侧按集合消费，不依赖槽位顺序。</li></ul></td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td><ul><li>开启且layoutQ为"BSND"时输出shape为[B, S1, N2, candidateTopkBlocks]。</li><li>开启且layoutQ为"TND"时输出shape为[T1, N2, candidateTopkBlocks]。</li><li>关闭时输出shape为(0,)。</li></ul></td>
+    <td>x</td>
+    </tr>
+    <tr>
+    <td>candidateBlockLengthOutOptional（aclTensor*）</td>
+    <td>输出</td>
+    <td>预留接口，kernel不消费。</td>
+    <td>恒输出shape为(0,)的空tensor，可传入空tensor占位。</td>
+    <td>INT32</td>
+    <td>ND</td>
+    <td>(0,)</td>
     <td>x</td>
     </tr>
     <tr>
@@ -354,7 +402,7 @@ aclnnStatus aclnnLightningIndexerV2(
       <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>q、k、w、cuSeqlensQ、cuSeqlensK、sequsedQ、sequsedK、cmpResidualK、blockTable、outputIdxOffset、metadata、sparseIndices、sparseValues的数据类型和数据格式不在支持的范围内。</td>
+      <td><ul><li>q、k、w、cuSeqlensQ、cuSeqlensK、sequsedQ、sequsedK、cmpResidualK、blockTable、outputIdxOffset、metadata、sparseIndices、sparseValues、candidateTopkIndices、candidateBlockLength的数据类型和数据格式不在支持的范围内。</li><li>属性取值非法，如：topk、cmpRatio、maskMode、returnValue、maxSeqlenQ超出支持范围；candidateTopkBlocks开启时不在(0, 2048]内或不是64的倍数；candidateTopkBlocks开启时topk大于2048或returnValue不为0；candidateBlockSize不为[2, 64]内的2的幂。</li></ul></td>
       </tr>
       </tbody>
     </table>
@@ -410,14 +458,16 @@ aclnnStatus aclnnLightningIndexerV2(
 - headdim支持128。
 - pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32Byte对齐。
 - 参数q、k的数据类型应保持一致。
-- sparseIndices无效部分填-1；sparseValues无效部分填-inf。
+- sparseIndices无效部分填-1；sparseValues无效部分填-inf；candidateTopkIndices无效槽位填-1。
 - 传入的cmpResidualKOptional中每一个元素的值都应小于压缩率cmpRatio。
+- candidate（两级TopK候选源）模式的candidateBlockSize须为[2, 64]内的2的幂（candidateTopkBlocks关闭时同样校验），且需与下游消费算子aclnnSparseLightningIndexer的配置保持一致（该一致性为调用方契约，框架层无法跨算子校验）；candidateBlockLength为预留接口，恒输出空tensor。
 
 <!-- npu="A3,910b" id7 -->
 - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
   - topk取值范围当前仅支持[1, 2048]，以及3072、4096、5120、6144、7168、8192。
   - 当前不支持sequsedQOptional、outputIdxOffsetOptional、maxSeqlenQ功能，不建议传入这些参数。
   - 当layoutK为PA_BBND时，必须传入sequsedKOptional；当layoutK为BSND或TND时，sequsedKOptional可选传入。
+  - 两级TopK候选源（source）模式仅在本系列产品上支持开启：candidateTopkBlocks传入非-1即开启；开启时topk仅支持[1, 2048]、returnValue必须为0，且必须传入实际的candidateTopkIndicesOut输出tensor（shape为[B, S1, N2, candidateTopkBlocks]或[T1, N2, candidateTopkBlocks]）。
 <!-- end id7 -->
 <!-- npu="950" id8 -->
 - <term>Ascend 950PR&950DT系列产品</term>：
@@ -427,6 +477,7 @@ aclnnStatus aclnnLightningIndexerV2(
   - 当传入的cmpRatio > 1且maskMode = 3时，必须传入cmpResidualKOptional，其余情况不传入。
   - 当传入的参数layoutK为PA_BBND时，必须传入sequsedKOptional。
   - 参数metadataOptional必须传入。
+  - 两级TopK候选源（source）模式在本系列产品上不支持开启：candidateTopkBlocks传入非-1时会被host侧tiling校验拒绝并返回错误（candidate仅Atlas A2/A3系列即Ascend 910B/910_93支持）；candidateTopkBlocks保持缺省-1（关闭）时本系列产品行为不受影响。
 
 <!-- end id8 -->
 

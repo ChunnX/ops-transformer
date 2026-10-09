@@ -633,6 +633,22 @@ attention:
     options:
       - lightning_indexer_v2
 
+  sparse_lightning_indexer:
+    module: True
+    src:
+      - attention/sparse_lightning_indexer
+    exclude:
+      - attention/sparse_lightning_indexer/docs
+      - attention/sparse_lightning_indexer/README.md
+    ut_cov_exclude:
+      - attention/sparse_lightning_indexer/examples
+      - attention/sparse_lightning_indexer/tests
+    test:
+      examples: False
+      ut: True
+    options:
+      - sparse_lightning_indexer
+
   msa_index_score:
     module: True
     src:

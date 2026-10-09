@@ -22,6 +22,9 @@ using namespace AscendC;
 
 constexpr int32_t NEG_INF = 0xFF800000;
 constexpr int32_t INVALID_INDEX = -1;
+constexpr int32_t POS_INF_F32 = 0x7F800000; // +inf (fp32 bits) — candidate pin 块位型
+// 【R17 修正 2026-09-23】删除未消费常量 NEG_HUGE_F32（旧值 0xF14A3E31 位型有误，且 source 侧无消费点；
+// leak 降级值为 consumer 语义，其唯一定义在 SLI vector.h，正确位型 0xF149F2CA = -1e30f）
 constexpr uint8_t VEC_REPEAT_MAX = 255;
 constexpr uint8_t B32_VEC_ELM_NUM = 64;
 constexpr uint8_t B32_BLOCK_ALIGN_NUM = 8;
@@ -39,8 +42,8 @@ constexpr int64_t MRG_BLOCK_3 = 3;
 constexpr int64_t MRG_BLOCK_4 = 4;
 
 template <typename T>
-__aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, LocalTensor<T> &weightsUb, GlobalTensor<float> &mMoutGm,
-                              GlobalTensor<T> &weightScaleGm, int64_t MMout_gmoffset, int64_t weights_gmoffset,
+__aicore__ inline void CopyIn(LocalTensor<float>& mmOutUb, LocalTensor<T>& weightsUb, GlobalTensor<float>& mMoutGm,
+                              GlobalTensor<T>& weightScaleGm, int64_t MMout_gmoffset, int64_t weights_gmoffset,
                               int64_t groupInner, int64_t s2Inner, int64_t mmUbStride)
 {
     // 将MMout_gmoffset copy到UB上
@@ -65,7 +68,7 @@ __aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, LocalTensor<T> &weigh
 }
 
 template <typename T>
-__aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T> &srcUb, int64_t copyCount)
+__aicore__ inline void CopyOut(const GlobalTensor<T>& dstGm, const LocalTensor<T>& srcUb, int64_t copyCount)
 {
     AscendC::DataCopyParams dataCopyOutyParams;
     dataCopyOutyParams.blockCount = 1;
@@ -76,8 +79,8 @@ __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T
 }
 
 template <typename T>
-__aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTensor<float> &mmOutUb,
-                               LocalTensor<float> &weightsUb, LocalTensor<T> &weightsTUb, LocalTensor<float> &tmpBuff,
+__aicore__ inline void DoScale(const LocalTensor<float>& reduceCacheBuf, LocalTensor<float>& mmOutUb,
+                               LocalTensor<float>& weightsUb, LocalTensor<T>& weightsTUb, LocalTensor<float>& tmpBuff,
                                int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
 {
     // cast bfloat16_t to float
@@ -123,7 +126,7 @@ __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
 }
 
 // dstTensor 需要初始化0
-__aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor<float> &dstTensor, int32_t rNum,
+__aicore__ inline void DoReduce(const LocalTensor<float>& srcTensor, LocalTensor<float>& dstTensor, int32_t rNum,
                                 int32_t aNum)
 {
     if (rNum == 1) {
@@ -152,7 +155,7 @@ __aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor
   src: 传入的初始化空间
   eleNum: 需要初始化的元素个数需为64整数倍，元素将被初始化为交错排布的-inf，-1
  */
-__aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t eleNum)
+__aicore__ inline void InitSortOutBuf(const LocalTensor<float>& src, int64_t eleNum)
 {
     uint64_t mask1[2] = {0x5555555555555555, 0};
     uint64_t mask0[2] = {0xaaaaaaaaaaaaaaaa, 0};
@@ -176,11 +179,34 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
 }
 
 /**
+  UB->UB 纯 V 管道位精确回拷 (int32 视图 count-based Adds +0, P3 铁律)。
+  替代 SortAll/MergeSort 尾部的 AscendC::DataCopy: UB->UB DataCopy 走 MTE 管道,
+  其后的 PipeBarrier<PIPE_V> 不构成 fence, 紧随其后的 V 读 (MrgSort/Extract) 与
+  MTE 回拷存在调度敏感竞态 (candidate source 模式实测: 位置级 topk 累加器混入
+  额外 (score, idx) 对, sparse_indices 出现"单元素插入+整体右移"型随机污染)。
+  单次 count-based Adds 由 API 内部 counter 模式自行展开 repeat (自含尾块掩码),
+  相比 64 分块循环少 64~128 次调用 (回收 off 模式 SortAll+MergeSort 路径回退)。
+
+  【主干合并注记 2026-10-08，MERGE_PLAN §6.3/P3】下述 SortAll/MergeSort 尾部
+  DataCopy+PipeBarrier → VecCopyI32BitExact 替换是 LIV2 candidate 合并中唯一
+  触碰存量共享函数的改动：指令流变化、数值位精确 (int32 视图 +0)，
+  candidateTopkBlocks=-1 (off) 时输出逐位不变；该竞态在主干 off 路径结构性
+  同样存在，替换属顺带修复。风险门禁：off 模式全量 pytest 回归 + UT 全绿。
+ */
+__aicore__ inline void VecCopyI32BitExact(const LocalTensor<float>& dst, const LocalTensor<float>& src, int32_t copyNum)
+{
+    LocalTensor<int32_t> dstI = dst.template ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> srcI = src.template ReinterpretCast<int32_t>();
+    AscendC::Adds(dstI, srcI, 0, static_cast<uint64_t>(copyNum));
+    AscendC::PipeBarrier<PIPE_V>();
+}
+
+/**
   src: logits和索引，前logitsNum为logits，后logitsNum为索引
   tmp: 计算使用到的临时空间，大小与src一致
   logitsNum: 排序的元素个数, 暂只支持[128,256,384,512,1024,2048]
  */
-__aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp, int64_t logitsNum)
+__aicore__ inline void SortAll(LocalTensor<float>& src, LocalTensor<float>& tmp, int64_t logitsNum)
 {
     int64_t sort32Repeats = logitsNum / BLOCK_BYTES;
     AscendC::Sort32(tmp, src, src[logitsNum].ReinterpretCast<uint32_t>(), sort32Repeats);
@@ -237,8 +263,8 @@ __aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp,
         AscendC::PipeBarrier<PIPE_V>();
     }
     if (i % CONST_TWO == 0) {
-        AscendC::DataCopy(src, tmp, logitsNum * VALUE_AND_INDEX_NUM);
-        AscendC::PipeBarrier<PIPE_V>();
+        // P3: 尾部回拷禁用 UB->UB DataCopy (MTE 管道, PipeBarrier<PIPE_V> 不构成 fence)
+        VecCopyI32BitExact(src, tmp, static_cast<int32_t>(logitsNum * VALUE_AND_INDEX_NUM));
     }
 }
 
@@ -249,8 +275,8 @@ __aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp,
   tmp: 计算使用到的临时空间，大小为srcValue+srcIndex
   logitsNum: 排序的元素个数
  */
-__aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcValue, LocalTensor<uint32_t> &srcIndex,
-                               LocalTensor<float> &tmpTensor, int64_t logitsNum)
+__aicore__ inline void SortAll(LocalTensor<float>& dst, LocalTensor<float>& srcValue, LocalTensor<uint32_t>& srcIndex,
+                               LocalTensor<float>& tmpTensor, int64_t logitsNum)
 {
     int64_t sort32Repeats = logitsNum / BLOCK_BYTES;
     AscendC::Sort<float, true>(dst, srcValue, srcIndex, tmpTensor, sort32Repeats);
@@ -262,8 +288,8 @@ __aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcV
   mrgSrc: 待合并的Tensor
   tmpTensor：空间为mrgDst+mrgSrc
  */
-__aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDstNum, LocalTensor<float> &mrgSrc,
-                                 int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
+__aicore__ inline void MergeSort(const LocalTensor<float>& mrgDst, int32_t mrgDstNum, LocalTensor<float>& mrgSrc,
+                                 int32_t mrgSrcNum, LocalTensor<float>& tmpTensor)
 {
     if (mrgDstNum <= 3072) {
         AscendC::MrgSort4Info params;
@@ -279,8 +305,8 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
 
         AscendC::MrgSort<float>(tmpTensor, srcList, params);
         AscendC::PipeBarrier<PIPE_V>();
-        AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
-        AscendC::PipeBarrier<PIPE_V>();
+        // P3: 回拷禁用 UB->UB DataCopy (MTE 管道, PipeBarrier<PIPE_V> 不构成 fence)
+        VecCopyI32BitExact(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
     } else {
         int64_t unitElements = 1024;
         int64_t segNum = mrgDstNum / unitElements;
@@ -306,8 +332,8 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
 
         AscendC::MrgSort<float>(tmpTensor, srcList, params);
         AscendC::PipeBarrier<PIPE_V>();
-        AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
-        AscendC::PipeBarrier<PIPE_V>();
+        // P3: 回拷禁用 UB->UB DataCopy (MTE 管道, PipeBarrier<PIPE_V> 不构成 fence)
+        VecCopyI32BitExact(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
     }
 }
 
@@ -319,7 +345,7 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
  * @param basicBlockSize 基础块的大小
  * @return 无
  */
-__aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalTensor<float> &src, int64_t blockNum,
+__aicore__ inline void MrgBasicBlock(const LocalTensor<float>& dst, const LocalTensor<float>& src, int64_t blockNum,
                                      int64_t basicBlockSize)
 {
     // 初始化合并排序参数
@@ -360,8 +386,8 @@ __aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalT
  * @return 无
  */
 template <bool needMrg = true>
-__aicore__ inline void SparseTopK(const LocalTensor<float> &dst, const LocalTensor<float> &needsMerging,
-                                  const LocalTensor<float> &tmp, int64_t topk, int64_t mergSize)
+__aicore__ inline void SparseTopK(const LocalTensor<float>& dst, const LocalTensor<float>& needsMerging,
+                                  const LocalTensor<float>& tmp, int64_t topk, int64_t mergSize)
 {
     // 如果不需要合并，则直接复制数据
     if (!needMrg) {
@@ -385,7 +411,7 @@ __aicore__ inline void SparseTopK(const LocalTensor<float> &dst, const LocalTens
     AscendC::DataCopy(dst, tmp, topk * VALUE_AND_INDEX_NUM);
 }
 
-__aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, const LocalTensor<uint32_t> &sortLocal,
+__aicore__ inline void ExtractIndex(const LocalTensor<uint32_t>& idxULocal, const LocalTensor<uint32_t>& sortLocal,
                                     int64_t extractNum)
 {
     AscendC::GatherMaskParams gatherMaskParams;
@@ -397,6 +423,33 @@ __aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, cons
     uint8_t src1Pattern = 2; // 固定模式2,表示筛选出奇数索引的数
     AscendC::GatherMask(idxULocal, sortLocal, src1Pattern, false, static_cast<uint32_t>(0), gatherMaskParams, rsvdCnt);
     AscendC::PipeBarrier<PIPE_V>();
+}
+
+/**
+  候选路径专用合并: 与 MergeSort 语义相同, 但回拷 mrgDst 用纯向量 count-based Adds。
+  MergeSort 尾部的 UB->UB DataCopy 若走 MTE 管道, 其后的 PipeBarrier<PIPE_V> 不构成 fence,
+  跨 tile/跨行对累加器的下一次 MrgSort 读存在调度敏感竞态。纯 V 回拷全程受 PipeBarrier 约束。
+  (自 QLI v2 移植, P3 铁律)
+ */
+__aicore__ inline void MergeSortVecCopy(const LocalTensor<float>& mrgDst, int32_t mrgDstNum, LocalTensor<float>& mrgSrc,
+                                        int32_t mrgSrcNum, LocalTensor<float>& tmpTensor)
+{
+    AscendC::MrgSort4Info params;
+    params.elementLengths[0] = mrgSrcNum;
+    params.elementLengths[1] = mrgDstNum;
+    params.ifExhaustedSuspension = false;
+    params.validBit = 0b0011;
+    params.repeatTimes = 1;
+
+    AscendC::MrgSortSrcList<float> srcList;
+    srcList.src1 = mrgSrc;
+    srcList.src2 = mrgDst;
+
+    AscendC::MrgSort<float>(tmpTensor, srcList, params);
+    AscendC::PipeBarrier<PIPE_V>();
+    // 回拷必须位精确: -1 (0xFFFFFFFF) 作为 float 是负符号 NaN, vadd 会规范化为 0x7FFFFFFF;
+    // 用 int32 视图 Adds(+0) 保证 bit-exact 且全程 V 管道 (受 PipeBarrier fence)
+    VecCopyI32BitExact(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
 }
 
 template <HardEvent event>
