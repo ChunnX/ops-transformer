@@ -440,12 +440,14 @@ def get_moe_globalbs(arr_func: np.ndarray, card_num_func: int, d_c: str):
     if diff_moe != []:
         logging.error(
             "1.1 %s有如下下标的核的moe专家数与其他核不相等%s,共%d个核\n",
+            d_c,
             diff_moe,
             len(diff_moe),
         )
     if diff_globalbs != []:
         logging.error(
             "1.1 %s有如下下标的核的globalbs与其他核不相等%s,共%d个核\n",
+            d_c,
             diff_globalbs,
             len(diff_globalbs),
         )
@@ -471,12 +473,14 @@ def get_rankid_ep(arr_func: np.ndarray, card_num_func: int, d_c: str):
     if diff_rankid != []:
         logging.error(
             "1.1 %s有如下下标的核的rankid与其他核不相等%s,共%d个核\n",
+            d_c,
             diff_rankid,
             len(diff_rankid),
         )
     if diff_ep != []:
         logging.error(
             "1.1 %s有如下下标的核的epworldsize与其他核不相等%s,共%d个核\n",
+            d_c,
             diff_ep,
             len(diff_ep),
         )
@@ -506,12 +510,14 @@ def get_hccl_rankid_ep(arr_func: np.ndarray, card_num_func: int, d_c: str):
     if diff_hccl_rankid != []:
         logging.error(
             "1.1 %s有如下下标的核的建立hccl通信链路时的输入rankid与其他核不相等%s,共%d个核\n",
+            d_c,
             diff_hccl_rankid,
             len(diff_hccl_rankid),
         )
     if diff_hccl_ep != []:
         logging.error(
             "1.1 %s有如下下标的核的建立hccl通信链路时的输入epworldsize与其他核不相等%s,共%d个核\n",
+            d_c,
             diff_hccl_ep,
             len(diff_hccl_ep),
         )
