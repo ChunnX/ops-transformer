@@ -43,6 +43,27 @@ static const int64_t NUM_128 = 128L;
 static const int64_t NUM_64 = 64L;
 static const int64_t NUM_32 = 32L;
 
+struct TndLineRunShape {
+    int64_t m = 1;
+    int64_t n = 1;
+    int64_t p = 0;
+    int64_t q = 0;
+    int64_t kind = 0;
+};
+
+struct TndLineSchedule {
+    std::vector<int64_t> roundPrefix;
+    std::vector<int64_t> s1Outer;
+    std::vector<int64_t> s2Outer;
+    std::vector<int64_t> lineM;
+    std::vector<int64_t> lineN;
+    std::vector<int64_t> lineP;
+    std::vector<int64_t> lineQ;
+    std::vector<int64_t> runSize;
+    std::vector<int64_t> s1Token;
+    std::vector<int64_t> s2Token;
+};
+
 class QuantFlashAttnMetadataCpuKernel : public CpuKernel {
 public:
     QuantFlashAttnMetadataCpuKernel() = default;
@@ -53,12 +74,30 @@ private:
     bool Prepare(CpuKernelContext &ctx);
     bool BalanceSchedule(SectionStreamKResult &splitRes);
     bool GenMetaData(SectionStreamKResult &splitRes);
+    void SetMetadataHead(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    void SetMetadataFa(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
+    void SetMetadataFd(const SectionStreamKResult &splitRes, optiling::detail::FaMetaData &faMetadata);
     bool ParamsInit();
     bool CheckNeedInitOutput();
     std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);
     int64_t CalDeterMaxRound();
+    bool HasVarlenSeq() const;
+    void GetMetadataRowInfo(int32_t &dimNum, int64_t &rowSize);
+    uint32_t GetFagOffset();
+    bool CalDeterSwizzleSchedule(std::vector<int64_t> &roundPrefix, std::vector<int64_t> &s1OuterList,
+                                 std::vector<int64_t> &s2OuterList, std::vector<std::vector<int64_t>> &sparseData);
+    bool GenQuantFagGradMetaData();
+    bool IsTndLineBandMode() const;
+    void CalTndLineActualToken(uint32_t bIdx, int64_t &s1Token, int64_t &s2Token);
+    void GetTndLineOuterMN(uint32_t bIdx, int64_t &m, int64_t &n);
+    TndLineRunShape MakeTndLineRunShape(uint32_t bIdx);
+    int64_t CountTndLineSameShapeRun(uint32_t start, TndLineRunShape &shape);
+    int64_t CalTndLineRunRounds(const TndLineRunShape &shape, int64_t total);
+    bool PreferTndLineSwizzle();
+    bool CalTndLineSwizzleSchedule(TndLineSchedule &sched);
+    bool GenQuantFagTndLineSchedule(optiling::detail::QuantFAGMetaData &gradMetaData);
 
 private:
     CpuKernelContext *context_ = nullptr;
@@ -89,6 +128,9 @@ private:
     uint32_t s1Size_ = 0;
     uint32_t s2Size_ = 0;
     bool isGradEnabled_ = false;
+    int64_t fagDeterMaxRound_ = 0; // 延迟到 GenMetaData 中 Clear 之后写入
+    int64_t metadataDimNum_ = 0;   // 输出 tensor 维度数(宿主侧经 attr 下发, AICPU 侧 shape 可能未填充)
+    int64_t metadataRowSize_ = -1; // 输出 tensor 单行长度(2D 为 dim1, 1D 为 dim0), 同上
 
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = NUM_64;

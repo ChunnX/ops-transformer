@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include "../../common/op_api/gmm_tensor_storage_check.h"
 #include "aclnn_quant_grouped_matmul_inplace_add.h"
 
 #include <dlfcn.h>
@@ -59,7 +60,7 @@ std::string ShapeToStringWithoutBracket(const op::Shape &shape)
 
 std::string ViewShapeToString(const aclTensor *tensor)
 {
-    return ShapeToStringWithoutBracket(tensor->GetViewShape());
+    return "[" + ShapeToStringWithoutBracket(tensor->GetViewShape()) + "]";
 }
 
 #define QGMM_INPLACE_ADD_CHECK_REPORT(cond, retExpr, reportExpr) \
@@ -255,7 +256,7 @@ static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     QGMM_INPLACE_ADD_CHECK_REPORT(
         params.groupSize == 0, return ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupSize", std::to_string(params.groupSize), "0"));
-    CHECK_RET(CheckNotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckNotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckFormat(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDtype(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
@@ -271,6 +272,7 @@ static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     gmmParams.xDtype = params.x1->GetDataType();
     gmmParams.transposeX = true;
     gmmParams.transposeWeight = false;
+    gmmParams.apiVersion = gmm::GMMApiVersion::QuantGroupedMatmulInplaceAdd;
     if (params.x1->GetDataType() == DataType::DT_HIFLOAT8 && params.x2->GetDataType() == DataType::DT_HIFLOAT8) {
         auto checker = QGmmInPlaceAdd::AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<aclTensor>(gmmParams);
         checker.SetInputName("x1", "x2", "scale1Optional", "scale2", "groupList");
@@ -278,6 +280,7 @@ static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     } else {
         auto checker = gmm::AclnnGroupedMatmulDAV3510Checker<aclTensor>(gmmParams);
         checker.SetInputName("x1", "x2", "scale1Optional", "scale2", "groupList");
+        checker.SetAclnnOpName(QGMM_INPLACE_ADD_ACLNN_OP_NAME);
         CHECK_RET(checker.CheckGroupedMatmulDAV3510() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
     return ACLNN_SUCCESS;
@@ -287,7 +290,7 @@ static aclnnStatus SetTransViewShape(const aclTensor *&inputTensor, aclOpExecuto
 {
     op::Shape viewShape = inputTensor->GetViewShape();
     uint32_t viewShapeDimsNum = viewShape.GetDimNum();
-    CHECK_RET(viewShapeDimsNum >= 2, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(viewShapeDimsNum >= 2, ACLNN_ERR_PARAM_INVALID); // 矩阵转置操作要求 tensor 至少要有 2 个维度
     op::Shape shape;
     shape.SetScalar();
     // 2: the second last dimension; in for-loops, it indicates dimensions before the second last remain unchanged.
@@ -372,7 +375,7 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
     }
     // 固定写法，参数检查
     ret = CheckParams(params);
-    CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     bool transposeX = gmm::IsTransposeLastTwoDims(params.x1);      // check is transpose x
     bool transposeWeight = gmm::IsTransposeLastTwoDims(params.x2); // check is transpose weight
     // when the last two dims of weight are (1, 1), consider tranB as false
@@ -426,6 +429,14 @@ aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSize(const aclTensor *x
                                                               int64_t groupListType, int64_t groupSize,
                                                               uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    if (!gmm::CheckTensorStorageBounds(x1, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1") ||
+        !gmm::CheckTensorStorageBounds(x2, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2") ||
+        !gmm::CheckTensorStorageBounds(scale1Optional, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale1Optional") ||
+        !gmm::CheckTensorStorageBounds(scale2, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2") ||
+        !gmm::CheckTensorStorageBounds(groupList, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "groupList") ||
+        !gmm::CheckTensorStorageBounds(yRef, QGMM_INPLACE_ADD_ACLNN_OP_NAME, "yRef")) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params{x1,        x2,   scale1Optional, scale2,
                                                               groupList, yRef, groupListType,  groupSize};
     // Standard syntax, Check parameters.

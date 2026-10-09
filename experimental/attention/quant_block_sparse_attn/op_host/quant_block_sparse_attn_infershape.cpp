@@ -46,20 +46,34 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
         return ge::GRAPH_FAILED;
     }
     const std::string layoutQ = optiling::QBSAGetStringAttr(attrs, optiling::QBSA_LAYOUT_Q_ATTR_INDEX, "TND");
-    if ((queryShape->GetDimNum() != 3U) || (layoutQ != "TND" && layoutQ != "NTD")) {
+    const bool padded = layoutQ == "BSND" || layoutQ == "BNSD";
+    const int64_t *mode = attrs->GetAttrPointer<int64_t>(optiling::QBSA_QUANT_MODE_ATTR_INDEX);
+    const std::string layoutOut = optiling::QBSAGetStringAttr(attrs, optiling::QBSA_LAYOUT_OUT_ATTR_INDEX, "TND");
+    if (padded && (mode == nullptr || *mode != optiling::QBSA_QUANT_MODE_MXFP8_FULL_QUANT || layoutOut != layoutQ)) {
+        OP_LOGE(kOpName, "BSND/BNSD require MXFP8 and matching layout_out");
+        return ge::GRAPH_FAILED;
+    }
+    if (padded ? queryShape->GetDimNum() != 4U :
+                 ((queryShape->GetDimNum() != 3U) || (layoutQ != "TND" && layoutQ != "NTD"))) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query",
                                                  std::to_string(queryShape->GetDimNum()) + "D with layout " + layoutQ,
-                                                 "3D with layout TND or 3D with layout NTD");
+                                                 "3D TND/NTD or 4D BSND/BNSD");
+        return ge::GRAPH_FAILED;
+    }
+    const gert::Shape *valueShape = context->GetInputShape(optiling::QBSA_VALUE_INDEX);
+    if (valueShape == nullptr || valueShape->GetDimNum() != 4U) {
+        OP_LOGE(kOpName, "InferShape requires 4D PA_BNBD value");
         return ge::GRAPH_FAILED;
     }
     if (layoutQ == "NTD") {
         attentionOutShape->SetDimNum(3);
         attentionOutShape->SetDim(0, queryShape->GetDim(1)); // T
         attentionOutShape->SetDim(1, queryShape->GetDim(0)); // N
-        attentionOutShape->SetDim(2, queryShape->GetDim(2)); // D
     } else {
         *attentionOutShape = *queryShape;
     }
+
+    attentionOutShape->SetDim(attentionOutShape->GetDimNum() - 1, valueShape->GetDim(3)); // Dv
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(optiling::QBSA_SOFTMAX_LSE_INDEX);
     if (softmaxLseShape == nullptr) {
@@ -77,6 +91,13 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
     const uint32_t quantMode =
         (quantModePtr != nullptr) ? static_cast<uint32_t>(*quantModePtr) : optiling::QBSA_QUANT_MODE_FP8;
 
+    if (padded) {
+        softmaxLseShape->SetDimNum(3);
+        softmaxLseShape->SetDim(0, queryShape->GetDim(0));
+        softmaxLseShape->SetDim(1, queryShape->GetDim(layoutQ == "BSND" ? 2 : 1));
+        softmaxLseShape->SetDim(2, queryShape->GetDim(layoutQ == "BSND" ? 1 : 2));
+        return ge::GRAPH_SUCCESS;
+    }
     softmaxLseShape->SetDimNum(2);
     if (quantMode == optiling::QBSA_QUANT_MODE_MXFP8_FULL_QUANT) {
         softmaxLseShape->SetDim(0, queryShape->GetDim(0)); // T

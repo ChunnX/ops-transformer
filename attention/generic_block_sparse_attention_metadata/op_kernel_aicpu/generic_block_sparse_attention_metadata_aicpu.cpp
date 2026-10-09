@@ -72,7 +72,9 @@ bool GenericBlockSparseAttentionMetadataAicpu::Prepare(CpuKernelContext &ctx)
         GetAttrValue(ctx, "num_kv_heads", numKvHeads_) && GetAttrValue(ctx, "head_dim", headDim_) &&
         GetAttrValue(ctx, "block_shape_x", blockShapeX_) && GetAttrValue(ctx, "block_shape_y", blockShapeY_) &&
         GetAttrValue(ctx, "is_packed_gqa", isPackedGQA_) && GetAttrValue(ctx, "q_input_layout", qInputLayout_) &&
-        GetAttrValue(ctx, "aic_core_num", aicCoreNum_);
+        GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+        GetAttrValue(ctx, "residual_block_mode", residualBlockMode_) &&
+        GetAttrValue(ctx, "is_consistent_topk", isConsistentTopk_);
     return attrsValid && CheckInputs();
 }
 
@@ -106,14 +108,15 @@ bool GenericBlockSparseAttentionMetadataAicpu::CheckInputs()
         KERNEL_LOG_ERROR("sparse block tensors and metadata must be INT32 with valid shapes.");
         return false;
     }
-    if (maxQSeqLen_ <= 0 || numQHeads_ <= 0 || numKvHeads_ <= 0 || headDim_ <= 0 || blockShapeX_ != 1 ||
-        blockShapeY_ <= 0 || (isPackedGQA_ != 0 && isPackedGQA_ != 1) || aicCoreNum_ <= 0 ||
-        aicCoreNum_ > MAX_AIC_CORE_NUM) {
-        KERNEL_LOG_ERROR("Invalid scheduling attrs for GenericBlockSparseAttentionMetadata.");
-        return false;
-    }
     if (qInputLayout_ != "TND" && qInputLayout_ != "BSND" && qInputLayout_ != "BNSD") {
         KERNEL_LOG_ERROR("q_input_layout only supports TND, BSND or BNSD.");
+        return false;
+    }
+    if ((qInputLayout_ != "TND" && maxQSeqLen_ <= 0) || numQHeads_ <= 0 || numKvHeads_ <= 0 || headDim_ <= 0 ||
+        blockShapeX_ != 1 || blockShapeY_ <= 0 || (isPackedGQA_ != 0 && isPackedGQA_ != 1) || aicCoreNum_ <= 0 ||
+        aicCoreNum_ > MAX_AIC_CORE_NUM || residualBlockMode_ != 0 ||
+        (isConsistentTopk_ != 0 && isConsistentTopk_ != 1)) {
+        KERNEL_LOG_ERROR("Invalid scheduling attrs for GenericBlockSparseAttentionMetadata.");
         return false;
     }
 
@@ -192,8 +195,8 @@ bool GenericBlockSparseAttentionMetadataAicpu::ParseQSeqLens(std::vector<int64_t
             seqUsedQ.assign(seqUsed, seqUsed + batchSize_);
         }
         if (!generic_block_sparse_attention_metadata::BuildTndQSeqLayout(cuSeqLengths, seqUsedQ, seqUsedQ_ != nullptr,
-                                                                         maxQSeqLen_, blockShapeX_, qBlockStorageNum_,
-                                                                         qSeqLens, qStorageBlockStarts)) {
+                                                                         blockShapeX_, qBlockStorageNum_, qSeqLens,
+                                                                         qStorageBlockStarts)) {
             KERNEL_LOG_ERROR("TND Q sequence lengths do not match sparse block storage.");
             return false;
         }
@@ -275,7 +278,7 @@ bool GenericBlockSparseAttentionMetadataAicpu::ParseValidBlockNums(const std::ve
 }
 
 bool GenericBlockSparseAttentionMetadataAicpu::GenerateMetadata(const std::vector<int64_t> &qSeqLens,
-                                                                const std::vector<int64_t> &validBlockNums)
+                                                                const std::vector<int64_t> &validBlockNums) const
 {
     generic_block_sparse_attention_metadata::ScheduleInput input;
     input.batchSize = batchSize_;
@@ -288,13 +291,15 @@ bool GenericBlockSparseAttentionMetadataAicpu::GenerateMetadata(const std::vecto
     input.blockIndexStride = blockIndexStride_;
     input.qBlockStorageNum = qBlockStorageNum_;
     input.isPackedGQA = isPackedGQA_;
+    input.residualBlockMode = residualBlockMode_;
+    input.isConsistentTopk = isConsistentTopk_;
     input.aicCoreNum = aicCoreNum_;
     input.qSeqLens = qSeqLens;
     input.validBlockNums = validBlockNums;
 
     generic_block_sparse_attention_metadata::ScheduleResult result;
     const auto scheduleStatus = generic_block_sparse_attention_metadata::BuildSchedule(input, result);
-    if (scheduleStatus != generic_block_sparse_attention_metadata::ScheduleStatus::SUCCESS) {
+    if (scheduleStatus != generic_block_sparse_attention_metadata::BSAScheduleStatus::BSA_SUCCESS) {
         KERNEL_LOG_ERROR("Failed to build metadata schedule, status=%u.", static_cast<uint32_t>(scheduleStatus));
         return false;
     }
@@ -302,7 +307,7 @@ bool GenericBlockSparseAttentionMetadataAicpu::GenerateMetadata(const std::vecto
         static_cast<optiling::generic_block_sparse_attention_metadata::MetadataType *>(metadata_->GetData());
     const auto encodeStatus = generic_block_sparse_attention_metadata::EncodeMetadata(
         result, metadata, optiling::generic_block_sparse_attention_metadata::METADATA_TOTAL_SIZE);
-    if (encodeStatus != generic_block_sparse_attention_metadata::ScheduleStatus::SUCCESS) {
+    if (encodeStatus != generic_block_sparse_attention_metadata::BSAScheduleStatus::BSA_SUCCESS) {
         KERNEL_LOG_ERROR("Failed to encode metadata, status=%u.", static_cast<uint32_t>(encodeStatus));
         return false;
     }

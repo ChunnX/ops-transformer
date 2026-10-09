@@ -21,6 +21,8 @@
 #include "../../common/op_kernel/moe_ep_exception_dump_defs.h"
 
 constexpr uint32_t MOE_EP_SEND_ENTRY_BYTES = 2U * sizeof(uint32_t); // source slot和destination slot
+constexpr uint32_t MOE_EP_META_BATCH_MAX = 32U;
+constexpr uint32_t MOE_EP_META_SCATTER_UB_BYTES = 4U * MOE_EP_META_BATCH_MAX * sizeof(int32_t);
 
 struct MoeEpCommonTilingData {
     uint32_t epWorldSize;
@@ -45,6 +47,7 @@ struct MoeEpDispatchWindowLayout {
     uint32_t scaleoutSlotAlignedBytes; // scaleout 数据和转发元信息 slot 字节数
     uint64_t cntWinStateOffset;
     uint64_t slotWinStateOffset;
+    uint64_t payloadWinStateOffset; // payload 发送状态位区偏移（slot 状态区之后）
     uint64_t winDataOffset;
     uint64_t scaleoutRecvDataOffset;
     uint64_t scaleoutRecvStatusOffset;
@@ -53,6 +56,7 @@ struct MoeEpDispatchWindowLayout {
 
 struct MoeEpDispatchWorkspaceLayout {
     uint64_t sendEntryTokenRangeBytes; // 单个 token 范围的发送记录字节数
+    uint64_t dstRankInfoOffset;        // dstRank 区偏移（sendCnt 区之后），布局 [BS][K] int16
     uint64_t routeWorkspaceOffset;
     uint64_t scaleoutSendEntryOffset;
     uint64_t scaleupSendEntryOffset;
@@ -69,6 +73,8 @@ struct MoeEpDispatchInfo {
     uint64_t totalUbSize;
     uint32_t scalesBytes;
     uint32_t perSlotBytes;
+    uint32_t metaSlotBytes; // stash 元数据 slot 字节数（scales+topk+weights+pad，无 hidden）
+    uint32_t metaBatch;
     uint32_t doCpuSync;
     uint32_t isCached;
     uint32_t isTopkWeights;

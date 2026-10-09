@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR&950DT系列产品</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -544,13 +544,13 @@ int main() {
     int64_t selectBlockSize = 64;
     int64_t selectBlockCount = 16;
     int64_t compressBlockSize = 32;
-    int64_t compressStride = 16;
+    int64_t compressBlockStride = 16;
     double scaleValue = 0.088388;
   string sLayerOut = "TND";
   char layOut[sLayerOut.length()+1];
   strcpy(layOut, sLayerOut.c_str());
     int64_t pageBlockSize = 128;
-    int64_t sparseMod = 0;
+    int64_t sparseMode = 0;
   std::vector<int64_t> queryShape = {batchSize, numHeads, headDimsQK};
   std::vector<int64_t> keyShape = {blockNum, pageBlockSize, numKeyValueHeads * headDimsQK};
   std::vector<int64_t> valueShape = {blockNum, pageBlockSize, numKeyValueHeads * headDimsV};
@@ -604,8 +604,8 @@ int main() {
   // 调用第一段接口
   ret = aclnnNsaCompressAttentionInferGetWorkspaceSize(queryTensor, keyTensor, valueTensor, nullptr, blockTableOptionalTensor, nullptr, actualCmpKvSeqLen,
         nullptr, nullptr,
-        numHeads, numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize, compressStride,
-        scaleValue, layOut, pageBlockSize, sparseMod, outputTensor, topkIndicesTensor, &workspaceSize, &executor);
+        numHeads, numKeyValueHeads, selectBlockSize, selectBlockCount, compressBlockSize, compressBlockStride,
+        scaleValue, layOut, pageBlockSize, sparseMode, outputTensor, topkIndicesTensor, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNsaCompressAttentionInferGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
@@ -632,12 +632,12 @@ int main() {
     std::cout << "index: " << i << ": " << static_cast<float>(resultData[i]) << std::endl;
   }
     auto topksize = GetShapeSize(topkIndicesShape);
-  std::vector<op::fp16_t> topkresultData(topksize, 0);
+  std::vector<int32_t> topkresultData(topksize, 0);
   ret = aclrtMemcpy(topkresultData.data(), topkresultData.size() * sizeof(topkresultData[0]), topkIndicesDeviceAddr,
             topksize * sizeof(topkresultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy [top k] result from device to host failed. ERROR: %d\n", ret); return ret);
   for (int64_t i = 0; i < printNum; i++) {
-    std::cout << "topk index: " << i << ": " << static_cast<int32_t>(topkresultData[i]) << std::endl;
+    std::cout << "topk index: " << i << ": " << topkresultData[i] << std::endl;
   }
 
   // 6. 释放资源

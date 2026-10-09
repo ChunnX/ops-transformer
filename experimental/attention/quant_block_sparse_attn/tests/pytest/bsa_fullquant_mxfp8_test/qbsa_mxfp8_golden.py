@@ -13,7 +13,7 @@
 MXFP8 Flash Attention Golden
 
 功能：参考式生成输入 → CPU golden → NPU 调用 → layout 对齐 → 精度对比
-支持：MXFP8 Q/QDescale 公共输入仅为 TND；NPU 侧 K/V 使用 PA KV cache
+支持：MXFP8 Q/QDescale 公共输入为 TND/BSND/BNSD；NPU 侧 K/V 使用 PA KV cache
 支持：PA 场景、GQA、causal/dense sparse mode、QDescale 固定 TND D-group 打包
 数据：随机 FP8 Q/K/V + MXFP8 D-group descale，生成结构对齐 quant_block_sparse_attn_golden.py
 输出：逐元素表格 + 统计汇总 (PctRlt 通过率，双千分之五标准)
@@ -85,6 +85,7 @@ _CASE_BOOL_FIELDS = {
     "return_softmax_lse",
 }
 _CASE_INT_FIELDS = {
+    "S1_max",
     "B",
     "N1",
     "N2",
@@ -322,19 +323,16 @@ def _resolve_sparse_mode(case):
 
 def validate_mxfp8_case(case):
     """只校验实际参与运行的字段；参考字段允许由外部泛化表自由扩展。"""
-    if str(case.get("layout_q", "")).upper() != "TND":
+    if case.get("layout_q") not in ("TND", "BSND", "BNSD"):
         raise ValueError(
-            f"MXFP8 layout_q only supports TND, got {case.get('layout_q')!r}"
+            f"MXFP8 layout_q must be TND/BSND/BNSD, got {case.get('layout_q')!r}"
         )
+    if case.get("layout_out") != case.get("layout_q"):
+        raise ValueError("MXFP8 layout_out must match layout_q")
 
     if case["N2"] <= 0 or case["N1"] % case["N2"] != 0:
         raise ValueError(
             f"N1 must be divisible by N2, got N1={case['N1']}, N2={case['N2']}"
-        )
-
-    if case["s2_base_size"] != 512:
-        raise ValueError(
-            f"s2_base_size must be 512 for MXFP8, got {case['s2_base_size']}"
         )
 
     block_size = case.get("block_size")
@@ -369,17 +367,28 @@ def _case_list(case, name):
 
 
 def _get_sequence_inputs(case):
-    """Return the four operator sequence inputs and their effective lengths.
+    """Resolve lengths and packed CPU-reference prefixes.
 
-    New MXFP8 cases use cu_seqlens_q + seqused_kv as the two effective-length
-    sources.  cu_seqlens_kv and seqused_q are present but must be empty for the
-    current operator contract.
+    BSND/BNSD cases specify S1_max and empty Q sequence inputs. Their synthetic
+    prefix is used only by the packed CPU reference, never passed to an operator.
     """
     batch = int(case["B"])
     cu_q = _case_list(case, "cu_seqlens_q")
     cu_kv = _case_list(case, "cu_seqlens_kv")
     seq_q = _case_list(case, "seqused_q")
     seq_kv = _case_list(case, "seqused_kv")
+
+    if case["layout_q"] in ("BSND", "BNSD"):
+        if cu_q or seq_q:
+            raise ValueError(
+                "BSND/BNSD requires empty cu_seqlens_q and seqused_q (passed as None)"
+            )
+        sq = int(case.get("S1_max") or 0)
+        if sq <= 0:
+            raise ValueError(
+                "BSND/BNSD requires positive S1_max for the physical Q shape"
+            )
+        cu_q = [b * sq for b in range(batch + 1)]  # CPU-reference indexing only.
 
     if len(cu_q) != batch + 1 or not cu_q or cu_q[0] != 0:
         raise ValueError(
@@ -429,9 +438,15 @@ def _normalize_case(case):
     case["softmax_scale"] = case.get("softmax_scale") or (
         1.0 / math.sqrt(float(case["D"]))
     )
+    # S2 is an internal tile derived from D, not an operator input.
+    case["s2_base_size"] = 256 if case["D"] == 256 else 512
     sequence_inputs = _get_sequence_inputs(case)
     for name in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
-        case[name] = sequence_inputs[name].tolist()
+        case[name] = (
+            []
+            if name == "cu_seqlens_q" and case["layout_q"] in ("BSND", "BNSD")
+            else sequence_inputs[name].tolist()
+        )
     case = _resolve_sparse_mode(case)
     validate_mxfp8_case(case)
     return case
@@ -1498,13 +1513,21 @@ def generate_data():
 #   - 输出 OUT 固定 TND，MXFP8 TND LSE 固定 TN
 # ==============================================================================
 
-EMPTY_LSE = -3.4028234663852886e38
+# CUDA SDPA 空 softmax 行的 LSE 语义是 -Inf；kernel 侧 MX_EMPTY_LSE_VALUE(-3e+99)
+# 经 FP32 溢出后同样是 -Inf。仅变更空行 LSE 哨兵，attention_out=0 语义不变。
+EMPTY_LSE = float("-inf")
 MASK_VALUE = -10000.0
 # Keep the exact FP32 constants and operation order used by the VF.  For
 # large-magnitude negative scores, ``x / log(2)`` and ``x * INV_LN2`` can
 # round to different FP32 values before ceil.
 LN2 = 0.6931471806
 INV_LN2 = 1.4426950409
+
+
+def _cast_mxfp8_p_to_e4m3(value):
+    """Saturate P to the E4M3FN finite range before the CPU FP8 cast."""
+    fp8_max = torch.finfo(FP8_DTYPE).max
+    return value.clamp(-fp8_max, fp8_max).to(FP8_DTYPE).to(torch.float32)
 
 
 def _align_up_to_ln2(value, use_quant_matmul):
@@ -1566,11 +1589,68 @@ def _accumulate_mxfp8_groups_cpu(group_dot, q_scale, k_scale):
     return torch.where(sticky_overflow, sticky_value, finite_value)
 
 
+def _qk_matmul_rounded_cpu(q_block, q_scale, k_mat, k_scale):
+    """CPU rounding model validated against saved MXFP8 QK dumps.
+
+    Align products within each 16-element group to 2**(max_exponent - 18),
+    truncate toward zero, then apply the original 32-element MX descales.
+    For each 32-element group, truncate its scaled sum to the current FP32
+    accumulator spacing before the FP32 addition. This is an empirical model
+    checked against the D64/D256 dumps, including D256 group permutations.
+    FP64 represents the explicit intermediate truncations without extra rounding.
+    Chunk KV rows to avoid materializing an entire M x N x D product tensor.
+    """
+    q = q_block.to(torch.float64)
+    k = k_mat.to(torch.float64)
+    qs = q_scale.to(torch.float64)
+    ks = k_scale.to(torch.float64)
+    result = torch.zeros((q.shape[0], k.shape[0]), dtype=torch.float64, device=q.device)
+    for n_start in range(0, k.shape[0], 64):
+        n_end = min(n_start + 64, k.shape[0])
+        accumulator = result[:, n_start:n_end]
+        for group_start in range(0, q.shape[1], QUANT_GROUP_SIZE):
+            group_sum = torch.zeros_like(accumulator)
+            for d_start in range(group_start, group_start + QUANT_GROUP_SIZE, 16):
+                products = (
+                    q[:, None, d_start : d_start + 16]
+                    * k[None, n_start:n_end, d_start : d_start + 16]
+                )
+                maximum = products.abs().amax(dim=-1, keepdim=True)
+                _, exponent = torch.frexp(maximum)
+                # frexp exponent is one greater than floor(log2(maximum)).
+                step = torch.ldexp(torch.ones_like(maximum), exponent - 19)
+                group_sum += (torch.trunc(products / step) * step).sum(dim=-1)
+            group = group_start // QUANT_GROUP_SIZE
+            increment = (
+                group_sum * qs[:, group : group + 1] * ks[None, n_start:n_end, group]
+            )
+            _, accumulator_exponent = torch.frexp(accumulator.abs())
+            # FP32 has 24 significant bits; its minimum subnormal step is 2**-149.
+            accumulator_step = torch.ldexp(
+                torch.ones_like(accumulator),
+                torch.clamp(accumulator_exponent - 24, min=-149),
+            )
+            increment = torch.where(
+                accumulator == 0,
+                increment,
+                torch.trunc(increment / accumulator_step) * accumulator_step,
+            )
+            accumulator = (accumulator + increment).to(torch.float32).to(torch.float64)
+        result[:, n_start:n_end] = accumulator
+    return result.to(torch.float32)
+
+
 def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax_scale):
-    """CPU torch.matmul path: FP32 dequant + matmul."""
+    """CPU MXFP8 QK rounding with the existing non-finite fallback."""
     q_dequant = q_block * _expand_d_group_scale(q_scale_block, head_dim)
     k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
-    scores = torch.matmul(q_dequant, k_dequant.transpose(0, 1)) * softmax_scale
+    qk_raw = torch.matmul(q_dequant, k_dequant.transpose(0, 1))
+    rounded_qk = _qk_matmul_rounded_cpu(q_block, q_scale_block, k_mat, k_scale_mat)
+    # Leave non-finite cases to the existing overflow/NaN handling below.
+    qk_raw = torch.where(
+        torch.isfinite(qk_raw) & torch.isfinite(rounded_qk), rounded_qk, qk_raw
+    )
+    scores = qk_raw * softmax_scale
 
     # Applying the descales before matmul can introduce a non-finite score that
     # does not exist in MXFP8 cube arithmetic.  For example, a finite E4M3
@@ -1581,8 +1661,8 @@ def _qk_matmul_cpu(q_block, q_scale_block, k_mat, k_scale_mat, head_dim, softmax
     # finite FP8 payloads in each 32-element group and applies the group
     # descales afterwards.
     #
-    # Keep the established dequant + torch.matmul path for normal values and
-    # repair only its artificial non-finite results.  NaNs present in either
+    # Keep the rounded result for finite values and repair artificial
+    # non-finite results from the dequant + torch.matmul fallback.  NaNs present in either
     # FP8 payload are deliberately excluded from repair and therefore continue
     # to propagate.  A genuine Cube overflow remains non-finite after the
     # grouped recomputation, so replacing it is also semantics-preserving.
@@ -1720,11 +1800,15 @@ def _exp_sub(lhs, rhs, use_quant_matmul):
 
 
 def _softmax_row_is_active(local_max):
-    """Match the VF's finite-sentinel softmax state transition.
+    """Match the kernel's empty-row softmax state transition.
 
-    The VF reduces each row from the finite ``-FLT_MAX`` sentinel.  Therefore
-    that exact max value means the row has never started. NaN is deliberately
-    active because ``NaN != -FLT_MAX`` in the kernel and must keep propagating.
+    The kernel VF reduces each row from the finite ``-FLT_MAX`` sentinel, so a
+    ``-Inf`` score never starts a row; the golden here starts from ``-Inf``,
+    which reaches the same inactive verdict because ``-Inf != -Inf`` is false.
+    NaN is deliberately active because ``NaN != -Inf`` and must keep
+    propagating.  A score that is exactly ``-FLT_MAX`` is inactive in the
+    kernel (it equals the VF sentinel) but active here; the value is
+    measure-zero for the MX quantized score grid and accepted.
     """
     return local_max != EMPTY_LSE
 
@@ -2118,6 +2202,69 @@ def cpu_mxfp8_golden(
         QUANT_GROUP_SIZE,
     )
 
+    blocks_per_task = max(1, int(CASE["s2_base_size"]) // SPARSE_BLOCK_SIZE)
+    progress_total = 0
+    for progress_batch_idx, progress_q_len in enumerate(q_lengths):
+        progress_qb_count = math.ceil(int(progress_q_len) / SPARSE_BLOCK_SIZE)
+        block_counts = sparse_seq_len[progress_batch_idx, :, :progress_qb_count].to(
+            torch.int64
+        )
+        progress_total += int(
+            torch.div(
+                block_counts + blocks_per_task - 1,
+                blocks_per_task,
+                rounding_mode="floor",
+            )
+            .sum()
+            .item()
+        )
+
+    progress_done = 0
+    progress_start = time.monotonic()
+    progress_last_log = progress_start
+    progress_last_done = -1
+    progress_next_percent = 0.0
+
+    def log_golden_progress(force=False):
+        nonlocal progress_last_log, progress_last_done, progress_next_percent
+        if force and progress_done == progress_last_done:
+            return
+        now = time.monotonic()
+        percent = (
+            100.0
+            if progress_total == 0
+            else min(100.0, 100.0 * progress_done / progress_total)
+        )
+        if not force and progress_done < progress_total:
+            if percent < progress_next_percent and now - progress_last_log < 30.0:
+                return
+
+        elapsed = now - progress_start
+        if progress_done > 0 and progress_done < progress_total:
+            eta_seconds = elapsed * (progress_total - progress_done) / progress_done
+            eta_text = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
+        elif progress_done >= progress_total:
+            eta_text = "00:00:00"
+        else:
+            eta_text = "--:--:--"
+        elapsed_text = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+        filled = min(20, int(percent / 5.0))
+        logger.info(
+            "[CPU Golden] progress [%s%s] %6.2f%% (%d/%d), elapsed=%s, ETA=%s",
+            "#" * filled,
+            "-" * (20 - filled),
+            percent,
+            progress_done,
+            progress_total,
+            elapsed_text,
+            eta_text,
+        )
+        progress_last_log = now
+        progress_last_done = progress_done
+        progress_next_percent = min(100.0, (math.floor(percent / 5.0) + 1) * 5.0)
+
+    log_golden_progress(force=True)
+
     for batch_idx in range(batch):
         q_len = int(q_lengths[batch_idx])
         kv_len = int(kv_lengths[batch_idx])
@@ -2155,7 +2302,9 @@ def cpu_mxfp8_golden(
                     head_idx,
                 )
 
-                # Use the same finite sentinel as the kernel's online max state.
+                # Online max starts from the empty-row sentinel.  The kernel
+                # VF starts from -FLT_MAX; -Inf here yields the same inactive
+                # verdict for -Inf scores (see _softmax_row_is_active).
                 m_run = torch.full((nq,), EMPTY_LSE, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
@@ -2267,7 +2416,7 @@ def cpu_mxfp8_golden(
                                 p_subloop,
                                 torch.zeros_like(p_subloop),
                             )
-                            p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
+                            p_quant_subloop = _cast_mxfp8_p_to_e4m3(p_subloop)
                             subloop_results.append(
                                 (
                                     subloop_start,
@@ -2312,6 +2461,9 @@ def cpu_mxfp8_golden(
                         l_run = l_run * history_rescale + round_sum
                         m_run = torch.where(round_active, m_new, m_run)
 
+                    progress_done += 1
+                    log_golden_progress()
+
                 # Match the master kernel's final guards. LastDivNewVF writes
                 # zero when sum == 0, RowInvalidUpdateVF writes zero when max
                 # is the -FLT_MAX sentinel, and ComputeLseOutputVF maps either
@@ -2337,6 +2489,9 @@ def cpu_mxfp8_golden(
                         )
                     if bool(lse_active[local_idx].item()):
                         softmax_lse[out_idx, head_idx] = lse[local_idx]
+
+    progress_done = progress_total
+    log_golden_progress(force=True)
 
     logger.info(
         "[CPU Golden] output(TND)=%s, lse(TN)=%s",
@@ -2382,7 +2537,7 @@ def _prepare_npu_metadata(
     sparse_seq_len,
 ):
     """准备 metadata 算子输入，并生成主算子依赖的 metadata。"""
-    cu_seqlens_q = _to_npu(cu_seqlens_q)
+    cu_seqlens_q = None if layout_q in ("BSND", "BNSD") else _to_npu(cu_seqlens_q)
     cu_seqlens_kv = _optional_npu_tensor(cu_seqlens_kv)
     seqused_q = _optional_npu_tensor(seqused_q)
     seqused_kv = _to_npu(seqused_kv)
@@ -2422,6 +2577,177 @@ def _prepare_npu_metadata(
         block_table,
         metadata,
     )
+
+
+def pack_padded_query(tensor, lengths, layout, sq=None):
+    """Pack TND data or Q scale into contiguous BSND/BNSD without FP8 arithmetic."""
+    if layout == "TND":
+        return tensor
+    if layout not in ("BSND", "BNSD"):
+        raise ValueError(f"Unsupported padded layout: {layout}")
+    sq = max(lengths) if sq is None else int(sq)
+    if sq < max(lengths) or sum(lengths) != tensor.shape[0]:
+        raise ValueError(
+            "Padded capacity / effective lengths do not match packed tensor"
+        )
+    # CPU uint8 views preserve E4M3/E8M0 bits and avoid unsupported fill/copy kernels.
+    raw = (
+        tensor.detach()
+        .cpu()
+        .contiguous()
+        .view(torch.uint8)
+        .reshape(*tensor.shape, tensor.element_size())
+    )
+    padded = torch.zeros((len(lengths), sq, *raw.shape[1:]), dtype=torch.uint8)
+    offset = 0
+    for b, length in enumerate(lengths):
+        padded[b, :length] = raw[offset : offset + length]
+        offset += length
+    if layout == "BNSD":
+        padded = padded.transpose(1, 2).contiguous()
+    return padded.contiguous().view(tensor.dtype).squeeze(-1)
+
+
+def unpack_padded_query(tensor, lengths, layout):
+    """Return effective TND tokens, retaining all trailing data/scale dimensions."""
+    if layout == "TND":
+        return tensor
+    tensor = tensor.detach().cpu().contiguous()
+    dtype = tensor.dtype
+    raw = tensor.view(torch.uint8).reshape(*tensor.shape, tensor.element_size())
+    if layout == "BNSD":
+        raw = raw.transpose(1, 2)
+    return (
+        torch.cat([raw[b, :length] for b, length in enumerate(lengths)], dim=0)
+        .contiguous()
+        .view(dtype)
+        .squeeze(-1)
+    )
+
+
+def check_layout_helpers():
+    """Run CPU packing checks in the golden environment without invoking the NPU operator."""
+    lengths = [129, 65, 0]
+    checked = 0
+    for dtype in (torch.uint8, torch.bfloat16, torch.float32):
+        for tail in ((8, 128), (8, 2, 2), (8,)):
+            shape = (sum(lengths), *tail)
+            count = math.prod(shape)
+            original = (torch.arange(count) % 127).reshape(shape).to(dtype)
+            for layout in ("BSND", "BNSD"):
+                padded = pack_padded_query(original, lengths, layout, 129)
+                expected = (
+                    (3, 129, *tail)
+                    if layout == "BSND"
+                    else (3, tail[0], 129, *tail[1:])
+                )
+                if tuple(padded.shape) != expected or not padded.is_contiguous():
+                    raise AssertionError(
+                        f"{layout}: expected contiguous {expected}, got {tuple(padded.shape)}"
+                    )
+                torch.testing.assert_close(
+                    unpack_padded_query(padded, lengths, layout),
+                    original,
+                    rtol=0,
+                    atol=0,
+                )
+                if layout == "BNSD":
+                    torch.testing.assert_close(
+                        padded[1, :, :65].transpose(0, 1),
+                        original[129:],
+                        rtol=0,
+                        atol=0,
+                    )
+                checked += 1
+    try:
+        pack_padded_query(torch.zeros((5, 2, 8)), [3, 2], "BSND", 2)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Packing must reject insufficient sequence capacity")
+    for layout in ("BSND", "BNSD"):
+        case = {
+            "B": 2,
+            "layout_q": layout,
+            "S1_max": 129,
+            "cu_seqlens_q": [],
+            "cu_seqlens_kv": [],
+            "seqused_q": [],
+            "seqused_kv": [65, 97],
+        }
+        resolved = _get_sequence_inputs(case)
+        assert resolved["q_lengths"] == [129, 129]
+        assert resolved["cu_seqlens_q"].tolist() == [
+            0,
+            129,
+            258,
+        ]  # Reference-only prefix.
+        for key, value in (
+            ("cu_seqlens_q", [0, 129, 258]),
+            ("seqused_q", [129, 129]),
+            ("S1_max", 0),
+        ):
+            try:
+                _get_sequence_inputs(dict(case, **{key: value}))
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"{layout} must reject invalid {key}")
+    logger.info(
+        "[Layout self-check] %d roundtrips, capacity and sequence contract validation passed",
+        checked,
+    )
+
+
+def _check_padded_layouts(invoke, q, q_scale, cu_seqlens_q, out_tnd, lse_tn):
+    """Compare padded BSND/BNSD against the same TND computation, including Q scale."""
+    cu = cu_seqlens_q.cpu().tolist()
+    lengths = [cu[i + 1] - cu[i] for i in range(len(cu) - 1)]
+    if len(set(lengths)) != 1 or not lengths[0]:
+        logger.info(
+            "Skip padded equivalence check: BSND/BNSD requires equal positive Q lengths"
+        )
+        return
+    sq = lengths[0]
+    # Every batch uses the full physical sequence dimension.
+    batch, heads, dim = len(lengths), q.shape[1], q.shape[2]
+    q_cpu = q.detach().cpu().view(torch.uint8)
+    scale_cpu = q_scale.detach().cpu().view(torch.uint8)
+    q_bsnd = torch.zeros((batch, sq, heads, dim), dtype=torch.uint8)
+    scale_bsnd = torch.zeros((batch, sq, *q_scale.shape[1:]), dtype=torch.uint8)
+    for b, length in enumerate(lengths):
+        q_bsnd[b, :length] = q_cpu[cu[b] : cu[b + 1]]
+        scale_bsnd[b, :length] = scale_cpu[cu[b] : cu[b + 1]]
+    for layout in ("BSND", "BNSD"):
+        q_bytes = q_bsnd if layout == "BSND" else q_bsnd.transpose(1, 2).contiguous()
+        scale_bytes = (
+            scale_bsnd if layout == "BSND" else scale_bsnd.transpose(1, 2).contiguous()
+        )
+        out, lse = invoke(
+            q_bytes.view(q.dtype).to(q.device),
+            scale_bytes.view(q_scale.dtype).to(q_scale.device),
+            layout,
+            layout,
+        )
+        torch_npu.npu.synchronize()
+        assert tuple(out.shape) == (
+            (batch, sq, heads, dim) if layout == "BSND" else (batch, heads, sq, dim)
+        )
+        out = out.cpu() if layout == "BSND" else out.cpu().transpose(1, 2)
+        for b, length in enumerate(lengths):
+            torch.testing.assert_close(
+                out[b, :length], out_tnd.cpu()[cu[b] : cu[b + 1]], rtol=0, atol=0
+            )
+        if ENABLE_LSE:
+            assert tuple(lse.shape) == (batch, heads, sq)
+            for b, length in enumerate(lengths):
+                torch.testing.assert_close(
+                    lse.cpu()[b, :, :length].T,
+                    lse_tn.cpu()[cu[b] : cu[b + 1]],
+                    rtol=0,
+                    atol=0,
+                )
+        logger.info("[NPU] %s output and BNS LSE match TND", layout)
 
 
 def _call_npu_fa_op(
@@ -2473,36 +2799,61 @@ def _call_npu_fa_op(
         sparse_seq_len,
     )
 
-    output = torch.ops.custom.npu_quant_block_sparse_attn(
-        q,
-        k,
-        v,
-        dequant_scale_q,
-        dequant_scale_k,
-        dequant_scale_v,
-        p_scale,
-        sparse_indices,
-        sparse_seq_len,
-        mask,
-        softmax_scale,
-        SPARSE_BLOCK_SIZE,
-        SPARSE_BLOCK_SIZE,
-        cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
-        seqused_q=seqused_q,
-        seqused_kv=seqused_kv,
-        block_table=block_table,
-        metadata=metadata,
-        layout_kv=layout_kv,
-        layout_q=layout_q,
-        layout_sparse_indices=SPARSE_INDICES_LAYOUT,
-        layout_out=OUT_LAYOUT,
-        quant_mode=QUANT_MODE_MXFP8,
-        mask_mode=MASK_MODE,
-        return_softmax_lse=ENABLE_LSE,
-    )
+    metadata_by_layout = {layout_q: metadata}
+
+    def invoke(query, q_scale, q_layout, out_layout):
+        # Exercise each layout's metadata entry point as well as its main kernel.
+        # Reusing the TND metadata here would hide BSND/BNSD interface regressions.
+        if q_layout not in metadata_by_layout:
+            metadata_by_layout[q_layout] = _prepare_npu_metadata(
+                cu_seqlens_q,
+                cu_seqlens_kv,
+                seqused_q,
+                seqused_kv,
+                block_table,
+                q_n,
+                kv_n,
+                q_layout,
+                layout_kv,
+                sparse_indices,
+                sparse_seq_len,
+            )[-1]
+        return torch.ops.custom.npu_quant_block_sparse_attn(
+            query,
+            k,
+            v,
+            q_scale,
+            dequant_scale_k,
+            dequant_scale_v,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            mask,
+            softmax_scale,
+            SPARSE_BLOCK_SIZE,
+            SPARSE_BLOCK_SIZE,
+            cu_seqlens_q=None if q_layout in ("BSND", "BNSD") else cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            block_table=block_table,
+            metadata=metadata_by_layout[q_layout],
+            layout_kv=layout_kv,
+            layout_q=q_layout,
+            layout_sparse_indices=SPARSE_INDICES_LAYOUT,
+            layout_out=out_layout,
+            quant_mode=QUANT_MODE_MXFP8,
+            mask_mode=MASK_MODE,
+            return_softmax_lse=ENABLE_LSE,
+        )
+
+    output = invoke(q, dequant_scale_q, layout_q, OUT_LAYOUT)
     torch_npu.npu.synchronize()
     atten_out, lse_out = output
+    if layout_q == "TND" and os.environ.get("QBSA_CHECK_PADDED_LAYOUTS") == "1":
+        _check_padded_layouts(
+            invoke, q, dequant_scale_q, cu_seqlens_q, atten_out, lse_out
+        )
     return atten_out.detach().cpu(), lse_out.detach().cpu()
 
 
@@ -2882,16 +3233,18 @@ def npu_mxfp8_fa(
 
     softmax_scale = float(CASE["softmax_scale"])
 
-    q_layout = "TND"
+    q_layout = Q_INPUT_LAYOUT
     q_input = require_q_tnd(q_fp8, q_lengths, N_q, "Q").view(FP8_DTYPE)
+    q_input = pack_padded_query(q_input, q_lengths, q_layout)
     q_npu = q_input.npu()
     logger.info("[NPU %s] q=%s", q_layout, q_npu.shape)
 
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(
         pack_q_scale_tnd_for_npu(dequant_scale_q, q_lengths), "Q descale"
     )
+    q_scale_e8m0 = pack_padded_query(q_scale_e8m0, q_lengths, q_layout)
     deq_q_npu = q_scale_e8m0.npu()
-    logger.info("[NPU] Q descale layout=TND, shape=%s", q_scale_e8m0.shape)
+    logger.info("[NPU] Q descale layout=%s, shape=%s", q_layout, q_scale_e8m0.shape)
 
     if p_scale is None:
         p_scale_npu = None
@@ -3011,8 +3364,29 @@ def npu_mxfp8_fa(
         )
         atten_out, lse_out = _call_npu_fa_op(*npu_call_args)
 
-    npu_output = atten_out
-    npu_lse = lse_out
+    if q_layout in ("BSND", "BNSD"):
+        sq = max(q_lengths)
+        expected_out = (
+            (len(q_lengths), sq, N_q, D)
+            if q_layout == "BSND"
+            else (len(q_lengths), N_q, sq, D)
+        )
+        if tuple(atten_out.shape) != expected_out:
+            raise AssertionError(
+                f"attention_out: expected {expected_out}, got {tuple(atten_out.shape)}"
+            )
+        npu_output = unpack_padded_query(atten_out, q_lengths, q_layout)
+        if ENABLE_LSE:
+            if tuple(lse_out.shape) != (len(q_lengths), N_q, sq):
+                raise AssertionError(f"Expected BNS LSE, got {tuple(lse_out.shape)}")
+            npu_lse = torch.cat(
+                [lse_out[b, :, :length].T for b, length in enumerate(q_lengths)], dim=0
+            )
+        else:
+            npu_lse = lse_out
+    else:
+        npu_output = atten_out
+        npu_lse = lse_out
     T_actual = sum(q_lengths)
     if npu_output.shape[0] > T_actual:
         npu_output = npu_output[:T_actual]
@@ -3054,8 +3428,9 @@ def _cpu_golden_cache_name(case_name, p_scale, use_quant_matmul):
     Including the backend prevents CPU torch.matmul and npu_quant_matmul
     golden outputs from reusing each other's cache. It also intentionally
     avoids pre-fix cache files whose key did not encode the backend.
+    The CPU version suffix also isolates results from older QK rounding models.
     """
-    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul"
+    backend = "npu_quant_matmul" if use_quant_matmul else "torch_matmul_v2"
     cache_prefix = f"{case_name}_{backend}_p_scale"
     if p_scale is None or p_scale.numel() == 0:
         return f"{cache_prefix}_default"
@@ -3231,7 +3606,7 @@ def run_one_case(
     logger.info("MXFP8 Flash Attention Golden")
     logger.info("输出: 逐元素表格 + 统计汇总 (PctRlt 通过率)")
     logger.info("场景: PA")
-    logger.info("Q_INPUT_LAYOUT=%s, QDescale layout=TND", Q_INPUT_LAYOUT)
+    logger.info("Q_INPUT_LAYOUT=%s, QDescale uses the same layout", Q_INPUT_LAYOUT)
     logger.info("KV_CACHE_LAYOUT=%s", KV_CACHE_LAYOUT)
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
     logger.info("Q_LENGTHS=%s, KV_LENGTHS=%s", Q_LENGTHS, KV_LENGTHS)
@@ -3463,6 +3838,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="MXFP8 QuantBlockSparseAttn Golden")
     parser.add_argument(
+        "--check_layout_helpers",
+        action="store_true",
+        help="仅执行 Q/QScale/LSE 布局打包的 CPU 自检，不运行算子或 STC",
+    )
+    parser.add_argument(
         "--case_files",
         default=None,
         help="case 文件路径，支持逗号分隔；默认文件由是否指定 --csv 决定",
@@ -3534,6 +3914,9 @@ if __name__ == "__main__":
         help="使用 npu_quant_matmul 而非默认的 CPU torch.matmul 做 QK/PV 计算",
     )
     args = parser.parse_args()
+    if args.check_layout_helpers:
+        check_layout_helpers()
+        sys.exit(0)
 
     use_quant_matmul = args.quant_matmul
     logger.info(

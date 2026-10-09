@@ -13,8 +13,9 @@
 
 This module is intentionally independent from TTK.  The framework passes the
 main API arguments after H2D; this hook invokes the companion torch operator
-``flash_attn_metadata`` and updates ``metadata`` in place.  Profiling and
-result handling remain in TTK, and the hook always returns ``None``.
+``flash_attn_metadata``. Dynamic slots return the generated tensor by parameter
+name; static slots are updated in place and return None. Profiling and result
+handling remain in TTK.
 """
 
 import importlib.util
@@ -145,6 +146,18 @@ def build_metadata_arguments(q, k, v, kwargs):
 
     q_shape = tuple(int(value) for value in q.shape)
     head_dim = int(q_shape[-1])
+    # v 的 head_dim: 布局与维度数严格匹配, 不匹配回落 head_dim (畸形 shape 由算子 checker 拒绝)
+    # PA_NZ (Bn,N2,D/16,block_size,16) 的 D = dim2*dim4; TND (T,N,D) 取 dim2; 其余 4 维布局 D 在 index 3
+    v_shape = tuple(int(value) for value in v.shape)
+    head_dim_v = head_dim
+    if layout_kv in ("BSND", "BNSD") and len(v_shape) == 4:
+        head_dim_v = int(v_shape[3])
+    elif layout_kv == "TND" and len(v_shape) == 3:
+        head_dim_v = int(v_shape[2])
+    elif layout_kv in ("PA_BBND", "PA_BNBD") and len(v_shape) == 4:
+        head_dim_v = int(v_shape[3])
+    elif layout_kv == "PA_NZ" and len(v_shape) == 5:
+        head_dim_v = int(v_shape[2]) * int(v_shape[4])
     # head derivation mirrors flash_attn_ttk_ops.build_flash_attn_metadata.
     if layout_q == "TND":
         num_heads_q = int(q_shape[1])
@@ -176,6 +189,7 @@ def build_metadata_arguments(q, k, v, kwargs):
         "num_heads_q": int(get_attribute(kwargs, "num_heads_q", num_heads_q)),
         "num_heads_kv": int(get_attribute(kwargs, "num_heads_kv", num_heads_kv)),
         "head_dim": int(get_attribute(kwargs, "head_dim", head_dim)),
+        "head_dim_v": int(get_attribute(kwargs, "head_dim_v", head_dim_v)),
         "cu_seqlens_q": _resolve_tensor(kwargs, "cu_seqlens_q"),
         "cu_seqlens_kv": _resolve_tensor(kwargs, "cu_seqlens_kv"),
         "seqused_q": _resolve_tensor(kwargs, "seqused_q"),
@@ -209,6 +223,7 @@ def run_metadata(arguments, metadata):
         int(arguments["num_heads_q"]),
         int(arguments["num_heads_kv"]),
         int(arguments["head_dim"]),
+        head_dim_v=int(arguments.get("head_dim_v", -1)),
         cu_seqlens_q=move_to_device(arguments.get("cu_seqlens_q"), metadata),
         cu_seqlens_kv=move_to_device(arguments.get("cu_seqlens_kv"), metadata),
         seqused_q=move_to_device(arguments.get("seqused_q"), metadata),
@@ -241,11 +256,9 @@ def run(
     **kwargs,
 ):
     """Generate and copy metadata for a main FlashAttn invocation."""
-    if metadata is None:
-        raise ValueError("FlashAttn npu_preprocess requires metadata")
     protocol = load_metadata_protocol()
     testcase_name = kwargs.get("testcase_name")
-    if protocol.metadata_is_materialized(metadata):
+    if metadata is not None and protocol.metadata_is_materialized(metadata):
         # In the E2E flow customize_inputs zeroes the placeholder, so this
         # branch is unreachable there; replay correctness comes from the
         # idempotent re-derivation below, so it is not a bug.
@@ -264,7 +277,11 @@ def run(
                 "[%s] saved FlashAttn metadata sidecar: %s", testcase_name, saved
             )
     logging.info("[%s] build FlashAttn metadata from %s", testcase_name, source)
-    generated = run_metadata(arguments, metadata)
+    generated = run_metadata(arguments, q if metadata is None else metadata)
+    if metadata is None:
+        return {"metadata": generated}
+    if tuple(metadata.shape) == (0,):
+        metadata.resize_(generated.shape)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "FlashAttn metadata shape mismatch: "

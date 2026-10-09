@@ -72,6 +72,10 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
     MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, topkWeight, expandedTopkWeight,
                                workspace, tilingData, tPipe);
 
+    if (this->cols_ == 0) {
+        return;
+    }
+
     colsAlign_ = Align(this->cols_, sizeof(T));
     inFactor_ = Align(this->cols_, sizeof(int8_t));
 
@@ -83,13 +87,17 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
     scale_ = scaleGm_.GetValue(0);
     offset_ = offsetGm_.GetValue(0);
 
-    int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
+    // The EP full-load path scatters one routed row at a time. Allocating buffers for every source row covered by
+    // the core can exceed UB even though ScatterOutXStaticQuant only ever calls Compute(1).
+    int64_t rowLength = this->epFullload_ ? 1 : this->endXRow_ - this->startXRow_ + 1;
 
-    int64_t colsAlignBytes = AlignBytes(this->cols_ * rowLength, sizeof(T));
+    // Gather input and quantized output both use the int8-aligned row stride.
+    // Reserve and compute the padding too, so subsequent rows keep that stride.
+    int64_t colsAlignBytes = AlignBytes(inFactor_ * rowLength, sizeof(T));
     colsAlignBytes = static_cast<int64_t>(colsAlignBytes * sizeof(float) / sizeof(T));
     this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_STATIC_QUANT_BUFFER_NUM, colsAlignBytes);
     this->pipe_->InitBuffer(inputXOutQueue_, FULLLOAD_STATIC_QUANT_BUFFER_NUM,
-                            AlignBytes(this->cols_ * rowLength, sizeof(int8_t)));
+                            AlignBytes(inFactor_ * rowLength, sizeof(int8_t)));
 }
 
 template <typename T>
@@ -105,8 +113,8 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Compute(int64_t rowLength)
         inUbAddrCastT = (__ubuf__ T *)inLocal.ReinterpretCast<T>().GetPhyAddr() + colsAlign_;
     }
 
-    uint16_t repeatTimes = Ceil(this->cols_ * rowLength, FLOAT_REG_TENSOR_LENGTH);
-    uint32_t sreg = static_cast<uint32_t>(this->cols_ * rowLength);
+    uint16_t repeatTimes = Ceil(inFactor_ * rowLength, FLOAT_REG_TENSOR_LENGTH);
+    uint32_t sreg = static_cast<uint32_t>(inFactor_ * rowLength);
     __VEC_SCOPE__
     {
         Reg::RegTensor<float> inReg;
@@ -167,6 +175,7 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::ScatterOutXStaticQuant()
         inputXInQueue_.EnQue<T>(inLocal);
 
         Compute(1);
+        inputXInQueue_.FreeTensor(inLocal);
 
         LocalTensor<int8_t> outLocal = inputXOutQueue_.DeQue<int8_t>();
         DataCopyPad(expandedXGm_[xDstOffset], outLocal, copyOutParams);
@@ -235,6 +244,11 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Process()
         if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
             this->ComputeExpertTokenCount();
             this->CopyExpertCountToOutput();
+        }
+
+        if (this->cols_ == 0) {
+            this->FreeLocalTensor();
+            return;
         }
 
         if (this->epFullload_) {

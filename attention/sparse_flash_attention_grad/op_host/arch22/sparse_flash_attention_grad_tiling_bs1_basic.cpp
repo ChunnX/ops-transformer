@@ -273,8 +273,10 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
     int64_t dAlign = (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD() + 15) / 16 * 16;
     int64_t d2Align = (tilingData.opInfo.get_D2() + 15) / 16 * 16;
     uint32_t scatterBufferNum = tmpData.enableOptimizedScatter ? SCATTER_BUFFER_NUM : PING_PONG_BUFFER;
-    workspaces[0] +=
-        24 * scatterBufferNum * tmpData.selected_block_count * tmpData.selected_block_size * (dAlign + d2Align) * B32;
+    int64_t scatterTokenCapacity = tmpData.enableOptimizedScatter ?
+                                       static_cast<int64_t>(tmpData.singleN) :
+                                       static_cast<int64_t>(tmpData.selected_block_count) * tmpData.selected_block_size;
+    workspaces[0] += 24 * scatterBufferNum * scatterTokenCapacity * (dAlign + d2Align) * B32;
 
     tilingData.opInfo.set_mm12WorkspaceLen(mm12WorkspaceLen);
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
@@ -652,6 +654,9 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
         OP_CHECK_IF(tmpData.n2 == 0, OP_LOGE(context_, "key headNum is 0"), return ge::GRAPH_FAILED);
         tmpData.g = queryShape.GetDim(DIM_2) / tmpData.n2;
         tmpData.layout = static_cast<uint32_t>(InputLayout::BSND);
+        // BSND 下 kernel 用 S1 做 t1Idx / curS1 分核，S1 须严格为正
+        OP_CHECK_IF(tmpData.s1 <= 0, OP_LOGE(context_, "S1 must be > 0, but got S1=%ld.", tmpData.s1),
+                    return ge::GRAPH_FAILED);
     }
 
     if (tmpData.g <= 0) {

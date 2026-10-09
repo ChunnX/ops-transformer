@@ -4,12 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Ascend 950PR&950DT系列产品</term>|      √     |
 |<term>Atlas A3训练系列产品</term>|      ×     |
 |<term>Atlas A2训练系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/500 A2推理产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -215,3 +215,4 @@ lse作为输出传递给算子DenseLightningIndexerGradKlLoss作为输入计算S
 | 调用方式 | 调用样例                                                                          | 说明                                                                  |
 |--------------|-------------------------------------------------------------------------------|--------------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_dense_lightning_indexer_softmax_lse_v2](examples/test_aclnn_dense_lightning_indexer_softmax_lse_v2.cpp) | 通过[aclnnDenseLightningIndexerSoftmaxLseV2](docs/aclnnDenseLightningIndexerSoftmaxLseV2.md)接口方式调用dense_lightning_indexer_softmax_lse_v2算子。 |
+| PyTorch API | - | 通过[dense_lightning_indexer_softmax_lse](../../attention/dense_lightning_indexer_softmax_lse_v2/docs/torchapi_dense_lightning_indexer_softmax_lse.md)接口调用dense_lightning_indexer_softmax_lse算子。 |

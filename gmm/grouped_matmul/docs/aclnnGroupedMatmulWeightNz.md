@@ -1,26 +1,26 @@
 # aclnnGroupedMatmulWeightNz
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/gmm/grouped_matmul)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：支持
+- <term>Atlas推理系列产品</term>：支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -33,9 +33,9 @@
     **与[GroupedMatmulV5](aclnnGroupedMatmulV5.md)接口对比新增功能**：
 
       - 输入的weight会被接口按AI处理器亲和数据排布格式（FRACTAL_NZ）解析。
-      - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
+      - 新增参数quantGroupSize，整数型参数，代表分组量化（pergroup）的分组大小，不涉及分组量化时，填0。
       <!-- npu="950" id7 -->
-      - <term>Ascend 950PR/Ascend 950DT</term>：支持quantGroupSize参数，综合约束请参见<a href="#约束说明">约束说明</a>。
+      - <term>Ascend 950PR&950DT系列产品</term>：支持quantGroupSize参数，综合约束请参见<a href="#约束说明">约束说明</a>。
       <!-- end id7 -->
 
   - **计算公式**：
@@ -360,7 +360,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <tr>
     <td>tuningConfigOptional（aclIntArray *）</td>
     <td>可选输入</td>
-    <td>第一个数代表各个专家处理的token数的预期值；第二个数表示是否开启weight亲和格式（先转置再NZ）。当前仅<a href="#ascend950-weightnz-s8s4场景约束">S8S4</a>场景支持。</td>
+    <td>第一个数代表各个专家处理的token数的预期值；第二个数表示是否开启weight特殊格式（按[E,N,K]排布后转换为NZ），适用于S8S4场景，具体限制见<a href="#约束说明">约束说明</a>中的weight特殊格式相关场景约束。</td>
     <td>用户如不使用该参数，不传（即为nullptr）即可。</td>
     <td>INT64</td>
     <td>-</td>
@@ -370,7 +370,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <tr>
     <td>quantGroupSize</td>
     <td>输入</td>
-    <td>代表分组量化（per-group）的分组大小。</td>
+    <td>代表分组量化（pergroup）的分组大小。</td>
     <td>不涉及分组量化时，填0。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
     <td>INT64</td>
     <td>-</td>
@@ -431,7 +431,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     </table>
 
     <!-- npu="950" id8 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：
+    - <term>Ascend 950PR&950DT系列产品</term>：
       - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
       - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。非全量化场景，当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
       - `offsetOptional`支持，`antiquantOffsetOptional`暂不支持。综合约束请参见<a href="#约束说明">约束说明</a>。
@@ -442,7 +442,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <!-- end id8 -->
 
     <!-- npu="A3,910b" id9 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
       - 上表数据类型列中的角标"2"代表该系列不支持的数据类型。
       - `weight`会被接口按FRACTAL_NZ格式解析。当传入INT32时，接口内部将每个INT32识别成8个INT4。
       - 输入参数`x`、`weight`，输出参数`out`支持最多128个tensor。
@@ -525,10 +525,11 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
 <!-- npu="A3,910b" id10 -->
 <details>
-<summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
+<summary><term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term></summary>
 
   - 公共约束
-    - 如果传入groupListOptional，当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列，且长度不能为1；groupListType为2时，groupListOptional的第二列数据必须为非负数列，且长度不能为1。
+    - tuningConfigOptional控制的weight特殊格式适用于S8S4（A8W4）场景，具体限制见[S8S4（A8W4）场景约束](#a2-a3-weightnz-s8s4场景约束)。
+    - 如果传入groupListOptional，当groupListType为0时，groupListOptional必须为非负单调非递减数列；当groupListType为1时，groupListOptional必须为非负数列，且长度不能为1；当groupListType为2时，groupListOptional的shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1], ...]，其中groupSize为分组轴上每组大小，必须为非负数，且groupListOptional的长度不能为1。所有groupSize非0的分组按groupIdx有序排列在前，所有groupSize为0的分组按groupIdx有序排列在后，确保非零组前置、零值组后置，且组内有序。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 量化场景下，若当前量化组合不支持激活函数，传入1、2、4、5时仅打印warning提示，不做拦截，建议传入0。
@@ -556,7 +557,13 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         | 伪量化pergroup | weight单 | $[E, G, N]$|
         | 伪量化pergroup | weight多 | $[G_i, N_i]$|
 
-    - x为INT8、weight为INT4、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。
+    <a id="a2-a3-weightnz-s8s4场景约束"></a>
+
+    - **S8S4（A8W4）场景：** x为INT8、weight为INT4（NZ格式）、biasOptional为FLOAT32、scaleOptional为UINT64、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为FLOAT32、activationInputOptional为空。
+
+      - 仅支持groupType=0（M轴分组），actType=0。
+      - x、out均为长度为1的TensorList；x为2维Tensor，shape为`[M,K]`。
+      - x、weight均不支持转置。weight为单Tensor时，默认逻辑shape为`[E,K,N]`，按NZ格式解析；当传入INT32时，每个INT32视为8个INT4。
 
       - weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）。
 
@@ -570,6 +577,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, quantGroupNum, N]$，其中$quantGroupNum=k \div quantGroupSize$。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
         - 要求N为8的整数倍。
+        - 各个专家处理的token数的预期值大于N/4时，即tuningConfigOptional中第一个值大于N/4时，通常会取得更好的性能，此时显存占用会增加$g \times K \times N$字节（其中g为matmul组数）。
 
       - 非对称量化场景：
 
@@ -580,6 +588,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即$antiquantOffset \times scale$，shape要求为$[E, 1, N]$，dtype为FLOAT32。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
         - 要求N为8的整数倍。
+
+      - tuningConfigOptional数组第二个元素可置1，以开启S8S4（A8W4）场景的weight特殊格式模板，仅支持perchannel量化。此时weight须按`[E,N,K]`排布后进行ND2NZ转换，再作为算子输入。性能优势的shape范围参考：K >= 2048且N >= 2048。
 
     - 伪量化场景下，若weight的类型为INT8，仅支持perchannel模式；若weight的类型为INT4，对称量化支持perchannel和pergroup两种模式。若为pergroup，pergroup数G或$G_i$必须要能整除对应的$k_i$。若weight为多tensor，定义pergroup长度$s_i = k_i / G_i$，要求所有$s_i(i=1,2,...g)$都相等。非对称量化支持perchannel模式。
 
@@ -601,20 +611,21 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
 <!-- npu="950" id11 -->
 <details>
-<summary><term>Ascend 950PR/Ascend 950DT</term></summary>
+<summary><term>Ascend 950PR&950DT系列产品</term></summary>
 
   - 公共约束
+    - tuningConfigOptional控制的weight特殊格式适用于S8S4场景，具体限制见[S8S4场景约束](#ascend950-weightnz-s8s4场景约束)。
     - groupListType：支持取值0、1、2。
       - 当groupListType为0时，groupListOptional必须为非负单调非递减数列；
       - 当groupListType为1时，groupListOptional必须为非负数列。
-      - 仅全量化且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
+      - 仅全量化、非量化或伪量化a8w4，且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1], ...]，其中groupSize为分组轴上每组大小，必须为非负数。所有groupSize非0的分组按groupIdx有序排列在前，所有groupSize为0的分组按groupIdx有序排列在后，确保非零组前置、零值组后置，且组内有序。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 在伪量化和非量化场景下，actType仅支持0。
       - 在全量化场景下，当x和weight为INT8，量化模式为静态T-C量化或动态K-C量化，scale数据类型为FLOAT32或BFLOAT16时，actType支持传入0、1、2、4、5。其余全量化场景actType仅支持0。
   - 当前支持非量化场景、伪量化场景与全量化场景
   - 非量化场景支持的数据类型为：
-    - 输入weight矩阵的n轴与k轴需要满足32B对齐
+    - 输入weight矩阵的n轴与k轴需要满足32 Byte对齐
     - 以下入参为空：scaleOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
 
@@ -631,38 +642,44 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - 以下入参为空：antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
 
-      |groupType| x | weight | biasOptional | scaleOptional | offsetOptional | perTokenScaleOptional | groupListOptional | out |
-      |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-      |0|INT8|INT4|FLOAT|UINT64|null|FLOAT|INT64|BFLOAT16|
-      |0|INT8|INT4|FLOAT|UINT64|FLOAT/null|FLOAT|INT64|FLOAT16|
+    | groupType | x | weight | biasOptional | scaleOptional | offsetOptional | perTokenScaleOptional | groupListOptional | out |
+    |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+    | 0 | INT8 | INT4 | FLOAT | UINT64 | null | FLOAT | INT64 | BFLOAT16 |
+    | 0 | INT8 | INT4 | FLOAT | UINT64 | FLOAT/null | FLOAT | INT64 | FLOAT16 |
 
-    - scaleOptional与offsetOptional要满足下表（其中E为分组数）：
+    - **scaleOptional 与 offsetOptional shape**（$E$=组数）：
 
-      | 子场景 | offsetOptional | scaleOptional shape | offsetOptional shape | quantGroupSize | out |
-      |:---:|:---:|:---:|:---:|:---:|:---:|
-      | 对称per-group | null | `[E, K/256, N]` | - | 256 | FLOAT16/BFLOAT16 |
-      | 非对称per-channel | FLOAT32 | `[E, 1, N]` | `[E, 1, N]` | 0 | FLOAT16 |
+    | offsetOptional | 子场景 | scaleOptional shape | offsetOptional shape |
+    |:---:|:---|:---|:---|
+    | null | pergroup 与 perchannel 离线融合 | `[E, K/256, N]` | - |
+    | 非空 | <abbr title="简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数">perchannel</abbr> | `[E, 1, N]` | `[E, 1, N]`（FLOAT32） |
 
-    - 约束说明：
+    - **约束说明**：
 
       除公共约束外，S8S4场景其余约束如下：
 
-      |groupType| splitItem | actType | groupListType |
+      | groupType | splitItem | actType | groupListType |
       |:---:|:---:|:---:|:---|
-      |0|2/3|0|1（count）|
+      | 0（M轴分组） | 2/3 | 0 | 1（count） |
+
+      - 当前仅支持x、weight、biasOptional、scaleOptional、perTokenScaleOptional和out均为长度1的TensorList；offsetOptional非空时，其TensorList长度须为1（下表中省略该要求）。
 
       | 输入输出 | 子场景 | shape限制 |
       |:---:|:---|:---|
       | x | 单Tensor | 2维，shape为`[M,K]`，不支持转置 |
-      | weight | 单Tensor | 3维，shape为`[E,K,N]`，不支持转置 |
-      | biasOptional | 必选输入 | 2维，shape为`[E,N]`，数据类型FLOAT32 |
+      | weight | 单Tensor | 3维，默认逻辑shape为`[E,K,N]`，须为NZ格式，不支持转置 |
+      | biasOptional | 必选输入 | 2维，shape为`[E,N]` |
       | perTokenScaleOptional | 单Tensor | 1维，shape为`[M]` |
       | out | 单Tensor | - |
 
-      - x、weight、scaleOptional、biasOptional、perTokenScaleOptional和out均为长度1的TensorList。
       - biasOptional为必选输入，是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。
-      - 对称per-group场景下，K不大于18432且必须是256的整数倍。
-      - S8S4 offsetOptional不为空的per-channel场景下，tuningConfigOptional数组第二个元素可置1。此时weight需按`[E,N,K]`排布并转换为NZ，仅支持长度为1的weight TensorList。
+      - 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4。
+      - offsetOptional为空时，K不大于18432且必须是256的整数倍。
+
+    - tuningConfigOptional：可选调优参数。如不使用，传入nullptr即可。
+      - 第一个元素（下标0）：支持0和正整数，取值范围为`[0, min(M, UINT32_MAX)]`，其中M为输入x的行数。0表示不指定预期值，正整数表示各个专家处理的token数的预期值，例如128表示预期每个专家处理128个token（要求M不小于128）。当前S8S4实现仅校验并保存该值，暂不参与实际调优计算。
+      - 第二个元素（下标1）：仅支持0或1，其他值不支持。设为0或不提供该元素时，不开启weight特殊格式，weight按常规`[E,K,N]`逻辑布局解析；设为1时，开启weight特殊格式，仅支持offsetOptional不为空的perchannel场景，weight须按`[E,N,K]`排布后转换为NZ，且weight TensorList长度为1。
+      - 例如，传入`[0, 1]`表示不指定预期token数，并开启weight特殊格式。详见[S8S4场景约束](#ascend950-weightnz-s8s4场景约束)。
 
     **其他伪量化场景：**
     - 以下入参为空：offsetOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
@@ -738,8 +755,9 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   - K-G（pertoken-pergroup）量化场景支持的输入类型与shape为：
     - 以下入参为空：biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表：
-    |groupType| x       | weight  | scaleOptional | perTokenScaleOptional |out     |
-      |:-------:|:-------:|:-------:| :------      |:-------    | :------   | :------ |
+
+      |groupType| x       | weight  | scaleOptional | perTokenScaleOptional |out     |
+      |:-------:|:-------:|:-------:| :------      |:-------    | :------   |
       |0|INT4  |INT4     |UINT64    | FLOAT32/null   | FLOAT16/BFLOAT16 |
 
     - scaleOptional要满足下表（其中g为matmul组数即分组数）
@@ -756,7 +774,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
     - 约束说明：
 
-      - S4S4的weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐。
+      - 全量化的int4的weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐。
 
 
   - 动态量化（mx量化）场景支持的输入类型与shape为：
@@ -801,7 +819,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:---------:|:-------:| :------ |
       | -1 | 多多多 |1）仅支持splitItem为0/1<br>2）x，out中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3） groupListOptional必须传空<br>4）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>5）x不支持转置<br>6）仅支持非量化|
       | 0 | 单单单 |1）仅支持splitItem为2/3<br>2）weight中tensor需为3维，shape为（E, N, K）或（E, K, N）；x，out中tensor需为2维，shape分别为（M, K）和（M, N）；bias中tensor需为2维，shape为（E, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维，当groupListType为2时，第二列数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）支持x不转置，weight转置、不转置均支持|
-      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等，长度最大为1024，当groupListType为2时，第二列数值的总和不大于x中tensor的第一维<br>3）x，out中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）<br>4）weight中每个tensor的K轴和N轴必须分别相等，动态量化（mx量化）场景下weight的tensor数必须与groupListOptional中的group数一致<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）支持非量化场景、MxA8W4伪量化场景和动态量化（mx量化）场景。动态量化（mx量化）场景要求biasOptional为空，scaleOptional为多tensor且长度与weight相同。 |
+      | 0 | 单多单 |1）仅支持splitItem为2/3<br>2）必须传groupListOptional，且当groupListType为0时，最后一个值与x中tensor的第一维相等，当groupListType为1时，数值的总和与x中tensor的第一维相等，长度最大为1024，当groupListType为2时，第二列数值的总和不大于x中tensor的第一维<br>3）x，out中tensor需为2维，shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）<br>4）weight中每个tensor的K轴和N轴必须分别相等，动态量化（mx量化）场景下weight的tensor数必须与groupListOptional中的group数一致<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）支持非量化场景、MxA8W4伪量化场景和动态量化（mx量化）场景。动态量化（mx量化）场景要求biasOptional为空，scaleOptional为多tensor且长度与weight相同。MxA8W4伪量化和动态量化（mx量化）的MX A8W8/MX A4W4支持E=1时weight列表仅包含一个二维tensor的特殊多tensor场景。 |
       | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
 
 </details>
@@ -812,7 +830,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 <!-- npu="950" id12 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
 
   MX_A8W4场景下，先调用`aclnnWeightQuantPreprocess`同步预处理weight和weightScale，再将预处理输出直接作为weight和antiquantScaleOptional调用本接口完成分组矩阵乘。
 
@@ -1135,7 +1153,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
   int main()
   {
-      // WeightQuantPreprocess当前仅支持Ascend 950PR/Ascend 950DT。
+      // WeightQuantPreprocess当前仅支持Ascend 950PR&950DT系列产品。
       int32_t deviceId = 0;
       auto ret = AclnnGroupedMatmulWeightNzMxA8W4PreprocessTest(deviceId);
       CHECK_RET(ret == ACL_SUCCESS,
@@ -1149,6 +1167,8 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 伪量化调用示例
 
 ```c++
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
@@ -1165,6 +1185,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
   do {                              \
     printf(message, ##__VA_ARGS__); \
   } while (0)
+
+float Bf16ToFloat(uint16_t value)
+{
+    uint32_t bits = static_cast<uint32_t>(value) << 16;
+    float result;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
@@ -1414,7 +1442,7 @@ int main() {
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < 20; j++) {
-      LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+      LOG_PRINT("result[%ld] is: %g\n", j, Bf16ToFloat(resultData[j]));
     }
     LOG_PRINT("......\n");
   }
@@ -1447,6 +1475,8 @@ int main() {
 全量化调用示例
 
 ```c++
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -1475,6 +1505,14 @@ int main() {
     do {                                \
         printf(message, ##__VA_ARGS__); \
     } while (0)
+
+float Bf16ToFloat(uint16_t value)
+{
+    uint32_t bits = static_cast<uint32_t>(value) << 16;
+    float result;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -1591,17 +1629,10 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     void *dstDeviceAddr = nullptr;
 
     uint64_t tensorSize = 1;
-    for (int64_t i = 0; i < dstShape[i]; i++) {
+    for (uint64_t i = 0; i < dstShapeSize; ++i) {
         tensorSize *= dstShape[i];
     }
-    ret = aclrtMalloc(&dstDeviceAddr, tensorSize * sizeof(T), ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-
-    int64_t weightLen = shape.size();
-    for (int64_t i = 0; i < weightLen + 2; i++) {
-        tensorSize = tensorSize * dstShape[i];
-    }
-    std::vector<uint16_t> dstTensorHostData(tensorSize, 0);
+    std::vector<T> dstTensorHostData(tensorSize, 0);
 
     ret = CreateAclTensorWithFormat(dstTensorHostData, shape, &dstShape, &dstShapeSize, &dstDeviceAddr, dataType,
                                     &dstTensor, static_cast<aclFormat>(actualFormat));
@@ -1631,6 +1662,7 @@ int CreateAclTensorNz(const std::vector<T> &hostData, const std::vector<int64_t>
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
+    *deviceAddr = dstDeviceAddr;
     *tensor = dstTensor;
     return ACL_SUCCESS;
 }
@@ -1780,7 +1812,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
                   return ret);
         for (int64_t j = 0; j < size; j++) {
-            LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+            LOG_PRINT("result[%ld] is: %g\n", j, Bf16ToFloat(resultData[j]));
         }
     }
     return ACL_SUCCESS;
@@ -1799,11 +1831,13 @@ int main()
 }
 ```
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Ascend 950PR&950DT系列产品</term>：
 
   MxA8W4伪量化（单多单场景）调用示例
 
 ```c++
+#include <cstdint>
+#include <cstring>
 #include <algorithm>
 #include <iostream>
 #include <memory>
@@ -1831,6 +1865,14 @@ int main()
     do {                                                                                                               \
         printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
+
+float Bf16ToFloat(uint16_t value)
+{
+    uint32_t bits = static_cast<uint32_t>(value) << 16;
+    float result;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -2119,7 +2161,7 @@ int aclnnGroupedMatmulWeightNzMxA8W4MultiTest(int32_t deviceId, aclrtStream &str
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t j = 0; j < std::min<int64_t>(size, 10); j++) {
-        LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+        LOG_PRINT("result[%ld] is: %g\n", j, Bf16ToFloat(resultData[j]));
     }
 
     // 释放 device 资源

@@ -36,7 +36,7 @@ private:
     bool ParseQSeqLens(std::vector<int64_t> &qSeqLens, std::vector<int64_t> &qStorageBlockStarts) const;
     bool ParseValidBlockNums(const std::vector<int64_t> &qSeqLens, const std::vector<int64_t> &qStorageBlockStarts,
                              std::vector<int64_t> &validBlockNums) const;
-    bool GenerateMetadata(const std::vector<int64_t> &qSeqLens, const std::vector<int64_t> &validBlockNums);
+    bool GenerateMetadata(const std::vector<int64_t> &qSeqLens, const std::vector<int64_t> &validBlockNums) const;
     bool CheckOptionalTensor(const Tensor *tensor, DataType dataType, int64_t elementNum, const char *tensorName) const;
 
     Tensor *sparseBlockIdx_ = nullptr;
@@ -53,6 +53,8 @@ private:
     int64_t blockShapeX_ = 1;
     int64_t blockShapeY_ = 0;
     int64_t isPackedGQA_ = 1;
+    int64_t residualBlockMode_ = 0;
+    int64_t isConsistentTopk_ = 0;
     int64_t aicCoreNum_ = 0;
     int64_t sparseHeadNum_ = 0;
     int64_t qBlockStorageNum_ = 0; // QShape nums of SparseBlockCount last dim.

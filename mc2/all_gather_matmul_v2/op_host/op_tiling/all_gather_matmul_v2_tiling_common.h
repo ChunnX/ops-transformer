@@ -13,11 +13,13 @@
  * \brief
  */
 
-#include "graph/utils/type_utils.h"
+#ifndef ALL_GATHER_MATMUL_V2_TILING_COMMON_H
+#define ALL_GATHER_MATMUL_V2_TILING_COMMON_H
 
-using namespace AscendC;
-using namespace ge;
+#include "graph/utils/type_utils.h"
 
 namespace optiling {
 ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext *context);
 } // namespace optiling
+
+#endif // ALL_GATHER_MATMUL_V2_TILING_COMMON_H

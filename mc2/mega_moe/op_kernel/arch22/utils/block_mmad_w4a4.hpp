@@ -16,15 +16,15 @@
 #ifndef CATLASS_GEMM_BLOCK_BLOCK_MMAD_W4A4_PERCHANNEL_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_W4A4_PERCHANNEL_HPP
 
-#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
-#include "../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
-#include "../template_linear_algebra_v2/tla_v2_coord.hpp"
-#include "../template_linear_algebra_v2/detail/tla_v2_callback.hpp"
-#include "../template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
-#include "../template_linear_algebra_v2/gemm/mega_moe_gemm_dispatch_policy.hpp"
-#include "../template_linear_algebra_v2/gemm/mega_moe_gemm_helper.hpp"
-#include "../template_linear_algebra_v2/gemm/tile/mega_moe_gemm_tile_copy.hpp"
-#include "../template_linear_algebra_v2/gemm/tile/mega_moe_tile_mmad.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/coord.hpp"
+#include "catlass/detail/callback.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/gemm/dispatch_policy.hpp"
+#include "catlass/gemm/helper.hpp"
+#include "catlass/gemm/tile/tile_copy.hpp"
+#include "catlass/gemm/tile/tile_mmad.hpp"
 #include "const_args.hpp"
 #include "dispatch_policy_custom.hpp"
 
@@ -121,6 +121,13 @@ public:
         InitL0B(resource);
         InitL0C(resource);
     }
+
+    // InitL1 计算出的 L1 真实占用末偏移：权重预取 scratch 在此之上取用，与流水线 stage/scale/F 零地址交集
+    CATLASS_DEVICE uint32_t GetL1EndOffset() const
+    {
+        return l1EndOffset_;
+    }
+    uint32_t l1EndOffset_ = 0U;
 
     CATLASS_DEVICE
     ~BlockMmad()
@@ -293,6 +300,7 @@ private:
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1BEventList[i]);
             AscendC::SetFlag<AscendC::HardEvent::FIX_MTE2>(l1ScaleEventList[i]);
         }
+        l1EndOffset_ = l1ScaleOffset + SCALE_KTILE_SIZE * L1_STAGES;
         if (ptrSoftFlagBase_ != nullptr) {
             // 把初始化flag
             // 1 0 0 0 0 0 0 0
@@ -305,6 +313,7 @@ private:
             AscendC::GlobalTensor<int32_t> flagBase;
             flagBase.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(ptrSoftFlagBase_));
             AscendC::DataCopy(l1FTensor, flagBase, expertPerRank_ * FLAGSTRIDE);
+            l1EndOffset_ = l1FOffset + expertPerRank_ * FLAGSTRIDE * sizeof(int32_t);
         }
     }
 

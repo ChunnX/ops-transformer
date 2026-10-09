@@ -4,14 +4,14 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    √     |
-| <term>Atlas 训练系列产品</term>                              |    x     |
-| <term>Kirin X90 处理器系列产品</term> | √ |
-| <term>Kirin 9030 处理器系列产品</term> | √ |
+| <term>Ascend 950PR&950DT系列产品</term>                             |    √     |
+| <term>Atlas A3系列产品</term>     |    √     |
+| <term>Atlas A2系列产品</term> |    √     |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×     |
+| <term>Atlas推理系列产品</term>                             |    √     |
+| <term>Atlas训练系列产品</term>                              |    x     |
+| <term>Kirin X90处理器系列产品</term> | √ |
+| <term>Kirin 9030处理器系列产品</term> | √ |
 
 ## 功能说明
 
@@ -22,31 +22,31 @@
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
   $$
-  
+
   $$
   query\_q2 = query[..., query.shape[-1] // 2 :]
   $$
-  
+
   $$
   query\_rotate = torch.cat((-query\_q2, query\_q1), dim=-1)
   $$
-  
+
   $$
   key\_k1 = key[..., : key.shape[-1] // 2]
   $$
-  
+
   $$
   key\_k2 = key[..., key.shape[-1] // 2 :]
   $$
-  
+
   $$
   key\_rotate = torch.cat((-key\_k2, key\_k1), dim=-1)
   $$
-  
+
   $$
   q\_embed = (query * cos) + query\_rotate * sin
   $$
-  
+
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
@@ -56,7 +56,7 @@
   $$
   query\_q1 = query[..., : query.shape[-1] // 4]
   $$
-  
+
   $$
   query\_q2 = query[..., query.shape[-1] // 4 : query.shape[-1] // 2]
   $$
@@ -68,15 +68,15 @@
   $$
   query\_q4 = query[..., query.shape[-1] // 4 * 3 :]
   $$
-  
+
   $$
   query\_rotate = torch.cat((-query\_q2, query\_q1, -query\_q4, query\_q3), dim=-1)
   $$
-  
+
   $$
   key\_q1 = key[..., : key.shape[-1] // 4]
   $$
-  
+
   $$
   key\_q2 = key[..., key.shape[-1] // 4 : key.shape[-1] // 2]
   $$
@@ -88,15 +88,15 @@
   $$
   key\_q4 = key[..., key.shape[-1] // 4 * 3 :]
   $$
-  
+
   $$
   key\_rotate = torch.cat((-key\_q2, key\_q1, -key\_q4, key\_q3), dim=-1)
   $$
-  
+
   $$
   q\_embed = (query * cos) + query\_rotate * sin
   $$
-  
+
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
@@ -106,7 +106,7 @@
   $$
   query\_q1 = query[..., ::2].view(-1, 1)
   $$
-  
+
   $$
   query\_q2 = query[..., 1::2].view(-1, 1)
   $$
@@ -118,7 +118,7 @@
   $$
   key\_q1 = key[..., ::2].view(-1, 1)
   $$
-  
+
   $$
   key\_q2 = key[..., 1::2].view(-1, 1)
   $$
@@ -130,7 +130,7 @@
   $$
   q\_embed = (query * cos) + query\_rotate * sin
   $$
-  
+
   $$
   k\_embed = (key * cos) + key\_rotate * sin
   $$
@@ -146,13 +146,13 @@
 | layout     | 属性     | 表示输入张量的布局格式 | int64：1-BSND、2-SBND、3-BNSD、4-TND | - |
 | rotary_mode| 属性     | 公式中的旋转模式       | string："half"、"interleave"、"quarter"模式 | - |
 
-- <term>Atlas 推理系列产品</term>：不支持BFLOAT16
+- <term>Atlas推理系列产品</term>：不支持BFLOAT16
 
-- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
+- Kirin X90/Kirin 9030处理器系列产品: 不支持BFLOAT16。
 
 ## 约束说明
 
-- <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas推理系列产品</term>、<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
     - 输入张量query、key、cos、sin支持4维和3维的shape，layout支持1-BSND和4-TND，且4个输入shape的前2维（BSND格式）或者第一维（TND格式）和最后一维必须相等，cos和sin的shape倒数第2维（N维）必须等于1，输入shape最后一维必须等于128或者64。
     - 输入张量query、key、cos、sin的dtype必须相同。
     - layout为1时，输入queryRef的shape用（q_b, q_s, q_n, q_d）表示，keyRef shape用（q_b, q_s, k_n, q_d）表示，cos和sin shape用（q_b, q_s, 1, q_d）表示。其中，b表示batch_size，s表示seq_length，n表示head_num，d表示head_dim。layout为4时，输入queryRef的shape用（q_t, q_n, q_d）表示，keyRef shape用（q_t, k_n, q_d）表示，cos和sin shape用（q_t, 1, q_d）表示。其中，t表示b和s合轴，n表示head_num，d表示head_dim
@@ -165,8 +165,8 @@
       当计算出`ub_required`的大小超过当前AI处理器的UB空间总大小时，不支持使用该融合算子。
     - rotary_mode只支持"half"。
     - 不支持空tensor场景。
-  
-- <term>Ascend 950PR/Ascend 950DT</term>：
+
+- <term>Ascend 950PR&950DT系列产品</term>：
     - 输入张量query、key、cos、sin只支持4维的shape，对于任意layout，query与key除N维度外其他维度必须相同；cos与sin shape必须相同；cos与sin的B维度与query、key的B维度一致，或者等于1；cos和sin的N维度必须等于1；query、key、cos、sin的S,D维度必须相同，且D维度小于等于1024。
     - 输入张量query、key、cos、sin的dtype必须相同。
     - rotary_mode为"half"和"interleave"时，输入shape最后一维必须被2整除；rotary_mode为"quarter"时，输入shape最后一维必须被4整除。
@@ -177,3 +177,4 @@
 |--------------|------------------------------------------------------------------------|----------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_apply_rotary_pos_emb.cpp](examples/test_aclnn_apply_rotary_pos_emb.cpp) | 通过[aclnnApplyRotaryPosEmb](./docs/aclnnApplyRotaryPosEmb.md)接口方式调用ApplyRotaryPosEmb算子。    |
 | aclnn调用 | [test_aclnn_apply_rotary_pos_emb_v2.cpp](examples/test_aclnn_apply_rotary_pos_emb_v2.cpp) | 通过[aclnnApplyRotaryPosEmbV2](./docs/aclnnApplyRotaryPosEmbV2.md)接口方式调用ApplyRotaryPosEmb算子。    |
+| PyTorch API | - | 通过[apply_rotary_pos_emb](../../posembedding/apply_rotary_pos_emb/docs/torchapi_apply_rotary_pos_emb.md)接口调用apply_rotary_pos_emb算子。 |

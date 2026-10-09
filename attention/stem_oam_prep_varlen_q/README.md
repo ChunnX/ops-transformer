@@ -4,12 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Ascend 950PR&950DT系列产品</term>|      √     |
+|<term>Atlas A3系列产品</term>|      ×     |
+|<term>Atlas A2系列产品</term>|      ×     |
+|<term>Atlas 200I/500 A2推理产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -134,4 +134,4 @@
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn接口 | [test_aclnn_stem_oam_prep_varlen_q](./examples/test_aclnn_stem_oam_prep_varlen_q.cpp) | 通过[aclnnStemOamPrepVarlenQ](./docs/aclnnStemOamPrepVarlenQ.md)调用StemOamPrepVarlenQ算子 |
 | 图模式 | [test_geir_stem_oam_prep_varlen_q](./examples/test_geir_stem_oam_prep_varlen_q.cpp) | 通过[算子IR](./op_graph/stem_oam_prep_varlen_q_proto.h)调用StemOamPrepVarlenQ算子 |
-| torch接口 | [test_torch_stem_oam_prep_varlen_q](./examples/test_torch_stem_oam_prep_varlen_q.py) | 通过`torch.ops.cann_ops_transformer.npu_stem_oam_prep_varlen_q`调用StemOamPrepVarlenQ算子 |
+| PyTorch API | - | 通过[stem_oam_prep_varlen_q](../../attention/stem_oam_prep_varlen_q/docs/torchapi_stem_oam_prep_varlen_q.md)接口调用stem_oam_prep_varlen_q算子。 |

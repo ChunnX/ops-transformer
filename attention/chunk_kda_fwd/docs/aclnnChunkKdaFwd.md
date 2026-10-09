@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -27,7 +27,7 @@
 
 - 计算公式：
 
-  将每条序列按$C=chunkSize$划分为$M$个chunk。以第$c$个chunk为例，$i$、$j$表示chunk内token下标，$l_c$表示该chunk最后一个有效token下标。以下公式省略batch和head下标；GQA场景中，每个Value head使用对应的Query/Key head。
+  将每条序列按$C=chunkSize$划分为$M$个chunk。以第$c$个chunk为例，$i$、$j$表示chunk内token下标，$l_c$表示该chunk最后一个有效token下标。以下公式省略batch和head下标。当$HV>H$时为分组值注意力（Grouped Value Attention，GVA）场景：每组$HV/H$个连续Value head共享一个Query/Key head；head编号从0开始时，编号为$h_v$的Value head对应编号为$\lfloor h_v/(HV/H)\rfloor$的Query/Key head。
 
   令$x_{c,i,d}=g_{c,i,d}+dtBias_d$，未传入`dtBiasOptional`时令$dtBias_d=0$。激活后的gate为：
 

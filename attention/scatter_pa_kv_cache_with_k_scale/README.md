@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                 |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term> |      ×     |
-| <term>Atlas 推理系列产品</term> |      ×     |
-| <term>Atlas 训练系列产品</term> |      ×     |
+| <term>Ascend 950PR&950DT系列产品</term>                 |    √     |
+| <term>Atlas A3系列产品</term> |    ×     |
+| <term>Atlas A2系列产品</term> |    ×     |
+| <term>Atlas 200I/500 A2推理产品</term> |      ×     |
+| <term>Atlas推理系列产品</term> |      ×     |
+| <term>Atlas训练系列产品</term> |      ×     |
 
 ## 功能说明
 
@@ -49,7 +49,7 @@
     - block_idx：slot_mapping映射到的block索引
     - block_offset：block内的偏移量
 
-- <term>Ascend 950PR/Ascend 950DT</term>：仅支持场景一。
+- <term>Ascend 950PR&950DT系列产品</term>：仅支持场景一。
 
 ## 参数说明
 
@@ -143,3 +143,4 @@
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn接口 | [test_aclnn_ScatterPaKvCacheWithKScale](./examples/test_aclnn_scatter_pa_kv_cache_with_k_scale.cpp) | 通过[aclnnScatterPaKvCacheWithKScale](./docs/aclnnScatterPaKvCacheWithKScale.md)调用ScatterPaKvCacheWithKScale算子 |
 | 图模式 | [test_geir_ScatterPaKvCacheWithKScale](./examples/test_geir_scatter_pa_kv_cache_with_k_scale.cpp) | 通过[算子IR](./op_graph/scatter_pa_kv_cache_with_k_scale_proto.h)调用ScatterPaKvCacheWithKScale算子 |
+| PyTorch API | - | 通过[scatter_pa_kv_cache_with_k_scale](../../attention/scatter_pa_kv_cache_with_k_scale/docs/torchapi_scatter_pa_kv_cache_with_k_scale.md)接口调用scatter_pa_kv_cache_with_k_scale算子。 |

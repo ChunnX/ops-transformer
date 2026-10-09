@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持
+- <term>Ascend 950PR&950DT系列产品</term>：不支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -216,7 +216,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>输入</td>
       <td>与输入首次做矩阵乘的降维矩阵。</td>
       <td>-</td>
-      <td>INT8、FLOAT16、BFLOAT16</td>
+      <td>INT8、BFLOAT16</td>
       <td>NZ</td>
       <td>[qLoraDim + keyTotalDim,hiddenSize]</td>
       <td>-</td>
@@ -286,7 +286,7 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>输入</td>
       <td>权重矩阵。</td>
       <td>-</td>
-      <td>INT8、FLOAT16、BFLOAT16</td>
+      <td>INT8、BFLOAT16</td>
       <td>NZ</td>
       <td>[headNum * (qNoRopeDim + qRopeDim),qLoraDim]</td>
       <td>-</td>
@@ -359,12 +359,13 @@ aclnnStatus aclnnMlaPreprocessV2(
         <li>cacheMode为0：shape为[blockNum,blockSize,1,576]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
         <li>cacheMode为1：shape为[blockNum,blockSize,1,512]，tensor的shape为拆分情况，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
         <li>cacheMode为2：shape为[blockNum,16,blockSize,32]，dtype为int8，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
-        <li>cacheMode为3：shape为[blockNum,32,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为3：shape为[blockNum,32,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
+        <li>仅支持首轴非连续；除首轴外的其余轴必须连续</li></ul>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
       <td>-</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>kvCacheRope</td>
@@ -373,12 +374,13 @@ aclnnStatus aclnnMlaPreprocessV2(
       <td>可选参数，支出传入空指针，输入格式随cacheMode变化：<ul>
         <li>cacheMode为0：不传入。</li>
         <li>cacheMode为1：shape为[blockNum,blockSize,1,64]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/data_format.md">数据格式</a>为NZ。</li>
+        <li>仅支持首轴非连续；除首轴外的其余轴必须连续</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
       <td>-</td>
-      <td>-</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>slotMapping</td>
@@ -1262,6 +1264,11 @@ int main() {
   aclDestroyTensor(slotmapping);
   aclDestroyTensor(ctkvScale);
   aclDestroyTensor(qNopeScale);
+  aclDestroyTensor(qOut);
+  aclDestroyTensor(kvCacheOut);
+  aclDestroyTensor(qRopeOut);
+  aclDestroyTensor(krCacheOut);
+  aclDestroyTensor(qDownOut);
 
   // 7. 释放device 资源
   aclrtFree(inputDeviceAddr);
@@ -1288,6 +1295,11 @@ int main() {
   aclrtFree(slotmappingDeviceAddr);
   aclrtFree(ctkvScaleDeviceAddr);
   aclrtFree(qNopeScaleDeviceAddr);
+  aclrtFree(qOutDeviceAddr);
+  aclrtFree(kvCacheOutDeviceAddr);
+  aclrtFree(qRopeOutDeviceAddr);
+  aclrtFree(krCacheOutDeviceAddr);
+  aclrtFree(qDownOutDeviceAddr);
 
   // 8. 释放host 资源
   aclrtFree(inputHostAddr);
@@ -1314,6 +1326,11 @@ int main() {
   aclrtFree(slotmappingHostAddr);
   aclrtFree(ctkvScaleHostAddr);
   aclrtFree(qNopeScaleHostAddr);
+  aclrtFree(qOutHostAddr);
+  aclrtFree(kvCacheOutHostAddr);
+  aclrtFree(qRopeOutHostAddr);
+  aclrtFree(krCacheOutHostAddr);
+  aclrtFree(qDownOutHostAddr);
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }

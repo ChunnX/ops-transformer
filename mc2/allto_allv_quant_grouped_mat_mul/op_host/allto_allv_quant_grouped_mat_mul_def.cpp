@@ -130,8 +130,8 @@ public:
         this->Attr("mm_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
 
-        OpAICoreConfig aicore_config_950;
-        aicore_config_950.DynamicCompileStaticFlag(true)
+        OpAICoreConfig aicore_config_a5;
+        aicore_config_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -141,7 +141,7 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_false")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "allto_allv_quant_grouped_mat_mul_apt");
-        this->AICore().AddConfig("ascend950", aicore_config_950);
+        this->AICore().AddConfig("ascend950", aicore_config_a5);
         this->MC2().HcclGroup({"group"});
     }
 };

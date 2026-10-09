@@ -29,23 +29,22 @@ CutResult MatmulReduceScatterTilingFuncA5::GetCutResult(MatmulReduceScatterTilin
                                                         mc2tiling::TilingArgs &args)
 {
     bool commDeterministic = false;
-    MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, SocVersion::SOC950,
-                                          commDeterministic);
+    MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER, Ops::Base::DAV_3510,
+                                          commDeterministic, false);
     scatterTilingHccl.GetTiling();
 
     return scatterTilingHccl.tilingM_.cutRes;
 }
-ge::graphStatus
-MatmulReduceScatterTilingFuncA5::CheckValidRank(const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK,
-                                                MatmulReduceScatterTilingData *tilingData, gert::TilingContext *context,
-                                                uint32_t rankSize)
+ge::graphStatus MatmulReduceScatterTilingFuncA5::CheckValidRank(
+    const std::map<uint32_t, std::vector<uint32_t>> VALID_RANK, MatmulReduceScatterTilingData *tilingData,
+    gert::TilingContext *context, uint32_t rankSize)
 {
     auto it = std::find(VALID_RANK.at(0).begin(), VALID_RANK.at(0).end(), rankSize);
-    OP_TILING_CHECK(it == VALID_RANK.at(0).end(),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size",
-                                                          std::to_string(rankSize).c_str(),
-                                                          "The value of world_size is illegal"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        it == VALID_RANK.at(0).end(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "world_size", std::to_string(rankSize).c_str(),
+                                              "The value of world_size is illegal"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

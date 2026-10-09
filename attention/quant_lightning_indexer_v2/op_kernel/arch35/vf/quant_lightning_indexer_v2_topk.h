@@ -19,6 +19,8 @@
 #include "vf_topk.h"
 #include "vf_topk_16_gather_quant_v2.h"
 
+#include "../../../../lightning_indexer_v2/op_kernel/arch35/common/vf/lightning_indexer_v2_topk_base.h"
+
 namespace topk {
 template <typename T>
 class LITopk {
@@ -52,12 +54,12 @@ public:
         tmpIdxLocal = sharedTmpBuffer[0];
         tmpValueLocal = tmpIdxLocal[topK];
         histogramsLocal = tmpValueLocal[topK];
-        idx0Local = histogramsLocal[256];
-        idx1Local = idx0Local[256];
-        idx2Local = idx1Local[256];
-        idx3Local = idx2Local[256];
-        nkValueLocal = idx3Local[256];
-        outputValueLocal = nkValueLocal[64];
+        idx0Local = histogramsLocal[256];    // 256：本地内存对齐基线
+        idx1Local = idx0Local[256];          // 256：同上
+        idx2Local = idx1Local[256];          // 256：同上
+        idx3Local = idx2Local[256];          // 256：同上
+        nkValueLocal = idx3Local[256];       // 256：同上
+        outputValueLocal = nkValueLocal[64]; // 64：单核/单线程输出元素容量（G维度切分阈值）
     }
 
     __aicore__ inline void operator()(LocalTensor<uint32_t> &outputIdxLocal, LocalTensor<uint32_t> &inputLocal,
@@ -96,13 +98,7 @@ class LITopk<uint16_t> {
 public:
     __aicore__ inline uint32_t GetSharedTmpBufferSize()
     {
-        // 2 * QLIV2Common::Align(topK, (uint32_t)256): 两块hisIndexLocal;
-        // 3 * 256: histogramsLocal idxHighLocal idxLowLocal; 64: nkValueLocal
-        uint64_t bufferSize1 = (2 * QLIV2Common::Align(topK, (uint32_t)256) + 3 * 256 + 64) * sizeof(uint32_t);
-        // QLIV2Common::Align(topK, (uint32_t)256) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (QLIV2Common::Align(topK, (uint32_t)256) + trunkLen) * sizeof(uint16_t);
-        uint64_t reuseBufferSize = QLIV2Common::Align(topK, (uint32_t)256) * sizeof(uint32_t);
-        return bufferSize1 + bufferSize2 - reuseBufferSize;
+        return liV2TopkCommon::GetGatherTmpBufferSize<uint16_t, liV2TopkCommon::B16_RADIX_BUFFER_NUM>(topK, trunkLen);
     }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
@@ -117,11 +113,11 @@ public:
         LocalTensor<uint32_t> hisIndexLocal2 = sharedTmpBuffer[0];
         hisIndexLocal[0] = hisIndexLocal1;
         hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[QLIV2Common::Align(topK, (uint32_t)256)];
-        idxHighLocal = histogramsLocal[256];
-        idxLowLocal = idxHighLocal[256];
-        nkValueLocal = idxLowLocal[256];
-        LocalTensor<uint32_t> tmpIndexLocalTmp = nkValueLocal[64];
+        histogramsLocal = hisIndexLocal2[QLIV2Common::Align(topK, (uint32_t)256)]; // 256：本地内存对齐基线
+        idxHighLocal = histogramsLocal[256];                                       // 256：同上
+        idxLowLocal = idxHighLocal[256];                                           // 256：同上
+        nkValueLocal = idxLowLocal[256];                                           // 256：同上
+        LocalTensor<uint32_t> tmpIndexLocalTmp = nkValueLocal[64]; // 64：单核/单线程输出元素容量（G维度切分阈值）
         tmpIndexLocal = tmpIndexLocalTmp.template ReinterpretCast<uint16_t>();
     }
 
@@ -132,11 +128,11 @@ public:
         // true: 开启返回hisValueLocal
         if (s2LoopNum == 1) {
             if (isNeedLD || returnValueFlag) {
-                topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                              idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
+                topkb16gather::QLiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                 idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
             } else {
-                topkb16gather::LiTopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
-                                               idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
+                topkb16gather::QLiV2TopKVF<false>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal,
+                                                  idxHighLocal, idxLowLocal, nkValueLocal, topK, s2SeqLen);
             }
             PipeBarrier<PIPE_V>();
             Cast(indicesOutLocal, tmpIndexLocal, RoundMode::CAST_NONE, topK);
@@ -146,46 +142,48 @@ public:
             return;
         }
         if (loopIdx == 0 && !isNeedLD) {
-            topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
-                                          idxLowLocal, nkValueLocal, topK, s2SeqLen);
+            topkb16gather::QLiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
+                                             idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK);
+            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK); // 2:pingpong
         } else if (loopIdx != 0 && !isNeedLD) {
-            topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
-                                          idxLowLocal, nkValueLocal, topK, s2SeqLen);
+            topkb16gather::QLiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
+                                             idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            uint32_t curProcess = topK < trunkLen ? loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256) :
-                                                    (loopIdx - 1) * trunkLen;
-            topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal,
-                                          hisIndexLocal[loopIdx % 2], topK, curProcess, s2SeqLen);
+            uint32_t curProcess = liV2TopkCommon::GetGatherLoopOffset(topK, trunkLen, loopIdx);
+            // 2:pingpong
+            topkb16gather::QLiV2TopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
+                                             tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK, curProcess,
+                                             s2SeqLen); // 2:pingpong
             if (loopIdx == s2LoopNum - 1) {
                 PipeBarrier<PIPE_V>();
-                if ((loopIdx + 1) % 2 == 1) { // 2:pingpong
-                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                                      QLIV2Common::Align(topK, (uint32_t)256));
+                if ((loopIdx + 1) % 2 == 1) {                                            // 2:pingpong
+                    AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // 2：同上
+                                      QLIV2Common::Align(topK, (uint32_t)256));          // 256：对齐处理大小
                 }
             }
         }
 
         if (loopIdx == 0 && isNeedLD) {
-            topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
-                                          idxLowLocal, nkValueLocal, topK, s2SeqLen);
+            topkb16gather::QLiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
+                                             idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK);
+            Cast(hisIndexLocal[(loopIdx + 1) % 2], tmpIndexLocal, RoundMode::CAST_NONE, topK); // 2:pingpong
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                              QLIV2Common::Align(topK, (uint32_t)256));
+            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // 2:pingpong
+                              QLIV2Common::Align(topK, (uint32_t)256));          // 256：拷贝长度对齐大小
         } else if (loopIdx != 0 && isNeedLD) {
-            topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
-                                          idxLowLocal, nkValueLocal, topK, s2SeqLen);
+            topkb16gather::QLiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
+                                             idxLowLocal, nkValueLocal, topK, s2SeqLen);
             PipeBarrier<PIPE_V>();
-            uint32_t curProcess = topK < trunkLen ? loopIdx * trunkLen - QLIV2Common::Align(topK, (uint32_t)256) :
-                                                    (loopIdx - 1) * trunkLen;
-            topkb16gather::LiTopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal, tmpIndexLocal,
-                                          hisIndexLocal[loopIdx % 2], topK, curProcess, s2SeqLen);
+            uint32_t curProcess = liV2TopkCommon::GetGatherLoopOffset(topK, trunkLen, loopIdx);
+            // 2:pingpong
+            topkb16gather::QLiV2TopKGatherVF(hisIndexLocal[(loopIdx + 1) % 2], hisValueLocal, mrgValueLocal,
+                                             tmpIndexLocal, hisIndexLocal[loopIdx % 2], topK, curProcess,
+                                             s2SeqLen); // 2:pingpong
             PipeBarrier<PIPE_V>();
-            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2],
-                              QLIV2Common::Align(topK, (uint32_t)256));
+            AscendC::DataCopy(indicesOutLocal, hisIndexLocal[(loopIdx + 1) % 2], // 2:pingpong
+                              QLIV2Common::Align(topK, (uint32_t)256));          // 256：拷贝长度对齐大小
         }
         if (outputIdxOffset != 0) {
             topkb16gather::IndicesAddOffset(indicesOutLocal, outputIdxOffset, topK);
@@ -195,10 +193,10 @@ public:
                                   LocalTensor<uint32_t> &indicesOutLocal, LocalTensor<uint16_t> &hisValueLocal,
                                   uint32_t s2SeqLen, uint32_t loopIdx, uint32_t s2LoopNum)
     {
-        topkb16gather::LiTopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
-                                      idxLowLocal, nkValueLocal, topK, s2SeqLen);
+        topkb16gather::QLiV2TopKVF<true>(tmpIndexLocal, hisValueLocal, mrgValueLocal, histogramsLocal, idxHighLocal,
+                                         idxLowLocal, nkValueLocal, topK, s2SeqLen);
         PipeBarrier<PIPE_V>();
-        topkb16gather::LiTopKLDGatherVF(indicesOutLocal, tmpIndexLocal, indexLocal, topK);
+        topkb16gather::QLiV2TopKLDGatherVF(indicesOutLocal, tmpIndexLocal, indexLocal, topK);
     }
 
 private:

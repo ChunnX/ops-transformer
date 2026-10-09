@@ -17,11 +17,14 @@
 #define QUANT_FLASH_ATTN_TILING_DATA_H_
 
 namespace optiling {
-constexpr uint32_t QFA_AIC_CORE_NUM = 36;
-constexpr uint32_t QFA_AIV_CORE_NUM = 72;
+// AICPU metadata format: 16 fields per core (FA and FD both)
+constexpr uint32_t METADATA_STRIDE = 16U;
+static constexpr uint32_t METADATA_HEADER_OFFSET = METADATA_STRIDE * sizeof(uint32_t);
 
-constexpr uint32_t QFA_METADATA_SIZE = 16;
-constexpr uint32_t QFA_FD_METADATA_SIZE = 16;
+// Metadata Head Index Definitions (0-based, matching AICPU quant_flash_attn_metadata.h)
+constexpr uint32_t METADATA_HEADER_SECTION_NUM_INDEX = 0;
+constexpr uint32_t METADATA_HEADER_AIC_NUM_INDEX = 4;
+constexpr uint32_t METADATA_HEADER_AIV_NUM_INDEX = 5;
 
 constexpr uint32_t QFA_BN2_START_INDEX = 0;
 constexpr uint32_t QFA_M_START_INDEX = 1;
@@ -77,7 +80,6 @@ struct QuantFlashAttnBaseParams {
     float scaleValue;
     uint8_t iscuSeqLengthsNull;
     uint8_t iscuSeqLengthsKVNull;
-    uint8_t isKvContinuous;
     uint8_t isSoftMaxLseEnable;
     uint32_t coreNum;
     uint32_t outputLayout;
@@ -109,12 +111,20 @@ struct QuantFlashAttnWorkspaceParams {
     uint32_t logSumExpSize;
 };
 
+struct QuantFlashAttnVTailParams {
+    uint8_t hasVTail = 0;           // V尾块(高精窗口)功能开关, v_tail传入时为1
+    uint32_t seqUsedKvTailSize = 0; // seqused_v_tail 的 batch 数, 0 表示未传
+    uint32_t tailMaxBlockNum = 0;   // block_table_tail 列数 = ceil(64/blockSize), 非PA场景为0
+    StridesParams vTailStrides;
+};
+
 class QuantFlashAttnQuantTilingArch35 {
 public:
     QuantFlashAttnBaseParams quantFlashAttnBaseParams;
     QuantFlashAttnAttenMaskParams quantFlashAttnAttenMaskParams;
     QuantFlashAttnPageAttentionParams quantFlashAttnPageAttentionParams;
     QuantFlashAttnWorkspaceParams quantFlashAttnWorkspaceParams;
+    QuantFlashAttnVTailParams quantFlashAttnVTailParams;
 };
 
 class QuantFlashAttnTilingData {

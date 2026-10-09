@@ -26,7 +26,7 @@
 #include "arch35/adaptive_sliding_window_tiling.h"
 #include "mc2_log.h"
 #include "platform/platform_infos_def.h"
-#include "../../op_kernel/quant_batch_matmul_v3_tiling_key.h"
+#include "../../op_kernel/mc2_quant_batch_matmul_v3_tiling_key.h"
 
 using AscendC::BLOCK_CUBE;   // uint32_t 16
 using AscendC::ONE_BLK_SIZE; // uint32_t 32
@@ -122,7 +122,10 @@ void Mc2QuantBatchMatmulV3Tiling::Reset()
     }
 }
 
-ge::graphStatus Mc2QuantBatchMatmulV3Tiling::GetPlatformInfo() { return ge::GRAPH_SUCCESS; }
+ge::graphStatus Mc2QuantBatchMatmulV3Tiling::GetPlatformInfo()
+{
+    return ge::GRAPH_SUCCESS;
+}
 
 ge::graphStatus Mc2QuantBatchMatmulV3Tiling::GetShapeAttrsInfo()
 {
@@ -902,7 +905,10 @@ uint64_t Mc2QuantBatchMatmulV3Tiling::GetTilingKey(bool isBasicTiling) const
     return GET_TPL_TILING_KEY(trans, kernelTemplateType, static_cast<uint64_t>(inputParams_.isPertoken), optionAttrs);
 }
 
-uint64_t Mc2QuantBatchMatmulV3Tiling::GetTilingKey() const { return GetTilingKey(false); }
+uint64_t Mc2QuantBatchMatmulV3Tiling::GetTilingKey() const
+{
+    return GetTilingKey(false);
+}
 
 ge::graphStatus Mc2QuantBatchMatmulV3Tiling::GetWorkspaceSize()
 {

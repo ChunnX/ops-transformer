@@ -115,10 +115,15 @@ bool GroupedQmmTiling::IsWeightNzMultiTensorLayout() const
            inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ && IsMultiTensorWeight();
 }
 
-uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index) const
+uint16_t GroupedQmmTiling::GetTensorListSize(uint32_t index, uint16_t maxCount) const
 {
     uint16_t count = 0U;
-    while (count < GroupedMatmul::MAX_TENSOR_CONT && context_->GetDynamicInputShape(index, count) != nullptr) {
+    while (count < maxCount && context_->GetDynamicInputShape(index, count) != nullptr) {
+        ++count;
+    }
+    // Probe one extra tensor only for the extended limit to reject oversized lists.
+    if (maxCount == GMM_MAX_GROUP_LIST_SIZE && count == maxCount &&
+        context_->GetDynamicInputShape(index, count) != nullptr) {
         ++count;
     }
     return count;
@@ -133,8 +138,13 @@ bool GroupedQmmTiling::CheckWeightTensorListForWeightNz() const
     if (!IsWeightNzMultiTensorLayout()) {
         return true;
     }
-    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
-    const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX);
+    OP_CHECK_IF(!IsMicroScaling(),
+                OP_LOGE(inputParams_.opName,
+                        "WeightNz single-multi-single only supports MX A8W8 or MX A4W4, including a single group."),
+                return false);
+    const uint16_t maxCount = GMM_MAX_GROUP_LIST_SIZE;
+    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX, maxCount);
+    const uint16_t scaleTensorNum = GetTensorListSize(SCALE_INDEX, maxCount);
     OP_CHECK_IF(weightTensorNum == 0,
                 OP_LOGE_FOR_INVALID_LISTSIZE(inputParams_.opType, "weight", "0", "positive integer"), return false);
     OP_CHECK_IF(weightTensorNum != inputParams_.groupNum,
@@ -250,13 +260,12 @@ the dtype of output is FLOAT16, actual is %s.",
                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
                         return false);
         } else if (inputParams_.cDtype == ge::DT_INT8 || inputParams_.cDtype == ge::DT_INT32) {
-            OP_CHECK_IF(
-                inputParams_.biasDtype != ge::DT_INT32,
-                OP_LOGE(inputParams_.opName,
-                        "The dtype of bias should be INT32 when the dtype of x is INT8 and the dtype of output \
-is INT8 or INT32, actual is %s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
-                return false);
+            OP_CHECK_IF(inputParams_.biasDtype != ge::DT_INT32,
+                        OP_LOGE(inputParams_.opName,
+                                "The dtype of bias should be INT32 when the dtype of x is INT8 and the dtype of output "
+                                "is INT8 or INT32, actual is %s.",
+                                ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
+                        return false);
         } else {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                 inputParams_.opType, "y", ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype),
@@ -559,12 +568,13 @@ actual is %zu",
         inputParams_.transB ? wScaleShape.GetDim(wScaleDimNum - LAST_SECOND_DIM_INDEX) : wScaleShape.GetDim(0));
     auto expectedKDimValue = inputParams_.kSize / MXFP_BASEK_FACTOR + inputParams_.groupNum;
     if (xScaleKDim != 1 && xScaleMDim != 1) {
-        OP_CHECK_IF(
-            !inputParams_.transA || inputParams_.transB,
-            OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected transpose attrs of x and \
-    weight are true and false, but the actual transpose attrs of x and weight are %d and %d.",
-                    inputParams_.transA, inputParams_.transB),
-            return false);
+        OP_CHECK_IF(!inputParams_.transA || inputParams_.transB,
+                    OP_LOGE(inputParams_.opName,
+                            "When split k in mx quant mode, the expected transpose attrs of x and "
+                            "    weight are true and false, but the actual transpose attrs of x and weight "
+                            "are %d and %d.",
+                            inputParams_.transA, inputParams_.transB),
+                    return false);
         OP_CHECK_IF(
             xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue ||
                 xScaleMDim != inputParams_.mSize,
@@ -877,7 +887,9 @@ bool GroupedQmmTiling::CheckMultiWeightNzInputs(const gert::StorageShape *xScale
         return true;
     }
 
-    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX);
+    const uint16_t maxCount =
+        IsWeightNzMultiTensorLayout() && IsMicroScaling() ? GMM_MAX_GROUP_LIST_SIZE : GroupedMatmul::MAX_TENSOR_CONT;
+    const uint16_t weightTensorNum = GetTensorListSize(WEIGHT_INDEX, maxCount);
     const auto *firstWeightShape = context_->GetDynamicInputShape(WEIGHT_INDEX, FIRST_TENSOR_INDEX);
     OP_CHECK_IF(firstWeightShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "In WeightNz single-multi-single mode, current weight[0] is "
@@ -1297,23 +1309,30 @@ ge::graphStatus GroupedQmmTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
+    OP_CHECK_IF(FillGmmArray(tilingData_.gmmArray) != ge::GRAPH_SUCCESS,
+                OP_LOGE(inputParams_.opName, "FillGmmArray failed."), return ge::GRAPH_FAILED);
+    PrintQuantParams();
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GroupedQmmTiling::FillGmmArray(GroupedMatmulTilingData::GMMArray &gmmArray)
+{
     OP_CHECK_IF(!SetMKNList(), OP_LOGE(inputParams_.opName, "SetMKNList failed."), return ge::GRAPH_FAILED);
-    errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
+    errno_t retM = memcpy_s(gmmArray.mList, sizeof(gmmArray.mList), mList_, sizeof(mList_));
     if (retM != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", retM);
         return ge::GRAPH_FAILED;
     }
-    errno_t retK = memcpy_s(tilingData_.gmmArray.kList, sizeof(tilingData_.gmmArray.kList), kList_, sizeof(kList_));
+    errno_t retK = memcpy_s(gmmArray.kList, sizeof(gmmArray.kList), kList_, sizeof(kList_));
     if (retK != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", retK);
         return ge::GRAPH_FAILED;
     }
-    errno_t retN = memcpy_s(tilingData_.gmmArray.nList, sizeof(tilingData_.gmmArray.nList), nList_, sizeof(nList_));
+    errno_t retN = memcpy_s(gmmArray.nList, sizeof(gmmArray.nList), nList_, sizeof(nList_));
     if (retN != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", retN);
         return ge::GRAPH_FAILED;
     }
-    PrintQuantParams();
     return ge::GRAPH_SUCCESS;
 }
 

@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file rope_quant_kvcache_proto.cpp
- * \brief
+ * \file rope_quant_kvcache_proto.h
+ * \brief RopeQuantKvcache operator prototype definition
  */
 #ifndef OPS_OP_PROTO_INC_REPO_QUANT_KVCACHE_H_
 #define OPS_OP_PROTO_INC_REPO_QUANT_KVCACHE_H_
@@ -26,6 +26,7 @@ namespace ge {
 * @li cos: A 4D Tensor of type float16 with shape (B, S, 1, D), shape must same with k, format support ND
 * @li sin: A 4D Tensor of type float16 with shape (B, S, 1, D), shape must same with k, format support ND
 * @li quant_scale: A 1D Tensor of type float with shape (D), shape D must same with k, format support ND
+* @li quant_offset: A 1D Tensor of type int32 with shape (D), shape D must same with k, format support ND
 * @li k_cache: A 4D Tensor of type int8 with shape (B, S, Nkv, D), shape B/N/D must same with k,
 * S must large than k, format support ND
 * @li v_cache: A 4D Tensor of type int8 with shape (B, S, Nkv, D), shape B/N/D must same with v,
@@ -47,6 +48,8 @@ namespace ge {
 * format support ND
 * It is a custom operator.
 */
+#ifndef OPS_PROTO_DEF_ROPEQUANTKVCACHE
+#define OPS_PROTO_DEF_ROPEQUANTKVCACHE
 REG_OP(RopeQuantKvcache)
     .INPUT(qkv, TensorType({DT_FLOAT16}))
     .INPUT(cos, TensorType({DT_FLOAT16}))
@@ -65,6 +68,7 @@ REG_OP(RopeQuantKvcache)
     .ATTR(layout, String, "BSND")
     .ATTR(kv_output, Bool, false)
     .OP_END_FACTORY_REG(RopeQuantKvcache)
+#endif // OPS_PROTO_DEF_ROPEQUANTKVCACHE
 } // namespace ge
 
 #endif // OPS_OP_PROTO_INC_REPO_QUANT_KVCACHE_H_

@@ -21,33 +21,11 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
-#if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
-#include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
-#else
-#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
-#endif
-
-#if __has_include("../../common/op_kernel/arch35/vf/vf_flashupdate_new.h")
-#include "../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
-#else
-#include "../../common/arch35/vf/vf_flashupdate_new.h"
-#endif
-
-#if __has_include("../../common/op_kernel/buffers_policy.h")
-#include "../../common/op_kernel/buffers_policy.h"
-#else
-#include "../../common/buffers_policy.h"
-#endif
-#if __has_include("../../common/op_kernel/attn_buffer_manager.h")
-#include "../../common/op_kernel/attn_buffer_manager.h"
-#else
-#include "../../common/attn_buffer_manager.h"
-#endif
-#if __has_include("../../common/op_kernel/attn_buffer.h")
-#include "../../common/op_kernel/attn_buffer.h"
-#else
-#include "../../common/attn_buffer.h"
-#endif
+#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#include "../../../common/op_kernel/buffers_policy.h"
+#include "../../../common/op_kernel/attn_buffer_manager.h"
+#include "../../../common/op_kernel/attn_buffer.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -68,88 +46,91 @@ public:
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1;
     static constexpr uint32_t dVTemplateType = 512;
     static constexpr uint32_t sfaDTemplateAlign64 = Align64Func(dVTemplateType);
-    static constexpr uint32_t dVTemplateTypeInput = 576;
+    static constexpr uint32_t dVTemplateTypeInput = HAS_ROPE ? 576 : 512;
     static constexpr float R0 = 1.0f;
     static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
 
     // ==================== Functions ======================
     __aicore__ inline SFAVectorService(){};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const SparseFlashAttentionTilingDataMla *__restrict tiling,
-                                        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
-                                        __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths)
+    __aicore__ inline void InitVecBlock(TPipe* pipe, const SparseFlashAttentionTilingDataMla* __restrict tiling,
+                                        CVSharedParams& sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                        __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
+                                        int64_t dSizeRope)
     {
         if ASCEND_IS_AIV {
             tPipe = pipe;
             tilingData = tiling;
             if (actualSeqLengthsQ != nullptr) {
-                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ);
+                cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsQ);
             }
             if (actualSeqLengths != nullptr) {
-                actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths);
+                actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengths);
             }
-            this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx);
+            this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx, dSizeRope);
             this->GetExtremeValue(this->negativeFloatScalar);
         }
     }
 
     // 初始化LocalTensor
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
+    __aicore__ inline void InitLocalBuffer(TPipe* pipe, ConstInfo& constInfo);
+    __aicore__ inline void UninitLocalBuffer();
     // 初始化attentionOutGM
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
-                                       __gm__ uint8_t *softmaxSum, ConstInfo &constInfo);
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *keyRope,
-                                            __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable,
-                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-                                            __gm__ uint8_t *sinks);
-    __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                       const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos);
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void CleanOutput(__gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxMax,
+                                       __gm__ uint8_t* softmaxSum, ConstInfo& constInfo);
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* keyRope,
+                                            __gm__ uint8_t* sparseIndices, __gm__ uint8_t* blockTable,
+                                            __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum,
+                                            __gm__ uint8_t* sinks);
+    __aicore__ inline void InitOutputSingleCore(ConstInfo& constInfo);
+    __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
+                                       Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
+                                       const RunInfo& runInfo, ConstInfo& constInfo, int32_t startPos);
+    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputBuf,
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& bmm1ResBuf,
+                                       RunInfo& runInfo, ConstInfo& constInfo);
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo);
 
 private:
-    __aicore__ inline void ProcessVec1SoftmaxDispatchSFA(LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes,
-                                                         LocalTensor<float> &sumUb, LocalTensor<float> &maxUb,
-                                                         LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo,
-                                                         ConstInfo &constInfo);
-    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
-                                           const RunInfo &runInfo, ConstInfo &constInfo, int32_t startPos);
-    __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void GetRealCmpS2Idx(int64_t &token0Idx, int64_t &token1Idx, int64_t s2IdxInBase,
-                                           const RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec1SoftmaxDispatchSFA(LocalTensor<Q_T>& stage1CastTensor, LocalTensor<T>& mmRes,
+                                                         LocalTensor<float>& sumUb, LocalTensor<float>& maxUb,
+                                                         LocalTensor<T>& apiTmpBuffer, RunInfo& runInfo,
+                                                         ConstInfo& constInfo);
+    __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
+                                           Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
+                                           const RunInfo& runInfo, ConstInfo& constInfo, int32_t startPos);
+    __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void GetRealCmpS2Idx(int64_t& token0Idx, int64_t& token1Idx, int64_t s2IdxInBase,
+                                           const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline void CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb, int64_t v0Loop, int64_t dealRow,
-                                             int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo);
+                                             int64_t s2StartIdx, const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t token0Idx,
-                                              int64_t token1Idx, const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
+                                              int64_t token1Idx, const RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void CalSparseCalSize(const RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void CopyOutKvUb2Gm(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm,
                                           LocalTensor<Q_T> kvOutUb, int64_t dealRow, int64_t s2StartIdx,
-                                          const RunInfo &runInfo, ConstInfo &constInfo);
+                                          const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline void CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset,
-                                          ConstInfo &constInfo);
+                                          ConstInfo& constInfo);
     /* VEC2_RES_T 表示bmm2ResUb当前的类型，VEC2_RES_T = Q_T那么不需要做Cast。另外，无效行场景当前默认需要做Cast */
     using VEC2_RES_T = T;
     template <typename VEC2_RES_T>
-    __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
+    __aicore__ inline void Bmm2DataCopyOut(RunInfo& runInfo, ConstInfo& constInfo, LocalTensor<VEC2_RES_T>& vec2ResUb,
                                            int64_t vec2S1Idx, int64_t sfaVec2CalcSize = 0);
     template <typename VEC2_RES_T>
-    __aicore__ inline void CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                               LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
+    __aicore__ inline void CopyOutAttentionOut(RunInfo& runInfo, ConstInfo& constInfo,
+                                               LocalTensor<VEC2_RES_T>& vec2ResUb, int64_t vec2S1Idx,
                                                int64_t sfaVec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
-    __aicore__ inline void CopyFALseToGm(RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
-    __aicore__ inline void ComputeNeedInitSFA(CVSharedParams &sharedParams) const;
-    __aicore__ inline void GetExtremeValue(T &negativeScalar);
-    __aicore__ inline void InitSinksBuffer(ConstInfo &constInfo);
+    __aicore__ inline void CopyFALseToGm(RunInfo& runInfo, ConstInfo& constInfo);
+    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams& sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                                   int64_t dSizeRope);
+    __aicore__ inline void ComputeNeedInitSFA(CVSharedParams& sharedParams) const;
+    __aicore__ inline void GetExtremeValue(T& negativeScalar);
+    __aicore__ inline void InitSinksBuffer(ConstInfo& constInfo);
 
-    TPipe *tPipe;
-    const SparseFlashAttentionTilingDataMla *__restrict tilingData;
+    TPipe* tPipe;
+    const SparseFlashAttentionTilingDataMla* __restrict tilingData;
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<KV_T> keyGm;
@@ -196,7 +177,7 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::GetRealCmpS2Idx(
-    int64_t &token0Idx, int64_t &token1Idx, int64_t s2IdxInBase, const RunInfo &runInfo, ConstInfo &constInfo)
+    int64_t& token0Idx, int64_t& token1Idx, int64_t s2IdxInBase, const RunInfo& runInfo, ConstInfo& constInfo)
 {
     int64_t topkBS1Idx = 0;
     if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
@@ -222,18 +203,18 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline int64_t SFAVectorService<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Idx,
-                                                                                                 const RunInfo &runInfo,
-                                                                                                 ConstInfo &constInfo)
+                                                                                                 const RunInfo& runInfo,
+                                                                                                 ConstInfo& constInfo)
 {
     if (s2Idx < 0) {
         return -1;
     }
     int64_t realkeyOffset = 0;
     if constexpr (isPa) {
-        int64_t blkTableIdx = s2Idx / blockSize;
+        int64_t sfaBlkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
         realkeyOffset =
-            blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) * constInfo.keyStride0 +
+            blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + sfaBlkTableIdx) * constInfo.keyStride0 +
             blkTableOffset; // BlockNum, BlockSize, N(1), D
     } else {
         if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
@@ -247,39 +228,40 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline int64_t SFAVectorService<TEMPLATE_ARG
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyInSingleKv(
-    LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset, ConstInfo &constInfo)
+    LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t keyOffset, ConstInfo& constInfo)
 {
     if (keyOffset < 0) {
         return;
     }
-    DataCopyExtParams intriParams;
+    DataCopyExtParams sfaIntriParams;
 
-    intriParams.blockCount = 1;
-    intriParams.dstStride = 0;
-    intriParams.srcStride = 0;
+    sfaIntriParams.blockCount = 1;
+    sfaIntriParams.dstStride = 0;
+    sfaIntriParams.srcStride = 0;
     DataCopyPadExtParams<KV_T> padParams;
     // 当前仅支持COMBINE模式
     uint32_t combineBytes = 512 * sizeof(KV_T); // 512: Key特征维度
-    intriParams.blockLen = combineBytes;
+    sfaIntriParams.blockLen = combineBytes;
     uint32_t combineDim = combineBytes / sizeof(KV_T);
     uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
     padParams.isPad = true;
     padParams.leftPadding = 0;
     padParams.rightPadding = combineDimAlign - combineDim;
     padParams.paddingValue = 0;
-    DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * 512], intriParams,
-                padParams); // 512: Key特征维度; 576: 局部Buffer行跨度
-
-    intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope * sizeof(KV_T);
-    intriParams.dstStride = 512 / BUFFER_SIZE_BYTE_32B; // 512: 模型特征维度(dSize)
-    DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * 64], intriParams,
-                padParams); // 576: 局部Buffer行跨度（Leading Dimension）; 512: Key特征维度（dSize）;
-                            // 64：RoPE索引数据每Token/块的行跨度（Stride）
+    // 512: Key特征维度
+    DataCopyPad(kvInUb[startRow * dVTemplateTypeInput], keyGm[keyOffset * 512], sfaIntriParams,
+                padParams); // dVTemplateTypeInput: 局部Buffer行跨度
+    if constexpr (HAS_ROPE) {
+        sfaIntriParams.blockLen = constInfo.sparseBlockSize * 64 * sizeof(KV_T);
+        sfaIntriParams.dstStride = 512 / BUFFER_SIZE_BYTE_32B; // 512: 模型特征维度(dSize)
+        // 576: 局部Buffer行跨度 512: Key特征维度 64：RoPE索引数据每Token/块的行跨度（Stride）
+        DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * 64], sfaIntriParams, padParams);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t SFAVectorService<TEMPLATE_ARGS>::CopyInKvSparse(
-    LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t token0Idx, int64_t token1Idx, const RunInfo &runInfo,
-    ConstInfo &constInfo)
+    LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t token0Idx, int64_t token1Idx, const RunInfo& runInfo,
+    ConstInfo& constInfo)
 {
     int64_t keyOffset0 = GetkeyOffset(token0Idx, runInfo, constInfo);
     int64_t keyOffset1 = GetkeyOffset(token1Idx, runInfo, constInfo);
@@ -288,8 +270,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t SFAVectorService<TEMPLATE_AR
     }
     int64_t blkTableSrcStride =
         ((keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) : (keyOffset1 - keyOffset0)) - constInfo.sparseBlockSize);
-    int64_t keySrcStride = blkTableSrcStride * constInfo.dSizeNope * sizeof(KV_T);
-    int64_t keyRopeSrcStride = blkTableSrcStride * constInfo.dSizeRope * sizeof(KV_T);
+    int64_t keySrcStride = blkTableSrcStride * 512 * sizeof(KV_T);
+    int64_t keyRopeSrcStride = 0;
+    if constexpr (HAS_ROPE) {
+        keyRopeSrcStride = blkTableSrcStride * 64 * sizeof(KV_T);
+    }
     if (unlikely(keyOffset1 < 0)) {
         CopyInSingleKv(kvInUb, startRow, keyOffset0, constInfo);
     } else if (keySrcStride >= INT32_MAX || keySrcStride < 0 || constInfo.sparseBlockSize > 1) {
@@ -299,24 +284,29 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t SFAVectorService<TEMPLATE_AR
     } else {
         DataCopyExtParams intriParams;
         intriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
-        intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeNope * sizeof(KV_T);
-        intriParams.dstStride = constInfo.dSizeRope * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
-        intriParams.srcStride = keySrcStride;
+        intriParams.blockLen = constInfo.sparseBlockSize * 512 * sizeof(KV_T);
         DataCopyPadExtParams<KV_T> padParams;
 
         int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
         if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
             keyOffset = keyOffset1;
         }
-        DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * constInfo.dSizeNope], // 576: 局部Buffer行跨度
-                    intriParams, padParams);                                        // combineDimAlign
+        if constexpr (HAS_ROPE) {
+            intriParams.dstStride = 64 * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
+            intriParams.srcStride = keySrcStride;
+            DataCopyPad(kvInUb[startRow * 576], keyGm[keyOffset * 512], // 576: 局部Buffer行跨度
+                        intriParams, padParams);                        // combineDimAlign
 
-        intriParams.blockLen = constInfo.sparseBlockSize * constInfo.dSizeRope * sizeof(KV_T);
-        intriParams.dstStride = constInfo.dSizeNope * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
-        intriParams.srcStride = keyRopeSrcStride;
-        // 512: Key特征维度; 576: 局部Buffer行跨度
-        DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * constInfo.dSizeRope], intriParams,
-                    padParams); // combineDimAlign
+            intriParams.blockLen = constInfo.sparseBlockSize * 64 * sizeof(KV_T);
+            intriParams.dstStride = 512 * sizeof(KV_T) / BUFFER_SIZE_BYTE_32B;
+            intriParams.srcStride = keyRopeSrcStride;
+            DataCopyPad(kvInUb[startRow * 576 + 512], keyRopeGm[keyOffset * 64], intriParams,
+                        padParams); // combineDimAlign
+        } else {
+            intriParams.dstStride = 0;
+            intriParams.srcStride = keySrcStride;
+            DataCopyPad(kvInUb[startRow * 512], keyGm[keyOffset * 512], intriParams, padParams);
+        }
     }
     return (keyOffset0 > -1) + (keyOffset1 > -1);
 }
@@ -334,7 +324,7 @@ static constexpr Reg::CastTrait castTraitFp8_3 = {Reg::RegLayout::ZERO, Reg::Sat
 static constexpr Reg::CastTrait castTraitFp8_4 = {Reg::RegLayout::ONE, Reg::SatMode::NO_SAT,
                                                   Reg::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 template <typename Q_T, typename KV_T>
-__simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrcAddr, uint32_t dealRowCount)
+__simd_vf__ void CastScaleImpl(__ubuf__ float* ubDstAddr, __ubuf__ int8_t* ubSrcAddr, uint32_t dealRowCount)
 {
     Reg::RegTensor<fp8_e8m0_t> vScale0;
     Reg::RegTensor<fp8_e8m0_t> vScale1;
@@ -342,14 +332,14 @@ __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrc
     Reg::RegTensor<bfloat16_t> vScalebf16Res1;
     Reg::RegTensor<float> vScalefp32Res0;
     Reg::RegTensor<float> vScalefp32Res1;
-    __ubuf__ int8_t *ubScaleSrcAddrTemp = ubSrcAddr;
-    __ubuf__ float *ubDstAddrTmp = ubDstAddr;
+    __ubuf__ int8_t* ubScaleSrcAddrTemp = ubSrcAddr;
+    __ubuf__ float* ubDstAddrTmp = ubDstAddr;
     Reg::MaskReg bf16TypeMaskAll = Reg::CreateMask<bfloat16_t, Reg::MaskPattern::ALL>();
     Reg::MaskReg fp32MaskAll = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
     for (uint16_t i = 0; i < static_cast<uint16_t>(dealRowCount); i++) {
         // load scale
         Reg::LoadAlign<int8_t, Reg::PostLiteral::POST_MODE_UPDATE, Reg::LoadDist::DIST_UNPACK4_B8>(
-            (Reg::RegTensor<int8_t> &)vScale0, ubScaleSrcAddrTemp, 640);
+            (Reg::RegTensor<int8_t>&)vScale0, ubScaleSrcAddrTemp, 640);
 
         Reg::Cast<bfloat16_t, fp8_e8m0_t, castTraitFp8_1>(vScalebf16Res0, vScale0, bf16TypeMaskAll);
         Reg::Cast<float, bfloat16_t, castTraitFp8_1>(vScalefp32Res0, vScalebf16Res0, fp32MaskAll);
@@ -360,15 +350,16 @@ __simd_vf__ void CastScaleImpl(__ubuf__ float *ubDstAddr, __ubuf__ int8_t *ubSrc
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, LocalTensor<Q_T> kvOutUb, int64_t dealRow,
-    int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, LocalTensor<Q_T> kvOutUb, int64_t dealRow,
+    int64_t s2StartIdx, const RunInfo& runInfo, ConstInfo& constInfo)
 {
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-    DataCopy(v0ResGmTensor[s2StartIdx * 576], kvOutUb, dealRow * 576); // 576: KV Cache 每 Token 的特征宽度
+    DataCopy(v0ResGmTensor[s2StartIdx * dVTemplateTypeInput], kvOutUb,
+             dealRow * dVTemplateTypeInput); // dVTemplateTypeInput: KV Cache 每 Token 的特征宽度
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo& runInfo, ConstInfo& constInfo)
 {
     if constexpr (IS_SPLIT_G) {
         uint32_t aicIdx = constInfo.aivIdx >> 1U;
@@ -404,8 +395,8 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CalSparseCalSize(const R
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo,
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, const RunInfo& runInfo, ConstInfo& constInfo,
     int32_t startPos)
 {
     blockSize = constInfo.blockSize;
@@ -417,13 +408,12 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
         CrossCoreSetFlag<0, PIPE_MTE3>(15);  // 15: 跨核同步标志位值
         CrossCoreWaitFlag<0, PIPE_MTE3>(15); // 15: 跨核同步标志位值
     }
-    outputL1.SetCrossCore();
     v0ResGm.SetCrossCore();
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessSparseKv(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
-    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo,
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputL1,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD>& v0ResGm, const RunInfo& runInfo, ConstInfo& constInfo,
     int32_t startPos)
 {
     if (sfaSparseCalSize == 0) {
@@ -470,8 +460,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessVec1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputBuf,
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& bmm1ResBuf, RunInfo& runInfo, ConstInfo& constInfo)
 {
     bmm1ResBuf.WaitCrossCore();
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -491,10 +481,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
     this->stage1OutQue[stage1Offset].template DeQue<Q_T>();
 
-    LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>(s2BaseSize * constInfo.dSizeV);
+    LocalTensor<Q_T> sfaMm2AL1Tensor = outputBuf.GetTensor<Q_T>(s2BaseSize * constInfo.dSizeV);
     if (likely(runInfo.halfMRealSize != 0)) {
-        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) *
-                              (runInfo.mRealSize - runInfo.halfMRealSize)],
+        DataCopy(sfaMm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) *
+                                 (runInfo.mRealSize - runInfo.halfMRealSize)],
                  stage1CastTensor,
                  {s2BaseSize / 16, (uint16_t)runInfo.halfMRealSize, (uint16_t)(vec1Srcstride - runInfo.halfMRealSize),
                   (uint16_t)(Align16Func(runInfo.mRealSize) - runInfo.halfMRealSize)});
@@ -513,8 +503,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispatchSFA(
-    LocalTensor<Q_T> &stage1CastTensor, LocalTensor<T> &mmRes, LocalTensor<float> &sumUb, LocalTensor<float> &maxUb,
-    LocalTensor<T> &apiTmpBuffer, RunInfo &runInfo, ConstInfo &constInfo)
+    LocalTensor<Q_T>& stage1CastTensor, LocalTensor<T>& mmRes, LocalTensor<float>& sumUb, LocalTensor<float>& maxUb,
+    LocalTensor<T>& apiTmpBuffer, RunInfo& runInfo, ConstInfo& constInfo)
 {
     // loopCount = 0 但传入sinks时走update分支，maxUb通过sinks初始化，sumUb初始化为1.0
     if (runInfo.s2LoopCount == 0 && !isSinks) { // sink 丢失首token信息，sink会增加首token信息，维度是n1
@@ -559,7 +549,7 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessVec1SoftmaxDispat
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ProcessVec2(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo)
 {
     bmm2ResBuf.WaitCrossCore();
     if (unlikely(runInfo.vec2MBaseSize == 0)) {
@@ -605,12 +595,12 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                        LocalTensor<VEC2_RES_T> &vec2ResUb,
+__aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo& runInfo, ConstInfo& constInfo,
+                                                                        LocalTensor<VEC2_RES_T>& vec2ResUb,
                                                                         int64_t vec2S1Idx, int64_t sfaVec2CalcSize)
 {
     LocalTensor<OUTPUT_T> attenOut;
-    int64_t dSizeAligned64 = (int64_t)sfaDTemplateAlign64;
+    int64_t sfaDSizeAligned64 = (int64_t)sfaDTemplateAlign64;
 
     attenOut.SetAddr(vec2ResUb.address_);
     Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, sfaVec2CalcSize);
@@ -619,7 +609,8 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo 
 
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockLen = constInfo.dSizeV * sizeof(OUTPUT_T);
-    dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) >> 4; // 以32B为单位偏移，bf16类型即偏移16个数，右移4
+    dataCopyParams.srcStride =
+        (sfaDSizeAligned64 - constInfo.dSizeV) >> 4; // 以32B为单位偏移，bf16类型即偏移16个数，右移4
     dataCopyParams.dstStride = constInfo.attentionOutStride;
     dataCopyParams.blockCount = runInfo.vec2MRealSize;
 
@@ -628,15 +619,15 @@ __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::Bmm2DataCopyOut(RunInfo 
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                            LocalTensor<VEC2_RES_T> &vec2ResUb,
+__aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo& runInfo, ConstInfo& constInfo,
+                                                                            LocalTensor<VEC2_RES_T>& vec2ResUb,
                                                                             int64_t vec2S1Idx, int64_t sfaVec2CalcSize)
 {
     this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, sfaVec2CalcSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(
-    ConstInfo &constInfo)
+    ConstInfo& constInfo)
 {
     uint32_t coreNum = GetBlockNum();
     uint64_t totalOutputSize = 0;
@@ -687,33 +678,37 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CleanOutput(
-    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, ConstInfo &constInfo)
+    __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum, ConstInfo& constInfo)
 {
     if ASCEND_IS_AIV {
-        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-        this->softmaxSumGm.SetGlobalBuffer((__gm__ float *)(softmaxSum));
-        this->softmaxMaxGm.SetGlobalBuffer((__gm__ float *)(softmaxMax));
+        this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T*)attentionOut);
+        this->softmaxSumGm.SetGlobalBuffer((__gm__ float*)(softmaxSum));
+        this->softmaxMaxGm.SetGlobalBuffer((__gm__ float*)(softmaxMax));
         if (constInfo.needInit == 1) {
+            initOutputEventId = GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE3_V>();
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
+            GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(
-    __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *sinks)
+    __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* keyRope, __gm__ uint8_t* sparseIndices,
+    __gm__ uint8_t* blockTable, __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum, __gm__ uint8_t* sinks)
 {
-    keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
+    keyGm.SetGlobalBuffer((__gm__ KV_T*)(key));
     if constexpr (isPa) {
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
         ;
     }
-    sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-    keyRopeGm.SetGlobalBuffer((__gm__ KV_T *)(keyRope));
+    sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
+    if constexpr (HAS_ROPE) {
+        keyRopeGm.SetGlobalBuffer((__gm__ KV_T*)(keyRope));
+    }
     if (sinks != nullptr) {
-        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
+        sinksGm.SetGlobalBuffer((__gm__ T*)sinks);
         this->isSinks = true;
     }
 }
@@ -729,8 +724,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo &runInfo,
-                                                                                               ConstInfo &constInfo)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo& runInfo,
+                                                                                               ConstInfo& constInfo)
 {
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -738,18 +733,18 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     size_t alignedSize = (sizeof(float) * runInfo.halfMRealSize + 31) / 32 * 32 / sizeof(float);
 
     int64_t lseOffset = runInfo.softmaxLseOffset;
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = 1;
-    dataCopyParams.blockLen = sizeof(float) * runInfo.halfMRealSize;
-    dataCopyParams.srcStride = 0;
-    dataCopyParams.dstStride = 0;
+    DataCopyExtParams sfaDataCopyParams;
+    sfaDataCopyParams.blockCount = 1;
+    sfaDataCopyParams.blockLen = sizeof(float) * runInfo.halfMRealSize;
+    sfaDataCopyParams.srcStride = 0;
+    sfaDataCopyParams.dstStride = 0;
 
     // 拷贝 softmaxMaxUb -> GM
     WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
     DataCopy(lseUb, maxUb, alignedSize);
     SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
     WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
-    DataCopyPad(this->softmaxMaxGm[lseOffset], lseUb, dataCopyParams);
+    DataCopyPad(this->softmaxMaxGm[lseOffset], lseUb, sfaDataCopyParams);
     SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
 
     // 拷贝 softmaxSumUb -> GM
@@ -757,17 +752,17 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     DataCopy(lseUb, sumUb, alignedSize);
     SetFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
     WaitFlag<HardEvent::V_MTE3>(vToMte3LseOutId);
-    DataCopyPad(this->softmaxSumGm[lseOffset], lseUb, dataCopyParams);
+    DataCopyPad(this->softmaxSumGm[lseOffset], lseUb, sfaDataCopyParams);
     SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo &constInfo)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo& constInfo)
 {
     LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
-    const uint32_t maxN = constInfo.gSize; // N最大支持128, sink shape是[N]
+    const uint32_t sfaMaxN = constInfo.gSize; // N最大支持128, sink shape是[N]
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = 1U;
-    dataCopyParams.blockLen = maxN * sizeof(T);
+    dataCopyParams.blockLen = sfaMaxN * sizeof(T);
     dataCopyParams.srcStride = 0U;
     dataCopyParams.dstStride = 0U;
     DataCopyPadExtParams<T> padParams;
@@ -776,8 +771,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_SINKS_BUF_FLAG);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
-                                                                                                 ConstInfo &constInfo)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe* pipe,
+                                                                                                 ConstInfo& constInfo)
 {
     SoftmaxInitBuffer();
 
@@ -787,9 +782,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     lseUb = this->lseBuf.template Get<float>();
 
     tPipe->InitBuffer(stage0OutBuf[0],
-                      576 * 16 * sizeof(KV_T)); // 576: 模型特征维度(dSize); 16 : 注意力头数 (num_heads)
+                      dVTemplateTypeInput * 16 * sizeof(KV_T)); // dVTemplateTypeInput: 模型特征维度; 16 : 注意力头数
     tPipe->InitBuffer(stage0OutBuf[1],
-                      576 * 16 * sizeof(KV_T)); // 576: 模型特征维度(dSize); 16 : 注意力头数 (num_heads)
+                      dVTemplateTypeInput * 16 * sizeof(KV_T)); // dVTemplateTypeInput: 模型特征维度; 16 : 注意力头数
 
     tPipe->InitBuffer(stage1OutQue[0], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutQue[1], 1, vec1Srcstride * s2BaseSize * sizeof(Q_T));
@@ -813,14 +808,32 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
     }
+}
 
-    initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::UninitLocalBuffer()
+{
+    if ASCEND_IS_AIV {
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[0]);
+        WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVAttnOutId);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVLseOutId);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(mte3ToMte2[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(mte3ToMte2[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3AttnOutId);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3LseOutId);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE3>(mte2ToMte3[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE3>(mte2ToMte3[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(mte2ToV);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
+    CVSharedParams& sharedParams, int32_t aicIdx, uint8_t subBlockIdx, int64_t dSizeRope)
 {
-    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
+    (void)dSizeRope;
+    auto& sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
     sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
     sharedParams.n2Size = 1;
     sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup;
@@ -829,7 +842,11 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
     sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
     sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout;
-    sharedParams.dSizeRope = 64; // 64: 编码维度
+    if constexpr (HAS_ROPE) {
+        sharedParams.dSizeRope = 64; // 64: 编码维度
+    } else {
+        sharedParams.dSizeRope = 0;
+    }
     sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
     sharedParams.dSize = 512;       // 512: 模型特征维度(dSize)
     sharedParams.dSizeVInput = 512; // 512: 模型特征维度(dSize)
@@ -850,8 +867,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
+            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
+            auto tempTiling = reinterpret_cast<uint32_t*>(&sharedParams);
 #pragma unroll
             for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
                 *tempTilingSSbuf = *tempTiling;
@@ -862,7 +879,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::ComputeNeedInitSFA(
-    CVSharedParams &sharedParams) const
+    CVSharedParams& sharedParams) const
 {
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
@@ -895,34 +912,37 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     }
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::GetExtremeValue(T &negativeScalar)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::GetExtremeValue(T& negativeScalar)
 {
     uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
-    negativeScalar = *((float *)&tmp1);
+    negativeScalar = *((float*)&tmp1);
 }
 
 TEMPLATES_DEF class SFAVectorServiceDummy {
 public:
     __aicore__ inline SFAVectorServiceDummy(){};
-    __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
-                                       __gm__ uint8_t *softmaxSum, ConstInfo &constInfo)
+    __aicore__ inline void CleanOutput(__gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxMax,
+                                       __gm__ uint8_t* softmaxSum, ConstInfo& constInfo)
     {}
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *keyRope,
-                                            __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable,
-                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-                                            __gm__ uint8_t *sinks)
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* keyRope,
+                                            __gm__ uint8_t* sparseIndices, __gm__ uint8_t* blockTable,
+                                            __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum,
+                                            __gm__ uint8_t* sinks)
     {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const SparseFlashAttentionTilingDataMla *__restrict tiling,
-                                        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
-                                        __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths) {};
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
-                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo)
+    __aicore__ inline void InitVecBlock(TPipe* pipe, const SparseFlashAttentionTilingDataMla* __restrict tiling,
+                                        CVSharedParams& sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+                                        __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
+                                        int64_t dSizeRope) {};
+    __aicore__ inline void InitLocalBuffer(TPipe* pipe, ConstInfo& constInfo) {}
+    __aicore__ inline void UninitLocalBuffer() {}
+    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>& outputBuf,
+                                       Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>& bmm1ResBuf,
+                                       RunInfo& runInfo, ConstInfo& constInfo)
     {}
 
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo) {}
+    __aicore__ inline void ProcessVec2(mm2ResPos& bmm2ResBuf, RunInfo& runInfo, ConstInfo& constInfo) {}
 };
 } // namespace BaseApi
+
 #endif // SPARSE_FLASH_ATTENTION_SERVICE_VECTOR_MLA_ARCH35_H

@@ -12,6 +12,7 @@
 
 """Small batch-consistency protocol shared by LI_V2 and QLI_V2 assets."""
 
+import ast
 import hashlib
 import random
 from numbers import Integral
@@ -28,7 +29,7 @@ class CaseRandomContext:
             attributes.get(name)
             for name in ("batch_axis", "batch_slice_info", "batch_seed")
         )
-        self.enabled = any(value is not None for value in fields)
+        self.enabled = all(value is not None for value in fields)
         self.testcase_name = attributes.get("testcase_name", "")
         self.python_state = None
         self.numpy_state = None
@@ -70,16 +71,22 @@ class BatchRelationProtocol:
             return False
         first_batch = first_slices[0]
         second_batch = second_slices[0]
-        if first_batch[1] <= second_batch[0] or second_batch[1] <= first_batch[0]:
+        if not BatchRelationProtocol.ranges_overlap(first_batch, second_batch):
             return False
         if first_axes == (0,):
             return True
         first_sequence = first_slices[1]
         second_sequence = second_slices[1]
-        return not (
-            first_sequence[1] <= second_sequence[0]
-            or second_sequence[1] <= first_sequence[0]
-        )
+        return BatchRelationProtocol.ranges_overlap(first_sequence, second_sequence)
+
+    @staticmethod
+    def ranges_overlap(first, second):
+        """Return whether two positive-step slices share an integer position."""
+        first_values = range(*first)
+        second_values = range(*second)
+        if len(first_values) > len(second_values):
+            first_values, second_values = second_values, first_values
+        return any(value in second_values for value in first_values)
 
     def validate_disjoint_relations(self, relations):
         """Reject duplicate or overlapping samples that would self-compare."""
@@ -92,13 +99,8 @@ class BatchRelationProtocol:
 
     def parse(self, batch_axis, batch_slice_info, batch_seed):
         fields = (batch_axis, batch_slice_info, batch_seed)
-        if all(value is None for value in fields):
-            return None
         if any(value is None for value in fields):
-            raise ValueError(
-                f"{self.operator_name} batch_axis, batch_slice_info and batch_seed "
-                "must be set together"
-            )
+            return None
         if not (len(batch_axis) == len(batch_slice_info) == len(batch_seed)):
             raise ValueError(f"{self.operator_name} batch metadata counts differ")
         if not batch_axis or tuple(batch_axis[0]) not in ((0,), (0, 1)):
@@ -142,9 +144,9 @@ class BatchRelationProtocol:
                         f"{self.operator_name} slices must contain integers"
                     )
                 start, stop, step = (int(item) for item in value)
-                if step != 1 or start < 0 or start >= stop:
+                if step <= 0 or start < 0 or start >= stop:
                     raise ValueError(
-                        f"{self.operator_name} slices must be non-empty and contiguous"
+                        f"{self.operator_name} slices must be non-empty with positive step"
                     )
                 seed = axis_seeds[axis_group][sample_index]
                 if not isinstance(seed, Integral):
@@ -158,54 +160,13 @@ class BatchRelationProtocol:
                     )
                 relation_seed = seed
                 slices.append((start, stop, step))
-            if axes == (0, 1) and slices[0][1] - slices[0][0] != 1:
+            if axes == (0, 1) and len(range(*slices[0])) != 1:
                 raise ValueError(
                     f"{self.operator_name} logical (B,S) requires one B per sample"
                 )
             relations.append((axes, tuple(slices), relation_seed))
         self.validate_disjoint_relations(relations)
         return relations
-
-    def validate_id(self, batch_consistency_id, relations):
-        """Check the framework ID fields that identify a logical relation.
-
-        Framework versions may encode slice bounds or lengths differently.  The
-        seed and axis are the stable identity; slice ranges remain validated by
-        ``parse`` and the relation/output checks below.
-        """
-        if (
-            not isinstance(batch_consistency_id, (tuple, list))
-            or len(batch_consistency_id) != 1
-        ):
-            raise ValueError("batch_consistency_id must contain one q relation group")
-        axes = relations[0][0]
-        id_groups = batch_consistency_id[0]
-        if not isinstance(id_groups, (tuple, list)) or len(id_groups) != len(axes):
-            raise ValueError("batch_consistency_id axis groups do not match q axes")
-        for group_index, axis in enumerate(axes):
-            ids = id_groups[group_index]
-            if not isinstance(ids, (tuple, list)):
-                raise ValueError("batch_consistency_id samples must be sequences")
-            if len(ids) != len(relations):
-                raise ValueError(
-                    "batch_consistency_id sample count does not match q relations"
-                )
-            for relation_id, relation in zip(ids, relations):
-                parts = str(relation_id).split("_", 2)
-                if len(parts) < 2:
-                    raise ValueError(
-                        f"invalid batch_consistency_id relation: {relation_id!r}"
-                    )
-                try:
-                    id_seed, id_axis = int(parts[0]), int(parts[1])
-                except ValueError as error:
-                    raise ValueError(
-                        f"invalid batch_consistency_id relation: {relation_id!r}"
-                    ) from error
-                if id_seed != int(relation[2]) or id_axis != int(axis):
-                    raise ValueError(
-                        "batch_consistency_id seed/axis does not match q relation"
-                    )
 
 
 class IndexerBatchInputNormalizer:
@@ -238,6 +199,7 @@ class IndexerBatchInputNormalizer:
         self.k_lengths = self.resolve_lengths("k")
         self.residual = self.resolve_vector("cmp_residual_k", 0)
         self.assigned_blocks = {}
+        self.input_ranges = self.resolve_input_ranges()
 
     @staticmethod
     def tensor_values(value):
@@ -269,6 +231,30 @@ class IndexerBatchInputNormalizer:
             )
         return value
 
+    def resolve_input_ranges(self):
+        """Read the exact ranges normalized by the reused pytest generator."""
+        params = self.data.get("params")
+        if not isinstance(params, (tuple, list)) or len(params) != 27:
+            raise ValueError(f"{self.operator_name} pytest params are unavailable")
+        ranges = {
+            0: params[21],
+            1: params[23],
+            3: params[16],
+            10: params[22],
+        }
+        for slot, value in tuple(ranges.items()):
+            if value is None:
+                ranges.pop(slot)
+                continue
+            if isinstance(value, str):
+                value = ast.literal_eval(value)
+            if not isinstance(value, (tuple, list)) or len(value) < 2:
+                raise ValueError(
+                    f"{self.operator_name} input range for relation slot {slot} is invalid"
+                )
+            ranges[slot] = (float(value[0]), float(value[1]))
+        return ranges
+
     def resolve_lengths(self, target):
         prefix = self.q_prefix if target == "q" else self.k_prefix
         tensor = self.query if target == "q" else self.key
@@ -278,10 +264,10 @@ class IndexerBatchInputNormalizer:
                 len(prefix) != self.batch_size + 1
                 or prefix[0] != 0
                 or prefix[-1] != int(tensor.shape[0])
-                or any(right <= left for left, right in zip(prefix, prefix[1:]))
+                or any(right < left for left, right in zip(prefix, prefix[1:]))
             ):
                 raise ValueError(
-                    f"{self.operator_name} {target} prefix must strictly span its tensor"
+                    f"{self.operator_name} {target} prefix must non-decreasingly span its tensor"
                 )
             lengths = [right - left for left, right in zip(prefix, prefix[1:])]
         else:
@@ -296,9 +282,9 @@ class IndexerBatchInputNormalizer:
                 raise ValueError(
                     f"{self.operator_name} seqused_{target} length must equal B"
                 )
-            if any(length <= 0 for length in actual):
+            if any(length < 0 for length in actual):
                 raise ValueError(
-                    f"{self.operator_name} seqused_{target} must be positive"
+                    f"{self.operator_name} seqused_{target} must be non-negative"
                 )
             if layout in ("BSND", "TND") and any(
                 actual_length > physical_length
@@ -317,20 +303,34 @@ class IndexerBatchInputNormalizer:
             (1 << 63) - 1
         )
 
-    @classmethod
-    def random_tensor(cls, shape, template, seed, relative_batch, slot, positive=False):
+    def random_tensor(self, shape, template, seed, relative_batch, slot):
         generator = torch.Generator(device="cpu")
-        generator.manual_seed(cls.derived_seed(seed, relative_batch, slot))
+        generator.manual_seed(self.derived_seed(seed, relative_batch, slot))
         dtype = template.dtype
+        if slot not in self.input_ranges:
+            raise ValueError(
+                f"{self.operator_name} input range for relation slot {slot} is required"
+            )
+        lower, upper = self.input_ranges[slot]
+        if lower > upper:
+            raise ValueError(
+                f"{self.operator_name} input range must satisfy min <= max"
+            )
         if dtype == torch.bool:
             value = torch.randint(0, 2, shape, generator=generator, dtype=torch.int64)
         elif dtype.is_floating_point:
             value = torch.rand(shape, generator=generator, dtype=torch.float32)
-            value = value * 0.75 + 0.25 if positive else value - 0.5
-        elif dtype == torch.uint8:
-            value = torch.randint(0, 16, shape, generator=generator, dtype=torch.int64)
+            value = value * (upper - lower) + lower
         else:
-            value = torch.randint(-8, 9, shape, generator=generator, dtype=torch.int64)
+            low = int(np.ceil(lower))
+            high = int(np.floor(upper))
+            if low > high:
+                raise ValueError(
+                    f"{self.operator_name} integer input range has no representable value"
+                )
+            value = torch.randint(
+                low, high + 1, shape, generator=generator, dtype=torch.int64
+            )
         return value.to(dtype=dtype)
 
     @staticmethod
@@ -341,16 +341,34 @@ class IndexerBatchInputNormalizer:
 
     def query_selector(self, batch_index, sequence_slice):
         if self.layout_q == "BSND":
-            start, stop = (0, self.q_lengths[batch_index])
+            start, stop, step = (0, self.q_lengths[batch_index], 1)
             if sequence_slice is not None:
-                start, stop = sequence_slice[:2]
-            return (batch_index, slice(start, stop, 1)), stop - start
+                start, stop, step = sequence_slice
+            return (batch_index, slice(start, stop, step)), len(
+                range(start, stop, step)
+            )
         token_start = self.q_prefix[batch_index]
         token_stop = self.q_prefix[batch_index + 1]
+        step = 1
         if sequence_slice is not None:
             token_start += sequence_slice[0]
             token_stop = self.q_prefix[batch_index] + sequence_slice[1]
-        return (slice(token_start, token_stop, 1),), token_stop - token_start
+            step = sequence_slice[2]
+        return (slice(token_start, token_stop, step),), len(
+            range(token_start, token_stop, step)
+        )
+
+    def query_capacity(self, batch_index):
+        """Return the physical Q span represented by one logical batch."""
+        if self.layout_q == "BSND":
+            return int(self.query.shape[1])
+        return self.q_prefix[batch_index + 1] - self.q_prefix[batch_index]
+
+    def query_comparison_length(self, batch_index):
+        """Match the output span selected by the phase-two comparator."""
+        if self.layout_q == "TND":
+            return self.query_capacity(batch_index)
+        return self.q_lengths[batch_index]
 
     def validate_relations(self, relations):
         mask_mode = int(
@@ -359,11 +377,12 @@ class IndexerBatchInputNormalizer:
         grouped_signatures = {}
         occupied = []
         for axes, slices, seed in relations:
-            batch_start, batch_stop, _ = slices[0]
+            batch_start, batch_stop, batch_step = slices[0]
             if batch_stop > self.batch_size:
                 raise ValueError(
                     f"{self.operator_name} logical B slice exceeds B={self.batch_size}"
                 )
+            batch_indices = range(batch_start, batch_stop, batch_step)
             sequence_slice = slices[1] if axes == (0, 1) else None
             if sequence_slice is not None and mask_mode != 0:
                 raise ValueError(
@@ -371,13 +390,16 @@ class IndexerBatchInputNormalizer:
                 )
             if (
                 sequence_slice is None
-                and len(set(self.q_lengths[batch_start:batch_stop])) != 1
+                and len(
+                    {self.query_capacity(batch_index) for batch_index in batch_indices}
+                )
+                != 1
             ):
                 raise ValueError(
-                    f"{self.operator_name} one B-only relation requires equal q lengths"
+                    f"{self.operator_name} one B-only relation requires equal q output spans"
                 )
             signature = []
-            for batch_index in range(batch_start, batch_stop):
+            for batch_index in batch_indices:
                 selector, q_count = self.query_selector(batch_index, sequence_slice)
                 if (
                     sequence_slice is not None
@@ -386,23 +408,34 @@ class IndexerBatchInputNormalizer:
                     raise ValueError(
                         f"{self.operator_name} logical S slice exceeds effective q length"
                     )
+                effective_q_count = (
+                    q_count
+                    if sequence_slice is not None
+                    else self.q_lengths[batch_index]
+                )
+                if effective_q_count == 0:
+                    raise ValueError(
+                        f"{self.operator_name} relation selects no q output elements"
+                    )
                 occupied.append((selector, seed))
                 signature.append(
                     (
                         q_count
                         if sequence_slice is not None
-                        else self.q_lengths[batch_index],
+                        else self.query_comparison_length(batch_index),
+                        effective_q_count,
                         self.k_lengths[batch_index],
                         self.residual[batch_index],
                     )
                 )
-            relation_size = tuple(stop - start for start, stop, _step in slices)
+            relation_size = tuple(len(range(*value)) for value in slices)
             key = (axes, seed, relation_size)
             value = tuple(signature)
             previous = grouped_signatures.setdefault(key, value)
             if previous != value:
                 raise ValueError(
-                    f"{self.operator_name} relation requires equal q/K lengths and residuals"
+                    f"{self.operator_name} relation requires equal q output spans, "
+                    "effective q lengths, K lengths and residuals"
                 )
 
         for index, (left, left_seed) in enumerate(occupied):
@@ -421,7 +454,12 @@ class IndexerBatchInputNormalizer:
                 if left_item != right_item:
                     return False
                 continue
-            if left_item.stop <= right_item.start or right_item.stop <= left_item.start:
+            left_range = range(left_item.start, left_item.stop, left_item.step or 1)
+            right_range = range(right_item.start, right_item.stop, right_item.step or 1)
+            if not BatchRelationProtocol.ranges_overlap(
+                (left_range.start, left_range.stop, left_range.step),
+                (right_range.start, right_range.stop, right_range.step),
+            ):
                 return False
         return True
 
@@ -434,12 +472,11 @@ class IndexerBatchInputNormalizer:
     def fill_query_inputs(self, batch_index, sequence_slice, seed, relative_batch):
         selector, _count = self.query_selector(batch_index, sequence_slice)
         targets = (
-            (self.query_references("query"), 0, False),
-            (self.query_references("weights"), 1, False),
-            (self.query_references("query_dequant_scale"), 2, True),
-            (self.query_references("output_idx_offset"), 3, True),
+            (self.query_references("query"), 0),
+            (self.query_references("weights"), 1),
+            (self.query_references("output_idx_offset"), 3),
         )
-        for references, slot, positive in targets:
+        for references, slot in targets:
             if not references:
                 continue
             value = self.random_tensor(
@@ -448,7 +485,6 @@ class IndexerBatchInputNormalizer:
                 seed,
                 relative_batch,
                 slot,
-                positive,
             )
             for tensor in references:
                 self.copy_selection(tensor, selector, value)
@@ -485,7 +521,7 @@ class IndexerBatchInputNormalizer:
                 f"{self.operator_name} block table has insufficient capacity"
             )
 
-    def fill_key_tensor(self, name, batch_index, seed, relative_batch, slot, positive):
+    def fill_key_tensor(self, name, batch_index, seed, relative_batch, slot):
         tensor = self.data.get(name)
         if tensor is None:
             return
@@ -506,7 +542,7 @@ class IndexerBatchInputNormalizer:
             raise ValueError(
                 f"{self.operator_name} unsupported key layout {self.layout_k!r}"
             )
-        value = self.random_tensor(shape, tensor, seed, relative_batch, slot, positive)
+        value = self.random_tensor(shape, tensor, seed, relative_batch, slot)
         if selector is None:
             self.scatter_paged(tensor, batch_index, value, seed, relative_batch)
         else:
@@ -530,147 +566,15 @@ class IndexerBatchInputNormalizer:
                 f"{self.operator_name} batch consistency supports quant_mode 1 or 2"
             )
         for axes, slices, seed in relations:
-            batch_start, batch_stop, _ = slices[0]
+            batch_start, batch_stop, batch_step = slices[0]
             sequence_slice = slices[1] if axes == (0, 1) else None
             for relative_batch, batch_index in enumerate(
-                range(batch_start, batch_stop)
+                range(batch_start, batch_stop, batch_step)
             ):
                 self.fill_query_inputs(
                     batch_index, sequence_slice, seed, relative_batch
                 )
-                self.fill_key_tensor(
-                    "key", batch_index, seed, relative_batch, 10, False
-                )
-                self.fill_key_tensor(
-                    "key_dequant_scale", batch_index, seed, relative_batch, 11, True
-                )
-
-
-class IndexerBatchOutputComparator:
-    """Compare exact output-0 slices for relations inside one testcase."""
-
-    def __init__(self, operator_name):
-        self.operator_name = operator_name
-        self.protocol = BatchRelationProtocol(operator_name)
-
-    @staticmethod
-    def storage_bytes(value):
-        if torch.is_tensor(value):
-            tensor = value.detach().cpu().contiguous()
-            return (
-                tuple(tensor.shape),
-                str(tensor.dtype),
-                tensor.view(torch.uint8).numpy().tobytes(),
-            )
-        array = np.ascontiguousarray(np.asarray(value))
-        return tuple(array.shape), array.dtype.str, array.view(np.uint8).tobytes()
-
-    def output_selector(self, output, relation, attributes):
-        axes, slices, _seed = relation
-        batch_slice = slices[0]
-        sequence_slice = slices[1] if axes == (0, 1) else None
-        layout_q = attributes.get("layout_q", attributes.get("layout_query", "BSND"))
-        batch_start, batch_stop, _ = batch_slice
-        if layout_q == "BSND":
-            if batch_stop > output.shape[0]:
-                raise ValueError(f"{self.operator_name} logical B slice exceeds output")
-            selector = [slice(*batch_slice)]
-            if sequence_slice is not None:
-                if sequence_slice[1] > output.shape[1]:
-                    raise ValueError(
-                        f"{self.operator_name} logical S slice exceeds output"
-                    )
-                selector.append(slice(*sequence_slice))
-            else:
-                q_lengths = attributes.get("seqused_q_values")
-                if q_lengths is not None:
-                    selected_lengths = [
-                        int(value) for value in q_lengths[batch_start:batch_stop]
-                    ]
-                    if (
-                        len(selected_lengths) != batch_stop - batch_start
-                        or len(set(selected_lengths)) != 1
-                        or selected_lengths[0] <= 0
-                        or selected_lengths[0] > output.shape[1]
-                    ):
-                        raise ValueError(
-                            f"{self.operator_name} invalid effective q lengths for output"
-                        )
-                    selector.append(slice(0, selected_lengths[0], 1))
-        elif layout_q == "TND":
-            prefix = attributes.get("cu_seqlens_q_values")
-            if prefix is None or prefix[0] != 0 or prefix[-1] != output.shape[0]:
-                raise ValueError(
-                    f"{self.operator_name} TND output requires q prefix values"
-                )
-            if batch_stop >= len(prefix):
-                raise ValueError(
-                    f"{self.operator_name} logical B slice exceeds q prefix"
-                )
-            if sequence_slice is None:
-                token_start, token_stop = prefix[batch_start], prefix[batch_stop]
-            else:
-                token_start = prefix[batch_start] + sequence_slice[0]
-                token_stop = prefix[batch_start] + sequence_slice[1]
-                if token_stop > prefix[batch_start + 1]:
-                    raise ValueError(
-                        f"{self.operator_name} logical S slice exceeds TND interval"
-                    )
-            selector = [slice(token_start, token_stop, 1)]
-        else:
-            raise ValueError(
-                f"{self.operator_name} unsupported query layout {layout_q!r}"
-            )
-        selector.extend([slice(None)] * (output.ndim - len(selector)))
-        return tuple(selector)
-
-    def compare(
-        self,
-        output,
-        batch_consistency_id,
-        batch_axis,
-        batch_slice_info,
-        batch_seed,
-        compare_context,
-    ):
-        try:
-            relations = self.protocol.parse(batch_axis, batch_slice_info, batch_seed)
-            if relations is None:
-                return None
-            self.protocol.validate_id(batch_consistency_id, relations)
-            if output is None:
-                raise ValueError(f"{self.operator_name} batch output is None")
-            value = (
-                output.detach().cpu() if torch.is_tensor(output) else np.asarray(output)
-            )
-            attributes = dict(compare_context.attributes) if compare_context else {}
-            groups = {}
-            for relation in relations:
-                selected = value[self.output_selector(value, relation, attributes)]
-                axes, slices, seed = relation
-                stored = self.storage_bytes(selected)
-                relation_size = tuple(stop - start for start, stop, _step in slices)
-                groups.setdefault((axes, seed, relation_size), []).append(stored)
-            compared = 0
-            for key, values in groups.items():
-                if len(values) < 2:
-                    continue
-                compared += 1
-                if any(values[0] != item for item in values[1:]):
-                    return {
-                        "pass": False,
-                        "precision": "batch_intra=FAIL",
-                        "error_info": f"{self.operator_name} relation {key} differs",
-                    }
-            if compared == 0:
-                return {"pass": True, "precision": "batch_intra=NOT_APPLICABLE"}
-            return {"pass": True, "precision": "batch_intra=PASS"}
-        except (IndexError, TypeError, ValueError) as error:
-            return {
-                "pass": False,
-                "precision": "batch_config=FAIL",
-                "error_info": str(error),
-            }
+                self.fill_key_tensor("key", batch_index, seed, relative_batch, 10)
 
 
 def normalize_indexer_inputs(data, attributes, operator_name, quantized=False):

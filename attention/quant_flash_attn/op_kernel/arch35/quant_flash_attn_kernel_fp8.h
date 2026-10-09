@@ -81,8 +81,6 @@ public:
     __gm__ uint8_t *valuePtr_ = nullptr;
 
     ConstInfoX constInfo_;
-
-    const __gm__ QuantFlashAttnTilingData *__restrict tilingData_;
     TPipe *pipe_ = nullptr;
     CubeBlockType cubeBlock_;
     VecFaBlockType vecFaBlock_;
@@ -104,6 +102,8 @@ public:
 
     // metadata
     uint32_t sectionNum_;
+    uint32_t metadataAicNum_;
+    uint32_t metadataAivNum_;
     // fa metadata
     uint32_t bN2Start_;
     uint32_t bN2End_;
@@ -138,24 +138,24 @@ public:
                                 __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
                                 __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *workspace, __gm__ uint8_t *metadata, __gm__ uint8_t *sequsedQ,
-                                __gm__ uint8_t *sequsedKv, const __gm__ QuantFlashAttnTilingData *__restrict tiling,
-                                TPipe *tPipe)
+                                __gm__ uint8_t *sequsedKv, const QuantFlashAttnTilingData &tiling, TPipe *tPipe)
     {
         this->pipe_ = tPipe;
-        this->tilingData_ = tiling;
 
-        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET),
-                                      QFA_AIC_CORE_NUM * 16U * sectionNum_);
+        sectionNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_SECTION_NUM_INDEX];
+        metadataAicNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIC_NUM_INDEX];
+        metadataAivNum_ = ((__gm__ uint32_t *)metadata)[METADATA_HEADER_AIV_NUM_INDEX];
 
-        InitConstInfo();
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET),
+                                      sectionNum_ * metadataAicNum_ * METADATA_STRIDE);
+
+        InitConstInfo(tiling);
 
         keyPtr_ = key;
         valuePtr_ = value;
 
         cuSeqLensGmQ_.SetGlobalBuffer((__gm__ int32_t *)cuSeqLensQ, constInfo_.cuSeqLensQSize + 1);
         seqUsedGmKv_.SetGlobalBuffer((__gm__ int32_t *)sequsedKv, constInfo_.seqUsedKvSize);
-
-        sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
 
         InitQCuSeqLensParser(cuSeqLensQ, sequsedQ);
         InitKvCuSeqLensParser(cuSeqLensKv, sequsedKv);
@@ -176,9 +176,9 @@ public:
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
                 fdMetaDataGm_.SetGlobalBuffer(
-                    (__gm__ uint32_t *)(metadata + FA_METADATA_HEADER_OFFSET +
-                                        QFA_METADATA_SIZE * QFA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-                    QFA_AIV_CORE_NUM * 16U * sectionNum_);
+                    (__gm__ uint32_t *)(metadata + METADATA_HEADER_OFFSET +
+                                        sectionNum_ * metadataAicNum_ * METADATA_STRIDE * sizeof(uint32_t)),
+                    sectionNum_ * metadataAivNum_ * METADATA_STRIDE);
                 vecFdBlock_.InitParams();
                 vecFdBlock_.InitGlobalTensor(this->vecFaBlock_.softmaxFDMaxGm_, this->vecFaBlock_.softmaxFDSumGm_,
                                              this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_,
@@ -206,7 +206,7 @@ public:
         bmm1Buffers_.Init(ubBufferManager_, mm1ResultSize);
     }
 
-    __aicore__ inline void InitConstInfo()
+    __aicore__ inline void InitConstInfo(const QuantFlashAttnTilingData &tiling)
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
@@ -216,10 +216,10 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &qfaBaseParams = this->tilingData_->baseTiling.quantFlashAttnBaseParams;
-        const auto &qfaAttenMaskParams = this->tilingData_->baseTiling.quantFlashAttnAttenMaskParams;
-        const auto &qfaPageAttentionParams = this->tilingData_->baseTiling.quantFlashAttnPageAttentionParams;
-        const auto &qfaWorkspaceParams = this->tilingData_->baseTiling.quantFlashAttnWorkspaceParams;
+        const auto &qfaBaseParams = tiling.baseTiling.quantFlashAttnBaseParams;
+        const auto &qfaAttenMaskParams = tiling.baseTiling.quantFlashAttnAttenMaskParams;
+        const auto &qfaPageAttentionParams = tiling.baseTiling.quantFlashAttnPageAttentionParams;
+        const auto &qfaWorkspaceParams = tiling.baseTiling.quantFlashAttnWorkspaceParams;
 
         constInfo_.bSize = qfaBaseParams.bSize;
         constInfo_.t1Size = qfaBaseParams.t1Size;
@@ -242,7 +242,6 @@ public:
         constInfo_.seqUsedQSize = qfaBaseParams.seqUsedQSize;
         constInfo_.seqUsedKvSize = qfaBaseParams.seqUsedKvSize;
         constInfo_.scaleValue = static_cast<float>(qfaBaseParams.scaleValue);
-        constInfo_.isKvContinuous = true;
         constInfo_.coreNum = qfaBaseParams.coreNum;
         constInfo_.needInitOutput = qfaBaseParams.needInitOutput;
         constInfo_.outputLayout = static_cast<FA_LAYOUT>(qfaBaseParams.outputLayout);
@@ -301,12 +300,12 @@ public:
 
     __aicore__ inline uint32_t GetFAMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return QFA_METADATA_SIZE * QFA_AIC_CORE_NUM * sectionIdx + 16U * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadataAicNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
 
     __aicore__ inline uint32_t GetFDMetaDataIndex(uint32_t coreIdx, uint32_t metaIdx, uint32_t sectionIdx)
     {
-        return QFA_FD_METADATA_SIZE * QFA_AIV_CORE_NUM * sectionIdx + QFA_FD_METADATA_SIZE * coreIdx + metaIdx;
+        return METADATA_STRIDE * metadataAivNum_ * sectionIdx + METADATA_STRIDE * coreIdx + metaIdx;
     }
 
     __aicore__ inline void CrossCoreBufferInit()

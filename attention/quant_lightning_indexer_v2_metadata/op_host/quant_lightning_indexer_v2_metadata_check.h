@@ -257,12 +257,15 @@ aclnnStatus CheckSingleParamQliV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t 
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 核心数校验
+    bool isA6Version = socVersion.find("Ascend960DT") == std::string::npos;
+    uint32_t aicCoreMaxNum = isA6Version ? optiling::AIC_CORE_MAX_NUM : optiling::AIC_CORE_MAX_NUM_A6;
+    uint32_t aivCoreMaxNum = isA6Version ? optiling::AIV_CORE_MAX_NUM : optiling::AIV_CORE_MAX_NUM_A6;
     CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
-    CHECK_COND(aicCoreNum <= optiling::AIC_CORE_MAX_NUM, ACLNN_ERR_PARAM_INVALID,
-               "The maximum supported AIC num is %u, but got %u", optiling::AIC_CORE_MAX_NUM, aicCoreNum);
+    CHECK_COND(aicCoreNum <= aicCoreMaxNum, ACLNN_ERR_PARAM_INVALID,
+               "The maximum supported AIC num is %u, but got %u", aicCoreMaxNum, aicCoreNum);
     CHECK_COND(aivCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIV num should be larger than 0, but got %u", aivCoreNum);
-    CHECK_COND(aivCoreNum <= optiling::AIV_CORE_MAX_NUM, ACLNN_ERR_PARAM_INVALID,
-               "The maximum supported AIV num is %u, but got %u", optiling::AIV_CORE_MAX_NUM, aivCoreNum);
+    CHECK_COND(aivCoreNum <= aivCoreMaxNum, ACLNN_ERR_PARAM_INVALID,
+               "The maximum supported AIV num is %u, but got %u", aivCoreMaxNum, aivCoreNum);
     return ACLNN_SUCCESS;
 }
 
@@ -323,7 +326,7 @@ aclnnStatus CheckExistenceQliV2(int64_t maskMode, int64_t cmpRatio, const aclTen
 aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQOptional,
                                   const aclTensor *cuSeqlensKOptional, const aclTensor *sequsedQOptional,
                                   const aclTensor *sequsedKOptional, const aclTensor *cmpResidualKOptional,
-                                  const char *layoutQOptional, const char *layoutKOptional, const aclTensor *metadata)
+                                  const char *layoutQOptional, const char *layoutKOptional, const aclTensor *metadata, const std::string &socVersion)
 {
     int64_t dimNum = -1;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
@@ -413,9 +416,11 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验 metadata 元素数
-        if (metadata->GetViewShape().GetDim(0) != optiling::QLI_V2_METADATA_TOTAL_SIZE) {
+        bool isA6Version = socVersion.find("Ascend960DT") == std::string::npos;
+        uint32_t metadataTotalSize = isA6Version ? optiling::QLI_V2_METADATA_TOTAL_SIZE : optiling::QLI_V2_METADATA_TOTAL_SIZE_A6;
+        if (metadata->GetViewShape().GetDim(0) != metadataTotalSize) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %lld",
-                    optiling::QLI_V2_METADATA_TOTAL_SIZE, metadata->GetViewShape().GetDim(0));
+                    metadataTotalSize, metadata->GetViewShape().GetDim(0));
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -481,20 +486,22 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         }
     }
     // 校验 cmp_residual_k 元素数
-    auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);
-    if (IsTensorExistQliV2(cmpResidualKOptional) && (cmpResidualKBatch != queryBatchSize)) {
-        if (IsTensorSourceQLiV2(querySource)) {
-            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-                QLI_V2_ACLNN_OP_NAME, "cmp_residual_k and " + querySource,
-                std::to_string(cmpResidualKBatch) + " and " +
-                    std::to_string(GetRawShapeSizeQLiV2(querySource, queryBatchSize)),
-                "The batch_size of cmp_residual_k should match the valid batch size");
-        } else {
-            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-                QLI_V2_ACLNN_OP_NAME, "cmp_residual_k", std::to_string(cmpResidualKBatch),
-                "The batch_size of cmp_residual_k should match the valid batch size");
+    if (IsTensorExistQliV2(cmpResidualKOptional)) {
+        auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);
+        if (cmpResidualKBatch != queryBatchSize) {
+            if (IsTensorSourceQLiV2(querySource)) {
+                OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                    QLI_V2_ACLNN_OP_NAME, "cmp_residual_k and " + querySource,
+                    std::to_string(cmpResidualKBatch) + " and " +
+                        std::to_string(GetRawShapeSizeQLiV2(querySource, queryBatchSize)),
+                    "The batch_size of cmp_residual_k should match the valid batch size");
+            } else {
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                    QLI_V2_ACLNN_OP_NAME, "cmp_residual_k", std::to_string(cmpResidualKBatch),
+                    "The batch_size of cmp_residual_k should match the valid batch size");
+            }
+            return ACLNN_ERR_PARAM_INVALID;
         }
-        return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
@@ -518,7 +525,7 @@ aclnnStatus ParamsCheckQliV2(const aclTensor *cuSeqlensQOptional, const aclTenso
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckConsistencyQliV2(batchSize, cuSeqlensQOptional, cuSeqlensKOptional, sequsedQOptional, sequsedKOptional,
-                                cmpResidualKOptional, layoutQOptional, layoutKOptional, metadata);
+                                cmpResidualKOptional, layoutQOptional, layoutKOptional, metadata, socVersion);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;

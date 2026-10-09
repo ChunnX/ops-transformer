@@ -442,7 +442,7 @@ private:
             }
 
             if (hasBiasAndExpertIdx) {
-                int64_t biasGmOffset = expertIdx * tilingData->h;
+                int64_t biasGmOffset = expertIdxGm.GetValue(expertIdxOffset) * tilingData->h;
                 CopyIn(biasGm[biasGmOffset], biasLocal[offset + validK * tilingData->hAligned], 1, tilingData->h);
             }
             // 由于会将k轴融到VF中，所以drop_pad场景需要将有效的Scale按序设置
@@ -542,6 +542,9 @@ private:
                 xLocal = xLocal * constExpertAlpha1Local;
                 xLocal = xLocal + vLocal;
                 AscendC::Copy(expandedXLocal[khAlignedOffset], xLocal, tilingData->h);
+                event_t v2mte = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+                SetFlag<HardEvent::V_MTE2>(v2mte);
+                WaitFlag<HardEvent::V_MTE2>(v2mte);
             } else {
                 CopyIn(expandedXGm[expandedRowIdxValue * h], expandedXLocal[khAlignedOffset], 1, h);
             }
@@ -549,7 +552,7 @@ private:
             CopyIn(expandedXGm[expandedRowIdxValue * h], expandedXLocal[khAlignedOffset], 1, h);
         }
         if (hasBiasAndExpertIdx) {
-            int64_t biasGmOffset = expertIdx * h;
+            int64_t biasGmOffset = expertIdxLocal.GetValue(rowInnerIdx) * h;
             CopyIn(biasGm[biasGmOffset], biasLocal[khAlignedOffset], 1, h);
         }
 

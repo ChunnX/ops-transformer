@@ -49,14 +49,18 @@ protected:
     ge::graphStatus CheckOptionalInputTensorDim();
     ge::graphStatus CheckOutputTensorDim();
     ge::graphStatus CheckTensorDim();
+    ge::graphStatus CheckTokenMessageAndOutputWidth(const gert::StorageShape *quantExpandXStorageShape,
+                                                    const gert::StorageShape *xOutStorageShape, int64_t H) const;
     ge::graphStatus CheckTensorShapeRelation();
     ge::graphStatus CheckTensorShapeRelationSecondPart();
-    ge::graphStatus CheckTensorShapeRelationThirdPart();
+    ge::graphStatus CheckSharedExpertInputShape(int64_t Bs, int64_t H) const;
+    ge::graphStatus CheckTensorShapeRelationThirdPart() const;
     ge::graphStatus CheckTensorShapeSize();
     virtual ge::graphStatus CheckBsHKSize(int64_t bs, int64_t h, int64_t k);
     ge::graphStatus CheckTensorDataType();
-    ge::graphStatus CheckTensorDataTypeSecondPart();
-    ge::graphStatus CheckTensorFormat();
+    ge::graphStatus CheckTensorDataTypeSecondPart() const;
+    ge::graphStatus CheckPrimaryTensorFormats() const;
+    ge::graphStatus CheckTensorFormat() const;
     ge::graphStatus SetWorkspace();
     ge::graphStatus CheckHcclBuffsize();
     virtual ge::graphStatus SetHcommCfg() = 0;
@@ -65,7 +69,7 @@ protected:
     void SetDimsToTilingData();
     void SetTilingKey();
     void SetPlatformInfo();
-    void PrintTilingDataInfo();
+    void PrintTilingDataInfo() const;
 
     const char *socTilingName_{nullptr};
     const char *nodeName_{nullptr};

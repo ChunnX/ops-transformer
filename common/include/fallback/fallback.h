@@ -471,7 +471,7 @@ using ResetCacheThreadLocal = void (*)();
 
 #define EXEC_OPAPI_CMD(aclnn_api, ...) \
     ({ \
-        static auto ret = GRAPH_SUCCESS; \
+        auto ret = GRAPH_SUCCESS; \
         do { \
             static const auto ResetCacheThreadLocalAddr = GetOpApiFuncAddr("ResetCacheThreadLocal"); \
             static const auto getWorkspaceSizeFuncAddr = GetOpApiFuncAddr(#aclnn_api "GetWorkspaceSize"); \
@@ -495,6 +495,7 @@ using ResetCacheThreadLocal = void (*)();
             auto workspace_status = call(getWorkspaceSizeFunc, converted_params); \
             if (workspace_status != 0) { \
                 OP_LOGE("aclnnfallback", "call %s failed:", #aclnn_api); \
+                ReleaseConvertTypes(converted_params); \
                 ret = GRAPH_FAILED; \
                 break; \
             } \
@@ -503,6 +504,7 @@ using ResetCacheThreadLocal = void (*)();
                 workspace_addr = host_api_ctx->MallocWorkspace(workspace_size); \
                 if (workspace_addr == nullptr) { \
                     OP_LOGE("aclnnfallback", "call %s allocate workspace failed", #aclnn_api); \
+                    ReleaseConvertTypes(converted_params); \
                     ret = GRAPH_FAILED; \
                     break; \
                 } \

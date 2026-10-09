@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      x     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      x     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Ascend 950PR&950DT系列产品</term>|      √     |
+|<term>Atlas A3系列产品</term>|      x     |
+|<term>Atlas A2系列产品</term>|      x     |
+|<term>Atlas 200I/500 A2推理产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -167,4 +167,4 @@
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn API | [test_aclnn_dense_lightning_indexer_kl_loss_grad_metadata](./examples/test_aclnn_dense_lightning_indexer_kl_loss_grad_metadata.cpp) | 通过[aclnnDenseLightningIndexerKLLossGradMetadata](./docs/aclnnDenseLightningIndexerKLLossGradMetadata.md)接口调用DenseLightningIndexerKLLossGradMetadata算子。 |
-| PyTorch API | [test_torch_dense_lightning_indexer_kl_loss_grad_metadata](./examples/test_torch_dense_lightning_indexer_kl_loss_grad_metadata.py) | 通过[dense_lightning_indexer_kl_loss_grad_metadata](../../torch_extension/cann_ops_transformer/docs/zh/dense_lightning_indexer_kl_loss_grad.md)接口调用DenseLightningIndexerKLLossGradMetadata算子。 |
+| PyTorch API | [test_torch_dense_lightning_indexer_kl_loss_grad_metadata](./examples/test_torch_dense_lightning_indexer_kl_loss_grad_metadata.py) | 通过[dense_lightning_indexer_kl_loss_grad_metadata](../../attention/dense_lightning_indexer_kl_loss_grad/docs/torchapi_dense_lightning_indexer_kl_loss_grad.md)接口调用DenseLightningIndexerKLLossGradMetadata算子。 |

@@ -1,7 +1,21 @@
+<div align="center">
+
 # ops-transformer
+
+[![CANNcommunity](https://img.shields.io/badge/docs-社区全量算子-brightgreen.svg?style=flat)](https://www.hiascend.com/document/redirect/CannCommunityOplist)
+[![repo](https://img.shields.io/badge/docs-项目文档-green.svg?style=flat)](docs)
+[![license](https://img.shields.io/badge/license-CANN_Open_2.0-blue.svg)](LICENSE)
+[![contributing](https://img.shields.io/badge/贡献指南-teal)](CONTRIBUTING.md)
+[![SIG](https://img.shields.io/badge/SIG-ops_transformer-yellow)](https://atomgit.com/cann/community/blob/master/CANN/sigs/ops-transformer/README.md)
+[![Zread](https://img.shields.io/badge/Zread-Ask_AI-_.svg?style=flat&color=0052D9&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/hicann/ops-transformer)
+
+</div>
+
+---
 
 ## 🔥Latest News
 
+- [2026/08] 仓内集成[pre-commit代码检查框架](docs/zh/develop/pre-commit_guide.md)，配置后`git commit`时自动检查并修复格式问题，将规范问题拦截在提交阶段、提升代码合入效率，详见[pre-commit配置指导书](docs/zh/develop/pre-commit_guide.md)。
 - [2026/07] A5上新支持算子[quant_flash_attn](attention/quant_flash_attn)，Dense Attention全量化场景专用，以及experimental目录新增[同名算子](experimental/attention/quant_flash_attn)支持A5的MxFP4全量化；[chunk_gated_delta_rule](attention/chunk_gated_delta_rule)算子支持A5；A5新增DSV4 dense训练阶段TopK筛选反向算子[dense_lightning_indexer_grad_kl_loss](attention/dense_lightning_indexer_grad_kl_loss)、[dense_lightning_indexer_softmax_lse](attention/dense_lightning_indexer_softmax_lse)；mc2新支持算子[engram_fetch_grad](mc2/engram_fetch_grad)。
 - [2026/06] A5上新增支持[sparse_flash_mla](attention/sparse_flash_mla)、[mixed_quant_sparse_flash_mla](attention/mixed_quant_sparse_flash_mla)以及对应的metadata算子，用于DSV4场景稀疏Attention计算。新增[lightning_indexer_v2](attention/lightning_indexer_v2)、[quant_lightning_indexer_v2](attention/quant_lightning_indexer_v2)以及对应的metadata算子，用于DSV4场景TopK筛选。A5新增DSV4 sparse训练阶段Attention反向算子[sparse_flash_mla_grad](attention/sparse_flash_mla_grad)、[sparse_lightning_indexer_kl_loss_grad](attention/sparse_lightning_indexer_kl_loss_grad)；mc2新支持算子[engram_fetch](mc2/engram_fetch)、[engram_fetch_wait](mc2/engram_fetch_wait)。
 - [2026/05] [fused_infer_attention_score](attention/fused_infer_attention_score)算子A5上支持MxFP8全量化；A5上新支持算子[flash_attn](attention/flash_attn)，Dense Attention非量化场景专用。
@@ -15,7 +29,7 @@
 - [2025/12] 支持transformer类onnx算子插件，包括[NPUFlashAttention](attention/flash_attention_score/framework)、[NPUMultiHeadAttention](common/src/framework)、[NPUMoeComputeExpertTokens](moe/moe_compute_expert_tokens/framework)等。
 - [2025/12] 新支持算子[kv_rms_norm_rope_cache](posembedding/kv_rms_norm_rope_cache)、[attention_update](attention/attention_update)、[attention_worker_scheduler](attention/attention_worker_scheduler)、[gather_pa_kv_cache](attention/gather_pa_kv_cache)、[kv_quant_sparse_flash_attention](attention/kv_quant_sparse_flash_attention)、[lightning_indexer_grad](attention/lightning_indexer_grad)、[mla_preprocess](attention/mla_preprocess)、[mla_preprocess_v2](attention/mla_preprocess_v2)、[grouped_matmul_swiglu_quant_v2](gmm/grouped_matmul_swiglu_quant_v2)、[attention_to_ffn](mc2/attention_to_ffn)、[ffn_to_attention](mc2/ffn_to_attention)。
 - [2025/12] 开源算子支持[NPU Simulator](docs/zh/debug/npu_sim.md)仿真工具开发调试。
-- [2025/12] 开源算子支持[Ascend 950PR/Ascend 950DT](docs/zh/ascend950_op_list.md)/KirinX90系列产品。
+- [2025/12] 开源算子支持[Ascend 950PR&950DT系列产品](docs/zh/ascend950_op_list.md)/KirinX90系列产品。
 - [2025/11] 新支持算子[kv_quant_sparse_flash_attention](attention/kv_quant_sparse_flash_attention)、[lightning_indexer](attention/lightning_indexer)、[quant_lightning_indexer](attention/quant_lightning_indexer)、[sparse_flash_attention](attention/sparse_flash_attention)。
 - [2025/11] 新支持示例算子[rope_matrix](experimental/posembedding/rope_matrix)和[all_gather_add](examples/mc2/all_gather_add)。
 - [2025/11] 新增算子开发工程模板[NpuOpsTransformerExt](experimental/npu_ops_transformer_ext)，无缝集成PyTorch张量操作，支持自动微分和GPU/NPU统一接口。
@@ -30,7 +44,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann)（Compute Architect
 
 ## 📌版本配套
 
-本项目源码会跟随CANN软件版本发布，关于CANN软件版本与本项目标签的对应关系请参阅[release仓库](https://gitcode.com/cann/release-management)中的相应版本说明。
+本项目源码会跟随CANN软件版本发布，关于CANN软件版本与本项目标签的对应关系请参阅[release仓库](https://atomgit.com/cann/release-management)中的相应版本说明。
 请注意，为确保您的源码定制开发顺利进行，请选择配套的CANN版本与Gitcode标签源码，使用master分支可能存在版本不匹配的风险。
 
 ## 🛠️环境准备
@@ -42,8 +56,8 @@ ops-transformer是[CANN](https://hiascend.com/software/cann)（Compute Architect
 环境准备好后，下载与CANN版本配套的分支源码，通用命令如下，\$\{tag\_version\}替换为分支标签名。以9.0.0分支源码下载为例：
 
 ```bash
-# 通用命令：git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
-git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
+# 通用命令：git clone -b ${tag_version} https://atomgit.com/cann/ops-transformer.git
+git clone -b 9.0.0 https://atomgit.com/cann/ops-transformer.git
 ```
 
 > 说明：若环境中已存在配套分支源码，**可跳过本步骤**，例如CANNLab默认已提供最新版本CANN对应的源码。
@@ -56,18 +70,21 @@ git clone -b 9.0.0 https://gitcode.com/cann/ops-transformer.git
 ## 💬相关信息
 
 - [目录结构](docs/zh/install/dir_structure.md)
+- [算子索引](docs/zh/op_list.md)
+- [aclnn接口索引](docs/zh/op_api_list.md)
+- [torch接口索引](docs/zh/torch_api_list.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)
-- [所属SIG](https://gitcode.com/cann/community/tree/master/CANN/sigs/ops-transformer)
+- [所属SIG](https://atomgit.com/cann/community/tree/master/CANN/sigs/ops-transformer)
 - [联系我们] 微信名：Clark_Dan
 
 -----
 PS：本项目功能和文档正在持续更新和完善中，欢迎您关注最新版本。
 
-- **问题反馈**：通过GitCode[【Issues】](https://gitcode.com/cann/ops-transformer/issues)提交问题。
-- **社区互动**：通过GitCode[【讨论】](https://gitcode.com/cann/ops-transformer/discussions)参与交流。
-- **技术专栏**：通过GitCode[【Wiki】](https://gitcode.com/cann/ops-transformer/wiki)获取技术文章，如系列化教程、优秀实践等。
+- **问题反馈**：通过GitCode[【Issues】](https://atomgit.com/cann/ops-transformer/issues)提交问题。
+- **社区互动**：通过GitCode[【讨论】](https://atomgit.com/cann/ops-transformer/discussions)参与交流。
+- **技术专栏**：通过GitCode[【Wiki】](https://atomgit.com/cann/ops-transformer/wiki)获取技术文章，如系列化教程、优秀实践等。
 
 
 ​

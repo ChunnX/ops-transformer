@@ -17,7 +17,11 @@
 #define QUANT_REDUCE_SCATTER_TILING_DATA_H
 
 #include <cstdint>
-#include <kernel_tiling/kernel_tiling.h>
+
+// 量化模式（host tiling + kernel 共享）
+constexpr uint32_t TG_QUANT_MOD = 1;
+constexpr uint32_t MX_QUANT_MOD = 2;
+constexpr uint32_t PT_QUANT_MOD = 3;
 
 struct QuantReduceScatterTilingInfo {
     uint64_t bs;
@@ -27,11 +31,14 @@ struct QuantReduceScatterTilingInfo {
     uint64_t totalWinSize; // Win区总大小，即HCCL_BUFFER_SIZE
     uint32_t xPerBlock;    // host 侧基于 TARGET_ITER 公式推荐的每块元素数
     uint32_t alignBlock;   // xPerBlock 对齐粒度（元素数，host/kernel共享）
+    uint64_t hcclBufferSize;
+    uint32_t quantMode; // 1=TG(KG), 2=MX, 3=PT(pertensor)
 };
 
 struct QuantReduceScatterTilingData {
-    Mc2InitTiling mc2InitTiling;
-    Mc2CcTiling mc2CcTiling;
+    // 注意：不能声明Mc2InitTiling/Mc2CcTiling字段，
+    // GE/HCCL框架侧按tilingData中是否存在Mc2InitTiling结构识别task-sink MC2算子，并解析其内容创建通信资源，
+    // 本算子走context张量MTE自同步，proto无group，该字段从未填充且kernel不读，残留会导致GE图加载时读到脏数据触发
     QuantReduceScatterTilingInfo quantReduceScatterTilingInfo;
 };
 

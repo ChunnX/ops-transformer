@@ -87,7 +87,8 @@ constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
  * CalcDispatchBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
  * 每个 route item 占 1 bit mask 和两个 int32 index，因此：
  *   maxRouteItems = routeItemBudgetBytes * 8 / 65。
- * CopyGMToGMPerToken 的 copyTmp、triple 和 event ID 三类槽位一一对应，统一使用 2~6 个 buffer。
+ * CopyGMToGMPerToken 的 copyTmp、triple 和 event ID 三类槽位一一对应，MTE 启动轮沿用自适应 2~6 个 buffer，稳态使用前 2
+ * 个槽，UB 地址保持不变。
  */
 constexpr int32_t MIN_DISPATCH_BUFFER_COUNT = 2;
 constexpr int32_t MAX_DISPATCH_BUFFER_COUNT = 6;
@@ -98,30 +99,26 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  *
  * Send route batch 基准用于先选择 mask buffer 数量，再固定 buffer 数反推最终 batch。
  * Bsend 表示基准 batch 的 route item 数，N 表示 mask buffer 数：
- *   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * (Bsend / 8 + 32)；
- *   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
- *                    + sendCntAccBytes；
+ *   indexBytes 为路由下标宽度（2 或 4 字节），topkIds 中的专家号仍为 int32；
+ *   sendVariableBytes(Bsend, N) = Bsend * (4 + indexBytes)
+ *                               + N * CalcTopkValidIndexRingSlotBytes(Bsend, topK, indexBytes)；
+ *   sendFixedBytes = resetBytes + quantScratchBytes + sendCntAccBytes；
  *   sendFixedBytes + sendVariableBytes(Bsend, N) <= availableUbBytes。
  *
- * 12288 的成立前提按最坏合法规格 k=8192、moeExpertNum=2048、N=6 保守验证：
- *   resetTensor                 <= 8KB；
- *   mxTempTensor                = 2KB；
- *   2 个 xOutTensor             <= 2 * (8192B token + 256B scale + 128B weight) = 17152B；
- *   2 个 xInTensor              = 2 * 8192 * sizeof(bfloat16_t) = 32KB；
- *   sendCntAccTensor            <= Align32(2048 * sizeof(int32_t)) = 8KB；
- *   2 个 route int32 tensor     = 2 * 12288 * sizeof(int32_t) = 96KB；
- *   6 个 mask buffer            = 6 * (12288 / 8 + 32) = 9408B；
- *   合计 176064B，约 172KB；当前支持平台动态获取的 UB 预算可容纳该布局。
- * 因此基准 batch 在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。
- * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
- * 必须重新验证该前提。
+ * MTE 的 MoE/shared 共用输入双缓冲和 2048B mxTemp，需要独立共享量化时增加共享输出双缓冲。
+ * H=8192 时共享 FP8 输出双缓冲最多增加 16896B，FP4 最多增加 8704B。
+ * count 阶段复用累计表之前已结束使用的量化/下标/ring 区；输入双缓冲至少 4096B，
+ * 足以容纳一张卡最多 1024 个专家的 count 重排，无需额外预留重排区。
+ * 基准 batch 保持 10240，host 将共享输出计入固定占用后选择 ring 深度并扩大 batch。
+ * ring 槽含 mask 和筛选下标：Bsend / 8 + Align32(CeilDiv(Bsend + topK - 1, topK) * indexBytes)。
+ * 此配置由 MTE 发送路径使用；URMA Layered 在 kernel 中单独计算发送布局。
  *
- * CalcSendMaskBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
+ * CalcTopkValidIndexBufferConfig 固定选中的 buffer 数后，用剩余 UB 扩大 batch，并向下对齐到 ALIGN_256。
  * SendMaskCal 使用 MTE3_V 的 EVENT_ID0~EVENT_ID5 管理 mask push ring。最低保留双 buffer，最多 6 个。
  */
 constexpr int32_t MIN_SEND_MASK_BUFFER_COUNT = 2;
 constexpr int32_t MAX_SEND_MASK_BUFFER_COUNT = 6;
-constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
+constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 10240;
 
 /*
  * Reset buffer policy
@@ -158,6 +155,26 @@ struct MegaMoeSendMaskBufferConfig {
     int32_t bufferCount;
     uint32_t bufferBytes;
 };
+
+// Host-computed A8W4 layout, shared by Wave/Layered and routed/shared experts.
+// Offsets are bytes; A and expanded W8 B tiles both use 256 x 256 bytes.
+struct MegaMoeL1Layout {
+    static constexpr uint64_t MAX_A_BUFFER_NUM = 6;
+    static constexpr uint64_t MAX_B_BUFFER_NUM = 8;
+    uint64_t aBufferNum;
+    uint64_t bBufferNum;
+    uint64_t tileK;
+    uint64_t scaleK;
+    uint64_t aSlotBytes;
+    uint64_t bSlotBytes;
+    uint64_t scaleASlotBytes;
+    uint64_t scaleBSlotBytes;
+    uint64_t aOffsets[MAX_A_BUFFER_NUM];
+    uint64_t bOffsets[MAX_B_BUFFER_NUM];
+    uint64_t scaleAOffsets[2];
+    uint64_t scaleBOffsets[2];
+};
+
 struct MegaMoeTilingData {
     uint32_t moeExpertPerRank; // 本卡参与 topK 路由的 MoE 专家数，与 weight1 表达的专家数一致
     uint32_t bs;
@@ -171,7 +188,8 @@ struct MegaMoeTilingData {
     uint32_t blockAivNum;
     int64_t combineQuantMode;
     float clampLimit;
-    uint8_t groupedMatmulMode;
+    uint8_t moeGmmMode;
+    uint8_t sharedGmmMode;
     int64_t topoType;
     uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 topK/SendMask expert id 空间
 
@@ -200,8 +218,19 @@ struct MegaMoeTilingData {
     uint32_t mGroupsPerWave;    // 每个 routed expert Wave 消费的 256-row M 分组数
     // MoE 和共享专家使用相同布局：true 表示每个专家一个二维 tensor，false 表示单个三维堆叠 tensor。
     bool isPerExpertWeightTensor;
-    // 全卡一致的单卡 token 数上界（attr num_max_tokens_per_rank；attr=0 时 host 置为 bs）。
-    // 跨卡窗口布局、mask 槽几何与收发批网格一律用该上界，bs 仅描述本卡真实 token 数。
+    // 全卡一致的单卡 token 数上界（attr num_max_tokens_per_rank）。
+    // MTE 保留 attr=0 时回退到 bs 的兼容语义；URMA 必须显式传入非 0 上界。
+    // 跨卡窗口和 mask 槽几何使用该上界，bs 仅描述本卡真实 token 数。
     uint32_t numMaxTokensPerRank;
+    // URMA 分层拓扑；Host workspace 计算与 Device 通道映射必须使用同一个值。
+    uint32_t rankNumPerServer;
+    // MTE 下 MoE/shared 量化输出类型不同时，需要为共享专家准备独立的 token/scale 拼接数据。
+    bool isSharedQuantIndependent;
+    // Appended to retain all existing field offsets; host and kernel packages must match.
+    MegaMoeL1Layout a8w4L1Layout;
+    // 门控后实际开启的去重模式：0=全关，1=仅 combine 开，2=仅 dispatch 开，3=双开。
+    // 判断统一用 IsDispatchDedupOn/IsCombineDedupOn（mega_moe_peermem.h）。
+    // 0 时所有路径与无该字段时逐字等价；dispatch 去重数值恒等，combine 去重为生产卡预加权合并。
+    int32_t dedupMode;
 };
 #endif

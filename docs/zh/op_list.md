@@ -138,6 +138,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/flash_attn_grad/README.md">flash_attn_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>训练场景下计算注意力的反向输出，即flash_attn的反向计算，需配合flash_attn_metadata前置算子（is_grad_enabled=true）生成的分核metadata使用。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/flash_attention_score/README.md">flash_attention_score</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -228,6 +238,26 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention_grad/README.md">generic_block_sparse_attention_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>通用块稀疏注意力反向算子，依据rsvdBlockIdx/rsvdBlockCount在被选中的Q块上计算并传播梯度。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/generic_block_sparse_attention_grad_metadata/README.md">generic_block_sparse_attention_grad_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>generic_block_sparse_attention_grad算子的前置算子，用于计算generic_block_sparse_attention_grad的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/incre_flash_attention/README.md">incre_flash_attention</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -275,6 +305,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>在Sparse Flash Attention的基础上支持了[Per-Token-Head-Tile-128量化]输入。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/kv_quant_sparse_flash_attention_v2/README.md">kv_quant_sparse_flash_attention_v2</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>在Kv Quant Sparse Flash Attention的基础上支持了sinks特性以及支持输出softmax_max和softmax_sum。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -425,6 +465,16 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>推理MlaPrologV3WeightNz算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/msa_index_score/README.md">msa_index_score</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>计算 MSA Index Branch 的 block score，对每个 query token 与 KV sparse block 做 matmul+maxpool 得到重要性分数。</td>
   </tr>
   <tr>
     <td>attention</td>
@@ -761,8 +811,8 @@
     <td><a href="../../attention/quant_flash_attn_grad/README.md">quant_flash_attn_grad</a></td>
     <td>✓</td>
     <td>✓</td>
-    <td>✓</td>
     <td>✗</td>
+    <td>✓</td>
     <td>AI Core</td>
     <td>计算量化注意力（QuantFlashAttention）的反向梯度。</td>
   </tr>
@@ -785,6 +835,26 @@
     <td>✗</td>
     <td>AI Core</td>
     <td>大模型推理动态稀疏注意力机制的前置评分模块，为block-sparse-attention的前置评分模块。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/pool_key_indexer/README.md">pool_key_indexer</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>将多个连续token打包成一个pool（池），以pool为单位计算注意力相关性分数并选取top-k位置，从而在保持稀疏注意力优势的同时减少索引开销。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/key_pool/README.md">key_pool</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对每个输入token分别执行K投影和Gate投影，将连续的`cmpRatio`个token分为一组，按Gate与位置偏置确定的权重将组内K合并为一个Key，并将未完成压缩组所需的中间状态写入分页`stateCache`。</td>
   </tr>
   <tr>
     <td>ffn</td>
@@ -914,7 +984,7 @@
     <td>✓</td>
     <td>✗</td>
     <td>AI Core</td>
-    <td>融合GroupedMatmul 、dequant、swiglu和quant，新增了MXFP8量化场景（仅Ascend 950PR/Ascend 950DT AI处理器支持）</td>
+    <td>融合GroupedMatmul 、dequant、swiglu和quant，新增了MXFP8量化场景（仅Ascend 950PR&950DT系列产品 AI处理器支持）</td>
   </tr>
   <tr>
     <td>gmm</td>
@@ -1555,6 +1625,26 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>mhc_pre_sinkhorn算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/block_attention_residuals/README.md">block_attention_residuals</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>将 partialBlock 与 blockRes 拼接后完成 RMS、投影打分与 Softmax 加权融合，输出 hiddenStates。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/block_attention_residuals_grad/README.md">block_attention_residuals_grad</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>BlockAttentionResiduals的反向算子，根据前向保存的inv_norm、probs和上游梯度grad_hidden_states，计算partial_block、block_res、proj_weight、norm_weight的梯度。</td>
   </tr>
   <tr>
     <td>mamba</td>

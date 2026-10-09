@@ -31,7 +31,6 @@
 #include "hccl/hccl.h"
 #include "apace_st_utils.h"
 #include "apace/utils/apace_constant.h"
-#include "apace/utils/apace_common_utils.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "apace/tiling/quant_matmul_tiling_data.h"
 #include "tiling/hccl/hccl_tiling.h"
@@ -132,7 +131,8 @@ int CreateTilingDataAndContext(const char *hcomName, aclrtStream stream, int m, 
     *tilingData = {};
 
     uint64_t totalM = static_cast<uint64_t>(m) * static_cast<uint64_t>(rankNum);
-    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN, mm::BiasDataType::DT_FLOAT>
+        tilingEngine;
     tilingEngine.SetOptimizeEnable(false);
     tilingEngine.SetMTailAlignEnable(true);
     bool transB = !isNz;

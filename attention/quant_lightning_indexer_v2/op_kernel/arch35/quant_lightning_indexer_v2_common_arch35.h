@@ -14,6 +14,10 @@
  */
 #ifndef QUANT_LIGHTNING_INDEXER_V2_COMMON_H
 #define QUANT_LIGHTNING_INDEXER_V2_COMMON_H
+
+#include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_base_arch35.h"
+#include "../../../lightning_indexer_v2/op_kernel/arch35/common/lightning_indexer_v2_const_info_common.h"
+
 #if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202))
     #define CVRATIO 1
 #else
@@ -116,25 +120,9 @@ struct RunInfo {
     uint32_t saveWorkSpaceIdx = 0;
 };
 
-struct ConstInfo {
+struct ConstInfo : LIV2Common::ConstInfoCommon<LI_LAYOUT> {
     // CUBE与VEC核间同步的模式
     static constexpr uint32_t QLIV2_SYNC_MODE4 = 4;
-    static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
-    static constexpr uint32_t CROSS_VC_EVENT = 0;
-    static constexpr uint32_t CROSS_CV_EVENT = 2;
-    // BUFFER的字节数
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
-    // 无效索引
-    static constexpr int INVALID_IDX = -1;
     static constexpr uint16_t NEG_INF_BFLOAT = 0xFF80;
 
     // CUBE和VEC的核间同步EventID
@@ -163,81 +151,18 @@ struct ConstInfo {
     LI_LAYOUT outputLayout;           // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;
-    uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
     int32_t maxSeqlenQ = -1;
-    uint32_t quantMode = 1; // quant模式，默认为1
-
-    uint32_t actualLenQDims = 0U;     // query的actualSeqLength 的维度
-    uint32_t actualLenDims = 0U;      // KV 的actualSeqLength 的维度
+    uint32_t quantMode = 1;           // quant模式，默认为1
     uint32_t cmpResiduaKLenDims = 0U; // cmpResidualK的维度
-    bool isAccumSeqS1 = false;        // 是否累加模式
-    bool isAccumSeqS2 = false;        // 是否累加模式
-    bool isLDOpen = false;
-    bool returnValue = false;
 };
 
-struct LdSplitCoreInfo {
-    bool isLdCoreEnable = false;    // 当前核是否参与规约任务
-    uint32_t saveWorkSpaceIdx = 0U; // 存放LD参数的地址
-    uint32_t bn2Idx = 0U;           // 归约任务
-    uint32_t bIdx = 0U;
-    uint32_t n2Idx = 0U;
-    uint32_t mIdx = 0U;
-    uint32_t workspaceIdx = 0U; // 当前AIV核上规约任务的索引
-    uint32_t workspaceNum = 0U; // 当前AIV核上规约任务的S2切分数量
-    uint32_t mStart = 0U;
-    uint32_t mNum = 0U;
-    uint64_t indiceOutCoreOffset = 0U; // 最终输出索引搬出Topk的初始偏移地址
-};
-
-struct SplitCoreInfo {
-    uint32_t s2Start = 0U; // S2的起始位置
-    uint32_t s2End = 0U;   // S2循环index上限
-    uint32_t bN2Start = 0U;
-    uint32_t bN2End = 0U;
-    uint32_t gS1Start = 0U;
-    uint32_t gS1End = 0U;
-    bool isLD = false; // 当前核是否需要进行Decode归约任务
-    bool isCoreEnable = false;
-};
-
-template <typename T>
-__aicore__ inline T Align(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
-}
-
-template <typename T1, typename T2>
-__aicore__ inline T1 Min(T1 a, T2 b)
-{
-    return (a > b) ? (b) : (a);
-}
-
-template <typename T1, typename T2>
-__aicore__ inline T1 Max(T1 a, T2 b)
-{
-    return (a > b) ? (a) : (b);
-}
-
-template <typename T>
-__aicore__ inline T CeilDiv(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
-}
+using SplitCoreInfo = LIV2Common::LightningIndexerV2SplitCoreInfo;
+using LdSplitCoreInfo = LIV2Common::LightningIndexerV2LdSplitCoreInfo;
+using LIV2Common::Align;
+using LIV2Common::CeilDiv;
+using LIV2Common::Max;
+using LIV2Common::Min;
 } // namespace QLIV2Common
-
-// bank冲突优化
-// david 256KB bank layout
-// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
-// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
-#define UB_BLOCK 32 // 32B
-#define UB_BANK_GROUPS 8
-#define UB_BANKS 2
-#define UB_BANK_DEPTH 512
-
-#define UB_BANK_GROUP_STRIDE UB_BLOCK                               // 32B
-#define UB_BANK_STRIDE (UB_BANK_GROUPS * UB_BLOCK)                  // 256B
-#define UB_BANK_DEPTH_STRIDE (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK) // 512B
 
 #endif // QUANT_LIGHTNING_INDEXER_V2_COMMON_H

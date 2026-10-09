@@ -4,16 +4,16 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>       |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                               |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Ascend 950PR&950DT系列产品</term>                             |    √    |
+| <term>Atlas A3系列产品</term>       |    √    |
+| <term>Atlas A2系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2推理产品</term>                      |    ×    |
+| <term>Atlas推理系列产品</term>                               |    ×    |
+| <term>Atlas训练系列产品</term>                              |    ×    |
 
 ## 功能说明
 
-- 算子功能：MegaMoE算子将MoE层的专家FFN的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
+- 算子功能：MegaMoE算子将MoE层的专家FFN的完整计算流程及前后数据通信（即 Dispatch + Linear1 + Activation + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
 
 - 计算公式：
   - 输入：
@@ -38,7 +38,7 @@
     - 张量切片操作采用Python风格的 `start:stop:step` 表示法，例如$[0::2, :]$ 代表取偶数行、$[1::2, :]$ 代表取奇数行。
     - $\mathrm{bitcast}_{T}(\mathbf{Z})$ 表示二进制重解释操作，将张量$\mathbf{Z}$的底层二进制数据按目标类型 $T$ 重新解释。
   - <span id="activation-formulas">激活函数公式：</span>
-    - 记 Linear1 输出拆分后的 gate 分支为 $\mathbf{G}$，up 分支为 $\mathbf{U}$，激活输出为 $\mathbf{A}$。Sigmoid 函数和 SiLU 函数定义为：
+    - 记 Linear1 输出拆分后的 gate 分支为 $\mathbf{G}$，up 分支为 $\mathbf{U}$，激活输出为 $\mathbf{A}$。下文将由 `activation` 和 `activation_params` 共同确定的具体激活计算统称为 Activation。Sigmoid 函数和 SiLU 函数定义为：
       $$
       \sigma(z)=\frac{1}{1+e^{-z}}, \qquad
       \operatorname{SiLU}(z)=z\cdot\sigma(z)=\frac{z}{1+e^{-z}}.
@@ -85,8 +85,10 @@
     | A8W4-FP | FLOAT8_E4M3FN        | FLOAT4_E2M1          |
     | A4W4-FP | FLOAT4_E2M1        | FLOAT4_E2M1            |
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持上表中A8W8-FP场景。
-    - <term>Ascend 950PR/Ascend 950DT</term>：不支持上表中A16W16、A8W8-INT、A8W4-INT场景。
+    - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：不支持上表中A8W8-FP场景。
+    - <term>Ascend 950PR&950DT系列产品</term>：不支持上表中A16W16、A8W8-INT、A8W4-INT场景。
+    - <term>Ascend 950PR&950DT系列产品</term>的dispatch阶段有两条路径：`dispatchQuantMode` = 4时，按下文各量化场景的描述由算子内部对BF16的`x`做MX逐组量化；`dispatchQuantMode` = 0时为预量化直通，`x`已经是量化后的数据、缩放因子由`scales`入参给出，算子跳过下文第一阶段的量化步骤，直接用`x`与`scales`参与后续矩阵乘，其余阶段与下文一致。
+    - <term>Ascend 950PR&950DT系列产品</term>：MoE专家与共享专家可以采用不同的权重类型与量化类型，共享专家的量化输出类型由`sharedExpertQuantOutDtype`指定，未显式配置时与`dispatchQuantOutDtype`一致。
 
     <details>
     <summary> A16W16 非量化场景</summary>
@@ -101,7 +103,7 @@
 
     - **Expert Compute**
 
-        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用 **SwiGLU** 结构以提升表达能力。整个计算过程分为如下三个子步骤。
+        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。整个计算过程分为如下三个子步骤。
 
         **1. Linear1 投影**
 
@@ -164,7 +166,7 @@
 
     - **Expert Compute**
 
-        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用 SwiGLU 结构以提升表达能力。在A8W8场景下，两个线性层都使用 INT8 输入和 INT8 权重进行矩阵乘，得到 INT32 中间结果并反量化。具体分为三个子步骤。
+        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。在A8W8场景下，两个线性层都使用 INT8 输入和 INT8 权重进行矩阵乘，得到 INT32 中间结果并反量化。具体分为三个子步骤。
 
         **1. Linear1 投影（INT8 矩阵乘 + 反量化）**
 
@@ -242,7 +244,7 @@
 
     - **Expert Compute**
 
-        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用 **SwiGLU** 结构以提升表达能力。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将 INT8 值拆为高4位和低4位两个有符号 INT4，使得 INT8×INT4 的矩阵乘可分解为两个 INT4×INT4 的矩阵乘，从而利用硬件的 INT4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://gitcode.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
+        在 MoE 层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将 INT8 值拆为高4位和低4位两个有符号 INT4，使得 INT8×INT4 的矩阵乘可分解为两个 INT4×INT4 的矩阵乘，从而利用硬件的 INT4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://atomgit.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
 
         **1. 生成精度补偿的偏置矩阵（离线生成，在算子外完成，并作为算子输入）**
 
@@ -417,23 +419,23 @@
     \hat{X}_e,\ S_{X,e} = \mathrm{Q}_{\text{MX}}\!\left(X[\mathcal{T}_e]\right), \quad e = 0, 1, \ldots, E_{\text{local}}-1
     $$
 
-    说明：根据 `topkIds` 将 Token 按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的 Token 索引集合，$E_{local}$表示当前专家收到的最大token数，每个专家数值可能不同，$X[\mathcal{T}_e]$ 为对应的子矩阵。$\mathrm{Q}_{\text{MX}}$ 表示 MX 逐组量化（group size = 32），对每组 32 个元素提取共享指数后量化为 FP8 目标类型（FLOAT8_E5M2 或 FLOAT8_E4M3FN），同时输出 FLOAT8_E8M0 缩放因子。量化后的数据将作为 GMM1 的输入。
+    说明：根据 `topkIds` 将 Token 按专家排序收集，$\mathcal{T}_e$ 为分配到专家 $e$ 的 Token 索引集合，$E_{\text{local}}$ 表示本 Rank 的路由 MoE 专家数。$X[\mathcal{T}_e]$ 为专家 $e$ 对应的输入子矩阵，其行数由该专家本次实际接收的 Token 数决定。$\mathrm{Q}_{\text{MX}}$ 表示 MX 逐组量化（group size = 32），对每组 32 个元素提取共享指数后量化为 FP8 目标类型（FLOAT8_E5M2 或 FLOAT8_E4M3FN），同时输出 FLOAT8_E8M0 缩放因子。量化后的数据将作为 GMM1 的输入。
 
-    第二阶段对每个专家执行 GMM1 矩阵乘法（将 $W_1$ 沿列方向分为两半分别计算）、SwiGLU 激活和 MX 量化：
+    第二阶段对每个专家执行 GMM1 矩阵乘法（将 $W_1$ 沿列方向分为两半分别计算）、Activation 和 MX 量化：
 
     $$
     G_e = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(G)}, S_{1,e}^{(G)}), \quad U_e = \mathrm{DQ}_{\text{MX}}(\hat{X}_e, S_{X,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{1,e}^{(U)}, S_{1,e}^{(U)})
     $$
 
     $$
-    A_e = \operatorname{SwiGLU}(G_e,U_e)
+    A_e = \operatorname{Activation}(G_e,U_e)
     $$
 
     $$
     \hat{A}_e,\ S_{A,e} = \mathrm{Q}_{\text{MX}}(A_e)
     $$
 
-    说明：将 $W_1$ 的前 $N/2$ 列 $W_{1,e}^{(G)}$ 和后 $N/2$ 列 $W_{1,e}^{(U)}$ 分别与 MX 反量化后的输入做矩阵乘法，得到 gate 分支 $G_e$ 和 up 分支 $U_e$。SwiGLU 的计算方式参见[激活函数公式](#activation-formulas)，其输出维度为 $N/2$。随后对激活输出做 MX 量化，得到 GMM2 的量化输入 $\hat{A}_e$。
+    说明：将 $W_1$ 的前 $N/2$ 列 $W_{1,e}^{(G)}$ 和后 $N/2$ 列 $W_{1,e}^{(U)}$ 分别与 MX 反量化后的输入做矩阵乘法，得到 gate 分支 $G_e$ 和 up 分支 $U_e$。具体激活函数的计算方式参见[激活函数公式](#activation-formulas)，其输出维度为 $N/2$。随后对激活输出做 MX 量化，量化类型与 Dispatch 阶段的量化类型一致，即同为 `FLOAT8_E5M2` 或同为 `FLOAT8_E4M3FN`，得到 GMM2 的量化输入 $\hat{A}_e$。
 
     第三阶段对每个专家执行 GMM2 矩阵乘法，并将结果按目标 Rank 分发：
 
@@ -441,9 +443,9 @@
     O_e = \mathrm{DQ}_{\text{MX}}(\hat{A}_e, S_{A,e}) \cdot \mathrm{DQ}_{\text{MX}}(W_{2,e}, S_{2,e})
     $$
 
-    说明：将量化后的 SwiGLU 输出与第二组权重 $W_2$ 做 MX 反量化后的矩阵乘法，将 $N/2$ 维中间表示映射回 $H$ 维隐藏空间，得到每个专家的输出 $O_e$。计算完成后通过 RDMA peermem 将结果按目标 Rank 的专家偏移地址写入远端，实现跨 Rank 聚合。
+    说明：将量化后的激活输出与第二组权重 $W_2$ 做 MX 反量化后的矩阵乘法，将 $N/2$ 维中间表示映射回 $H$ 维隐藏空间，得到每个专家的输出 $O_e$。计算完成后通过 RDMA peermem 将结果按目标 Rank 的专家偏移地址写入远端，实现跨 Rank 聚合。
 
-    当启用共享专家（`sharedExpertNumPerRank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + SwiGLU + GMM2 计算，使用 `sharedWeight1`、`sharedWeight2`、`sharedWeightScales1`、`sharedWeightScales2`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{sharedExpertNumPerRank} - 1\}$。
+    当启用共享专家（`sharedExpertNumPerRank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + Activation + GMM2 计算，使用 `sharedWeight1`、`sharedWeight2`、`sharedWeightScales1`、`sharedWeightScales2`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{sharedExpertNumPerRank} - 1\}$。
 
     第四阶段对所有 Token 按路由权重加权求和，并叠加共享专家输出，恢复为与输入相同形状的输出：
 
@@ -457,13 +459,14 @@
 
     局部变量说明：
     - $\mathcal{T}_e$：被路由到专家 $e$ 的 Token 索引集合，由 `topkIds` 排序后确定。
+    - $m_e=|\mathcal{T}_e|$：专家 $e$ 本次实际接收的 Token 数，不同专家的 $m_e$ 可以不同。
     - $\hat{X}_e,\ S_{X,e}$：专家 $e$ 的量化输入及其 MX 缩放因子，第一阶段中间结果。
     - $W_{1,e}^{(G)}$、$W_{1,e}^{(U)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由 `weight1` 按 gate 分支和 up 分支拆分推导。
     - $S_{1,e}^{(G)}$、$S_{1,e}^{(U)}$：$W_{1,e}^{(G)}$ 和 $W_{1,e}^{(U)}$ 对应的 MX 缩放因子，从 `weightScales1` 按维度截取。
     - $S_{2,e}$：$W_{2,e}$ 对应的 MX 缩放因子，来自参数 `weightScales2`。
     - $G_e,\ U_e$：GMM1 的 gate 分支和 up 分支输出，中间结果。
-    - $A_e$：SwiGLU 激活输出，维度 $m_e \times N/2$，中间结果。
-    - $\hat{A}_e,\ S_{A,e}$：量化后的 SwiGLU 输出及其 MX 缩放因子，中间结果。
+    - $A_e$：激活输出，维度 $m_e \times N/2$，中间结果。
+    - $\hat{A}_e,\ S_{A,e}$：量化后的激活输出及其 MX 缩放因子，中间结果。
     - $O_e$：GMM2 的专家级输出，维度 $m_e \times H$，中间结果。
     - $\pi(i, k)$：Token $i$ 的第 $k$ 个 top-k 专家在展开排序后的行索引，由路由排序确定。
     - $\mathrm{Q}_{\text{MX}}(\cdot)$：MX 逐组量化操作，block size = 32，输出 FP8 数据和 E8M0 缩放因子。
@@ -486,9 +489,9 @@
 
     路由 MoE 专家的第一层和第二层权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1 数据，缩放因子为 E8M0，$e$ 的范围为 $[0,\text{localMoeExpertNum})$。共享专家权重单独由 `sharedWeight1`、`sharedWeight2` 提供，其第一维为 `sharedExpertNumPerRank`。A8W4 kernel 在矩阵乘 Prologue 中处理 FP4 权重，送入矩阵乘的逻辑数据流为 FP8 激活乘 FP4 权重。
 
-    第二阶段（GMM1、SwiGLU 与再次量化）：
+    第二阶段（GMM1、Activation 与再次量化）：
 
-    对专家 $e$ 收到的 Token，第一层分组矩阵乘和 SwiGLU 计算为：
+    对专家 $e$ 收到的 Token，第一层分组矩阵乘和激活函数计算为：
 
     $$
     G_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
@@ -501,10 +504,10 @@
     $$
 
     $$
-    A_e = \operatorname{SwiGLU}(G_e,U_e).
+    A_e = \operatorname{Activation}(G_e,U_e).
     $$
 
-    SwiGLU 的计算方式参见[激活函数公式](#activation-formulas)。其输出继续按 32 个元素一组量化为 MXFP8 E4M3，供第二层矩阵乘使用：
+    具体激活函数的计算方式参见[激活函数公式](#activation-formulas)。其输出继续按 32 个元素一组量化为 MXFP8 E4M3，与 Dispatch 阶段的量化类型一致，均为 `FLOAT8_E4M3FN`，供第二层矩阵乘使用：
 
     $$
     \hat{A}_e,\;S_{A,e}
@@ -520,7 +523,7 @@
           \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
     $$
 
-    当启用共享专家（`sharedExpertNumPerRank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + SwiGLU + GMM2 计算，使用 `sharedWeight1`、`sharedWeight2`、`sharedWeightScales1`、`sharedWeightScales2`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{sharedExpertNumPerRank} - 1\}$。
+    当启用共享专家（`sharedExpertNumPerRank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + Activation + GMM2 计算，使用 `sharedWeight1`、`sharedWeight2`、`sharedWeightScales1`、`sharedWeightScales2`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{sharedExpertNumPerRank} - 1\}$。
 
     第四阶段（Combine 与加权合并）：
 
@@ -547,7 +550,7 @@
 
     其中，$\hat{X}_e$ 的数据类型为 `FLOAT4_E2M1`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。路由 MoE 专家的第一层和第二层权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1，$e$ 的范围为 $[0,\text{localMoeExpertNum})$；共享专家权重的第一维为 `sharedExpertNumPerRank`。权重缩放因子为 E8M0。
 
-    第二阶段（A4W4 GMM1、SwiGLU 与输出类型提升）：
+    第二阶段（A4W4 GMM1、Activation 与激活后量化）：
 
     第一层分组矩阵乘为 A4W4：
 
@@ -562,10 +565,10 @@
     $$
 
     $$
-    A_e = \operatorname{SwiGLU}(G_e,U_e).
+    A_e = \operatorname{Activation}(G_e,U_e).
     $$
 
-    SwiGLU 的计算方式参见[激活函数公式](#activation-formulas)。这里不能继续把 SwiGLU 输出量化为 FP4。kernel 在 `QuantMode == E2M1_QUANT` 时，将 `SwigluQuantOutType` 指定为 `fp8_e4m3fn_t`，因此输出会提升为 MXFP8 E4M3：
+    具体激活函数的计算方式参见[激活函数公式](#activation-formulas)。A4W4-FP 场景下，第一层矩阵乘后的激活结果按 32 个连续元素一组量化为 MXFP8 E4M3，缩放因子为 E8M0，并作为第二层矩阵乘的输入。该设计用于避免两层矩阵乘均采用 A4W4 带来较大的精度损失：
 
     $$
     \hat{A}_e,\;S_{A,e}
@@ -574,14 +577,14 @@
 
     第三阶段（A8W4 GMM2）：
 
-    由于 SwiGLU 量化输出为 FP8 E4M3，而第二层权重仍为 FP4 E2M1，因此第二层矩阵乘实际为 A8W4，而不是 A4W4：
+    由于激活输出量化后为 FP8 E4M3，而第二层权重仍为 FP4 E2M1，因此第二层矩阵乘实际为 A8W4，而不是 A4W4：
 
     $$
     O_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{A}_e,S_{A,e}\right)
           \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
     $$
 
-    当启用共享专家（`sharedExpertNumPerRank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + SwiGLU + GMM2 计算，使用 `sharedWeight1`、`sharedWeight2`、`sharedWeightScales1`、`sharedWeightScales2`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{sharedExpertNumPerRank} - 1\}$。
+    当启用共享专家（`sharedExpertNumPerRank` > 0）时，共享专家在每张卡上对本卡全部 token 本地执行与路由专家相同的 GMM1 + Activation + GMM2 计算，使用 `sharedWeight1`、`sharedWeight2`、`sharedWeightScales1`、`sharedWeightScales2`，无需参与 Dispatch 通信。各共享专家的输出记为 $O^{\mathrm{shared}}_s$，$s \in \{0, \dots, \text{sharedExpertNumPerRank} - 1\}$。
 
     第四阶段（Combine 与加权合并）：
 
@@ -621,8 +624,8 @@
   <tr>
    <td>x</td>
    <td>输入</td>
-   <td>MoE层输入的token隐藏状态。</td>
-   <td>BF16</td>
+   <td>MoE层输入的token隐藏状态。shape为(BS, H)，H为逻辑隐藏维，与weight1的最后一维一致。除预量化直通场景外，x的数据类型必须为BF16，量化（若有）由算子内部完成；预量化直通场景（dispatchQuantMode为0且dispatchQuantOutDtype为FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1）下算子内部不做量化，此时x的数据类型必须与dispatchQuantOutDtype指定的逻辑类型一致，并且必须同时传入scales。各产品支持的数据类型详见约束说明。</td>
+   <td>BF16、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
    <td>ND</td>
   </tr>
   <tr>
@@ -656,14 +659,14 @@
   <tr>
    <td>weightScales1</td>
    <td>可选输入</td>
-   <td>MoE专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+   <td>MoE专家网络第一线性层的权重矩阵的量化缩放因子。MXFP量化场景下必须输入。</td>
    <td>FLOAT8_E8M0、UINT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>weightScales2</td>
    <td>可选输入</td>
-   <td>MoE专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+   <td>MoE专家网络第二线性层的权重矩阵的量化缩放因子。MXFP量化场景下必须输入。</td>
    <td>FLOAT8_E8M0、UINT64</td>
    <td>ND</td>
   </tr>
@@ -691,21 +694,21 @@
   <tr>
    <td>scales</td>
    <td>可选输入</td>
-   <td>量化平滑参数。</td>
+   <td>x的反量化缩放因子，给出x各量化组对应的缩放值。预量化直通场景（dispatchQuantMode为0且dispatchQuantOutDtype为FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1）下必选，shape为(BS, CeilDiv(H, 32))，数据类型必须为FLOAT8_E8M0；其余场景必须传入空指针。各产品支持情况详见约束说明。</td>
    <td>FLOAT8_E8M0、FLOAT32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedWeight1</td>
    <td>可选输入</td>
-   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。数据类型可以与MoE专家第一线性层权重weight1不同，支持MoE专家与共享专家采用不同的权重类型与量化类型（如MoE专家W8配共享专家W4、MoE专家W4配共享专家W8）；sharedWeight1与sharedWeight2的数据类型必须一致。</td>
    <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
    <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>sharedWeight2</td>
    <td>可选输入</td>
-   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致。</td>
+   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型可以与MoE专家第二线性层权重weight2不同，取值要求同sharedWeight1。</td>
    <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
    <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
@@ -768,14 +771,21 @@
   <tr>
    <td>dispatchQuantMode</td>
    <td>可选属性</td>
-   <td>dispatch通信时量化模式。0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景），4表示MXFP量化（A8W8-FP、A8W4-FP、A4W4-FP场景）。默认值为0。</td>
+   <td>dispatch通信时量化模式。0表示算子内部不做dispatch量化，2表示INT8 pertoken量化，4表示算子内部执行MX逐组量化。默认值为0。各产品支持的取值、对应的计算场景以及取值0的具体含义详见约束说明。</td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>dispatchQuantOutDtype</td>
    <td>可选属性</td>
-   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1）。默认值为DT_UNDEFINED。</td>
+   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1）。默认值为DT_UNDEFINED。dispatchQuantMode为4时该属性表示算子内量化的输出类型；预量化直通场景（dispatchQuantMode为0且该属性为23、24或296）下表示预量化x的逻辑类型，此时必须与x的实际数据类型一致。各产品实际支持的取值范围详见约束说明。</td>
+   <td>INT64</td>
+   <td></td>
+  </tr>
+  <tr>
+   <td>sharedExpertQuantOutDtype</td>
+   <td>可选属性</td>
+   <td>共享专家输入的量化数据类型。默认值为DT_UNDEFINED，表示与dispatchQuantOutDtype保持一致；显式配置时支持23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1），用于共享专家与MoE专家采用不同量化配置的场景。预量化直通（dispatchQuantMode为0）场景下只能取DT_UNDEFINED或与dispatchQuantOutDtype相同。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -789,7 +799,7 @@
   <tr>
    <td>commAlg</td>
    <td>可选属性</td>
-   <td>预留参数，暂不支持。默认值为""。</td>
+   <td>预留参数，保持默认值即可。默认值为""。</td>
    <td>STRING</td>
    <td></td>
   </tr>
@@ -810,7 +820,7 @@
   <tr>
    <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"支持[]、[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，beta默认为1.0，linear_beta不启用。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
+   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"支持[]、[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，swigluoai的beta默认为1.0。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu实际使用的beta以及显式配置的linear_beta均需为大于0的有限值。各产品对"situglu"参数列表的支持差异详见约束说明。</td>
    <td>LIST_FLOAT</td>
    <td></td>
   </tr>
@@ -845,14 +855,14 @@
   <tr>
    <td>topoType</td>
    <td>可选属性</td>
-   <td>通信拓扑类型，由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。当前暂不支持URMA通信方式。默认值为0。</td>
+   <td>通信拓扑类型，由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。默认值为0。</td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>rankNumPerServer</td>
    <td>可选属性</td>
-   <td>每台server上的rank数量，最少为2。默认值为2。</td>
+   <td>每台server上的rank数量，最少为2。默认值为2。该属性在部分产品的部分通信拓扑下不生效，详见约束说明。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -864,9 +874,16 @@
    <td></td>
   </tr>
   <tr>
+   <td>combineCommMode</td>
+   <td>可选属性</td>
+   <td>combine阶段通信去重开关。0表示关闭，1表示开启（同一token在本卡命中的多个专家，其combine结果先在本卡合并为一行再发回源卡，combine阶段通信量从组内行数降为1）。取值仅支持0或1，是否开启完全由调用方按形状决定，算子内部不做收益裁决。开启会改变通信记录布局，所有Rank必须配置相同取值。默认值为0。各产品与通信拓扑对该开关的支持范围详见约束说明。</td>
+   <td>INT64</td>
+   <td></td>
+  </tr>
+  <tr>
    <td>y</td>
    <td>输出</td>
-   <td>计算输出结果，数据类型与输入x相同。</td>
+   <td>计算输出结果。shape为(BS, H)，与x的shape一致。数据类型详见约束说明。</td>
    <td>BF16</td>
    <td>ND</td>
   </tr>
@@ -883,20 +900,23 @@
 ## 约束说明
 
 - **预留和非对外参数说明**：
-  - 参数表格中的部分参数、部分数据类型暂未对外提供，为预留或内部实现使用。接口参数的介绍及其约束在接口文档[MegaMoE算子接口文档](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)中详细说明。
+  - 参数表格中的部分参数、部分数据类型暂未对外提供，为预留或内部实现使用。接口参数的介绍及其约束在接口文档[MegaMoE算子接口文档](../../mc2/mega_moe/docs/torchapi_mega_moe.md)中详细说明。
 
 - **参数一致性约束**：
-  - 调用算子过程中使用的`moeExpertNum`、`maxRecvTokenNum`、`dispatchQuantMode`、`dispatchQuantOutDtype`、`numMaxTokensPerRank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+  - 调用算子过程中使用的`moeExpertNum`、`maxRecvTokenNum`、`dispatchQuantMode`、`dispatchQuantOutDtype`、`numMaxTokensPerRank`、`topkWeightsType`、`combineCommMode`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。其中`topkWeightsType`与`combineCommMode`决定通信记录的布局，跨卡取值不一致会导致读写错位。
 
-- **通信域和组网约束**：
+- **通信域约束**：
   - 所有卡的`epWorldSize`、`cclBufferSize`参数取值需保持一致。
   - 通信域各节点的驱动版本应当相同。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持UB Memory通信协议。
-  - <term>Ascend 950PR/Ascend 950DT</term>：Torch接口通过`get_symm_buffer_for_mega_moe`自动计算并申请通信buffer，用户无需自行计算或设置`cclBufferSize`。
+  - <term>Ascend 950PR&950DT系列产品</term>：Torch接口通过`get_symm_buffer_for_mega_moe`自动计算并申请通信buffer，用户无需自行计算或设置`cclBufferSize`。
+
+- **组网约束**：
+  - <term>Atlas A2系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
+  - <term>Atlas A3系列产品</term>：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
+  - <term>Ascend 950PR&950DT系列产品</term>：仅支持UB Memory通信协议。
+
 - **参数约束**：
-  - **<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>**：
+  - **<term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>**：
     - 场景配套矩阵：
 
       | 场景 | x | weight1 | weight2 | weightScales1 | weightScales2 | bias1 | bias2 | y | dispatchQuantMode | dispatchQuantOutDtype |
@@ -905,31 +925,45 @@
       | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | – | – | BF16 | 2 | 1（INT8） |
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
 
-  - **<term>Ascend 950PR/Ascend 950DT</term>**：
-    - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"，各激活的参数配套关系见参数说明。
+    - `dispatchQuantMode`仅支持0和2，0对应A16W16场景（算子内部不做dispatch量化），2对应A8W8-INT、A8W4-INT场景（INT8 pertoken量化）。`dispatchQuantMode`与`dispatchQuantOutDtype`的取值由`weight1`的数据类型唯一确定，取值不匹配时算子在tiling阶段报错：`weight1`为INT4或INT8时分别取2与1（INT8）；`weight1`为BF16或FLOAT16时分别取0与`weight1`相同的数据类型。`dispatchQuantOutDtype`传DT_UNDEFINED时不做该校验，各场景的对应取值见上表。
+    - `scales`为预留输入，当前必须传入空指针。
+    - `activation`为"situglu"时，`activation_params`支持[]、[beta]或[beta, linear_beta]；使用空列表时`beta`默认为1.0且`linear_beta`不启用。
+    - 不支持combine阶段通信去重，`combineCommMode`必须保持默认值0。
+    - `y`的数据类型与`x`一致。
+
+  - **<term>Ascend 950PR&950DT系列产品</term>**：
+    - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"situglu"的`activation_params`必须显式给出，仅支持[beta]或[beta, linear_beta]，不支持空列表。其余激活的参数配套关系见参数说明。
     - `BS`为本Rank本次调用的`x`.dim0，支持[1, +∞)，且不得超过创建`sym_buffer`时设置的`numMaxTokensPerRank`。不同Rank的实际`BS`可以不同，同一`sym_buffer`可以复用于多次不同`BS`的调用。
     - `numMaxTokensPerRank`必须大于等于1且所有Rank配置一致，建议设置为`sym_buffer`复用期间所有Rank可能出现的最大单卡`BS`。设置越大，内部申请的通信内存越多。
-    - `H`（`x`.dim1）范围[1024, 8192]。普通MTE权重格式要求32对齐；FLOAT4_E2M1的FORMAT_FRACTAL_NZ_C0_32格式要求64对齐。
+    - `H`（`x`.dim1）范围[1024, 8192]。A8W8-FP场景要求`H`为32的倍数；A8W4-FP场景要求`H`为64的倍数；A4W4-FP场景仅支持`weight1`为FRACTAL_NZ格式，要求`H`为64的倍数。
     - `topK`（`topkIds`.dim1）支持[1, 32]。
-    - `expertPerRank` 范围 [1, 1024]。
-    - `intermediateHidden`表示SwiGLU激活后的中间特征维度，范围[256, 4096]且128对齐；`weight1`的完整输出宽度为2 × `intermediateHidden`。
+    - `localMoeExpertNum`（= `moeExpertNum` / `epWorldSize`）范围 [1, 1024]；共享专家数`sharedExpertNumPerRank`另按 [0, 4] 单独约束，不计入该上限。
+    - `intermediateHidden`表示激活后的中间特征维度，范围[256, 4096]且128对齐；`weight1`的完整输出宽度为2 × `intermediateHidden`。
     - `epWorldSize`范围 [2, 1024]。
     - `moeExpertNum`范围 [`epWorldSize`, 2048]，且`moeExpertNum` % `epWorldSize` == 0。
     - `maxRecvTokenNum`范围 [0, `numMaxTokensPerRank` × `epWorldSize` × min(`topK`, `localMoeExpertNum`)]，建议保持默认值0，由接口自动计算接收容量。
     - `dispatchQuantOutDtype`仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）或296（FLOAT4_E2M1）。
-    - 当前版本仅支持MXFP量化模式（`dispatchQuantMode` = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
+    - `dispatchQuantMode`取值为0或4。4表示算子内部对BF16的`x`做MX逐组量化（group size = 32，量化缩放因子类型为FLOAT8_E8M0），对应A8W8-FP、A8W4-FP、A4W4-FP场景；0表示预量化直通，即`x`已经是量化后的数据、算子内部不再量化，缩放因子由`scales`入参给出。
+    - 预量化直通（`dispatchQuantMode` = 0）的约束：`x`的数据类型必须与`dispatchQuantOutDtype`指定的逻辑类型一致；`scales`为必选；仅支持`topoType` = 0（MTE拓扑）；`sharedExpertQuantOutDtype`只能取DT_UNDEFINED或与`dispatchQuantOutDtype`相同。
     - `combineQuantMode`取值为0、3、4，0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型
-    - `commAlg`必须为空字符串""。
-    - `y`的数据类型与`x`相同。
+    - `commAlg`为预留参数，请保持默认空字符串""。
+    - `y`的数据类型固定为BF16。
     - `weight1`的Linear1输出维必须等于2 × `intermediateHidden`，`weight2`的输入维必须等于`intermediateHidden`。
     - `localMoeExpertNum` = `moeExpertNum` / `epWorldSize`；`sharedExpertNumPerRank` = `sharedWeight1`.dim0（未启用共享专家时为0）；`expertPerRank` = `sharedExpertNumPerRank` + `localMoeExpertNum`。
     - `sharedExpertNumPerRank`范围 [0, 4]。
-    - `topoType`由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。当前暂不支持URMA通信方式。
-    - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。当前暂不支持URMA通信方式。
+    - `topoType`由通信域上下文自动推导。0表示MTE拓扑，1表示URMA跨超拓扑。
+    - MTE拓扑（`topoType` = 0）下`rankNumPerServer`不生效，算子内部按`epWorldSize`处理。
+    - URMA拓扑下，`activation`不支持`swiglustep`和`swigluoai`。
+    - `topkWeightsType`取值为0或1，0表示关闭topkWeights前移，1表示开启。
+    - `combineCommMode`取值为0或1，0表示关闭combine阶段通信去重，1表示开启。是否开启完全由调用方决定，算子内部不做收益裁决；所有Rank必须配置相同取值，否则跨卡的通信记录布局不一致会导致读写错位。适用场景：`topK`较大、同一token命中同卡多个专家的比例较高、性能瓶颈在通信的形状，开启后收益明显；专家数多且瓶颈在计算的形状可能没有收益甚至变慢，建议按实际形状实测后再决定。
+    - `combineCommMode` = 1时的能力约束（不满足时算子在tiling阶段直接报错并提示改回0，不做静默回退）：仅支持`topoType` = 0（MTE拓扑）；`combineQuantMode`必须为0（combine不量化）；`topkWeightsType` = 0时不支持预量化`x`；`numMaxTokensPerRank`需满足 `numMaxTokensPerRank` ≤ 128 × min(512, ⌊4608 / `topK`⌋)（例如`topK` = 32时上限为18432，`topK` ≤ 9时上限为65536）。
+    - `combineCommMode` = 1时，同一token在同一张卡上的多个专家输出改为在该卡按FP32累加后一次转BF16发送，累加顺序与中间取整次数与关闭态不同，因此`y`与`combineCommMode` = 0的结果不逐位相同，差异属BF16累加顺序不同带来的正常误差；需要与关闭态逐位一致时请使用`combineCommMode` = 0。
     - `weightScales1`和`weightScales2`为必选输入，数据类型必须为FLOAT8_E8M0。
-    - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。
+    - `weight1`和`weight2`的数据类型必须一致，且仅支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。此处的「一致」指同一专家组内部一致，MoE专家与共享专家之间可以采用不同的权重类型与量化类型。
+    - MoE专家与共享专家的量化配置不同时，仅`topoType` = 0（MTE拓扑）支持。
     - `topkWeights`数据类型仅支持BF16或FP32。
-    - `xActiveMask`和`scales`当前版本不支持非空输入，需传入空指针。
+    - `xActiveMask`当前版本不支持非空输入，需传入空指针。
+    - `scales`仅在预量化直通（`dispatchQuantMode` = 0且`dispatchQuantOutDtype`为FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1）场景为必选，shape为(`BS`, CeilDiv(`H`, 32))，数据类型必须为FLOAT8_E8M0；其余场景必须传入空指针。
 
   - **MXFP量化场景约束**：
       - `weight1` shape为(`localMoeExpertNum`, 2 × `intermediateHidden`, `H`)，`weight2` shape为(`localMoeExpertNum`, `H`, `intermediateHidden`)。
@@ -938,12 +972,12 @@
       - `sharedWeight1` shape为(`sharedExpertNumPerRank`, 2 × `intermediateHidden`, `H`)，`sharedWeight2` shape为(`sharedExpertNumPerRank`, `H`, `intermediateHidden`)。
       - `sharedWeightScales1` shape为(`sharedExpertNumPerRank`, 2 × `intermediateHidden`, CeilDiv(`H`, 64), 2)，`sharedWeightScales2` shape为(`sharedExpertNumPerRank`, `H`, CeilDiv(`intermediateHidden`, 64), 2)。
       - `weightScales1`的dim3和`weightScales2`的dim3必须等于2。
-      - A8W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FORMAT_FRACTAL_NZ_C0_32格式。
+      - A8W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的`weight1`必须使用FRACTAL_NZ格式。两种场景的`weight2`均必须使用FORMAT_FRACTAL_NZ_C0_32格式。启用共享专家时，`sharedWeight1`和`sharedWeight2`的格式按共享专家自身的量化类型确定（W8走ND或FRACTAL_NZ、W4走FRACTAL_NZ或FORMAT_FRACTAL_NZ_C0_32），与`weight1`、`weight2`的格式可以不同。
       - A8W8-FP场景下，`weight1`和`weight2`必须同为FLOAT8_E5M2或同为FLOAT8_E4M3FN。A8W4-FP和A4W4-FP场景下，两层权重均为FLOAT4_E2M1。
-      - 权重支持两种TensorList布局：逐专家布局由`localMoeExpertNum`个二维Tensor组成；堆叠布局仅包含一个三维Tensor，其dim0为`localMoeExpertNum`。两层权重及其scale必须采用同一种布局，共享专家输入也必须采用相同布局。
+      - 权重及其scale支持两种TensorList布局。对于`weight1`、`weight2`、`weightScales1`和`weightScales2`，逐专家布局下四个TensorList的长度均为`localMoeExpertNum`，权重列表中的Tensor为二维，权重scale列表中的Tensor为三维；堆叠布局下四个TensorList的长度均为1，权重Tensor为三维，权重scale Tensor为四维，且各Tensor的dim0均为`localMoeExpertNum`。四个输入必须采用同一种布局；启用共享专家时，对应的四个共享专家输入也必须采用与MoE专家相同的布局。
 
 ## 调用说明
 
 | 调用方式  | 样例代码                                  | 说明                                                     |
 | :--------: | :----------------------------------------: | :-------------------------------------------------------: |
-| PyTorch接口调用 | - | 通过[mega_moe](../../torch_extension/cann_ops_transformer/docs/zh/mega_moe.md)PyTorch接口方式调用mega_moe算子。 |
+| PyTorch接口调用 | - | 通过[mega_moe](../../mc2/mega_moe/docs/torchapi_mega_moe.md)PyTorch接口方式调用mega_moe算子。 |

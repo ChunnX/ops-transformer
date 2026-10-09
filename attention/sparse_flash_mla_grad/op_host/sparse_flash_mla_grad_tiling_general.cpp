@@ -188,8 +188,8 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     workspaces[0] += mm12WorkspaceLen * 4 * currentUseCoreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen;
 
+    int64_t dAlign = (tilingData.opInfo.get_D() + 15) / 16 * 16;
     if (tmpData.mode == SMLAG_SCFA_MODE) {
-        int64_t dAlign = (tilingData.opInfo.get_D() + 15) / 16 * 16;
         // 每个s1做完，做scatter add累加，workspace开DB
         workspaces[0] += 24 * PING_PONG_BUFFER * tmpData.selected_block_count * (dAlign + dAlign) * B32;
         workspaces[0] += tilingData.opInfo.get_additionalWorkspaceLen(); // 用于保存原先dk，在post阶段muls(scale)
@@ -205,6 +205,46 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     tilingData.postTilingData.set_dqWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + dqWorkspaceLen;
     tilingData.postTilingData.set_dkWorkSpaceOffset(workspaceOffsets);
+    workspaceOffsets = workspaceOffsets + dkWorkspaceLen;
+    if (tmpData.mode == SMLAG_SCFA_MODE) {
+        workspaceOffsets += 24 * PING_PONG_BUFFER * tmpData.selected_block_count * (dAlign + dAlign) * B32;
+        workspaceOffsets += tilingData.opInfo.get_additionalWorkspaceLen();
+    } else {
+        workspaceOffsets += dkWorkspaceLen;
+    }
+
+    // Deterministic extra workspaces
+    int64_t aivNum = static_cast<int64_t>(aicoreParams_.numBlocks);
+    int64_t aicNum = static_cast<int64_t>(aicoreParams_.aicNum);
+    int64_t deterKvWorkspaceLen = 0;
+    int64_t dSinkWorkspaceLen = 0;
+    int64_t cmpSoftmaxL1WorkspaceLen = 0;
+    if (tmpData.deterministic) {
+        // ori & CFA: aicNum * singleN * (Dk+Dv) * DB * sizeof(fp32)
+        // SCFA cmp 复用既有 mm4/mm5 staging；此处为 ori/CFA 或 SCFA-ori 的 singleN staging
+        // 末尾追加 AccMeta（UB DataCopy 广播，供全 AIV 均分 Acc）
+        constexpr int64_t kDeterAccMetaBytes = ((24 * 8 * static_cast<int64_t>(sizeof(int64_t)) + 511) / 512) * 512;
+        deterKvWorkspaceLen = aicNum * tmpData.singleN * (dAlign + dAlign) * PING_PONG_BUFFER * B32;
+        deterKvWorkspaceLen = AlignData(deterKvWorkspaceLen, GM_ALIGN) + kDeterAccMetaBytes;
+        dSinkWorkspaceLen = aivNum * tilingData.opInfo.get_G() * B32;
+        dSinkWorkspaceLen = AlignData(dSinkWorkspaceLen, GM_ALIGN);
+        if (tmpData.mode == SMLAG_SCFA_MODE) {
+            cmpSoftmaxL1WorkspaceLen = tmpData.singleN * aivNum * B32;
+            cmpSoftmaxL1WorkspaceLen = AlignData(cmpSoftmaxL1WorkspaceLen, GM_ALIGN);
+        }
+        workspaces[0] += deterKvWorkspaceLen + dSinkWorkspaceLen + cmpSoftmaxL1WorkspaceLen;
+    }
+    tilingData.opInfo.set_isDeterministic(tmpData.deterministic ? 1U : 0U);
+    tilingData.opInfo.set_deterKvWorkspaceLen(deterKvWorkspaceLen);
+    tilingData.opInfo.set_dSinkWorkspaceLen(dSinkWorkspaceLen);
+    tilingData.opInfo.set_cmpSoftmaxL1WorkspaceLen(cmpSoftmaxL1WorkspaceLen);
+    tilingData.opInfo.set_aivNum(static_cast<uint32_t>(aivNum));
+
+    tilingData.postTilingData.set_deterKvWorkSpaceOffset(workspaceOffsets);
+    workspaceOffsets += deterKvWorkspaceLen;
+    tilingData.postTilingData.set_dSinkWorkSpaceOffset(workspaceOffsets);
+    workspaceOffsets += dSinkWorkspaceLen;
+    tilingData.postTilingData.set_cmpSoftmaxL1WorkSpaceOffset(workspaceOffsets);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -221,8 +261,11 @@ uint64_t SparseFlashMlaGradBasicTiling::GetTilingKey() const
     // -------------set tilingkey-----------------
     // LAYOUT: 0(BSND); 1(TND)
     // CMP_MODE: 0(SWA); 1(CFA); 2(SCFA)
+    // Deterministic: 0/1
     uint32_t layout = tmpData.layout == static_cast<uint32_t>(InputLayout::TND) ? 1U : 0U;
-    return GET_TPL_TILING_KEY(layout, tmpData.mode);
+    bool hasSeqused = tmpData.usedSeqQ || tmpData.usedSeqOriKV || tmpData.usedSeqCmpKV;
+    return GET_TPL_TILING_KEY(layout, tmpData.mode, static_cast<uint8_t>(hasSeqused),
+                              static_cast<uint8_t>(tmpData.deterministic));
 }
 
 ge::graphStatus SparseFlashMlaGradBasicTiling::DoBlockTiling()
@@ -394,24 +437,28 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
 
     // -------------- 当前不支持参数必须传空校验 --------------
     auto oriSparseIndicesTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ORI_SPARSE_INDICES));
-    auto seqUsedQTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_Q));
-    auto seqUsedOriKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_ORI_KV));
-    auto seqUsedCmpKvTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SEQUSED_CMP_KV));
     auto oriTopkLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::ORI_TOPK_LENGTH));
     auto cmpTopkLenTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::CMP_TOPK_LENGTH));
     auto metadataTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::METADATA));
     OP_CHECK_IF(oriSparseIndicesTensor != nullptr,
                 OP_LOGE("SparseFlashMlaGrad", "oriSparseIndices should be nullptr now."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(seqUsedQTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedQ should be nullptr now."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(seqUsedOriKvTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedOriKv should be nullptr now."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(seqUsedCmpKvTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedCmpKv should be nullptr now."),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriTopkLenTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "oriTopkLength should be nullptr now."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(cmpTopkLenTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpTopkLength should be nullptr now."),
                 return ge::GRAPH_FAILED);
+
+    auto usedSeqQ = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_Q));
+    if (usedSeqQ != nullptr) {
+        tmpData.usedSeqQ = true;
+    }
+    auto usedSeqOriKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_ORI_KV));
+    if (usedSeqOriKV != nullptr) {
+        tmpData.usedSeqOriKV = true;
+    }
+    auto usedSeqCmpKV = context_->GetOptionalInputShape(static_cast<size_t>(InputIndex::SEQUSED_CMP_KV));
+    if (usedSeqCmpKV != nullptr) {
+        tmpData.usedSeqCmpKV = true;
+    }
 
     // -------------- attrs ----------------
     const char *inputLayoutQ = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
@@ -428,10 +475,7 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
         context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::CMP_MASK_MODE));
 
     // -------------------------------------
-    if (context_->GetDeterministic() == 1) {
-        OP_LOGE(context_, "SparseFlashMlaGrad not support deterministic yet.");
-        return ge::GRAPH_FAILED;
-    }
+    tmpData.deterministic = (context_->GetDeterministic() == 1);
 
     if (dimDq != dimOriKv) {
         OP_LOGE(context_, "The headDim of query, ori_kv should be the same. But got dimDq=%ld, dimOriKv=%ld", dimDq,
@@ -478,6 +522,9 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
         OP_CHECK_IF(tmpData.n2 == 0, OP_LOGE(context_, "N2 is 0"), return ge::GRAPH_FAILED);
         tmpData.g = queryShape.GetDim(DIM_2) / tmpData.n2;
         tmpData.layout = static_cast<uint32_t>(InputLayout::BSND);
+        // BSND 下 kernel 用 S1 做 t1Idx / curS1 分核，S1 须严格为正
+        OP_CHECK_IF(tmpData.s1 <= 0, OP_LOGE(context_, "S1 must be > 0, but got S1=%ld.", tmpData.s1),
+                    return ge::GRAPH_FAILED);
     }
 
     if (cmpKvTensor != nullptr) {
@@ -616,6 +663,10 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
                         return ge::GRAPH_FAILED);
         }
     }
+
+    tilingData.opInfo.set_hasUsedSeqQ(tmpData.usedSeqQ);
+    tilingData.opInfo.set_hasUsedSeqOriKV(tmpData.usedSeqOriKV);
+    tilingData.opInfo.set_hasUsedSeqCmpKV(tmpData.usedSeqCmpKV);
     tilingData.opInfo.set_selectedBlockSize(1);
 
     return ge::GRAPH_SUCCESS;

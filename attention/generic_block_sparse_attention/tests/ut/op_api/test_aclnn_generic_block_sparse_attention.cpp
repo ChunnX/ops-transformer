@@ -49,10 +49,11 @@ constexpr int64_t kT = kBatch * kS1;
 constexpr int64_t kMaxBlocks = (kS2 + kBlockSize - 1) / kBlockSize;
 constexpr int64_t kTotalQBlocks = kT;
 constexpr double kScale = 1.0 / sqrt(static_cast<double>(kD));
+constexpr int64_t kLayoutSparse = 4; // KVN_TotalQB_KB
 } // namespace
 
 // ============================================================================
-// Case 1: normal TND + PAGED_BBND smoke
+// Case 1: normal TND + PA_BBND smoke
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
 {
@@ -65,9 +66,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto cuSeqLengthsQ = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS1});
-    auto cuSeqLengthsKv = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS2});
+    auto sequsedKv = TensorDesc({kBatch}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{kS2});
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
@@ -83,14 +84,14 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
                               nullptr,          // vDequantScaleOptional
                               nullptr,          // pQuantScaleOptional
                               cuSeqLengthsQ,    // cuSeqLengthsQOptional
-                              cuSeqLengthsKv,   // cuSeqLengthsKvOptional
+                              nullptr,          // cuSeqLengthsKvOptional
                               nullptr,          // sequsedQOptional
-                              nullptr,          // sequsedKvOptional
+                              sequsedKv,        // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
+                              kLayoutSparse,    // layoutSparsePattern
                               kScale,           // scaleValue
                               1,                // maskType
                               0,                // quantType
@@ -98,7 +99,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              false             // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -120,7 +123,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
@@ -141,9 +144,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
+                              kLayoutSparse,    // layoutSparsePattern
                               kScale,           // scaleValue
                               1,                // maskType
                               0,                // quantType
@@ -151,7 +154,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              false             // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -161,7 +166,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_query)
 }
 
 // ============================================================================
-// Case 3: metadata is required by Contiguous path (nullptr -> INNER_NULLPTR)
+// Case 3: null metadata is rejected before the Contiguous path (nullptr -> PARAM_NULLPTR)
 // ============================================================================
 TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
 {
@@ -173,7 +178,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
@@ -194,9 +199,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
+                              kLayoutSparse,    // layoutSparsePattern
                               kScale,           // scaleValue
                               1,                // maskType
                               0,                // quantType
@@ -204,13 +209,15 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_metadata)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              false             // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
-    EXPECT_EQ(aclRet, ACLNN_ERR_INNER_NULLPTR);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
 // ============================================================================
@@ -226,7 +233,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
@@ -247,9 +254,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
+                              kLayoutSparse,    // layoutSparsePattern
                               kScale,           // scaleValue
                               1,                // maskType
                               0,                // quantType
@@ -257,7 +264,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_key)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              false             // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, nullptr));
 
@@ -280,7 +289,7 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query,            // query
@@ -300,9 +309,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
                               nullptr,          // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
+                              kLayoutSparse,    // layoutSparsePattern
                               kScale,           // scaleValue
                               1,                // maskType
                               0,                // quantType
@@ -310,7 +319,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_attention_out)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              0                 // returnSoftmaxlse
+                              0,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              false             // isConsistentTopk
                               ),
                         OUTPUT(nullptr, nullptr));
 
@@ -333,9 +344,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto cuSeqLengthsQ = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS1});
-    auto cuSeqLengthsKv = TensorDesc({kBatch + 1}, ACL_INT64, ACL_FORMAT_ND).Value(vector<int64_t>{0, kS2});
+    auto sequsedKv = TensorDesc({kBatch}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{kS2});
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto softmaxLse = TensorDesc({kT, kN1, 1}, ACL_FLOAT, ACL_FORMAT_ND);
 
@@ -352,14 +363,14 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
                               nullptr,          // vDequantScaleOptional
                               nullptr,          // pQuantScaleOptional
                               cuSeqLengthsQ,    // cuSeqLengthsQOptional
-                              cuSeqLengthsKv,   // cuSeqLengthsKvOptional
+                              nullptr,          // cuSeqLengthsKvOptional
                               nullptr,          // sequsedQOptional
-                              nullptr,          // sequsedKvOptional
+                              sequsedKv,        // sequsedKvOptional
                               blockTable,       // blockTableOptional
                               blockShape,       // blockShape
-                              1,                // isPackedGQA
                               layoutQ,          // layoutQ
                               layoutKv,         // layoutKv
+                              kLayoutSparse,    // layoutSparsePattern
                               kScale,           // scaleValue
                               1,                // maskType
                               0,                // quantType
@@ -367,7 +378,9 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, normal_with_lse)
                               0,                // softmaxPrecision
                               -1,               // winLeft
                               -1,               // winRight
-                              1                 // returnSoftmaxlse
+                              1,                // returnSoftmaxlse
+                              0,                // residualBlockMode
+                              false             // isConsistentTopk
                               ),
                         OUTPUT(attentionOut, softmaxLse));
 
@@ -390,13 +403,13 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_layout_q)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "BNSD";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0),
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
+                              layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -417,13 +430,13 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, null_block_shape)
     auto metadata = TensorDesc({1024}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, nullptr, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0),
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, nullptr, layoutQ,
+                              layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -445,13 +458,13 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_block_shape_size)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0),
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
+                              layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -473,13 +486,13 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, dtype_mismatch)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 0, -1, -1, 0),
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
+                              layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 0, -1, -1, 0, 0, false),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;
@@ -501,13 +514,13 @@ TEST_F(aclnn_generic_block_sparse_attention_ut, invalid_softmax_precision)
     auto blockTable = TensorDesc({kBatch, kMaxBlocks}, ACL_INT32, ACL_FORMAT_ND).Value(vector<int32_t>{0});
     auto blockShape = IntArrayDesc(vector<int64_t>{kBlockShapeX, kBlockSize});
     char layoutQ[] = "TND";
-    char layoutKv[] = "PAGED_BBND";
+    char layoutKv[] = "PA_BBND";
     auto attentionOut = TensorDesc({kT, kN1, kD}, ACL_FLOAT16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(aclnnGenericBlockSparseAttention,
                         INPUT(query, key, value, sparseBlockIdx, sparseBlockCount, metadata, nullptr, nullptr, nullptr,
-                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, 1, layoutQ,
-                              layoutKv, kScale, 1, 0, 0.0, 2, -1, -1, 0),
+                              nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, blockTable, blockShape, layoutQ,
+                              layoutKv, kLayoutSparse, kScale, 1, 0, 0.0, 2, -1, -1, 0, 0, 0),
                         OUTPUT(attentionOut, nullptr));
 
     uint64_t workspaceSize = 0;

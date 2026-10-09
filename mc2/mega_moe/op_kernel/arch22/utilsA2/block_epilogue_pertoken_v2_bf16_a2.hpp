@@ -11,13 +11,13 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_BF16_A2_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_BF16_A2_HPP
 
-#include "../template_linear_algebra_v2/mega_moe_catlass.hpp"
-#include "../template_linear_algebra_v2/arch/mega_moe_resource.hpp"
-#include "../template_linear_algebra_v2/epilogue/mega_moe_epilogue_dispatch_policy.hpp"
-#include "../template_linear_algebra_v2/mega_moe_gemm_coord.hpp"
-#include "../template_linear_algebra_v2/mega_moe_matrix_coord.hpp"
-#include "../template_linear_algebra_v2/layout/mega_moe_layout.hpp"
-#include "../template_linear_algebra_v2/detail/tla_v2_callback.hpp"
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/epilogue/dispatch_policy.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "catlass/layout/layout.hpp"
+#include "catlass/detail/callback.hpp"
 
 #include "../utils/hccl_shmem.hpp"
 #include "../utils/layout3d.hpp"
@@ -58,6 +58,10 @@ public:
         int64_t offsetWinOutD;
         int32_t serverId;
         Layout3D tokenPerExpertLayout;
+        bool useUbRouteCache{false};
+        int32_t ubRouteStride{0};
+        AscendC::LocalTensor<int32_t> ubTokenPerExpert;
+        AscendC::LocalTensor<int32_t> ubPreSumBeforeRank;
 
         CATLASS_DEVICE
         Params() {};
@@ -149,8 +153,14 @@ public:
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(event_id);
         for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; dstEpIdx++) {
-            int32_t lenRankInExpert = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
-            int32_t dstExpertOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+            int32_t stride = params.ubRouteStride > 0 ? params.ubRouteStride : params.expertPerRank;
+            int32_t lenRankInExpert = params.useUbRouteCache ?
+                                          params.ubTokenPerExpert.GetValue(dstEpIdx * stride + groupIdx) :
+                                          tokenPerExpert(tokenPerExpertLayout(dstEpIdx, params.rank, groupIdx));
+            int32_t dstExpertOffset =
+                params.useUbRouteCache ?
+                    params.ubPreSumBeforeRank.GetValue(dstEpIdx * params.expertPerRank + groupIdx) :
+                    preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
             int32_t stRankInExpert = preSumRankInExpert;
             int32_t edRankInExpert = stRankInExpert + lenRankInExpert;
             preSumRankInExpert += lenRankInExpert;

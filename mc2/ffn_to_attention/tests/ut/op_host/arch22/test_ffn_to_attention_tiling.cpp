@@ -1,8 +1,8 @@
 /**
  * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
 BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -180,7 +180,6 @@ TEST_F(FFNToAttentionArch22TilingTest, RankTableTokenIdsInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-
 TEST_F(FFNToAttentionArch22TilingTest, RankTableExpertNumoffsetIdsInvalid)
 {
     struct FFNToAttentionCompileInfo {
@@ -231,7 +230,6 @@ TEST_F(FFNToAttentionArch22TilingTest, RankTableActualtokenNumInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-
 TEST_F(FFNToAttentionArch22TilingTest, RankTableBsInvalid)
 {
     struct FFNToAttentionCompileInfo {
@@ -274,8 +272,33 @@ TEST_F(FFNToAttentionArch22TilingTest, RankTableMircoBatchNumInvalid)
         {{{}, ge::DT_INT64, ge::FORMAT_ND}},
         {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
          {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-         {"token_info_table_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({2, 16, 9})},
-         {"token_data_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({2, 16, 9, 7168})}},
+         {"token_info_table_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 16, 9})},
+         {"token_data_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 16, 9, 7168})}},
+        &compileInfo);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
+}
+
+TEST_F(FFNToAttentionArch22TilingTest, RankTableMircoBatchNumOverflowInvalid)
+{
+    struct FFNToAttentionCompileInfo {
+    } compileInfo;
+
+    gert::TilingContextPara tilingContextPara(
+        "FFNToAttention",
+        {{{{1584, 7168}, {1584, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1584}, {1584}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{11}, {11}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+         {"token_info_table_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({4294967296, 16, 9})},
+         {"token_data_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({4294967296, 16, 9, 7168})}},
         &compileInfo);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};

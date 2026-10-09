@@ -8,7 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "../../../../op_host/op_tiling/allto_allv_grouped_mat_mul_tiling.h"
+#include "../../../../op_host/op_tiling/allto_allv_grouped_mat_mul_tiling_host.h"
+#include "../../../../op_host/op_tiling/arch22/allto_allv_grouped_mat_mul_aiv_plan.h"
+#include "../../../../op_kernel/allto_allv_grouped_mat_mul_aiv_comm.h"
+#include "../../../../op_kernel/allto_allv_grouped_mat_mul_aiv_mode.h"
+#include "../../../../op_kernel/allto_allv_grouped_mat_mul_catlass.h"
 
 #include <iostream>
 #include <gtest/gtest.h>
@@ -55,59 +59,59 @@ struct TilingParams {
                                     128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128};
 };
 
-std::unordered_map<string, std::function<void(TilingParams &tilingParams, const string &valueStr)>>
+std::unordered_map<string, std::function<void(TilingParams& tilingParams, const string& valueStr)>>
     g_tilingParamsStrHandlers = {
-        {"BSK", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.BSK = std::stoi(valueStr); }},
-        {"BS", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.BS = std::stoi(valueStr); }},
-        {"K", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.K = std::stoi(valueStr); }},
-        {"H1", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.H1 = std::stoi(valueStr); }},
-        {"H2", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.H2 = std::stoi(valueStr); }},
-        {"A", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.A = std::stoi(valueStr); }},
-        {"N1", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.N1 = std::stoi(valueStr); }},
-        {"N2", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.N2 = std::stoi(valueStr); }},
+        {"BSK", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.BSK = std::stoi(valueStr); }},
+        {"BS", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.BS = std::stoi(valueStr); }},
+        {"K", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.K = std::stoi(valueStr); }},
+        {"H1", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.H1 = std::stoi(valueStr); }},
+        {"H2", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.H2 = std::stoi(valueStr); }},
+        {"A", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.A = std::stoi(valueStr); }},
+        {"N1", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.N1 = std::stoi(valueStr); }},
+        {"N2", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.N2 = std::stoi(valueStr); }},
         {"epWorldSize",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.epWorldSize = std::stoi(valueStr); }},
-        {"e", [](TilingParams &tilingParams, const string &valueStr) { tilingParams.e = std::stoi(valueStr); }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.epWorldSize = std::stoi(valueStr); }},
+        {"e", [](TilingParams& tilingParams, const string& valueStr) { tilingParams.e = std::stoi(valueStr); }},
         {"gmmWeightDim1",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.gmmWeightDim1 = std::stoi(valueStr); }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.gmmWeightDim1 = std::stoi(valueStr); }},
         {"gmmYDim1",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.gmmYDim1 = std::stoi(valueStr); }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.gmmYDim1 = std::stoi(valueStr); }},
         {"mmWeightDim0",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.mmWeightDim0 = std::stoi(valueStr); }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.mmWeightDim0 = std::stoi(valueStr); }},
         {"transGmmWeight",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.transGmmWeight = valueStr == "true"; }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.transGmmWeight = valueStr == "true"; }},
         {"transMmWeight",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.transMmWeight = valueStr == "true"; }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.transMmWeight = valueStr == "true"; }},
         {"permuteOutFlag",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.permuteOutFlag = valueStr == "true"; }},
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.permuteOutFlag = valueStr == "true"; }},
         {"isNeedMM",
-         [](TilingParams &tilingParams, const string &valueStr) { tilingParams.isNeedMM = valueStr == "true"; }}};
+         [](TilingParams& tilingParams, const string& valueStr) { tilingParams.isNeedMM = valueStr == "true"; }}};
 
-std::unordered_map<string, std::function<void(TilingParams &tilingParams, const std::vector<int64_t> valueVec)>>
+std::unordered_map<string, std::function<void(TilingParams& tilingParams, const std::vector<int64_t> valueVec)>>
     g_tilingParamsVecHandlers = {
         {"sendCounts",
-         [](TilingParams &tilingParams, const std::vector<int64_t> valueVec) { tilingParams.sendCounts = valueVec; }},
+         [](TilingParams& tilingParams, const std::vector<int64_t> valueVec) { tilingParams.sendCounts = valueVec; }},
         {"recvCounts",
-         [](TilingParams &tilingParams, const std::vector<int64_t> valueVec) { tilingParams.recvCounts = valueVec; }}};
+         [](TilingParams& tilingParams, const std::vector<int64_t> valueVec) { tilingParams.recvCounts = valueVec; }}};
 
-bool has_any_target_key(const std::vector<std::pair<std::string, std::string>> &params,
-                        const std::vector<std::string> &targets)
+bool has_any_target_key(const std::vector<std::pair<std::string, std::string>>& params,
+                        const std::vector<std::string>& targets)
 {
-    return std::any_of(params.begin(), params.end(), [&targets](const auto &p) {
+    return std::any_of(params.begin(), params.end(), [&targets](const auto& p) {
         return std::find(targets.begin(), targets.end(), p.first) != targets.end();
     });
 }
 
 // 提取：初始化 tilingParams
-void InitializeTilingParams(const TestParam &testParam, TilingParams &tilingParams)
+void InitializeTilingParams(const TestParam& testParam, TilingParams& tilingParams)
 {
-    for (auto &kv : testParam.tilingParamsStrPair) {
+    for (auto& kv : testParam.tilingParamsStrPair) {
         if (g_tilingParamsStrHandlers.count(kv.first) != 0) {
             g_tilingParamsStrHandlers[kv.first](tilingParams, kv.second);
         }
     }
 
-    for (auto &kv : testParam.tilingParamsVecPair) {
+    for (auto& kv : testParam.tilingParamsVecPair) {
         if (g_tilingParamsVecHandlers.count(kv.first) != 0) {
             g_tilingParamsVecHandlers[kv.first](tilingParams, kv.second);
         }
@@ -122,10 +126,9 @@ std::unique_ptr<gert::TilingContextPara::TensorDescription> CreateTensorShape(ge
                                                        dtype, format));
 }
 
-std::vector<gert::TilingContextPara::TensorDescription>
-CreateInputTensors(const TilingParams &tilingParams,
-                   const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmXShape,
-                   const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmWeightShape)
+std::vector<gert::TilingContextPara::TensorDescription> CreateInputTensors(
+    const TilingParams& tilingParams, const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmXShape,
+    const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmWeightShape)
 {
     return {
         {{{tilingParams.BSK, tilingParams.H1}, {tilingParams.BSK, tilingParams.H1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -140,9 +143,8 @@ CreateInputTensors(const TilingParams &tilingParams,
     };
 }
 
-std::vector<gert::TilingContextPara::TensorDescription>
-CreateOutputTensors(const TilingParams &tilingParams,
-                    const std::unique_ptr<gert::TilingContextPara::TensorDescription> &mmYShape)
+std::vector<gert::TilingContextPara::TensorDescription> CreateOutputTensors(
+    const TilingParams& tilingParams, const std::unique_ptr<gert::TilingContextPara::TensorDescription>& mmYShape)
 {
     auto mmYDesc = (mmYShape->shape_.GetStorageShape().GetDimNum() == 0) ?
                        gert::TilingContextPara::TensorDescription{
@@ -159,8 +161,8 @@ CreateOutputTensors(const TilingParams &tilingParams,
     };
 }
 
-std::vector<std::pair<std::string, Ops::Transformer::AnyValue>> CreateAttrs(const TestParam &testParam,
-                                                                            const TilingParams &tilingParams)
+std::vector<std::pair<std::string, Ops::Transformer::AnyValue>> CreateAttrs(const TestParam& testParam,
+                                                                            const TilingParams& tilingParams)
 {
     return {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(tilingParams.group)},
             {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.epWorldSize)},
@@ -201,7 +203,7 @@ TEST_P(AlltoAllvGroupedMatMulArch22TilingTest, ShapeSize)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
 
     TilingParams tilingParams;
     InitializeTilingParams(testParam, tilingParams);
@@ -291,9 +293,8 @@ static TestParam testParams[] = {
      ge::GRAPH_FAILED},
     {"Test_no_MM", {{"permuteOutFlag", "true"}, {"isNeedMM", "false"}}, {}, {}, ge::GRAPH_SUCCESS}};
 
-
 INSTANTIATE_TEST_SUITE_P(AlltoAllvGroupedMatMul, AlltoAllvGroupedMatMulArch22TilingTest, testing::ValuesIn(testParams),
-                         [](const testing::TestParamInfo<AlltoAllvGroupedMatMulArch22TilingTest::ParamType> &info) {
+                         [](const testing::TestParamInfo<AlltoAllvGroupedMatMulArch22TilingTest::ParamType>& info) {
                              return info.param.testName;
                          });
 
@@ -304,7 +305,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, H4)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -343,7 +344,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A1)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -382,7 +383,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, BS1)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -420,7 +421,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim1)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -459,7 +460,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim2)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -498,7 +499,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim3)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -536,7 +537,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim5)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -574,7 +575,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim6)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -612,7 +613,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim7)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -650,7 +651,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, Dim10)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -690,7 +691,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeSizeBskMaxNoMm)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -728,7 +729,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, PermuteOutGmmXH1Mismatch)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -766,7 +767,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, MmYAndMmWeightN2Mismatch)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -804,7 +805,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeMmMismatch)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -843,7 +844,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeGmmXInvalidNoMm)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -882,7 +883,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeMmXInvalidDtype)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -921,7 +922,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeGmmXMmXDtypeMismatch)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -960,7 +961,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeSizeBskZeroNoMm)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -999,7 +1000,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeSizeBskMaxWithMm)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1037,7 +1038,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeSizeH1MaxWithMm)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1075,7 +1076,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, PermuteOutFlagFalseWithMmOutput)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1113,7 +1114,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, PermuteOutGmmYAMismatch)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1151,7 +1152,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckShapeRelationKOutOfRange)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1189,7 +1190,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckDTypeGmmMismatch)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1227,7 +1228,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, CheckAttrsNegativeSendCount)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> sendCountsNeg = sendCounts;
     sendCountsNeg[0] = -1;
     gert::TilingContextPara tilingContextPara(
@@ -1268,7 +1269,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, SendRecvCountsSizeMismatch)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     std::vector<int64_t> recvCountsShort(recvCounts.begin(), recvCounts.begin() + 31);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
@@ -1307,7 +1308,7 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, TransMmWeight1)
     std::string socVersion = "Ascend910_93";
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
-    uint64_t tilingDataSize = 8192;
+    uint64_t tilingDataSize = sizeof(AlltoAllvGmmAivTilingData);
     gert::TilingContextPara tilingContextPara(
         "AlltoAllvGroupedMatMul",
         {
@@ -1337,4 +1338,589 @@ TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, TransMmWeight1)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
+} // namespace AlltoAllvGroupedMatMulUT
+namespace AlltoAllvGroupedMatMulUT {
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivBf16TilingContract)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    const std::vector<int64_t> counts(8, 2);
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllvGroupedMatMul",
+        {
+            {{{16, 256}, {16, 256}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{2, 256, 128}, {2, 256, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {{{16, 128}, {16, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+            {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(counts)},
+            {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(counts)},
+            {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")},
+        },
+        &compileInfo, "Ascend910_93", 20, 196608, 16U * 1024U);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+    TilingInfo tilingInfo;
+    const bool success = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+
+    ASSERT_TRUE(success);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(AlltoAllvGmmAivTilingData));
+    const auto* tiling = reinterpret_cast<const AlltoAllvGmmAivTilingData*>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tiling->gmmInfo.rankSize, 4U);
+    EXPECT_EQ(tiling->gmmInfo.expertPerRank, 2U);
+    EXPECT_EQ(tiling->gmmInfo.K, 256U);
+    EXPECT_EQ(tiling->gmmInfo.N, 128U);
+    EXPECT_EQ(tiling->gmmCocTiling.ubMoveNum % 16, 0);
+    EXPECT_GT(tilingInfo.blockNum, 0U);
+    EXPECT_EQ(tiling->is910C, 1U);
+    EXPECT_EQ(tilingInfo.tilingKey, 8);
+}
+} // namespace AlltoAllvGroupedMatMulUT
+
+namespace AlltoAllvGroupedMatMulUT {
+namespace {
+constexpr uint64_t AIV_TILING_DATA_SIZE = 16U * 1024U;
+
+bool ExecuteAivHostCase(ge::DataType dtype, int64_t rankSize, const std::vector<int64_t>& sendCounts,
+                        const std::vector<int64_t>& recvCounts, bool transpose, bool withSharedMm, bool withPermute,
+                        TilingInfo& tilingInfo, const std::string& socVersion = "Ascend910_93", uint64_t coreNum = 20,
+                        int64_t routedTokens = 16, int64_t hiddenSize = 256, int64_t outputSize = 128,
+                        int64_t localExpertNum = 2)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    const int64_t weightDim1 = transpose ? outputSize : hiddenSize;
+    const int64_t weightDim2 = transpose ? hiddenSize : outputSize;
+
+    auto mmX = CreateTensorShape({{4, hiddenSize}, {4, hiddenSize}}, dtype, ge::FORMAT_ND);
+    auto mmWeight = CreateTensorShape(transpose ? gert::StorageShape{{64, hiddenSize}, {64, hiddenSize}} :
+                                                  gert::StorageShape{{hiddenSize, 64}, {hiddenSize, 64}},
+                                      dtype, ge::FORMAT_ND);
+    auto mmY = CreateTensorShape({{4, 64}, {4, 64}}, dtype, ge::FORMAT_ND);
+    auto permuteOut = CreateTensorShape({{routedTokens, hiddenSize}, {routedTokens, hiddenSize}}, dtype, ge::FORMAT_ND);
+    if (!withSharedMm) {
+        mmX->shape_ = {};
+        mmWeight->shape_ = {};
+        mmY->shape_ = {};
+    }
+    if (!withPermute) {
+        permuteOut->shape_ = {};
+    }
+
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllvGroupedMatMul",
+        {
+            {{{routedTokens, hiddenSize}, {routedTokens, hiddenSize}}, dtype, ge::FORMAT_ND},
+            {{{localExpertNum, weightDim1, weightDim2}, {localExpertNum, weightDim1, weightDim2}},
+             dtype,
+             ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            *mmX,
+            *mmWeight,
+        },
+        {
+            {{{routedTokens, outputSize}, {routedTokens, outputSize}}, dtype, ge::FORMAT_ND},
+            *mmY,
+            *permuteOut,
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(rankSize)},
+            {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(sendCounts)},
+            {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(recvCounts)},
+            {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(transpose)},
+            {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(transpose)},
+            {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(withPermute)},
+            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")},
+        },
+        &compileInfo, socVersion, coreNum, 196608, AIV_TILING_DATA_SIZE);
+
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues({{"rankNum", rankSize}});
+    const bool success = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+    return success;
+}
+
+std::vector<int64_t> MakeAivCounts(int64_t rankSize)
+{
+    std::vector<int64_t> counts(static_cast<size_t>(rankSize) * 2U, 0);
+    for (size_t token = 0; token < 16U; ++token) {
+        ++counts[token % counts.size()];
+    }
+    return counts;
+}
+} // namespace
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A3AivRankContracts)
+{
+    for (const int64_t rankSize : {2, 4, 8, 16, 32, 64, 128}) {
+        const std::vector<int64_t> counts = MakeAivCounts(rankSize);
+        TilingInfo tilingInfo;
+        ASSERT_TRUE(ExecuteAivHostCase(ge::DT_BF16, rankSize, counts, counts, false, false, false, tilingInfo,
+                                       "Ascend910_93", 20));
+        const auto* tiling = reinterpret_cast<const AlltoAllvGmmAivTilingData*>(tilingInfo.tilingData.get());
+        EXPECT_EQ(tiling->gmmInfo.rankSize, static_cast<uint32_t>(rankSize));
+        EXPECT_EQ(tiling->countNum, static_cast<uint32_t>(rankSize * 2));
+        EXPECT_EQ(tilingInfo.tilingKey, 8);
+    }
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A2AivSupportsEp2Ep4Ep8)
+{
+    for (const int64_t rankSize : {2, 4, 8}) {
+        const std::vector<int64_t> counts = MakeAivCounts(rankSize);
+        TilingInfo tilingInfo;
+        ASSERT_TRUE(ExecuteAivHostCase(ge::DT_BF16, rankSize, counts, counts, false, false, false, tilingInfo,
+                                       "Ascend910B", 24));
+    }
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, A2AivRejectsEp16AndAbove)
+{
+    for (const int64_t rankSize : {16, 32, 64, 128}) {
+        const std::vector<int64_t> counts = MakeAivCounts(rankSize);
+        TilingInfo tilingInfo;
+        EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, rankSize, counts, counts, false, false, false, tilingInfo,
+                                        "Ascend910B", 24));
+    }
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivMarksA2AndA3CommunicationContexts)
+{
+    const std::vector<int64_t> counts(8, 2);
+
+    TilingInfo a2TilingInfo;
+    ASSERT_TRUE(
+        ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false, a2TilingInfo, "Ascend910B", 24));
+    ASSERT_GE(a2TilingInfo.tilingDataSize, sizeof(AlltoAllvGmmAivTilingData));
+    const auto* a2Tiling = reinterpret_cast<const AlltoAllvGmmAivTilingData*>(a2TilingInfo.tilingData.get());
+    EXPECT_EQ(a2Tiling->is910C, 0U);
+
+    TilingInfo a3TilingInfo;
+    ASSERT_TRUE(
+        ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false, a3TilingInfo, "Ascend910_93", 20));
+    ASSERT_GE(a3TilingInfo.tilingDataSize, sizeof(AlltoAllvGmmAivTilingData));
+    const auto* a3Tiling = reinterpret_cast<const AlltoAllvGmmAivTilingData*>(a3TilingInfo.tilingData.get());
+    EXPECT_EQ(a3Tiling->is910C, 1U);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivWritesAutomaticOverlapDecisionToTiling)
+{
+    const std::vector<int64_t> belowThresholdCounts = {8, 8, 8, 8, 8, 8, 8, 7};
+
+    TilingInfo offTilingInfo;
+    ASSERT_TRUE(ExecuteAivHostCase(ge::DT_BF16, 4, belowThresholdCounts, belowThresholdCounts, false, false, false,
+                                   offTilingInfo, "Ascend910_93", 20, 63));
+    const auto* offTiling = reinterpret_cast<const AlltoAllvGmmAivTilingData*>(offTilingInfo.tilingData.get());
+    EXPECT_EQ(offTiling->expertOverlapMode, A2AVGMM_EXPERT_OVERLAP_DISABLED);
+
+    const std::vector<int64_t> thresholdCounts(8, 8);
+    TilingInfo onTilingInfo;
+    ASSERT_TRUE(ExecuteAivHostCase(ge::DT_BF16, 4, thresholdCounts, thresholdCounts, false, false, false, onTilingInfo,
+                                   "Ascend910_93", 20, 64));
+    const auto* onTiling = reinterpret_cast<const AlltoAllvGmmAivTilingData*>(onTilingInfo.tilingData.get());
+    EXPECT_EQ(onTiling->expertOverlapMode, A2AVGMM_EXPERT_OVERLAP_ENABLED);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivTransposeSharedMmAndPermuteContract)
+{
+    const std::vector<int64_t> counts(8, 2);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, true, true, true, tilingInfo));
+    const auto* tiling = reinterpret_cast<const AlltoAllvGmmAivTilingData*>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingInfo.tilingKey, 11);
+    EXPECT_EQ(tiling->gmmInfo.isTransposeB, 1U);
+    EXPECT_EQ(tiling->gmmInfo.hasSharedExpert, 1U);
+    EXPECT_EQ(tiling->gmmInfo.hasPermuteOut, 1U);
+    EXPECT_EQ(tiling->mmInfo.M, 4U);
+    EXPECT_EQ(tiling->mmInfo.K, 256U);
+    EXPECT_EQ(tiling->mmInfo.N, 64U);
+    EXPECT_TRUE(AlltoAllvGroupedMatMulCatlass::IsSupportedTile(tiling->gmmCocTiling.m0, tiling->gmmCocTiling.k0,
+                                                               tiling->gmmCocTiling.n0));
+    EXPECT_TRUE(AlltoAllvGroupedMatMulCatlass::IsSupportedTile(tiling->mmCocTiling.m0, tiling->mmCocTiling.k0,
+                                                               tiling->mmCocTiling.n0));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivSupportsFp16)
+{
+    const std::vector<int64_t> counts(8, 2);
+    TilingInfo tilingInfo;
+    EXPECT_TRUE(ExecuteAivHostCase(ge::DT_FLOAT16, 4, counts, counts, false, false, false, tilingInfo));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsCountLengthMismatch)
+{
+    const std::vector<int64_t> invalidCounts(7, 2);
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, invalidCounts, invalidCounts, false, false, false, tilingInfo));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsNegativeCount)
+{
+    std::vector<int64_t> sendCounts(8, 2);
+    const std::vector<int64_t> recvCounts(8, 2);
+    sendCounts[0] = -1;
+    sendCounts[1] = 5;
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, sendCounts, recvCounts, false, false, false, tilingInfo));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsCountSumMismatch)
+{
+    std::vector<int64_t> sendCounts(8, 2);
+    const std::vector<int64_t> recvCounts(8, 2);
+    sendCounts[0] = 1;
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, sendCounts, recvCounts, false, false, false, tilingInfo));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsDimensionConstraints)
+{
+    const std::vector<int64_t> counts(8, 2);
+    TilingInfo tilingInfo;
+
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false, tilingInfo, "Ascend910_93", 20,
+                                    5000001));
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false, tilingInfo, "Ascend910_93", 20,
+                                    16, 65536, 128));
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false, tilingInfo, "Ascend910_93", 20,
+                                    16, 256, 65536));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsTooManyLocalExperts)
+{
+    std::vector<int64_t> counts(4U * 513U, 0);
+    for (uint32_t index = 0U; index < 16U; ++index) {
+        counts[index] = 1;
+    }
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, counts, counts, false, false, false, tilingInfo, "Ascend910_93", 20,
+                                    16, 256, 128, 513));
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivRejectsCountEntryAboveTokenCapacity)
+{
+    std::vector<int64_t> sendCounts(8, 0);
+    const std::vector<int64_t> recvCounts(8, 2);
+    sendCounts[0] = 17;
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteAivHostCase(ge::DT_BF16, 4, sendCounts, recvCounts, false, false, false, tilingInfo));
+}
+} // namespace AlltoAllvGroupedMatMulUT
+
+namespace AlltoAllvGroupedMatMulUT {
+namespace AivPlan = AlltoAllvGroupedMatMulAivPlan;
+
+TEST(AlltoAllvGroupedMatMulAivPlanTest, BuildsRankMajorSendAndExpertMajorRecvPrefixes)
+{
+    const int64_t send[] = {2, 1, 3, 0};
+    const int64_t recv[] = {2, 1, 1, 2};
+    int32_t sendPrefix[A2AVGMM_MAX_COUNT_NUM] = {};
+    int32_t recvPrefix[A2AVGMM_MAX_COUNT_NUM] = {};
+
+    ASSERT_TRUE(AivPlan::BuildInclusivePrefixes(send, recv, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_EQ(std::vector<int32_t>(sendPrefix, sendPrefix + 4), (std::vector<int32_t>{2, 3, 6, 6}));
+    EXPECT_EQ(std::vector<int32_t>(recvPrefix, recvPrefix + 4), (std::vector<int32_t>{2, 3, 4, 6}));
+}
+
+TEST(AlltoAllvGroupedMatMulAivPlanTest, RejectsInvalidPrefixInputs)
+{
+    const int64_t valid[] = {2, 1, 1, 2};
+    const int64_t negative[] = {-1, 1, 1, 2};
+    const int64_t wrongSum[] = {2, 1, 1, 1};
+    int32_t sendPrefix[A2AVGMM_MAX_COUNT_NUM] = {};
+    int32_t recvPrefix[A2AVGMM_MAX_COUNT_NUM] = {};
+
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(negative, valid, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(wrongSum, valid, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(nullptr, valid, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, nullptr, 2U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, valid, 0U, 2U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, valid, 2U, 0U, 6U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, valid, 2U, 2U, 0U, 6U, sendPrefix, recvPrefix));
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(valid, valid, 2U, 2U, 6U, 0U, sendPrefix, recvPrefix));
+}
+
+TEST(AlltoAllvGroupedMatMulAivPlanTest, RejectsCountNumBeyondAbiLimit)
+{
+    std::vector<int64_t> counts1025(1025U, 0);
+    std::vector<int32_t> prefix1025(1025U, 0);
+    counts1025[0] = 1;
+    EXPECT_FALSE(AivPlan::BuildInclusivePrefixes(counts1025.data(), counts1025.data(), 5U, 205U, 1U, 1U,
+                                                 prefix1025.data(), prefix1025.data()));
+}
+
+TEST(AlltoAllvGroupedMatMulAivPlanTest, PrefixOnlyTilingAbiFitsExpandedBuffer)
+{
+    AlltoAllvGmmAivTilingData tiling = {};
+    EXPECT_EQ(A2AVGMM_MAX_COUNT_NUM, 1024U);
+    EXPECT_EQ(sizeof(tiling.sendPrefix), 1024U * sizeof(int32_t));
+    EXPECT_EQ(sizeof(tiling.recvPrefix), 1024U * sizeof(int32_t));
+    EXPECT_EQ(sizeof(tiling.sendPrefix) + sizeof(tiling.recvPrefix), 8192U);
+    EXPECT_GT(sizeof(AlltoAllvGmmAivTilingData), 8192U);
+    EXPECT_LE(sizeof(AlltoAllvGmmAivTilingData), AIV_TILING_DATA_SIZE);
+}
+
+TEST_F(AlltoAllvGroupedMatMulArch22TilingTest, AivPublishesInt32PrefixesFor1024GlobalExperts)
+{
+    struct AlltoAllvGroupedMatMulCompileInfo {};
+    AlltoAllvGroupedMatMulCompileInfo compileInfo;
+    const std::vector<int64_t> counts(1024U, 1);
+    gert::TilingContextPara tilingContextPara(
+        "AlltoAllvGroupedMatMul",
+        {
+            {{{1024, 256}, {1024, 256}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{8, 256, 128}, {8, 256, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_INT32, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {{{1024, 128}, {1024, 128}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+            {{}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            {"sendCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(counts)},
+            {"recvCounts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(counts)},
+            {"transGmmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"transMmWeight", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"permuteOutFlag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"commMode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")},
+        },
+        &compileInfo, "Ascend910_93", 20, 196608, AIV_TILING_DATA_SIZE);
+
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues({{"rankNum", 128}});
+    TilingInfo tilingInfo;
+    const bool success = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+
+    ASSERT_TRUE(success);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(AlltoAllvGmmAivTilingData));
+    const auto* tiling = reinterpret_cast<const AlltoAllvGmmAivTilingData*>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tiling->countNum, 1024U);
+    EXPECT_EQ(tiling->gmmInfo.rankSize, 128U);
+    EXPECT_EQ(tiling->gmmInfo.expertPerRank, 8U);
+    EXPECT_EQ(tiling->sendPrefix[0], 1);
+    EXPECT_EQ(tiling->sendPrefix[1023], 1024);
+    EXPECT_EQ(tiling->recvPrefix[0], 1);
+    EXPECT_EQ(tiling->recvPrefix[1023], 1024);
+    EXPECT_EQ(tiling->countBytes, 4096U);
+}
+} // namespace AlltoAllvGroupedMatMulUT
+
+namespace AlltoAllvGroupedMatMulUT {
+namespace AivComm = AlltoAllvGroupedMatMulAiv;
+
+struct CountingPrefix {
+    const int32_t* values = nullptr;
+    uint32_t* readCount = nullptr;
+
+    bool operator==(std::nullptr_t) const
+    {
+        return values == nullptr;
+    }
+
+    int32_t operator[](uint32_t index) const
+    {
+        ++(*readCount);
+        return values[index];
+    }
+};
+
+TEST(AlltoAllvGroupedMatMulAivCommTest, ReadsInclusivePrefixRangeInConstantTime)
+{
+    std::vector<int32_t> prefix(A2AVGMM_MAX_COUNT_NUM);
+    for (uint32_t index = 0U; index < A2AVGMM_MAX_COUNT_NUM; ++index) {
+        prefix[index] = static_cast<int32_t>(index + 1U);
+    }
+    uint32_t readCount = 0U;
+    const CountingPrefix countingPrefix{prefix.data(), &readCount};
+    uint32_t begin = 0U;
+    uint32_t end = 0U;
+
+    ASSERT_TRUE(AivComm::PrefixRange(countingPrefix, A2AVGMM_MAX_COUNT_NUM, A2AVGMM_MAX_COUNT_NUM - 1U, begin, end));
+    EXPECT_EQ(begin, A2AVGMM_MAX_COUNT_NUM - 1U);
+    EXPECT_EQ(end, A2AVGMM_MAX_COUNT_NUM);
+    EXPECT_LE(readCount, 2U);
+}
+
+TEST(AlltoAllvGroupedMatMulAivCommTest, ValidatesWindowAndReadyLayout)
+{
+    AivComm::A2avWindowLayout layout = {};
+    AivComm::RuntimeControlLayout control = {};
+    ASSERT_TRUE(AivComm::BuildRuntimeControlLayout(128U, 2U, control));
+    ASSERT_TRUE(AivComm::BuildWindowLayout(6, 256, 4, control, 32U * 1024U * 1024U, layout));
+    EXPECT_EQ(layout.inputBytes, 3072U);
+    EXPECT_EQ(layout.controlOffset % AivComm::kWindowAlignment, 0U);
+    EXPECT_GE(layout.countsOffset, layout.inputBytes);
+    EXPECT_FALSE(AivComm::BuildWindowLayout(6, 256, 4, control, layout.totalBytes - 1U, layout));
+    EXPECT_FALSE(AivComm::BuildWindowLayout(UINT64_MAX, 256, 4, control, UINT64_MAX, layout));
+}
+
+TEST(AlltoAllvGroupedMatMulAivCommTest, KeepsPeerControlOffsetStableAcrossExpertCounts)
+{
+    constexpr uint64_t windowBytes = 200U * 1024U * 1024U;
+    AivComm::RuntimeControlLayout controlE2 = {};
+    AivComm::RuntimeControlLayout controlE16 = {};
+    AivComm::A2avWindowLayout layoutE2 = {};
+    AivComm::A2avWindowLayout layoutE16 = {};
+
+    ASSERT_TRUE(AivComm::BuildRuntimeControlLayout(8U, 2U, controlE2));
+    ASSERT_TRUE(AivComm::BuildRuntimeControlLayout(8U, 16U, controlE16));
+    ASSERT_TRUE(AivComm::BuildWindowLayout(32U, 256U, 16U, controlE2, windowBytes, layoutE2));
+    ASSERT_TRUE(AivComm::BuildWindowLayout(32U, 256U, 128U, controlE16, windowBytes, layoutE16));
+
+    EXPECT_EQ(controlE2.releaseSlotsOffset, controlE16.releaseSlotsOffset);
+    EXPECT_EQ(controlE2.peerControlBytes, 544U);
+    EXPECT_EQ(controlE2.peerControlBytes, controlE16.peerControlBytes);
+    EXPECT_EQ(layoutE2.controlOffset, layoutE16.controlOffset);
+}
+} // namespace AlltoAllvGroupedMatMulUT
+
+namespace AlltoAllvGroupedMatMulUT {
+namespace AivCatlass = AlltoAllvGroupedMatMulCatlass;
+
+TEST(AlltoAllvGroupedMatMulCatlassTest, BuildsZeroMExpertSpecWithoutWork)
+{
+    const AivComm::ExpertMeta expert{7U, 0U, 0U};
+    AivCatlass::GemmLaunchSpec spec = {};
+    ASSERT_TRUE(AivCatlass::BuildExpertGemmSpec<false>(3, expert, 272, 130, spec));
+    EXPECT_FALSE(spec.hasWork);
+    EXPECT_EQ(spec.offsetA, 7U * 272U);
+    EXPECT_EQ(spec.offsetB, 3U * 272U * 130U);
+    EXPECT_EQ(spec.offsetC, 7U * 130U);
+}
+
+TEST(AlltoAllvGroupedMatMulCatlassTest, BuildsTailExpertSpec)
+{
+    const AivComm::ExpertMeta expert{5U, 17U, 0U};
+    AivCatlass::GemmLaunchSpec spec = {};
+    ASSERT_TRUE(AivCatlass::BuildExpertGemmSpec<false>(2, expert, 272, 130, spec));
+    EXPECT_TRUE(spec.hasWork);
+    EXPECT_EQ(spec.m, 17U);
+    EXPECT_EQ(spec.k, 272U);
+    EXPECT_EQ(spec.n, 130U);
+    EXPECT_EQ(spec.lda, 272U);
+    EXPECT_EQ(spec.ldb, 130U);
+    EXPECT_EQ(spec.ldc, 130U);
+}
+
+TEST(AlltoAllvGroupedMatMulCatlassTest, BuildsTransposedBAndSharedSpecs)
+{
+    const AivComm::ExpertMeta expert{0U, 1U, 0U};
+    AivCatlass::GemmLaunchSpec expertSpec = {};
+    ASSERT_TRUE(AivCatlass::BuildExpertGemmSpec<true>(1, expert, 272, 130, expertSpec));
+    EXPECT_EQ(expertSpec.ldb, 272U);
+
+    AivCatlass::GemmLaunchSpec sharedSpec = {};
+    ASSERT_TRUE(AivCatlass::BuildSharedGemmSpec<true>(true, 1, 272, 130, sharedSpec));
+    EXPECT_TRUE(sharedSpec.hasWork);
+    EXPECT_EQ(sharedSpec.offsetA, 0U);
+    EXPECT_EQ(sharedSpec.offsetB, 0U);
+    EXPECT_EQ(sharedSpec.offsetC, 0U);
+    EXPECT_EQ(sharedSpec.ldb, 272U);
+    EXPECT_FALSE(AivCatlass::BuildSharedGemmSpec<false>(false, 1, 272, 130, sharedSpec));
+}
+
+TEST(AlltoAllvGroupedMatMulCatlassTest, AcceptsOnlyCompiledTileSet)
+{
+    EXPECT_TRUE(AivCatlass::IsSupportedTile(128, 64, 128));
+    EXPECT_TRUE(AivCatlass::IsSupportedTile(128, 32, 128));
+    EXPECT_TRUE(AivCatlass::IsSupportedTile(64, 64, 128));
+    EXPECT_TRUE(AivCatlass::IsSupportedTile(64, 32, 64));
+    EXPECT_FALSE(AivCatlass::IsSupportedTile(64, 64, 64));
+}
+
+namespace AivMode = AlltoAllvGroupedMatMulAivMode;
+
+TEST(AlltoAllvGroupedMatMulAivModeTest, BuildsExpertMetadataOneExpertAtATime)
+{
+    const int32_t recvPrefix[] = {1, 5, 7, 12, 15, 21};
+    AivComm::ExpertMeta expert = {};
+    ASSERT_TRUE(AivMode::BuildExpertMetaForIndex(recvPrefix, 2, 3, 1, 21, expert));
+    EXPECT_EQ(expert.recvTokenBase, 5U);
+    EXPECT_EQ(expert.tokenCount, 7U);
+
+    uint64_t sourceOffset = 0U;
+    ASSERT_TRUE(AivMode::GetDestinationSourceTokenOffset(recvPrefix, 2, 3, 1, 1, 21, sourceOffset));
+    EXPECT_EQ(sourceOffset, 7U);
+}
+
+TEST(AlltoAllvGroupedMatMulAivModeTest, BuildsZeroTokenExpertMetadata)
+{
+    const int32_t recvPrefix[] = {2, 3, 3, 3};
+    AivComm::ExpertMeta expert = {};
+    ASSERT_TRUE(AivMode::BuildExpertMetaForIndex(recvPrefix, 2U, 2U, 1U, 3U, expert));
+    EXPECT_EQ(expert.recvTokenBase, 3U);
+    EXPECT_EQ(expert.tokenCount, 0U);
+}
+
+TEST(AlltoAllvGroupedMatMulAivModeTest, RejectsInvalidExpertMetadata)
+{
+    const int32_t invalidPrefix[] = {1, 3, 2, 5};
+    AivComm::ExpertMeta expert = {};
+    EXPECT_FALSE(AivMode::BuildExpertMetaForIndex(invalidPrefix, 2, 2, 1, 5, expert));
+    EXPECT_FALSE(AivMode::BuildExpertMetaForIndex(invalidPrefix, 2, 2, 2, 5, expert));
+}
+
+TEST(AlltoAllvGroupedMatMulAivModeTest, MultipliesUint32WithoutDeviceRuntimeHelper)
+{
+    EXPECT_EQ(AivComm::MulU32ToU64(272U, 130U), 35360U);
+    EXPECT_EQ(AivComm::MulU32ToU64(0xffffffffU, 0xffffffffU), 0xfffffffe00000001ULL);
+}
+
+TEST(AlltoAllvGroupedMatMulAivModeTest, PartitionsInitialWindowCopyAcrossAivTasks)
+{
+    AivMode::ElementRange range = {};
+    ASSERT_TRUE(AivMode::PartitionElements(10, 0, 3, range));
+    EXPECT_EQ(range.offset, 0U);
+    EXPECT_EQ(range.count, 4U);
+    ASSERT_TRUE(AivMode::PartitionElements(10, 1, 3, range));
+    EXPECT_EQ(range.offset, 4U);
+    EXPECT_EQ(range.count, 3U);
+    ASSERT_TRUE(AivMode::PartitionElements(10, 2, 3, range));
+    EXPECT_EQ(range.offset, 7U);
+    EXPECT_EQ(range.count, 3U);
+    EXPECT_FALSE(AivMode::PartitionElements(10, 3, 3, range));
+}
+
+TEST(AlltoAllvGroupedMatMulAivModeTest, CoversAllSourceRanksWithStridedWorkers)
+{
+    uint32_t workerNum = 0U;
+    ASSERT_TRUE(AivMode::GetProducerWorkerCount(40U, 2U, workerNum));
+    EXPECT_EQ(workerNum, 20U);
+    // 二十个生产者子块必须以二十为步长覆盖全部一百二十八个 rank。
+    std::array<uint32_t, 128> visits = {};
+    for (uint32_t worker = 0U; worker < workerNum; ++worker) {
+        for (uint32_t rank = worker; rank < visits.size(); rank += workerNum) {
+            ++visits[rank];
+        }
+    }
+    for (const uint32_t visitCount : visits) {
+        EXPECT_EQ(visitCount, 1U);
+    }
+    EXPECT_FALSE(AivMode::GetProducerWorkerCount(40U, 0U, workerNum));
+    EXPECT_FALSE(AivMode::GetProducerWorkerCount(41U, 2U, workerNum));
+}
+
 } // namespace AlltoAllvGroupedMatMulUT

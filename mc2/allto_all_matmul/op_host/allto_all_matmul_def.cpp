@@ -128,8 +128,8 @@ public:
         this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(true);
 
         // ascend950 AI处理器定义OpAICoreConfig变量，定制化配置参数
-        OpAICoreConfig aicoreConfig_950;
-        aicoreConfig_950.DynamicCompileStaticFlag(true)
+        OpAICoreConfig aicoreConfig_a5;
+        aicoreConfig_a5.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
@@ -139,7 +139,7 @@ public:
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "allto_all_matmul_apt");
-        this->AICore().AddConfig("ascend950", aicoreConfig_950);
+        this->AICore().AddConfig("ascend950", aicoreConfig_a5);
         // 将group配置为该算子的通信域
         this->MC2().HcclGroup("group");
 

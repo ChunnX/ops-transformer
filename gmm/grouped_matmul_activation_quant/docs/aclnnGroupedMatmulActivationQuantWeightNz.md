@@ -1,26 +1,26 @@
 # aclnnGroupedMatmulActivationQuantWeightNz
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/gmm/grouped_matmul_activation_quant)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/gmm/grouped_matmul_activation_quant)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -244,6 +244,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>表示分组信息，对应公式中的groupList。</td>
       <td><ul>
       <li>必选参数。根据groupListType输入不同格式数据。当groupListType为0时，最后一个值不大于x中tensor的第一维, 当groupListType为1时，数值的总和不大于x中tensor的第一维。</li>
+      <li>groupListType=0时，groupList元素必须非负且单调不减，最后一个元素不大于M；groupListType=1时，元素必须非负且总和不大于M。</li>
+      <li>GetWorkspaceSize的第一阶段只校验groupList的指针、dtype和shape，不读取设备侧tensor的元素值；调用方需保证上述值域约束。</li>
       <li>groupList中的值约束了输出数据的有效部分，groupList未指定的部分将不会参与更新。</li>
       </ul></td>
       <td>INT64</td>
@@ -405,7 +407,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
   </table>
 
   <!-- npu="950" id7 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Ascend 950PR&950DT系列产品</term>：
     - x仅支持非转置输入，weight支持非转置和转置输入，接口会根据weight和weightScale的形状及转置关系推导weight是否转置。
     - weightScale转置属性需要与weight保持一致。
     - 空Tensor处理规则：
@@ -611,8 +613,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
      - 表中xScale、weightScale、outputScale的shape最后一维为2，表示每个64元素的存储block中包含2个MX量化group，每个group覆盖32个元素。
 
-     - N必须为64整数倍。
-      - MXFP4场景下x和weight必须同时为FLOAT4，二者可分别选择E2M1或E1M2；K必须为偶数且不能为2。
+     - 非空场景下N必须为64整数倍，且N至少为64。
+     - 非空场景下K必须大于0；MXFP4场景下x和weight必须同时为FLOAT4，二者可分别选择FLOAT4_E2M1或FLOAT4_E1M2，且K必须为偶数且不能为2。
 
 ## 调用示例
 
@@ -639,7 +641,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
 /*!
  * \file test_aclnn_grouped_matmul_activation_quant_weight_nz.cpp
- * \brief GroupedMatmulActivationQuant WeightNz MXFP8 aclnn example for Ascend 950PR/Ascend 950DT.
+ * \brief GroupedMatmulActivationQuant WeightNz MXFP8 aclnn example for Ascend 950PR&950DT系列产品.
  */
 
 #define CHECK_RET(cond, return_expr) \

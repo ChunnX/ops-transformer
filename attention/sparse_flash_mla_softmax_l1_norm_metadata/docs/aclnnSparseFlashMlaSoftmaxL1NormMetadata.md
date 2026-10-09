@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：不支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+- <term>Atlas A2系列产品</term>：不支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -186,7 +186,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>numHeadsQ</td>
       <td>输入</td>
       <td>表示query的head个数。</td>
-      <td>必须为正数，并且能被numHeadsK整除。</td>
+      <td>取值范围[1, 128]，并且能被numHeadsK整除。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -196,7 +196,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>numHeadsK</td>
       <td>输入</td>
       <td>表示key的head个数。</td>
-      <td>必须为正数。</td>
+      <td>当前仅支持1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -206,7 +206,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>headDim</td>
       <td>输入</td>
       <td>表示q/k的head dimension。</td>
-      <td>必须为正数。</td>
+      <td>当前仅支持512。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -422,7 +422,9 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
     - layoutQ必须为BSND或TND。
     - layoutK支持BSND和TND，建议与layoutQ保持一致。
   - head约束
-    - numHeadsQ、numHeadsK和headDim必须为正数。
+    - numHeadsQ取值范围为[1, 128]。
+    - numHeadsK当前仅支持1。
+    - headDim当前仅支持512。
     - numHeadsQ必须能被numHeadsK整除。
   - 负载均衡约束
     - topk支持非负数，0表示无稀疏。
@@ -561,12 +563,12 @@ struct ArgContext {
     int64_t maxSeqLenK { 0 };
     int64_t numHeadsQ { 8 };
     int64_t numHeadsK { 1 };
-    int64_t headDim { 128 };
+    int64_t headDim { 512 };
     int64_t topk { 64 };
     char *layoutQ { nullptr };
     char *layoutK { nullptr };
     int64_t maskMode { 3 };
-    int64_t cmpRatio { 4 };
+    int64_t cmpRatio { 1 };
 };
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape)

@@ -46,7 +46,7 @@ protected:
     ge::graphStatus CheckOpInputInfo();
     ge::graphStatus InitTilingContextParameters();
     ge::graphStatus DoMMTiling();
-    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
+    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &mmRegisterCfg,
                                      Mc2MatMulV3TilingData &tilingData);
     ge::graphStatus SetHcclTiling();
     void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
@@ -58,7 +58,7 @@ private:
     void PrintAlltoAllMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
     void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling);
 
-    AlltoAllMatmulTilingData localTilingData_;
+    AlltoAllMatmulTilingData localTilingData_{};
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo mmV3compileInfo_;
     QuantType matmulQuantType_ = QuantType::FP_QUANT;

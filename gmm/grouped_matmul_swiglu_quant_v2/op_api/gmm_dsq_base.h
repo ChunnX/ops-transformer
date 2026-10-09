@@ -12,6 +12,7 @@
 #define OP_HOST_OP_API_ACLNN_GMM_DSQ_BASE_H
 
 #include "grouped_matmul_swiglu_quant_utils.h"
+#include <vector>
 
 namespace gmm_dsq_base {
 
@@ -50,17 +51,17 @@ constexpr size_t NZ_ALIGN_N = 32UL;
 constexpr size_t SMOOTH_SCALE_1D_DIM_LIMIT = 1UL;
 constexpr size_t SMOOTH_SCALE_2D_DIM_LIMIT = 2UL;
 
-const std::initializer_list<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
-const std::initializer_list<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
-const std::initializer_list<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
-                                                                         DataType::DT_BF16};
-const std::initializer_list<DataType> WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST = {DataType::DT_UINT64};
-const std::initializer_list<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
-const std::initializer_list<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
-const std::initializer_list<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
-const std::initializer_list<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
-const std::initializer_list<DataType> WEIGHT_ASSIST_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
-const std::initializer_list<DataType> SMOOTH_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+const std::vector<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
+const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8, DataType::DT_INT4};
+const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
+                                                               DataType::DT_BF16};
+const std::vector<DataType> WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST = {DataType::DT_UINT64};
+const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+const std::vector<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
+const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
+const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+const std::vector<DataType> WEIGHT_ASSIST_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
+const std::vector<DataType> SMOOTH_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};
 
 class GroupedMatmulSwigluQuantBaseHandler : public GroupedMatmulSwigluQuantHandler {
 protected:
@@ -444,17 +445,10 @@ protected:
         return CheckMultiTensorTypeA8W4orA4W4(k, n);
     }
 
-    bool CheckInputOutShapeA8W4orA4W4()
+    void ParseWeightScaleExpectShape(int64_t k, int64_t &e, int64_t &n, int64_t &KGroupCount, int64_t &KGroupSize,
+                                     op::Shape &weightScaleExpectShape)
     {
-        int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
-        int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
-        int64_t e = 1;
-        int64_t n = 1;
-        int64_t KGroupCount = 1; // K轴的组数，perchannel场景相当于pergroup场景中的组数为1
-        int64_t KGroupSize = k;  // K轴每组的元素个数
-        op::Shape weightScaleExpectShape;
         size_t wLength = gmmDsqParams_.weight->Size();
-        std::string scenario = gmmDsqParams_.isA4W4 ? "A4W4" : "A8W4";
         if (gmmDsqParams_.dequantMode == 0 && wLength == static_cast<size_t>(1)) {
             e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
             // weightScale入参在perchannel单tensor场景期望shape [E, N]
@@ -480,6 +474,10 @@ protected:
             KGroupSize = KGroupCount > 0 ? k / KGroupCount : k;
             weightScaleExpectShape = {KGroupCount, n}; // 多
         }
+    }
+
+    bool CheckKGroupCountAndN(int64_t k, int64_t n, int64_t KGroupCount, const std::string &scenario)
+    {
         if (KGroupCount == 0 || k % KGroupCount != 0) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "In op [%s], when %s, the number of groups along the k-axis is %ld, and the length of the k-axis "
@@ -498,28 +496,11 @@ protected:
                     "weightScale", gotStr.c_str(), constraintStr.c_str());
             return false;
         }
-        int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
-        // x的shape期望为[M, K]
-        op::Shape xExpectShape = {m, k};
-        // xScale的shape期望为[E, N]
-        op::Shape xScaleExpectShape = {m};
-        // output的shape期望为[M, N / 2]
-        op::Shape outputExpectShape = {m, nAfterHalve};
-        // outputScale的shape期望为[M]
-        op::Shape outputScaleExpectShape = {m};
-        auto ret = CheckTensorListShapeA8W4orA4W4(e, k, n);
-        if (!ret) {
-            return false;
-        }
+        return true;
+    }
 
-        for (size_t i = 0; i < wLength; i++) {
-            const aclTensor *wScale = (*gmmDsqParams_.weightScale)[i];
-            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(wScale, weightScaleExpectShape, return false);
-        }
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.x, xExpectShape, return false);
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.xScale, xScaleExpectShape, return false);
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.output, outputExpectShape, return false);
-        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.outputScale, outputScaleExpectShape, return false);
+    bool CheckGroupListAndTailLimits(int64_t e, int64_t n, int64_t k, const std::string &scenario)
+    {
         // groupList的长度应小于等于weight的专家数
         int64_t groupListLen = gmmDsqParams_.groupList->GetViewShape().GetDim(0);
         if (groupListLen > e) {
@@ -552,12 +533,63 @@ protected:
                     gotStr.c_str(), constraintStr.c_str());
             return false;
         }
+        return true;
+    }
+
+    bool CheckSmoothScaleCompat(int64_t e, int64_t nAfterHalve)
+    {
         if (gmmDsqParams_.isA4W4) {
             if (!CheckSmoothScaleA4W4(e, nAfterHalve)) {
                 return false;
             }
         } else if (gmmDsqParams_.isA8W4 && gmmDsqParams_.smoothScale != nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when A8W4, smoothScale must be nullptr.", opName_.c_str());
+            return false;
+        }
+        return true;
+    }
+
+    bool CheckInputOutShapeA8W4orA4W4()
+    {
+        int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
+        int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
+        int64_t e = 1;
+        int64_t n = 1;
+        int64_t KGroupCount = 1; // K轴的组数，perchannel场景相当于pergroup场景中的组数为1
+        int64_t KGroupSize = k;  // K轴每组的元素个数
+        op::Shape weightScaleExpectShape;
+        size_t wLength = gmmDsqParams_.weight->Size();
+        std::string scenario = gmmDsqParams_.isA4W4 ? "A4W4" : "A8W4";
+        ParseWeightScaleExpectShape(k, e, n, KGroupCount, KGroupSize, weightScaleExpectShape);
+        if (!CheckKGroupCountAndN(k, n, KGroupCount, scenario)) {
+            return false;
+        }
+        int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
+        // x的shape期望为[M, K]
+        op::Shape xExpectShape = {m, k};
+        // xScale的shape期望为[E, N]
+        op::Shape xScaleExpectShape = {m};
+        // output的shape期望为[M, N / 2]
+        op::Shape outputExpectShape = {m, nAfterHalve};
+        // outputScale的shape期望为[M]
+        op::Shape outputScaleExpectShape = {m};
+        auto ret = CheckTensorListShapeA8W4orA4W4(e, k, n);
+        if (!ret) {
+            return false;
+        }
+
+        for (size_t i = 0; i < wLength; i++) {
+            const aclTensor *wScale = (*gmmDsqParams_.weightScale)[i];
+            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(wScale, weightScaleExpectShape, return false);
+        }
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.x, xExpectShape, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.xScale, xScaleExpectShape, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.output, outputExpectShape, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmDsqParams_.outputScale, outputScaleExpectShape, return false);
+        if (!CheckGroupListAndTailLimits(e, n, k, scenario)) {
+            return false;
+        }
+        if (!CheckSmoothScaleCompat(e, nAfterHalve)) {
             return false;
         }
         (void)KGroupSize;

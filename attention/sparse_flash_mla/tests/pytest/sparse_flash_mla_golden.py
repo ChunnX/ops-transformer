@@ -26,12 +26,44 @@ DATA_RANGE_RIGHT = 10
 RUN_MODE = 1
 
 
+def _nonfinite_fill(shape, left, right):
+    """Return a deterministic tensor for a non-finite data range.
+
+    The finite path deliberately remains at each call site so existing random
+    generation (and its seeded behavior) is unchanged.
+    """
+    left, right = float(left), float(right)
+    if math.isfinite(left) and math.isfinite(right):
+        return None
+    if math.isnan(left) or math.isnan(right):
+        if math.isnan(left) and math.isnan(right):
+            value = math.nan
+        else:
+            raise ValueError(
+                f"data range must use [nan, nan] for a constant NaN, got [{left}, {right}]"
+            )
+    elif left == right:
+        value = left
+    else:
+        raise ValueError(
+            f"non-finite data range must be constant, got [{left}, {right}]"
+        )
+    return torch.full(shape, value, dtype=torch.float32)
+
+
 def is_empty(obj):
     if isinstance(obj, list):
         return len(obj) == 0
     if isinstance(obj, torch.Tensor):
         return obj.nelement() == 0
     return obj is None
+
+
+def restore_cmp_kv_length(cmp_kv_length, cmp_ratio, cmp_residual=0, cmp_mask_mode=3):
+    """Restore the pre-compression length from CMP-KV inputs, as arch35 does."""
+    if cmp_mask_mode == 0 or int(cmp_ratio) == 1:
+        cmp_residual = 0
+    return int(cmp_kv_length) * int(cmp_ratio) + int(cmp_residual)
 
 
 # np.random.seed(42)
@@ -104,6 +136,123 @@ class GeneralizedSFA:
         self.ori_topk_length = ori_topk_length
         self.cmp_topk_length = cmp_topk_length
 
+    @staticmethod
+    def _get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size):
+        """Return the S2 reduction-block size used by batch-consistency metadata."""
+        total_s2_size = ori_s2_size + cmp_s2_size
+        # 先向上整除 32，再向上对齐到 128-token 基础块，与 metadata 和 kernel 保持一致。
+        raw_reduce_size = (total_s2_size + 31) // 32
+        return max(((raw_reduce_size + 127) // 128) * 128, 128)
+
+    @staticmethod
+    def _update_s2_tile(
+        q_fp32,
+        k_tile,
+        softmax_scale,
+        softmax_dtype,
+        score_max,
+        sumexp,
+        acc_o,
+    ):
+        """Use one 128-token S2 tile to update the online-softmax state."""
+        mm1_res = torch.matmul(q_fp32, k_tile.T)
+        scale_res = mm1_res * softmax_scale
+
+        score_max_pre = score_max.clone()
+        cur_score_max = scale_res.max(dim=-1)[0]
+        score_max = torch.max(score_max, cur_score_max)
+        score_max_pre = torch.exp(score_max_pre - score_max)
+
+        acc_s = torch.exp(scale_res - score_max.unsqueeze(1))
+        sumexp = sumexp * score_max_pre + acc_s.sum(dim=-1)
+        acc_s_cast = acc_s.to(dtype=softmax_dtype).to(dtype=torch.float32)
+        mm2_res = torch.matmul(acc_s_cast, k_tile)
+        acc_o = acc_o * score_max_pre.unsqueeze(1) + mm2_res
+        return score_max, sumexp, acc_o
+
+    def _calculate_local_s2_block(
+        self,
+        q_fp32,
+        k_tiles_fp32,
+        initial_score_max,
+    ):
+        """Calculate one NPU reduction block and retain its local softmax state."""
+        score_max = initial_score_max.clone()
+        sumexp = torch.ones_like(score_max, dtype=torch.float32)
+        acc_o = torch.zeros(
+            (q_fp32.shape[0], k_tiles_fp32[0].shape[-1]), dtype=torch.float32
+        )
+
+        for k_tile in k_tiles_fp32:
+            score_max, sumexp, acc_o = self._update_s2_tile(
+                q_fp32,
+                k_tile,
+                self.softmax_scale,
+                self.q_type,
+                score_max,
+                sumexp,
+                acc_o,
+            )
+
+        return score_max, sumexp, acc_o / sumexp.unsqueeze(1)
+
+    def _calculate_batch_consistency(
+        self,
+        q_fp32,
+        ori_k_fp32,
+        cmp_k_fp32,
+        sinks,
+    ):
+        """Follow the NPU S2 split and fixed FD reduction order."""
+        ori_s2_size = 0 if ori_k_fp32 is None else ori_k_fp32.shape[0]
+        cmp_s2_size = 0 if cmp_k_fp32 is None else cmp_k_fp32.shape[0]
+        reduce_size = self._get_batch_consistency_reduce_size(ori_s2_size, cmp_s2_size)
+
+        # ORI、CMP 分别划分规约块，ORI 尾块结束后再开始 CMP 的规约。
+        blocks = []
+        for k_tensor in (ori_k_fp32, cmp_k_fp32):
+            if k_tensor is None or k_tensor.shape[0] == 0:
+                continue
+            blocks.extend(
+                list(block.split(128, dim=0))
+                for block in k_tensor.split(reduce_size, dim=0)
+            )
+
+        merged_lse = None
+        merged_sum = None
+        merged_o = None
+        for block_id, k_tiles in enumerate(blocks):
+            initial_max = (
+                sinks.clone()
+                if block_id == 0 and sinks is not None
+                else torch.full((q_fp32.shape[0],), -torch.inf, dtype=torch.float32)
+            )
+            local_max, local_sum, local_o = self._calculate_local_s2_block(
+                q_fp32, k_tiles, initial_max
+            )
+            if merged_lse is None:
+                merged_lse = local_max
+                merged_sum = local_sum
+                merged_o = local_o
+                continue
+
+            global_max = torch.max(merged_lse, local_max)
+            prev_weight = torch.exp(merged_lse - global_max) * merged_sum
+            cur_weight = torch.exp(local_max - global_max) * local_sum
+            global_sum = prev_weight + cur_weight
+            merged_o = (
+                merged_o * prev_weight.unsqueeze(1) + local_o * cur_weight.unsqueeze(1)
+            ) / global_sum.unsqueeze(1)
+
+            # FD persists the merged state as (LSE, 1, normalized O), then
+            # consumes it in the next step of the deterministic left fold.
+            merged_lse = global_max + torch.log(global_sum)
+            merged_sum = torch.ones_like(global_sum)
+
+        if merged_lse is None:
+            raise ValueError("batch-consistency calculation requires non-empty KV")
+        return merged_o, merged_lse + torch.log(merged_sum)
+
     def calculate_by_bnsd(
         self,
         q_bnsd,
@@ -123,6 +272,7 @@ class GeneralizedSFA:
         ori_topk_length_bnsd=None,
         cmp_topk_length_bnsd=None,
         return_softmax_lse=False,
+        batch_consistency=False,
     ):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
         softmax_lse = None
@@ -161,6 +311,16 @@ class GeneralizedSFA:
                 cur_cmp_act_kv = cu_seqlens_cmp_kv[i_B + 1] - cu_seqlens_cmp_kv[i_B]
             else:
                 cur_cmp_act_kv = 0
+            cur_cmp_residual = (
+                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            )
+            restored_cmp_act_kv = (
+                restore_cmp_kv_length(
+                    cur_cmp_act_kv, self.cmp_ratio, cur_cmp_residual, self.cmp_mask_mode
+                )
+                if template_idx in (1, 2, 4)
+                else 0
+            )
             for i_N2 in range(self.N2):
                 print(f"    i_N2 = {i_N2}/{self.N2}")
                 cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G]
@@ -183,13 +343,11 @@ class GeneralizedSFA:
                             threshold = 0
                             if self.cmp_mask_mode == 3:
                                 threshold = math.floor(
-                                    (cur_ori_act_kv - cur_act_q + i_S1 + 1)
+                                    (restored_cmp_act_kv - cur_act_q + i_S1 + 1)
                                     / (self.cmp_ratio)
                                 )
                             elif self.cmp_mask_mode == 0:
-                                threshold = math.floor(
-                                    cur_ori_act_kv / (self.cmp_ratio)
-                                )
+                                threshold = cur_cmp_act_kv
                             threshold = min(threshold, cur_cmp_act_kv)
                             if threshold <= 0:
                                 empty_flag = True
@@ -209,7 +367,7 @@ class GeneralizedSFA:
                                 i_B,
                                 i_N2,
                                 i_S1,
-                                cur_ori_act_kv,
+                                restored_cmp_act_kv,
                                 cur_act_q,
                                 self.cmp_mask_mode,
                                 self.K,
@@ -292,6 +450,30 @@ class GeneralizedSFA:
                         continue
 
                     cur_attn_out = attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :]
+                    if batch_consistency:
+                        ori_k_for_reduce = (
+                            None
+                            if is_empty(cur_ori_k_bnsd)
+                            else cur_ori_k_bnsd.to(dtype=torch.float32)
+                        )
+                        cmp_k_for_reduce = (
+                            None
+                            if is_empty(cur_cmp_k)
+                            else cur_cmp_k.to(dtype=torch.float32)
+                        )
+                        acc_o, final_lse = self._calculate_batch_consistency(
+                            q_curr_fp32,
+                            ori_k_for_reduce,
+                            cmp_k_for_reduce,
+                            cur_sinks,
+                        )
+                        attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(
+                            dtype=q_bnsd.dtype
+                        )
+                        if return_softmax_lse:
+                            softmax_lse[i_B, i_N2, i_S1, :] = final_lse
+                        continue
+
                     if RUN_MODE == 0:
                         if empty_flag:
                             k_concat = (
@@ -588,7 +770,7 @@ class GeneralizedSFA:
         i_B,
         i_N2,
         i_S1,
-        cur_ori_act_kv,
+        restored_cmp_act_kv,
         cur_act_q,
         mask_mode,
         K,
@@ -599,20 +781,27 @@ class GeneralizedSFA:
     ):
         s2_sparse = list()
         if cur_cmp_act_kv is None:
-            cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+            cur_cmp_act_kv = math.floor(restored_cmp_act_kv / cmp_ratio)
+        # Actual lengths arrive as scalar tensors; read this integer once so
+        # the per-index bounds check does not launch a tensor comparison.
+        cur_cmp_act_kv = int(cur_cmp_act_kv)
         threshold = 0
         if mask_mode == 3:
-            threshold = math.floor((cur_ori_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio)
+            threshold = math.floor(
+                (restored_cmp_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
+            )
         elif mask_mode == 0:
-            threshold = math.floor(cur_ori_act_kv / cmp_ratio)
+            threshold = cur_cmp_act_kv
         threshold = min(threshold, cur_cmp_act_kv)
 
         valid_count = min(K, math.ceil(threshold / sparse_block_size))
         if topk_length_bnsd != None:
             valid_count = min(topk_length_bnsd[i_B, 0, i_S1, 0], valid_count)
 
+        # Read integer indices once; preserve order and the first -1 terminator.
+        topk_values = topk_id.tolist()
         for i_valid in range(valid_count):
-            cur_topk_id = topk_id[i_valid]
+            cur_topk_id = topk_values[i_valid]
 
             if cur_topk_id == -1:
                 break
@@ -784,6 +973,7 @@ class GeneralizedSFA:
         ori_topk_length=None,
         cmp_topk_length=None,
         return_softmax_lse=False,
+        batch_consistency=False,
     ):
         q_bnsd, q_bnsd_shape = self.trans_shape_to_bnsd(
             q, q.shape, self.layout_q, cu_seqlens_q, seqused_q
@@ -852,6 +1042,7 @@ class GeneralizedSFA:
             ori_topk_length_bnsd,
             cmp_topk_length_bnsd,
             return_softmax_lse,
+            batch_consistency,
         )
         attn_out = self.trans_bnsd_to_target_layout(
             attn_out, self.layout_q, cu_seqlens_q
@@ -968,8 +1159,20 @@ def gen_sparse_indices_bsnd(
         topk_length = None
 
     for i_B in range(B):
-        # 计算max valid s2
-        cur_act_kv = seqused_ori_kv[i_B] if seqused_ori_kv is not None else S2
+        # CMP and ORI have independent causal bases.  For CMP, arch35
+        # reconstructs the pre-compression length solely from CMP inputs.
+        is_cmp_kv = seqused_cmp_kv is not None
+        if is_cmp_kv:
+            cur_cmp_act_kv = int(seqused_cmp_kv[i_B])
+            cur_cmp_residual = (
+                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            )
+            cur_act_kv = restore_cmp_kv_length(
+                cur_cmp_act_kv, cmp_ratio, cur_cmp_residual, mask_mode
+            )
+        else:
+            cur_cmp_act_kv = None
+            cur_act_kv = int(seqused_ori_kv[i_B]) if seqused_ori_kv is not None else S2
         if seqused_q is not None:
             cur_act_q = seqused_q[i_B]
         else:
@@ -983,7 +1186,11 @@ def gen_sparse_indices_bsnd(
                         (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
                 elif mask_mode == 0:
-                    cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
+                    cur_valid_s2_max = (
+                        cur_cmp_act_kv
+                        if is_cmp_kv
+                        else math.floor(cur_act_kv / cmp_ratio)
+                    )
                 elif mask_mode == 4:
                     ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
                     if ori_win_left == -1:
@@ -1043,6 +1250,7 @@ def gen_sparse_indices_tnd(
     cu_seqlens_q,
     seqused_q,
     cu_seqlens_ori_kv,
+    cu_seqlens_cmp_kv,
     seqused_ori_kv,
     seqused_cmp_kv,
     cmp_residual_kv,
@@ -1081,9 +1289,24 @@ def gen_sparse_indices_tnd(
         else:
             cur_act_q = cu_seqlens_q[i_B + 1] - cu_seqlens_q[i_B]
         s1_prefix = cu_seqlens_q[i_B]
-        if seqused_ori_kv != None:
+        is_cmp_kv = seqused_cmp_kv is not None or cu_seqlens_cmp_kv is not None
+        if is_cmp_kv:
+            cur_cmp_act_kv = (
+                int(seqused_cmp_kv[i_B])
+                if seqused_cmp_kv is not None
+                else int(cu_seqlens_cmp_kv[i_B + 1] - cu_seqlens_cmp_kv[i_B])
+            )
+            cur_cmp_residual = (
+                cmp_residual_kv[i_B] if cmp_residual_kv is not None else 0
+            )
+            cur_act_kv = restore_cmp_kv_length(
+                cur_cmp_act_kv, cmp_ratio, cur_cmp_residual, mask_mode
+            )
+        elif seqused_ori_kv != None:
+            cur_cmp_act_kv = None
             cur_act_kv = seqused_ori_kv[i_B]
         else:
+            cur_cmp_act_kv = None
             cur_act_kv = cu_seqlens_ori_kv[i_B + 1] - cu_seqlens_ori_kv[i_B]
 
         for i_N2 in range(N2):
@@ -1094,7 +1317,11 @@ def gen_sparse_indices_tnd(
                         (cur_act_kv - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
                 elif mask_mode == 0:
-                    cur_valid_s2_max = math.floor(cur_act_kv / cmp_ratio)
+                    cur_valid_s2_max = (
+                        cur_cmp_act_kv
+                        if is_cmp_kv
+                        else math.floor(cur_act_kv / cmp_ratio)
+                    )
                 elif mask_mode == 4:
                     ori_threshold = cur_act_kv - cur_act_q + i_S1 + 1
                     if ori_win_left == -1:
@@ -1145,6 +1372,44 @@ def gen_sparse_indices_tnd(
     return sparse_indices, topk_length
 
 
+def convert_sparse_indices_to_pa_offsets(
+    sparse_indices, block_table, block_size, layout_q, cu_seqlens_q
+):
+    """Convert logical sparse indices to physical PA token offsets for mode 2."""
+    if sparse_indices is None or block_table is None:
+        return sparse_indices
+
+    physical_offsets = sparse_indices.clone()
+    for batch_idx in range(block_table.shape[0]):
+        if layout_q == "BSND":
+            logical_slice = sparse_indices[batch_idx]
+            physical_slice = physical_offsets[batch_idx]
+        elif layout_q == "TND":
+            q_start = int(cu_seqlens_q[batch_idx])
+            q_end = int(cu_seqlens_q[batch_idx + 1])
+            logical_slice = sparse_indices[q_start:q_end]
+            physical_slice = physical_offsets[q_start:q_end]
+        else:
+            raise ValueError(f"unsupported layout_q for sparse indices: {layout_q}")
+
+        valid_mask = logical_slice >= 0
+        if not valid_mask.any().item():
+            continue
+        logical_values = logical_slice[valid_mask].to(torch.int64)
+        logical_block_ids = torch.div(logical_values, block_size, rounding_mode="floor")
+        in_block_offsets = logical_values % block_size
+        physical_block_ids = block_table[
+            batch_idx, logical_block_ids.to(torch.long)
+        ].to(torch.int64)
+        if (physical_block_ids < 0).any().item():
+            raise ValueError("sparse index maps to an invalid PA block table entry")
+        physical_slice[valid_mask] = (
+            physical_block_ids * block_size + in_block_offsets
+        ).to(physical_offsets.dtype)
+
+    return physical_offsets
+
+
 def gen_ori_kv(
     layout_q,
     layout_kv,
@@ -1179,10 +1444,16 @@ def gen_ori_kv(
         ori_max_s2 = max(seqused_ori_kv)
         ori_max_block_num_per_batch = math.ceil(ori_max_s2 / block_size1)
 
-        ori_k_bnsd = (
-            torch.rand((B, N2, ori_max_s2, D)) * (data_range_left - data_range_right)
-            + data_range_left
-        ).to(ori_kv_type)
+        ori_k_bnsd = _nonfinite_fill(
+            (B, N2, ori_max_s2, D), data_range_left, data_range_right
+        )
+        if ori_k_bnsd is None:
+            ori_k_bnsd = (
+                torch.rand((B, N2, ori_max_s2, D))
+                * (data_range_left - data_range_right)
+                + data_range_left
+            )
+        ori_k_bnsd = ori_k_bnsd.to(ori_kv_type)
         ori_block_num_per_batch = []
         ori_block_num_sum = 0
 
@@ -1237,19 +1508,28 @@ def gen_ori_kv(
     elif layout_kv == "TND":
         ori_block_table = None
         ori_max_s2 = get_max_adjacent_diff(cu_seqlens_ori_kv)
-        ori_k_tnd = (
-            torch.rand((T2, N2, D)) * (data_range_left - data_range_right)
-            + data_range_left
-        ).to(ori_kv_type)
+        ori_k_tnd = _nonfinite_fill((T2, N2, D), data_range_left, data_range_right)
+        if ori_k_tnd is None:
+            ori_k_tnd = (
+                torch.rand((T2, N2, D)) * (data_range_left - data_range_right)
+                + data_range_left
+            )
+        ori_k_tnd = ori_k_tnd.to(ori_kv_type)
         ori_k_in_pa_shape = ori_k_tnd
         ori_k = ori_k_tnd
     elif layout_kv == "BSND":
         ori_block_table = None
         ori_max_s2 = S2
-        ori_k_bnsd = (
-            torch.rand((B, ori_max_s2, N2, D)) * (data_range_left - data_range_right)
-            + data_range_left
-        ).to(ori_kv_type)
+        ori_k_bnsd = _nonfinite_fill(
+            (B, ori_max_s2, N2, D), data_range_left, data_range_right
+        )
+        if ori_k_bnsd is None:
+            ori_k_bnsd = (
+                torch.rand((B, ori_max_s2, N2, D))
+                * (data_range_left - data_range_right)
+                + data_range_left
+            )
+        ori_k_bnsd = ori_k_bnsd.to(ori_kv_type)
         ori_k_in_pa_shape = ori_k_bnsd
         ori_k = ori_k_bnsd
 
@@ -1290,6 +1570,7 @@ def gen_ori_kv(
                 cu_seqlens_q,
                 seqused_q,
                 cu_seqlens_ori_kv,
+                None,
                 seqused_ori_kv,
                 None,
                 None,
@@ -1328,6 +1609,7 @@ def gen_cmp_kv(
     cu_seqlens_q,
     seqused_q,
     cu_seqlens_ori_kv,
+    cu_seqlens_cmp_kv,
     seqused_ori_kv,
     seqused_cmp_kv,
     cmp_residual_kv,
@@ -1346,18 +1628,23 @@ def gen_cmp_kv(
         raise ValueError(f"cmp_ratio should be in range [1, 128], but got {cmp_ratio}")
 
     if layout_kv == "PA_BBND":
-        ori_max_s2 = max(seqused_ori_kv)
-        cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
+        cmp_max_s2 = max(int(length) for length in seqused_cmp_kv)
         cmp_max_block_num_per_batch = math.ceil(cmp_max_s2 / block_size2)
 
-        cmp_k = (
-            torch.rand((B, N2, cmp_max_s2, D)) * (data_range_left - data_range_right)
-            + data_range_left
-        ).to(cmp_kv_type)
+        cmp_k = _nonfinite_fill(
+            (B, N2, cmp_max_s2, D), data_range_left, data_range_right
+        )
+        if cmp_k is None:
+            cmp_k = (
+                torch.rand((B, N2, cmp_max_s2, D))
+                * (data_range_left - data_range_right)
+                + data_range_left
+            )
+        cmp_k = cmp_k.to(cmp_kv_type)
         cmp_block_num_per_batch = []
         cmp_block_num_sum = 0
-        for cur_ori_act_kv in seqused_ori_kv:
-            cur_cmp_act_kv = math.floor(cur_ori_act_kv / cmp_ratio)
+        for cur_cmp_act_kv in seqused_cmp_kv:
+            cur_cmp_act_kv = int(cur_cmp_act_kv)
             cur_cmp_kv_block_num = math.ceil(cur_cmp_act_kv / block_size2)
             cmp_block_num_per_batch.append(cur_cmp_kv_block_num)
             cmp_block_num_sum += cur_cmp_kv_block_num
@@ -1406,20 +1693,29 @@ def gen_cmp_kv(
     elif layout_kv == "TND":
         T3 = int(T3)
         cmp_block_table = None
-        cmp_max_s2 = get_max_adjacent_diff([x // cmp_ratio for x in cu_seqlens_ori_kv])
-        cmp_k = (
-            torch.rand((T3, N2, D)) * (data_range_left - data_range_right)
-            + data_range_left
-        ).to(cmp_kv_type)
+        cmp_k = _nonfinite_fill((T3, N2, D), data_range_left, data_range_right)
+        if cmp_k is None:
+            cmp_k = (
+                torch.rand((T3, N2, D)) * (data_range_left - data_range_right)
+                + data_range_left
+            )
+        cmp_k = cmp_k.to(cmp_kv_type)
         cmp_k_in_pa_shape = cmp_k
     elif layout_kv == "BSND":
         cmp_block_table = None
-        ori_max_s2 = S2
-        cmp_max_s2 = math.floor(ori_max_s2 / cmp_ratio)
-        cmp_k = (
-            torch.rand((B, cmp_max_s2, N2, D)) * (data_range_left - data_range_right)
-            + data_range_left
-        ).to(cmp_kv_type)
+        # Keep the legacy full-capacity default, while allowing an independently
+        # supplied CMP actual length to exceed ORI-derived capacity.
+        cmp_max_s2 = max(int(length) for length in seqused_cmp_kv)
+        cmp_k = _nonfinite_fill(
+            (B, cmp_max_s2, N2, D), data_range_left, data_range_right
+        )
+        if cmp_k is None:
+            cmp_k = (
+                torch.rand((B, cmp_max_s2, N2, D))
+                * (data_range_left - data_range_right)
+                + data_range_left
+            )
+        cmp_k = cmp_k.to(cmp_kv_type)
         cmp_k_in_pa_shape = cmp_k
 
     # generate cmp_sparse_indices
@@ -1455,6 +1751,7 @@ def gen_cmp_kv(
                 cu_seqlens_q,
                 seqused_q,
                 cu_seqlens_ori_kv,
+                cu_seqlens_cmp_kv,
                 seqused_ori_kv,
                 seqused_cmp_kv,
                 cmp_residual_kv,
@@ -1474,7 +1771,7 @@ def gen_cmp_kv(
 
 
 def resolve_compressed_actual_lengths(
-    seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
+    seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio, cmp_mask_mode=3
 ):
     """Resolve compressed actual lengths exactly as SMLA input generation does."""
     if seqused_ori_kv is None or cmp_ratio is None:
@@ -1486,6 +1783,8 @@ def resolve_compressed_actual_lengths(
             seqused_cmp_kv = seqused_ori_kv // cmp_ratio
         else:
             seqused_cmp_kv = [value // cmp_ratio for value in seqused_ori_kv]
+    if cmp_mask_mode == 0 or int(cmp_ratio) == 1:
+        return seqused_cmp_kv, None
     if cmp_residual_kv is None:
         if torch.is_tensor(seqused_ori_kv):
             cmp_residual_kv = seqused_ori_kv % cmp_ratio
@@ -1545,11 +1844,67 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     ori_sparse_indices_mode = params.get("ori_sparse_indices_mode")
     cmp_sparse_indices_mode = params.get("cmp_sparse_indices_mode")
     return_softmax_lse = params.get("return_softmax_lse")
+    topk_value_mode = int(params.get("topk_value_mode", 1))
+    batch_consistency = params.get("batch_consistency", False)
     template_mode = params.get("template_mode")
+
+    # 路由到各算子的逻辑。必须先于Tensor转换和压缩长度推导执行，
+    # 否则SWA会从共享参数中生成无效的cmp_kv相关Tensor。
+    template_idx = 0
+    mapping = {"SWA": 0, "HCA": 1, "CSA": 2, "ORI_SPARSE": 3, "ORI_CMP_SPARSE": 4}
+    if template_mode is not None and template_mode in mapping:
+        template_run_mode = template_mode
+        template_idx = mapping[template_mode]
+        if template_mode == "SWA":
+            cmp_ratio = None
+            K1 = None
+            K = None
+        elif template_mode == "HCA":
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+            K1 = None
+            K = None
+        elif template_mode == "CSA":
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+            K = int(K) if K is not None else None
+        elif template_mode == "ORI_SPARSE":
+            cmp_ratio = 1
+            K1 = int(K1) if K1 is not None else None
+            K = None
+        elif template_mode == "ORI_CMP_SPARSE":
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+            K1 = int(K1) if K1 is not None else None
+            K = int(K) if K is not None else None
+    else:
+        if K is None or K == ["None"]:
+            if cmp_ratio is None:
+                template_idx = 0  # SWA
+                template_run_mode = "SWA"
+            else:
+                template_idx = 1  # HCA
+                template_run_mode = "HCA"
+                cmp_ratio = int(cmp_ratio)
+        else:
+            template_idx = 2  # CSA
+            template_run_mode = "CSA"
+            cmp_ratio = 1 if cmp_ratio is None else int(cmp_ratio)
+            K = int(K)
 
     # 支持外部指定topk_length
     ori_topk_length_override = params.get("ori_topk_length", None)
     cmp_topk_length_override = params.get("cmp_topk_length", None)
+
+    if template_idx == 0:
+        # SWA only consumes ori_kv. Do not materialize or retain any compressed-KV
+        # tensor/shape metadata, even when it was supplied by a shared case source.
+        cmp_mask_mode = 0
+        cmp_kv_type = None
+        T3 = None
+        block_num2 = None
+        block_size2 = None
+        cu_seqlens_cmp_kv = None
+        seqused_cmp_kv = None
+        cmp_residual_kv = None
+        cmp_topk_length_override = None
     if (
         isinstance(ori_topk_length_override, list)
         and len(ori_topk_length_override) == 1
@@ -1641,10 +1996,13 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     # generate q
     if layout_q == "BSND":
         S1, B = int(S1), int(B)
-        q = (
-            torch.rand((B, S1, N1, D)) * (q_datarange[1] - q_datarange[0])
-            + q_datarange[0]
-        ).to(q_type)
+        q = _nonfinite_fill((B, S1, N1, D), q_datarange[0], q_datarange[1])
+        if q is None:
+            q = (
+                torch.rand((B, S1, N1, D)) * (q_datarange[1] - q_datarange[0])
+                + q_datarange[0]
+            )
+        q = q.to(q_type)
         if seqused_q is None:
             act_q = B * [S1]
             seqused_q = torch.tensor(B * [S1]).to(torch.int32)
@@ -1653,9 +2011,13 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             seqused_q = torch.tensor(seqused_q).to(torch.int32)
     elif layout_q == "TND":
         T1, B = int(T1), int(B)
-        q = (
-            torch.rand((T1, N1, D)) * (q_datarange[1] - q_datarange[0]) + q_datarange[0]
-        ).to(q_type)
+        q = _nonfinite_fill((T1, N1, D), q_datarange[0], q_datarange[1])
+        if q is None:
+            q = (
+                torch.rand((T1, N1, D)) * (q_datarange[1] - q_datarange[0])
+                + q_datarange[0]
+            )
+        q = q.to(q_type)
         if len(cu_seqlens_q) != (B + 1):
             raise ValueError(
                 f"len(cu_seqlens_q) != B + 1, which is {len(cu_seqlens_q)} != {B + 1}"
@@ -1672,53 +2034,10 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
     else:
         raise ValueError(f"layout_kv is not support {layout_kv}")
 
-    seqused_cmp_kv, cmp_residual_kv = resolve_compressed_actual_lengths(
-        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio
-    )
-    # 路由到三个算子的逻辑：
-    template_idx = 0
-
-    mapping = {"SWA": 0, "HCA": 1, "CSA": 2, "ORI_SPARSE": 3, "ORI_CMP_SPARSE": 4}
-    if template_mode is not None and template_mode in mapping:
-        template_run_mode = template_mode
-        template_idx = mapping[template_mode]
-        if template_mode == "SWA":
-            cmp_ratio = None
-            K1 = None
-            K = None
-        elif template_mode == "HCA":
-            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
-            K1 = None
-            K = None
-        elif template_mode == "CSA":
-            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
-            K = int(K) if K is not None else None
-        elif template_mode == "ORI_SPARSE":
-            cmp_ratio = 1
-            K1 = int(K1) if K1 is not None else None
-            K = None
-        elif template_mode == "ORI_CMP_SPARSE":
-            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
-            K1 = int(K1) if K1 is not None else None
-            K = int(K) if K is not None else None
-    else:
-        # TODO 删除这部分逻辑 替换所有template_idx
-        if K is None or K == ["None"]:
-            if cmp_ratio is None:
-                template_idx = 0  # SWA
-                template_run_mode = "SWA"
-            else:
-                template_idx = 1  # HCA
-                template_run_mode = "HCA"
-                cmp_ratio = int(cmp_ratio)
-        else:
-            template_idx = 2  # CSA
-            template_run_mode = "CSA"
-            if cmp_ratio == None:
-                cmp_ratio = 1
-            else:
-                cmp_ratio = int(cmp_ratio)
-            K = int(K)
+    if template_idx in (1, 2, 4):
+        seqused_cmp_kv, cmp_residual_kv = resolve_compressed_actual_lengths(
+            seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, cmp_ratio, cmp_mask_mode
+        )
     print("template_run_mode: ", template_run_mode)
     if layout_kv == "PA_BBND":
         block_size1, block_num1 = int(block_size1), int(block_num1)
@@ -1783,6 +2102,7 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             cu_seqlens_q,
             seqused_q,
             cu_seqlens_ori_kv,
+            cu_seqlens_cmp_kv,
             seqused_ori_kv,
             seqused_cmp_kv,
             cmp_residual_kv,
@@ -1802,9 +2122,35 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
         cmp_k = None
         cmp_topk_length = None
 
-    sinks = (
-        torch.rand((N1,)) * (q_datarange[1] - q_datarange[0]) / 10 + q_datarange[0] / 10
-    ).to(torch.float)
+    # CPU Golden always consumes logical token indices. Only the sparse-index
+    # tensors passed to a PA kernel use physical token offsets in mode 2.
+    ori_sparse_indices_for_op = ori_sparse_indices
+    cmp_sparse_indices_for_op = cmp_sparse_indices
+    if topk_value_mode == 2 and layout_kv == "PA_BBND":
+        ori_sparse_indices_for_op = convert_sparse_indices_to_pa_offsets(
+            ori_sparse_indices,
+            ori_block_table,
+            block_size1,
+            layout_q,
+            cu_seqlens_q,
+        )
+        cmp_sparse_indices_for_op = convert_sparse_indices_to_pa_offsets(
+            cmp_sparse_indices,
+            cmp_block_table,
+            block_size2,
+            layout_q,
+            cu_seqlens_q,
+        )
+
+    sinks = _nonfinite_fill((N1,), q_datarange[0], q_datarange[1])
+    if sinks is None:
+        sinks = (
+            torch.rand((N1,)) * (q_datarange[1] - q_datarange[0]) / 10
+            + q_datarange[0] / 10
+        )
+    else:
+        sinks = sinks / 10
+    sinks = sinks.to(torch.float)
 
     # Pytest materializes the A5 PA stride on device. TTK supplies the same
     # storage/stride through its CSV allocation and only needs logical CPU data.
@@ -1877,9 +2223,11 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
         "cmp_k": cmp_k,
         "ori_sparse_indices": ori_sparse_indices,
         "cmp_sparse_indices": cmp_sparse_indices,
+        "topk_value_mode": topk_value_mode,
         "sinks": sinks,
         "template_idx": template_idx,
         "return_softmax_lse": return_softmax_lse,
+        "batch_consistency": batch_consistency,
     }
     if generate_golden:
         generate_cpu_golden({"golden_state": golden_state})
@@ -1967,8 +2315,8 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             "q": q,
             "ori_kv": ori_k if layout_kv == "TND" else ori_k_in_pa_shape,
             "cmp_kv": cmp_k_in_pa_shape,
-            "ori_sparse_indices": ori_sparse_indices,
-            "cmp_sparse_indices": cmp_sparse_indices,
+            "ori_sparse_indices": ori_sparse_indices_for_op,
+            "cmp_sparse_indices": cmp_sparse_indices_for_op,
             "ori_block_table": ori_block_table,
             "cmp_block_table": cmp_block_table,
             "cu_seqlens_q": cu_seqlens_q,
@@ -1986,6 +2334,7 @@ def gen_data(params, prepare_device_storage=True, generate_golden=True):
             "ori_win_right": ori_win_right,
             "layout_q": layout_q,
             "layout_kv": layout_kv,
+            "topk_value_mode": topk_value_mode,
         },
         "golden_state": golden_state,
         "cpu_output": cpu_result,
@@ -2047,6 +2396,7 @@ def generate_cpu_golden(input_data):
         state["ori_topk_length"],
         state["cmp_topk_length"],
         state["return_softmax_lse"],
+        state.get("batch_consistency", False),
     )
     state["cpu_output"] = cpu_output
     state["softmax_lse"] = softmax_lse

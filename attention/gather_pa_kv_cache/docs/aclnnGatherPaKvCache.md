@@ -1,26 +1,26 @@
 # aclnnGatherPaKvCache
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/gather_pa_kv_cache)
+[📄 查看源码](https://atomgit.com/cann/ops-transformer/tree/master/attention/gather_pa_kv_cache)
 
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -215,12 +215,12 @@ aclnnStatus aclnnGatherPaKvCache(
   </table>
 
   <!-- npu="950" id7 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>:
+  - <term>Ascend 950PR&950DT系列产品</term>:
     - 允许keyCache为FLOAT8_E4M3FN、valueCache为FLOAT16或BFLOAT16的组合。
 
   <!-- end id7 -->
   <!-- npu="A3,910b" id8 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：
     - 输入keyCache、valueCache、keyRef、valueRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN数据类型。
     - 输入blockTables、seqLens、seqOffsetOptional不支持INT64数据类型。
 
@@ -249,8 +249,8 @@ aclnnStatus aclnnGatherPaKvCache(
         <td>输入是空指针。</td>
       </tr>
       <tr>
-        <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-        <td rowspan="3">161002</td>
+        <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="2">161002</td>
         <td>输入数据类型不在支持的范围内。</td>
       </tr>
       <tr>
@@ -382,7 +382,7 @@ int main() {
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> keyCacheShape = {2, 2, 32, 2};
   std::vector<int64_t> valueCacheShape = {2, 2, 32, 4};
-  std::vector<int64_t> blockTablesShape = {4,6};
+  std::vector<int64_t> blockTablesShape = {4, 6};
   std::vector<int64_t> seqLensShape = {4};
   std::vector<int64_t> keyShape = {12, 32, 2};
   std::vector<int64_t> valueShape = {12, 32, 4};
@@ -397,13 +397,13 @@ int main() {
   void* valueDeviceAddr = nullptr;
   void* seqOffsetAddr = nullptr;
 
-  aclTensor* keyCache= nullptr;
+  aclTensor* keyCache = nullptr;
   aclTensor* valueCache = nullptr;
-  aclTensor* blockTables= nullptr;
-  aclTensor* seqLens= nullptr;
+  aclTensor* blockTables = nullptr;
+  aclTensor* seqLens = nullptr;
   aclTensor* key = nullptr;
-  aclTensor* value= nullptr;
-  aclTensor* seqOffset= nullptr;
+  aclTensor* value = nullptr;
+  aclTensor* seqOffset = nullptr;
 
   std::vector<uint16_t> keyCacheHostData(256, 1);
   std::vector<uint16_t> valueCacheHostData(512, 1);
@@ -415,7 +415,7 @@ int main() {
 
   char cacheMode[] = "Norm";
   const bool isSeqLensCumsum = false;
-  // 创建gradOut aclTensor
+  // 创建GatherPaKvCache的输入输出aclTensor
   ret = CreateAclTensor(keyCacheHostData, keyCacheShape, &keyCacheDeviceAddr, aclDataType::ACL_FLOAT16, &keyCache);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -460,7 +460,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-  auto size = 256;
+  auto size = GetShapeSize(keyShape);
   std::vector<uint16_t> resultData(size, 0);
   ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), keyDeviceAddr,
                     size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
@@ -481,8 +481,8 @@ int main() {
   // 7. 释放device资源，需要根据具体API的接口定义修改
   aclrtFree(keyCacheDeviceAddr);
   aclrtFree(valueCacheDeviceAddr);
-  aclrtFree(blockTablesDeviceAddr );
-  aclrtFree(seqLensDeviceAddr );
+  aclrtFree(blockTablesDeviceAddr);
+  aclrtFree(seqLensDeviceAddr);
   aclrtFree(keyDeviceAddr);
   aclrtFree(valueDeviceAddr);
   aclrtFree(seqOffsetAddr);

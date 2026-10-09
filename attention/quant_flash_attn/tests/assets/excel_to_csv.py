@@ -15,10 +15,9 @@
 环境：无 openpyxl/pandas，xlsx 解析走 _xlsx_minireader（zipfile + minidom）。
 
 输入：redline.xlsx（同目录），xl/worksheets/sheet1.xml 是 mxfp8 sheet
-输出：3 个 csv 到同目录
-  - qfa_mxfp8_excel.csv            api_name=qfa_wrapper.npu_qfa
-  - qfa_mxfp8_excel_metadata.csv   api_name=qfa_metadata_wrapper.run_metadata
-  - qfa_mxfp8_excel_main.csv       api_name=qfa_main_wrapper.run_main
+输出：每个 mode 1 个 csv 到同目录（metadata 在主算子调用前由 spec 的
+  npu_preprocess 生成并回填 metadata slot，主算子直接由 ttk 调用）
+  - qfa_mxfp8_excel.csv            api_name=torch.ops.cann_ops_transformer.quant_flash_attn
 
 空值契约：excel 空单元格 → csv attributes 省略该 key（不写 key:None）。
 
@@ -26,15 +25,15 @@
   按表头语义名查列索引（_Columns + _norm_name + _HEADER_ALIASES），不再用写死的
   COL 列字母表，对列顺序变化稳健。
 
-tensor 顺序（共 15 个，与 wrapper 签名位置参数对齐）：
+tensor 顺序（共 18 个，与 wrapper 签名位置参数对齐）：
   0  q               q_shape / q_dtype / q_datarange
   1  k               k_shape / k_dtype / k_datarange
   2  v               v_shape / v_dtype / v_datarange
   3  q_descale       q_descale_shape / q_descale_dtype / q_descale_datarange
   4  k_descale       k_descale_shape / k_descale_dtype / k_descale_datarange
   5  v_descale       v_descale_shape / v_descale_dtype / v_descale_datarange
-  6  p_scale         p_scale_shape / p_scale_dtype / p_scale_datarange（标量）
-  7  block_table     block_table_shape / block_table_dtype / block_table_datarange
+  6  block_table     block_table_shape / block_table_dtype / block_table_datarange
+  7  p_scale         p_scale_shape / p_scale_dtype / p_scale_datarange（标量）
   8  cu_seqlens_q    cu_seqlens_q_shape / cu_seqlens_q_dtype / cu_seqlens_q_datarange
   9  cu_seqlens_kv   cu_seqlens_kv_shape / cu_seqlens_kv_dtype / cu_seqlens_kv_datarange
   10 seqused_q       seqused_q_shape / seqused_q_dtype / seqused_q_datarange
@@ -42,13 +41,32 @@ tensor 顺序（共 15 个，与 wrapper 签名位置参数对齐）：
   12 sinks           learnable_sink_shape / learnable_sink_dtype / learnable_sink_datarange
   13 attn_mask       attn_mask_shape / attn_mask_dtype / attn_mask_datarange
   14 metadata        metadata_shape / metadata_dtype / metadata_datarange
+  15 v_tail          enable_v_tail 时由 attributes 推导 (B/N_kv/block_size/D/layout_kv)
+  16 block_table_tail 同上推导 (B, ceil(64/bs))，int32
+  17 seqused_v_tail 同上推导 (B,)，int32
 
   上述 shape 从 attributes 抽出成为 tensor 入参；无 shape（Excel 空）→ (0,)。
+  v_tail 三件套 (15-17) 无 Excel 列：enable_v_tail=TRUE/1 时按 checker 布局契约推导
+  (PA_BNBD=(B,N2,Bs,D) / PA_BBND=(B,Bs,N2,D) / PA_NZ=(B,N2,D/16,Bs,16), bfloat16)，
+  未启用时为空 slot (0,)；无效组合 (非PA/quant_mode!=1/PA_NZ且D%16!=0) 转换期报错。
   cu_seqlens_q/kv、seqused_q/kv 的真实 value 属性仍保留在 attributes
   （ttk 按 tensor_view_shapes 生成随机 tensor，wrapper 需用 attributes 里的
   真实值覆盖，因此 value 属性不能删，只删 shape）。
+  cu_seqlens_q/kv、seqused_q/kv 的真实 value 以 `*_values` 属性保留在 attributes
+  （不与算子 schema 的同名 Tensor 参数撞名，避免 ttk match_overload 的
+  scalar_cover 重复计数；npu_preprocess/inputs 用 `*_values` 覆盖随机 tensor），
+  因此 value 属性不能删，只删 shape。
   datarange：q/k/v 取 Excel 真实值；descale/p_scale/block_table/cu_seqlens/
   seqused/sinks/attn_mask/metadata 用 (0,1) 占位（这些 tensor 不参与真实数据生成）。
+
+metadata shape 推导（slot 14，不读 Excel metadata_shape 列）：
+  镜像 torch_extension/quant_flash_attn.py 的 quant_flash_attn_metadata 输出推导：
+    (2, align4096(METADATA_STRIDE + (aic_num+aiv_num)*METADATA_STRIDE*B*N_kv))
+  B 的优先级与 npu_preprocess._derive_batch_size 一致（seqused_q → cu_seqlens_q-1
+  → batch_size 列 → BSND 的 q_shape[0]；TND 无后两项兜底）；
+  N_kv 取 num_heads_kv 列（空则按 layout_kv 从 k_shape 推导）；
+  核数镜像 _get_core_nums（NPU 真实核数，无 NPU 默认 36/72）。
+  推导结果与 npu_preprocess 生成的 shape 不一致会报 metadata shape mismatch。
 
 空行处理：跳过 testcase_name 为空的整行（redline 末尾有空拖行）。
 """
@@ -64,7 +82,7 @@ if _HERE not in sys.path:
 
 from _xlsx_minireader import load_sheet, list_sheet_names
 
-_XLSX = os.path.join(_HERE, "redline1.xlsx")
+_XLSX = os.path.join(_HERE, "redline.xlsx")
 
 # 11 列 header
 HEADER = [
@@ -81,35 +99,23 @@ HEADER = [
     "absolute_precision",
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀 (MXFP8, quant_mode=1)
+API_NAME = "torch.ops.cann_ops_transformer.quant_flash_attn"
+
+# 每个 mode 1 个 csv 的 api_name 和 testcase_name 后缀 (MXFP8, quant_mode=1)
 CSV_PROFILES_MXFP8 = [
-    ("qfa_mxfp8_excel.csv", "qfa_wrapper.npu_qfa", ""),
-    ("qfa_mxfp8_excel_metadata.csv", "qfa_metadata_wrapper.run_metadata", "_metadata"),
-    ("qfa_mxfp8_excel_main.csv", "qfa_main_wrapper.run_main", "_main"),
+    ("qfa_mxfp8_excel.csv", API_NAME, ""),
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀 (GQA FP8 全量化, quant_mode=6)
-# api_name 与 MXFP8 相同 (wrapper 复用, 内部按 quant_mode 分支),
+# 每个 mode 1 个 csv 的 api_name 和 testcase_name 后缀 (GQA FP8 全量化, quant_mode=6)
+# api_name 与 MXFP8 相同 (内部按 quant_mode 分支),
 # 仅 CSV 文件名和 testcase 后缀区分, 避免与 mxfp8 testcase 重名。
 CSV_PROFILES_GQA_FP8 = [
-    ("qfa_gqa_fp8_excel.csv", "qfa_wrapper.npu_qfa", "_gqa_fp8"),
-    (
-        "qfa_gqa_fp8_excel_metadata.csv",
-        "qfa_metadata_wrapper.run_metadata",
-        "_gqa_fp8_metadata",
-    ),
-    ("qfa_gqa_fp8_excel_main.csv", "qfa_main_wrapper.run_main", "_gqa_fp8_main"),
+    ("qfa_gqa_fp8_excel.csv", API_NAME, "_gqa_fp8"),
 ]
 
-# 3 个 csv 的 api_name 和 testcase_name 后缀 (HIF8 per-tensor, quant_mode=0)
+# 每个 mode 1 个 csv 的 api_name 和 testcase_name 后缀 (HIF8 per-tensor, quant_mode=0)
 CSV_PROFILES_HIF8 = [
-    ("qfa_hif8_excel.csv", "qfa_wrapper.npu_qfa", "_hif8"),
-    (
-        "qfa_hif8_excel_metadata.csv",
-        "qfa_metadata_wrapper.run_metadata",
-        "_hif8_metadata",
-    ),
-    ("qfa_hif8_excel_main.csv", "qfa_main_wrapper.run_main", "_hif8_main"),
+    ("qfa_hif8_excel.csv", API_NAME, "_hif8"),
 ]
 
 # 向后兼容别名 (现有脚本若 import CSV_PROFILES)
@@ -137,7 +143,9 @@ DTYPE_MAP = {
 
 ABSOLUTE_PRECISION_DEFAULT = 1e-8
 
-# tensor 顺序（15 个），与 wrapper 位置参数 / tensor_view_shapes 一致。
+# tensor 顺序（Excel 驱动 15 个 + v_tail 三件套推导 3 个 = 18 个），与 wrapper 位置参数 /
+# tensor_view_shapes 一致。slot 15-17 (v_tail/block_table_tail/seqused_v_tail) 无 Excel 列,
+# 由 _derive_vtail_slots 按 attributes 推导 (enable_v_tail 时)。
 # 每项：(shape 列名, dtype 列名, datarange 列名, dtype 缺省值, 是否读 Excel datarange)。
 #   use_real_drange=True  → 取 Excel datarange（q/k/v 参与真实数据生成）
 #   use_real_drange=False → 用 (0,1) 占位（descale/p_scale/block_table/cu_seqlens/
@@ -149,8 +157,8 @@ _TENSOR_SPECS = [
     ("q_descale_shape", "q_descale_dtype", "q_descale_datarange", "float8_e8m0", False),
     ("k_descale_shape", "k_descale_dtype", "k_descale_datarange", "float8_e8m0", False),
     ("v_descale_shape", "v_descale_dtype", "v_descale_datarange", "float8_e8m0", False),
-    ("p_scale_shape", "p_scale_dtype", "p_scale_datarange", "float32", False),
     ("block_table_shape", "block_table_dtype", "block_table_datarange", "int32", False),
+    ("p_scale_shape", "p_scale_dtype", "p_scale_datarange", "float32", False),
     (
         "cu_seqlens_q_shape",
         "cu_seqlens_q_dtype",
@@ -175,10 +183,139 @@ _TENSOR_SPECS = [
         False,
     ),
     ("attn_mask_shape", "attn_mask_dtype", "attn_mask_datarange", "int8", False),
-    ("metadata_shape", "metadata_dtype", "metadata_datarange", "float32", False),
+    ("metadata_shape", "metadata_dtype", "metadata_datarange", "int32", False),
 ]
 
 _DRANGE_PLACEHOLDER = (0, 1)
+
+# 每核 metadata 字段数, 与 torch_extension/quant_flash_attn.py 的
+# METADATA_STRIDE 同名同值
+METADATA_STRIDE = 16
+
+
+# -----------------------------------------------------------------------------------------------------------
+# metadata slot shape 推导（镜像 torch_extension/quant_flash_attn.py 的
+# quant_flash_attn_metadata 输出推导, 两侧不一致会触发 npu_preprocess 的
+# metadata shape mismatch）
+# -----------------------------------------------------------------------------------------------------------
+_CORE_NUMS = None
+
+
+def _get_core_nums():
+    """镜像 torch_extension/quant_flash_attn.py 的 _get_core_nums：
+    有 NPU 时查询真实核数，无 NPU（torch/torch_npu 缺失或无设备）默认 (36, 72)；
+    真机上查询失败向上抛，避免静默用默认核数推出偏小的 metadata shape。
+    """
+    global _CORE_NUMS
+    if _CORE_NUMS is None:
+        try:
+            import torch
+        except ImportError:
+            torch = None
+        npu = getattr(torch, "npu", None) if torch is not None else None
+        if npu is None or not npu.is_available():
+            _CORE_NUMS = (36, 72)
+        else:
+            props = npu.get_device_properties()
+            _CORE_NUMS = (props.cube_core_num, props.vector_core_num)
+    return _CORE_NUMS
+
+
+def _tensor_numel(shape):
+    """shape tuple → 元素数；None/空/含 0 维 → 0（空 tensor 运行时归一成 None）。"""
+    if not shape:
+        return 0
+    numel = 1
+    for dim in shape:
+        numel *= dim
+    return numel
+
+
+def _metadata_batch_size(row, cols):
+    """推导 metadata 用的 batch_size，优先级镜像 npu_preprocess._derive_batch_size
+    （最终与 torch_extension._calculate_batch_size 等价），以 Excel 列表达：
+      seqused_q(shape/value) → cu_seqlens_q(shape/value)-1 → batch_size 列 →
+      BSND 的 q_shape[0] → 0。
+    TND 时 npu_preprocess 给 metadata op 传 batch_size=None，无后两项兜底。
+    """
+    layout_q = _strip_or_none(row.get(cols.get("layout_q")))
+    seq_shape = _str_to_shape(row.get(cols.get("seqused_q_shape")))
+    seq_values = _str_to_int_list(row.get(cols.get("seqused_q_value")))
+    cu_shape = _str_to_shape(row.get(cols.get("cu_seqlens_q_shape")))
+    cu_values = _str_to_int_list(row.get(cols.get("cu_seqlens_q_value")))
+
+    seq_numel = _tensor_numel(seq_shape)
+    if seq_numel > 0:
+        return seq_numel
+    if seq_values:
+        return len(seq_values)
+    if layout_q == "TND":
+        cu_numel = _tensor_numel(cu_shape)
+        if cu_numel > 0:
+            return max(cu_numel - 1, 0)
+        if cu_values:
+            return max(len(cu_values) - 1, 0)
+        return 0
+    if cu_values:
+        return max(len(cu_values) - 1, 0)
+    explicit = _str_to_int(row.get(cols.get("batch_size")))
+    if explicit is not None:
+        return explicit
+    if layout_q in (None, "BSND"):
+        q_shape = _str_to_shape(row.get(cols.get("q_shape")))
+        if _tensor_numel(q_shape) > 0:
+            return q_shape[0]
+    return 0
+
+
+def _metadata_num_heads_q(row, cols):
+    """镜像 npu_preprocess 的 num_heads_q 派生：num_heads_q 列优先，
+    空 → 按 layout_q 从 q_shape 推导（PA_BBND: [Bn, Bs, N, D] → q_shape[2]，
+    其余 layout → q_shape[1]）。推导不出 → None（调用方报错）。
+    """
+    n_q = _str_to_int(row.get(cols.get("num_heads_q")))
+    if n_q is not None:
+        return n_q
+    layout_q = _strip_or_none(row.get(cols.get("layout_q")))
+    q_shape = _str_to_shape(row.get(cols.get("q_shape")))
+    if q_shape is None:
+        return None
+    return q_shape[1] if len(q_shape) > 1 else None
+
+
+def _calculate_max_schedule_size(batch_size, num_heads_q, aic_num, aiv_num):
+    """镜像 torch_extension/quant_flash_attn.py 的同名函数：
+    dim0 按 sectionNum 最坏值 (batch*num_heads_q) 动态计算并按 4096 对齐；
+    batch_size 为 -1/None/0（未知）时按 1 兜底。
+    """
+    align_size = 4096
+    head_size = METADATA_STRIDE
+    batch_size = batch_size if batch_size and batch_size > 0 else 1
+    fa_size = aic_num * METADATA_STRIDE * batch_size * num_heads_q
+    fd_size = aiv_num * METADATA_STRIDE * batch_size * num_heads_q
+
+    schedule_size = head_size + fa_size + fd_size
+    return ((schedule_size + align_size - 1) // align_size) * align_size
+
+
+def _metadata_slot_shape(row, cols):
+    """metadata 槽位 shape = quant_flash_attn_metadata 的输出
+    (2, max_schedule_size)。npu_preprocess copy_ 回填前会校验两侧 shape
+    一致（不一致报 metadata shape mismatch），因此必须与算子侧同公式推导。
+    """
+    num_heads_q = _metadata_num_heads_q(row, cols)
+    if num_heads_q is None:
+        name = _strip_or_none(row.get(cols.get("testcase_name"))) or "<unnamed>"
+        raise ValueError(
+            f"[{name}] cannot derive num_heads_q for metadata shape: "
+            "num_heads_q column empty and q_shape unusable"
+        )
+    batch_size = _metadata_batch_size(row, cols)
+    aic_num, aiv_num = _get_core_nums()
+    return (
+        2,
+        _calculate_max_schedule_size(batch_size, num_heads_q, aic_num, aiv_num),
+    )
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -349,12 +486,84 @@ def _map_dtype_or(s, default):
 # -----------------------------------------------------------------------------------------------------------
 # 每行映射：excel row → csv record
 # -----------------------------------------------------------------------------------------------------------
-def _build_tensor_lists(row, cols, quant_mode):
-    """返回 (shapes, dtypes, data_ranges)，15 个 tensor slot，顺序与 _TENSOR_SPECS 一致。
+def _derive_vtail_slots(attrs, quant_mode):
+    """enable_v_tail 时推导 v_tail 三件套 slot (15-17) 的 (shapes, dtypes, dranges)。
 
-    无 shape（Excel 空）→ (0,) 占位。
+    形状契约与 checker CheckVTailShape 一致 (v_tail 与主 KV cache 同布局, PA 专属):
+      PA_BNBD(BnNBsD): (Bn, N2, Bs, D) / PA_BBND(BnBsND): (Bn, Bs, N2, D)
+      PA_NZ: (Bn, N2, D/16, Bs, 16)(bf16 的 32B 分形内径=16)
+      block_table_tail: (B, ceil(64/bs)) — bs>=64 时 (B,1); seqused_v_tail: (B,)
+    dtypes: bfloat16 / int32 / int32。未启用时返回 3 个空 slot ((0,))。
+    无效组合在此 fail-fast (与 checker/golden 拦截一致):
+      非 PA / quant_mode!=1 / PA_NZ 且 D%16!=0。
+    """
+    if not attrs.get("enable_v_tail"):
+        return (
+            [(0,), (0,), (0,)],
+            ["bfloat16", "int32", "int32"],
+            [_DRANGE_PLACEHOLDER] * 3,
+        )
+
+    if quant_mode not in (1, None):
+        raise ValueError(
+            f"[excel_to_csv] enable_v_tail 仅支持 MXFP8 (quant_mode=1), 当前行 quant_mode={quant_mode}"
+        )
+    if not attrs.get("enable_pa"):
+        raise ValueError(
+            "[excel_to_csv] enable_v_tail=True 但 layout_kv 非 PA_* — "
+            "v_tail 仅支持 PA (paged KV cache) 场景 (checker 契约)"
+        )
+    N_kv = attrs.get("N_kv")
+    D = attrs.get("D")
+    bs = attrs.get("block_size") or 0
+    if not (N_kv and D and bs):
+        raise ValueError(
+            f"[excel_to_csv] enable_v_tail 行缺少推导源: N_kv={N_kv}, D={D}, block_size={bs}"
+        )
+    layout_kv = str(attrs.get("kv_cache_layout") or "").upper()
+
+    # B: 与 wrapper 推导链一致 (cu_seqlens_q → batch_size → seqused_q → 1)
+    cu_q = attrs.get("cu_seqlens_q")
+    batch_size = attrs.get("batch_size")
+    seq_q = attrs.get("seqused_q")
+    if cu_q and len(cu_q) >= 2:
+        B = len(cu_q) - 1
+    elif isinstance(batch_size, int) and batch_size > 0:
+        B = batch_size
+    elif seq_q:
+        B = len(seq_q)
+    else:
+        B = 1
+
+    if layout_kv == "PA_NZ":
+        if D % 16 != 0:
+            raise ValueError(
+                f"[excel_to_csv] PA_NZ + D={D} + v_tail 结构性不成立: NZ 的16列分形"
+                f"要求 D%16==0 (golden bundle / checker / kernel D/16 寻址三侧一致)"
+            )
+        v_shape = (B, N_kv, D // 16, bs, 16)
+    elif layout_kv == "PA_BBND":
+        v_shape = (B, bs, N_kv, D)
+    else:  # PA_BNBD / BnNBsD
+        v_shape = (B, N_kv, bs, D)
+    btt_cols = max(1, (64 + bs - 1) // bs)  # checker: dim1 >= ceil(64/blockSize)
+    return (
+        [v_shape, (B, btt_cols), (B,)],
+        ["bfloat16", "int32", "int32"],
+        [_DRANGE_PLACEHOLDER] * 3,
+    )
+
+
+def _build_tensor_lists(row, cols, quant_mode, attrs=None):
+    """返回 (shapes, dtypes, data_ranges)，18 个 tensor slot，顺序与 _TENSOR_SPECS +
+    v_tail 三件套 (15-17) 一致。
+
+    无 shape（Excel 空）→ (0,) 占位（可选 tensor → None 省略）。
     datarange：q/k/v 读 Excel；其余用 (0,1) 占位。
     GQA FP8 (quant_mode=6)：descale dtype 回退 float32（非 e8m0），p_scale 空 shape → (1,)。
+    slot 15-17 (v_tail 三件套) 由 attrs 推导 (需先调 _build_attributes)。
+    metadata slot：shape 按 quant_flash_attn_metadata 输出公式动态推导（见
+    _metadata_slot_shape），dtype 固定 int32。
     """
     shapes = []
     dtypes = []
@@ -381,7 +590,22 @@ def _build_tensor_lists(row, cols, quant_mode):
             drange = None
 
         if shape is None:
-            shape = (0,)
+            # 可选 tensor 空 → None (省略): 主算子收到 None 而非空 (0,) 张量。
+            # 空张量会被 checker 拦截 (如 seqused_q 的 dim0 必须等于 B)。
+            shape = (
+                None
+                if shape_col
+                in (
+                    "cu_seqlens_q_shape",
+                    "cu_seqlens_kv_shape",
+                    "seqused_q_shape",
+                    "seqused_kv_shape",
+                    "learnable_sink_shape",
+                    "attn_mask_shape",
+                    "block_table_shape",
+                )
+                else (0,)
+            )
 
         # HIF8 (quant_mode=0): descale 是 per-tensor 标量 (1,), Excel 可能不填 shape
         if (
@@ -396,12 +620,57 @@ def _build_tensor_lists(row, cols, quant_mode):
             shape = (1,)
             dtype = "float32"
 
+        # metadata slot: shape 按 quant_flash_attn_metadata 的输出推导
+        # (2, max_schedule_size)，不读 Excel metadata_shape；npu_preprocess
+        # copy_ 回填前校验两侧 shape 一致，推导必须与算子侧同公式
+        # （固定 (2,4096) 只在 B*N_kv <= 2 时碰巧成立）。
+        if shape_col == "metadata_shape":
+            shape = _metadata_slot_shape(row, cols)
+            dtype = "int32"
+
         if drange is None:
             drange = _DRANGE_PLACEHOLDER
 
         shapes.append(shape)
         dtypes.append(dtype)
         data_ranges.append(drange)
+
+    # slot 15-17: v_tail 三件套 (enable_v_tail 时按 checker 契约推导, 否则空 slot)
+    vt_shapes, vt_dtypes, vt_dranges = _derive_vtail_slots(attrs or {}, quant_mode)
+    # 交叉校验: Excel v_tail_shape 列(契约前撰写, dtype误标fp8/NZ内径32)与推导值
+    # 不一致时仅告警 — 以契约推导为准
+    if attrs and attrs.get("enable_v_tail"):
+        excel_vt = _str_to_shape(row.get(cols.get("v_tail_shape")))
+        if excel_vt is not None and tuple(excel_vt) != tuple(vt_shapes[0]):
+            print(
+                f"[excel_to_csv] WARN {attrs.get('_tcname', '')}: Excel v_tail_shape "
+                f"{excel_vt} != 契约推导 {vt_shapes[0]} (以推导为准, dtype固定bfloat16)"
+            )
+        # [vtail契约覆盖] slot7 block_table: Excel按"尾块剥离"语义少给块数
+        # (如1025/64=17写16), 按pytest语义(主cache全量KV, K完整+V尾置零,
+        # ceil(kv/bs))覆盖 — kernel尾task的C1(Q×K^T)尾列K来自主cache末块
+        _bs = attrs.get("block_size") or 0
+        _kv = attrs.get("seqused_kv")
+        if (not _kv) and attrs.get("cu_seqlens_kv"):
+            _cu = attrs["cu_seqlens_kv"]
+            _kv = [_cu[i + 1] - _cu[i] for i in range(len(_cu) - 1)]
+        if _bs and _kv:
+            _need = (
+                max(-(-int(k) // int(_bs)) for k in _kv if int(k) > 0)
+                if any(int(k) > 0 for k in _kv)
+                else 1
+            )
+            _B = vt_shapes[0][0]  # v_tail推导的B
+            _excel_bt = shapes[7]
+            if tuple(_excel_bt) != (_B, _need):
+                print(
+                    f"[excel_to_csv] WARN: Excel block_table_shape {_excel_bt} "
+                    f"-> 覆盖为 pytest 全量语义 {_B, _need} (主cache含K尾块)"
+                )
+                shapes[7] = (_B, _need)
+    shapes.extend(vt_shapes)
+    dtypes.extend(vt_dtypes)
+    data_ranges.extend(vt_dranges)
 
     return shapes, dtypes, data_ranges
 
@@ -441,16 +710,23 @@ def _build_attributes(row, cols):
     _set("absolute_precision", ABSOLUTE_PRECISION_DEFAULT)
     _set("p_scale_value", _str_to_float(row.get(cols.get("p_scale_value"))))
     # cu_seqlens value → list，shape/dtype 不传（由 tensor_view_shapes 表达）
-    # shape 已抽出为 tensor；value 保留供 wrapper 覆盖随机生成。
+    # shape 已抽出为 tensor；value 以 `*_values` 保留（不与算子 schema 同名 Tensor
+    # 参数撞名），供 inputs.py/npu_preprocess 覆盖随机 tensor。
     _set_force(
-        "cu_seqlens_q", _str_to_int_list(row.get(cols.get("cu_seqlens_q_value")))
+        "cu_seqlens_q_values",
+        _str_to_int_list(row.get(cols.get("cu_seqlens_q_value"))),
     )
     _set_force(
-        "cu_seqlens_kv", _str_to_int_list(row.get(cols.get("cu_seqlens_kv_value")))
+        "cu_seqlens_kv_values",
+        _str_to_int_list(row.get(cols.get("cu_seqlens_kv_value"))),
     )
-    # seqused_q/kv：空则写 None（wrapper 无默认值，需要 key 存在，golden 透传 None 给 NPU）
-    _set_force("seqused_q", _str_to_int_list(row.get(cols.get("seqused_q_value"))))
-    _set_force("seqused_kv", _str_to_int_list(row.get(cols.get("seqused_kv_value"))))
+    # seqused_q/kv：空则写 None（需 key 存在，golden 透传 None 给 NPU）
+    _set_force(
+        "seqused_q_values", _str_to_int_list(row.get(cols.get("seqused_q_value")))
+    )
+    _set_force(
+        "seqused_kv_values", _str_to_int_list(row.get(cols.get("seqused_kv_value")))
+    )
     # attn_mask 的 shape/dtype 也写入 attributes：mask 由 golden _build_causal_mask()
     # 按此 shape 重建（如 (1,2048,2048)）；同时 attn_mask 仍是 tensor slot 13（shape 信息双份）。
     # attn_mask_dtype 缺省 int8（golden causal mask 用 int8）。
@@ -461,6 +737,21 @@ def _build_attributes(row, cols):
     _set("mask_mode", _str_to_int(row.get(cols.get("mask_mode"))))
     _set("win_left", _str_to_int(row.get(cols.get("win_left"))))
     _set("win_right", _str_to_int(row.get(cols.get("win_right"))))
+    # [v_tail尾块高精窗口] 启用判定: 优先显式 enable_v_tail 列(TRUE/1);
+    # 无该列时以 v_tail_shape 列非空为启用标志。
+    # 注意: Excel 的 v_tail_shape/dtype 列是接口契约(BF16+NZ内径16)定型前撰写的,
+    # dtype 误标 FLOAT8_E4M3FN、PA_NZ shape 用 fp8 内径32 — 仅作标志/交叉校验,
+    # slot 形状一律按 checker 契约由 _derive_vtail_slots 推导, dtype 固定 bfloat16。
+    _vt_flag = (
+        _bool_to_int(row.get(cols.get("enable_v_tail")))
+        if cols.get("enable_v_tail") is not None
+        else None
+    )
+    if _vt_flag is None:
+        _vt_flag = (
+            1 if _str_to_shape(row.get(cols.get("v_tail_shape"))) is not None else None
+        )
+    _set("enable_v_tail", _vt_flag)
     # max_seqlen_q/kv：空则写 None。 -1 是显式值，保留。
     _set_force("max_seqlen_q", _str_to_int(row.get(cols.get("max_seqlen_q"))))
     _set_force("max_seqlen_kv", _str_to_int(row.get(cols.get("max_seqlen_kv"))))
@@ -468,7 +759,7 @@ def _build_attributes(row, cols):
     _set("layout_q_descale", _strip_or_none(row.get(cols.get("layout_q_descale"))))
     _set("layout_kv", _strip_or_none(row.get(cols.get("layout_kv"))))
     _set("layout_out", _strip_or_none(row.get(cols.get("layout_out"))))
-    _set("enable_lse", _bool_to_int(row.get(cols.get("return_softmax_lse"))))
+    _set("return_softmax_lse", _bool_to_int(row.get(cols.get("return_softmax_lse"))))
     _set("N_q", _str_to_int(row.get(cols.get("num_heads_q"))))
     _set("N_kv", _str_to_int(row.get(cols.get("num_heads_kv"))))
     _set("D", _str_to_int(row.get(cols.get("head_dim"))))
@@ -554,8 +845,39 @@ def _row_to_csv(excel_row, api_name, testcase_suffix, cols, quant_mode):
         return None
     testcase_name = raw_name + testcase_suffix
 
-    shapes, dtypes, data_ranges = _build_tensor_lists(excel_row, cols, quant_mode)
+    # attrs 先建: v_tail 三件套 slot (15-17) 的形状推导依赖 attributes
+    # (enable_v_tail/enable_pa/kv_cache_layout/block_size/N_kv/D/cu_seqlens_q)
     attrs = _build_attributes(excel_row, cols)
+    # [无效v_tail组合] 对齐 pytest SKIP_CASES 语义: 整行跳过 + 告警
+    # (PA_NZ+D%16!=0 结构性不成立 / 非PA / quant_mode!=1 — checker 同款拒绝)
+    if attrs.get("enable_v_tail"):
+        _lay = str(attrs.get("kv_cache_layout") or "").upper()
+        _D = attrs.get("D") or 0
+        _invalid = (
+            (not attrs.get("enable_pa"))
+            or (quant_mode not in (1, None))
+            or (_lay == "PA_NZ" and _D % 16 != 0)
+        )
+        if _invalid:
+            print(
+                f"[excel_to_csv] SKIP {testcase_name}: 无效v_tail组合 "
+                f"(pa={attrs.get('enable_pa')}, layout_kv={_lay}, D={_D}, "
+                f"quant_mode={quant_mode}) — 与 pytest SKIP_CASES 同款"
+            )
+            return None
+
+    # data_range极端值(|v|>1e30, 如k/v=-3.39e38=bf16 min)时
+    # CPU golden的fp32中间值溢出→全NaN, 不可用于精度对比 — 跳过
+    # 极端data_range跳过暂时禁用(用户要求20条全量)
+    # for _col in ("q_datarange", "k_datarange", "v_datarange"):
+    #     _v = _str_to_datarange(excel_row.get(cols.get(_col)))
+    #     if _v is not None and (abs(_v[0]) > 1e30 or abs(_v[1]) > 1e30):
+    #         print(f"[excel_to_csv] SKIP {testcase_name}: 极端data_range({_col}={_v})")
+    #         return None
+
+    shapes, dtypes, data_ranges = _build_tensor_lists(
+        excel_row, cols, quant_mode, attrs
+    )
 
     # 嵌套字段：双引号包裹的 Python tuple 字面量，csv.writer 自动加引号。
     # attributes 用 repr() 生成单引号 Python dict 字面量（HANDOFF.md 坑2：json.dumps 双引号会失败）。
@@ -586,7 +908,7 @@ def _parse_sheet_arg(s):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="redline.xlsx → 3 个 ttk 标准 CSV (mxfp8 / gqa_fp8 / hif8)"
+        description="redline.xlsx → 每个 mode 1 个 ttk 标准 CSV (mxfp8 / gqa_fp8 / hif8)"
     )
     parser.add_argument(
         "--sheet",
@@ -647,6 +969,11 @@ def main():
         mode_label = "MXFP8 (quant_mode=1)"
 
     print(f"[excel_to_csv] detected mode: {mode_label}, {len(data_rows)} data rows")
+    aic_num, aiv_num = _get_core_nums()
+    print(
+        f"[excel_to_csv] core nums: aic={aic_num}, aiv={aiv_num} "
+        "(metadata dim1 = align4096(16 + (aic+aiv)*16*B*N_kv))"
+    )
 
     for fname, api_name, suffix in profiles:
         out_path = os.path.join(_HERE, fname)
@@ -662,7 +989,7 @@ def main():
                 written += 1
         print(f"wrote {out_path} ({written} case rows)")
 
-    print(f"\n3 csv files written ({mode_label}), each with {written} case rows.")
+    print(f"\n1 csv file written ({mode_label}) with {written} case rows.")
 
 
 if __name__ == "__main__":
