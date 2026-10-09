@@ -25,7 +25,12 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     const uint32_t nStart = siblingAivIdx_ * HEADS_PER_SIBLING;
     CopyInTokenWeights(token, postVals, nStart, nStart + HEADS_PER_SIBLING);
 
-    const float sumSq0 = ReduceSumSqFromCacheTiles();
+    float sumSq0 = 0.0f;
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dTile_;
+        sumSq0 += ReduceSumSqFromCache(tOff, tD);
+    }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
@@ -116,7 +121,12 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
     CopyInTokenWeights(token, postVals);
 
-    const float sumSq0 = ReduceSumSqFromCacheTiles();
+    float sumSq0 = 0.0f;
+    for (uint32_t tile = 0; tile < dLoop_; ++tile) {
+        const uint32_t tD = GetTileD(tile);
+        const uint32_t tOff = tile * dTile_;
+        sumSq0 += ReduceSumSqFromCache(tOff, tD);
+    }
     const float invRms0 = ComputeInvRms(sumSq0, invD_);
 
     for (uint32_t tile = 0; tile < dLoop_; ++tile) {
