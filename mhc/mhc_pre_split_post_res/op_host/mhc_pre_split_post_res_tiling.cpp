@@ -108,6 +108,12 @@ ge::graphStatus MhcPreSplitPostResInfoParser::GetAttrInfo()
         attrsPtr == nullptr, OP_LOGE(context_->GetNodeName(), "GetAttrs() returned nullptr."), return ge::GRAPH_FAILED);
 
     auto normEpsPtr = attrsPtr->GetFloat(MHC_NORM_EPS_INDEX);
+    if (normEpsPtr == nullptr) {
+        // 实测（2026-10-09）：APT 链路下 aclnn executor attrs 未能传入 tiling（GetFloat 取空），
+        // 静默落默认会掩盖"调用方传了非默认 eps 却不生效"；此处告警保留可观测性（行为不变）。
+        OP_LOGW(context_->GetNodeName(), "norm_eps attr missing in tiling attrs, fallback to default %f.",
+                MHC_DEFAULT_NORM_EPS);
+    }
     normEps_ = (normEpsPtr != nullptr ? *normEpsPtr : MHC_DEFAULT_NORM_EPS);
     OP_CHECK_IF(!std::isfinite(normEps_) || normEps_ <= 0.0f,
         OP_LOGE(context_->GetNodeName(), "norm_eps(%f) must be finite and greater than 0.", normEps_),
