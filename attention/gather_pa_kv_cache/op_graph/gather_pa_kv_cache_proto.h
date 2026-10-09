@@ -115,8 +115,9 @@ REG_OP(GatherPaKvCache)
     .OUTPUT(value, "T")
     .ATTR(cache_mode, String, "Norm")
     .ATTR(is_seq_lens_cumsum, Bool, true)
-    .DATATYPE(T, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT, DT_INT8, DT_UINT8, DT_INT16, DT_UINT16, DT_INT32, DT_UINT32,
-                             DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}))
+    .DATATYPE(T,
+              TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT, DT_INT8, DT_UINT8, DT_INT16, DT_UINT16, DT_INT32, DT_UINT32,
+                          DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2, DT_HIFLOAT4}))
     .OP_END_FACTORY_REG(GatherPaKvCache)
 
 } // namespace ge
