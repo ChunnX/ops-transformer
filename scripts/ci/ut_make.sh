@@ -47,6 +47,10 @@ SOC_LIST+="ascend310p "
 SOC_LIST+="ascend910b "
 SOC_LIST+="ascend910_93 "
 SOC_LIST+="ascend950 "
+SOC_LIST+="ascend960dt "
+SOC_LIST+="ascend960pr "
+SOC_CSV="${SOC_LIST% }"
+SOC_CSV="${SOC_CSV// /,}"
 
 # 读取算子option配置 ################################################################################################
 op_config_yaml="$CODE_PATH/tests/test_config.yaml"
@@ -160,7 +164,7 @@ for OP_REPO in $OP_REPO_LIST; do
                 export ASCEND_GLOBAL_LOG_LEVEL=3
             fi
         else
-            timeout $TIMEOUT bash build.sh -u --ops=$op_option_list --cov --soc=ascend310p,ascend910b,ascend910_93,ascend950 &> $LOG_PATH/op_test/$OP.log
+            timeout $TIMEOUT bash build.sh -u --ops=$op_option_list --cov --soc="$SOC_CSV" &> $LOG_PATH/op_test/$OP.log
             if [ $? -ne 0 ]; then
                 echo -ne "\033[31mFAIL\033[0m            "
                 echo -n "FAIL," &>> $LOG_PATH/results.csv
