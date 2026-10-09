@@ -283,29 +283,27 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::InitBuffers(TP
     pipe->InitBuffer(v0ValidSizeBuff, ConstInfo::MQ_BUFFER_BYTES_8K);
     if (mqVecConstInfo.kvQuantMode == 3) {
         pipe->InitBuffer(tqCentBuff, ConstInfo::MQ_BUFFER_BYTES_256);
-        LoadTq4Centroids(tqCentBuff.Get<float>());
         if constexpr (TQ4_FAST_BF16) {
             pipe->InitBuffer(tqByteLutBuff, ConstInfo::MQ_BUFFER_BYTES_1K);
-            LocalTensor<float> centroids = tqCentBuff.Get<float>();
             LocalTensor<uint32_t> byteLut = tqByteLutBuff.Get<uint32_t>();
-            // Physical nibble n maps to signed-code centroid n^8. Low 16 bits preserve low-nibble-first storage.
-            for (uint32_t high = 0; high < 16U; ++high) {
-                union {
-                    float value;
-                    uint32_t bits;
-                } highCentroid;
-                highCentroid.value = centroids.GetValue(high ^ 8U);
-                uint32_t highBits = (highCentroid.bits + 0x7FFFU + ((highCentroid.bits >> 16U) & 1U)) >> 16U;
-                for (uint32_t low = 0; low < 16U; ++low) {
-                    union {
-                        float value;
-                        uint32_t bits;
-                    } lowCentroid;
-                    lowCentroid.value = centroids.GetValue(low ^ 8U);
-                    uint32_t lowBits = (lowCentroid.bits + 0x7FFFU + ((lowCentroid.bits >> 16U) & 1U)) >> 16U;
-                    byteLut.SetValue(high * 16U + low, (highBits << 16U) | lowBits);
-                }
+            // RNE BF16 bits in physical nibble order; identical to LoadTq4Centroids()[n ^ 8].
+            constexpr uint32_t centroidBits[TQ4_CENTROID_COUNT] = {0xBDF8U, 0xBDBBU, 0xBD92U, 0xBD62U, 0xBD29U, 0xBCECU,
+                                                                   0xBC8BU, 0xBBBAU, 0x3BB3U, 0x3C8AU, 0x3CEAU, 0x3D28U,
+                                                                   0x3D61U, 0x3D91U, 0x3DBBU, 0x3DF7U};
+            LocalTensor<int32_t> lowBits = tqCentBuff.Get<int32_t>();
+#pragma unroll
+            for (uint32_t low = 0; low < TQ4_CENTROID_COUNT; ++low) {
+                lowBits.SetValue(low, static_cast<int32_t>(centroidBits[low]));
             }
+            PipeBarrier<PIPE_ALL>();
+            LocalTensor<int32_t> pairs = byteLut.ReinterpretCast<int32_t>();
+#pragma unroll
+            for (uint32_t high = 0; high < TQ4_CENTROID_COUNT; ++high) {
+                Adds(pairs[high * TQ4_CENTROID_COUNT], lowBits, static_cast<int32_t>(centroidBits[high] << 16U),
+                     TQ4_CENTROID_COUNT);
+            }
+        } else {
+            LoadTq4Centroids(tqCentBuff.Get<float>());
         }
         LocalTensor<uint32_t> scaleGatherIndices =
             tqCentBuff.Get<uint32_t>()[TQ4_SCALE_GATHER_INDEX_OFFSET / sizeof(uint32_t)];
@@ -474,6 +472,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ElewiseCompute
     uint32_t mqDealRows, uint32_t mqColumns)
 {
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->tqBaseParams.softmaxScale), mqDealRows * mqColumns);
+    PipeBarrier<PIPE_V>();
 
     // cmp_sparse_indices is capacity-sized and may be padded with -1.  The Cube
     // path still computes the capacity-sized tile, so mask the padded columns
@@ -503,32 +502,28 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::ElewiseCompute
                             static_cast<int64_t>(mqColumns) - 1);
             }
         }
-    } else if (mqVecConstInfo.sparseBlockCount > 0 && mqVecInfo.cmpS2IdLimit > 0) {
-        uint32_t rowBase = mqVecSplitInfo.nBufferStartM + mqVecSplitInfo.vecStartM + startRow;
-        for (uint32_t row = 0; row < mqDealRows; ++row) {
-            uint32_t mPos = rowBase + row;
-            uint32_t qRel = mPos / mqVecConstInfo.gSize;
-            uint64_t topkRow = mqVecInfo.topKBaseOffset + static_cast<uint64_t>(qRel) * mqVecConstInfo.sparseBlockCount;
-            int32_t probeCount = static_cast<int32_t>(mqVecConstInfo.sparseBlockCount);
-            if (mqVecInfo.cmpS2IdLimit < probeCount) {
-                probeCount = mqVecInfo.cmpS2IdLimit;
+    } else if (mqVecConstInfo.kvQuantMode == 3 && mqVecConstInfo.sparseBlockCount > 0 && mqVecInfo.cmpS2IdLimit > 0) {
+        // TurboQuant tiles one query's gSize heads together, so every row in this block shares one top-k row.
+        uint64_t topkRow = mqVecInfo.topKBaseOffset;
+        int32_t probeCount = static_cast<int32_t>(mqVecConstInfo.sparseBlockCount);
+        if (mqVecInfo.cmpS2IdLimit < probeCount) {
+            probeCount = mqVecInfo.cmpS2IdLimit;
+        }
+        int32_t validCount = probeCount;
+        int32_t probeTopk = probeCount > 0 ? topkGm_.GetValue(topkRow + probeCount - 1) : -1;
+        if (probeTopk < 0) {
+            validCount = 0;
+            while (validCount < probeCount && topkGm_.GetValue(topkRow + static_cast<uint32_t>(validCount)) >= 0) {
+                ++validCount;
             }
-            int32_t validCount = probeCount;
-            int32_t probeTopk = probeCount > 0 ? topkGm_.GetValue(topkRow + probeCount - 1) : -1;
-            if (probeTopk < 0) {
-                validCount = 0;
-                while (validCount < probeCount && topkGm_.GetValue(topkRow + static_cast<uint32_t>(validCount)) >= 0) {
-                    ++validCount;
-                }
-            }
-            int32_t tileStart = static_cast<int32_t>(mqVecInfo.relativeS2Idx * mqVecConstInfo.s2BaseSize);
-            int32_t maskStart = validCount - tileStart;
-            if (maskStart < 0) {
-                maskStart = 0;
-            }
-            if (maskStart < static_cast<int32_t>(mqVecInfo.actualSingleProcessSInnerSize)) {
-                SetInfInBlk(mmResUb[row * mqColumns], 1, mqColumns, maskStart, static_cast<int64_t>(mqColumns) - 1);
-            }
+        }
+        int32_t tileStart = static_cast<int32_t>(mqVecInfo.relativeS2Idx * mqVecConstInfo.s2BaseSize);
+        int32_t maskStart = validCount - tileStart;
+        if (maskStart < 0) {
+            maskStart = 0;
+        }
+        if (maskStart < static_cast<int32_t>(mqVecInfo.actualSingleProcessSInnerSize)) {
+            SetInfInBlk(mmResUb, mqDealRows, mqColumns, maskStart, static_cast<int64_t>(mqColumns) - 1);
         }
     }
 }
@@ -551,7 +546,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::SetInfInBlk(co
         for (int64_t bit = begin; bit <= finish; ++bit) {
             maskValue |= (1ULL << static_cast<uint64_t>(bit));
         }
-        uint64_t mask[1] = {maskValue};
+        uint64_t mask[2] = {maskValue, 0};
         Duplicate(mmResUb[blockStart], SOFTMAX_MIN_NUM, mask, mqDealRows, 1, mqColumns / BLOCK_ELEMENT_NUM);
     }
 }
@@ -1001,7 +996,14 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockVector<SAST>::CopyOutMrgeRes
         WaitFlag<AscendC::HardEvent::MTE2_V>(0);
         LocalTensor<uint8_t> slots = tmpBuff1.Get<uint8_t>()[TQ4_RAW_OFFSET + mergeMte3Idx % 2 * TQ4_RAW_REGION_BYTES];
         LocalTensor<KV_T> output = kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)];
+        if constexpr (TQ4_FAST_BF16) {
+            // Vec2 may still be copying its result from the shared outputBuff1 workspace.
+            WaitFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+        }
         DequantTq4Rows(slots, output, mte2Size - mte3Size);
+        if constexpr (TQ4_FAST_BF16) {
+            SetFlag<HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
+        }
         SetFlag<AscendC::HardEvent::V_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
     } else {

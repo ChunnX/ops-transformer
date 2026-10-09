@@ -8,6 +8,11 @@
         <file value="kernel" install_mod="755"/>
     </file_info>
     <file_info copy_type="delivery" src_path=""
+        dst_path="opp/vendors/"
+        install_path="opp/vendors/" install_type="all" optional="true">
+        <file value="ops_transformer_turboquant" install_mod="550" optional="true"/>
+    </file_info>
+    <file_info copy_type="delivery" src_path=""
         dst_path="opp/built-in/op_graph/inc"
         install_path="opp/built-in/op_graph/inc" install_type="all">
         <file value="ops_proto_transformer.h" install_mod="550"/>

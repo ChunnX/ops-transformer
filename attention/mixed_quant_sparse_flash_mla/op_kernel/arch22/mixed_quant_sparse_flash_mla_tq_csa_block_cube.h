@@ -371,8 +371,8 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm1(const
             uint32_t curSeqIdx = mqCubeRunInfo.s2BatchOffset + nL1 * N_SPLIT_SIZE;
             if (mqCubeRunInfo.isOriOnly) {
                 if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BSND || KV_LAYOUT_T == SAS_LAYOUT::PA_BNSD) {
-                    uint32_t curS2Offset =
-                        mqCubeRunInfo.s2Idx * mqCubeConstInfo.s2BaseSize + mqCubeRunInfo.s2StartPoint;
+                    uint32_t curS2Offset = mqCubeRunInfo.s2Idx * mqCubeConstInfo.s2BaseSize +
+                                           mqCubeRunInfo.s2StartPoint + nL1 * N_SPLIT_SIZE;
                     uint32_t copyFinishRowCnt = 0;
                     LocalTensor<KV_T> kTensor;
                     uint32_t copyRowCnt = 0;
@@ -648,7 +648,7 @@ __aicore__ inline void KvQuantSparseFlashMlaCsaBlockCube<SAST>::ComputeMm2(const
                     if constexpr (KV_LAYOUT_T == SAS_LAYOUT::PA_BSND || KV_LAYOUT_T == SAS_LAYOUT::PA_BNSD) {
                         uint32_t copyFinishRowCnt = 0;
                         uint32_t curS2Offset =
-                            mqCubeRunInfo.s2Idx * mqCubeConstInfo.s2BaseSize + mqCubeRunInfo.s2StartPoint;
+                            mqCubeRunInfo.s2Idx * mqCubeConstInfo.s2BaseSize + mqCubeRunInfo.s2StartPoint + kL1 * 128;
                         while (copyFinishRowCnt < kL0Size) {
                             copyRowCnt = mqCubeConstInfo.paOriBlockSize - curS2Offset % mqCubeConstInfo.paOriBlockSize;
                             if (copyFinishRowCnt + copyRowCnt > kL0Size) {
