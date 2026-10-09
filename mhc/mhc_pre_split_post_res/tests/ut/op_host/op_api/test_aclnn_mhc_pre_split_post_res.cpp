@@ -309,3 +309,97 @@ TEST_F(l2_mhc_pre_split_post_res_test, mhc_pre_split_post_res_post_only_nonempty
     EXPECT_EQ(ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor), ACLNN_ERR_PARAM_INVALID);
 }
 
+// 输入空指针（x）→ CheckParams/框架拦截（ACLNN_ERR_PARAM_INVALID）
+TEST_F(l2_mhc_pre_split_post_res_test, mhc_pre_split_post_res_null_input_x)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t D = 2560;
+    int64_t N = 4;
+    int64_t phiRows = N * N + N;
+
+    auto x = TensorDesc({B, S, N, D}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
+    auto phi = TensorDesc({phiRows, N * D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
+    auto alpha = TensorDesc({2}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 2.0);
+    auto bias = TensorDesc({phiRows}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-0.5, 0.5);
+    auto h_post = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto h_res = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMhcPreSplitPostRes,
+                        INPUT(nullptr, phi, alpha, bias, 1e-6f), OUTPUT(h_post, h_res));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    EXPECT_EQ(ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor), ACLNN_ERR_PARAM_INVALID);
+}
+
+
+// 输入空指针（phi）→ CheckParams/框架拦截（ACLNN_ERR_PARAM_INVALID）
+TEST_F(l2_mhc_pre_split_post_res_test, mhc_pre_split_post_res_null_input_phi)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t D = 2560;
+    int64_t N = 4;
+    int64_t phiRows = N * N + N;
+
+    auto x = TensorDesc({B, S, N, D}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
+    auto phi = TensorDesc({phiRows, N * D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
+    auto alpha = TensorDesc({2}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 2.0);
+    auto bias = TensorDesc({phiRows}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-0.5, 0.5);
+    auto h_post = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto h_res = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMhcPreSplitPostRes,
+                        INPUT(x, nullptr, alpha, bias, 1e-6f), OUTPUT(h_post, h_res));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    EXPECT_EQ(ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor), ACLNN_ERR_PARAM_INVALID);
+}
+
+
+// 输入空指针（alpha）→ CheckParams/框架拦截（ACLNN_ERR_PARAM_INVALID）
+TEST_F(l2_mhc_pre_split_post_res_test, mhc_pre_split_post_res_null_input_alpha)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t D = 2560;
+    int64_t N = 4;
+    int64_t phiRows = N * N + N;
+
+    auto x = TensorDesc({B, S, N, D}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
+    auto phi = TensorDesc({phiRows, N * D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
+    auto alpha = TensorDesc({2}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 2.0);
+    auto bias = TensorDesc({phiRows}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-0.5, 0.5);
+    auto h_post = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto h_res = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMhcPreSplitPostRes,
+                        INPUT(x, phi, nullptr, bias, 1e-6f), OUTPUT(h_post, h_res));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    EXPECT_EQ(ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor), ACLNN_ERR_PARAM_INVALID);
+}
+
+
+// 输入空指针（bias）→ CheckParams/框架拦截（ACLNN_ERR_PARAM_INVALID）
+TEST_F(l2_mhc_pre_split_post_res_test, mhc_pre_split_post_res_null_input_bias)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t D = 2560;
+    int64_t N = 4;
+    int64_t phiRows = N * N + N;
+
+    auto x = TensorDesc({B, S, N, D}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
+    auto phi = TensorDesc({phiRows, N * D}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-2.0, 2.0);
+    auto alpha = TensorDesc({2}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 2.0);
+    auto bias = TensorDesc({phiRows}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-0.5, 0.5);
+    auto h_post = TensorDesc({B, S, N}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto h_res = TensorDesc({B, S, N, N}, ACL_FLOAT, ACL_FORMAT_ND);
+
+    auto ut = OP_API_UT(aclnnMhcPreSplitPostRes,
+                        INPUT(x, phi, alpha, nullptr, 1e-6f), OUTPUT(h_post, h_res));
+    uint64_t workspaceSize = 0;
+    aclOpExecutor* executor = nullptr;
+    EXPECT_EQ(ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor), ACLNN_ERR_PARAM_INVALID);
+}

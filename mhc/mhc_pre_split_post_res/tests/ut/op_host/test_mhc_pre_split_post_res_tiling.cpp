@@ -2171,3 +2171,334 @@ TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_soc310p_not_support)
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
 }
+
+// D=2559（白名单下邻）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_2559_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 2559;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// D=2561（白名单上邻）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_2561_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 2561;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// D=5119（白名单下邻）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_5119_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 5119;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// D=5121（白名单上邻）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_5121_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 5121;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// D=6143（白名单下邻）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_6143_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 6143;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// D=6145（白名单上邻）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_6145_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 6145;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// D=7167（白名单下邻）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_7167_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 7167;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// D=7169（白名单上邻）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_7169_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 7169;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// D=4096（白名单内部空档）→ D 白名单外拒绝
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_4096_1_4_dwhitelist)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 4096;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+
+// Host 注入 C=1（无 sibling 可用，强制单核分组）：tiling 须成功且走 MULTI 路径（统计表 19~28 的 C=1 用例）
+TEST_F(MhcPreSplitPostResTiling, mhc_pre_split_post_res_BSND_bf16_4_4_5120_1_4_core1)
+{
+    int64_t B = 1;
+    int64_t S = 4;
+    int64_t N = 4;
+    int64_t D = 5120;
+    int64_t phiRows = N * N + N;
+    int64_t phiCols = N * D;
+
+    optiling::MhcPreSplitPostResCompileInfo compileInfo = {};
+    compileInfo.coreNum = 1;      // Host 注入 C=1：强制单核
+    compileInfo.ubSize = 196608;  // 192KB
+    gert::TilingContextPara tilingContextPara("MhcPreSplitPostRes",
+        {
+            {{{B, S, N, D}, {B, S, N, D}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phiRows, phiCols}, {phiRows, phiCols}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phiRows}, {phiRows}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {{{B, S, N}, {B, S, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, N, N}, {B, S, N, N}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+        },
+        &compileInfo, "Ascend950");
+
+    int64_t expectTilingKey = optiling::MHC_PRE_SPLIT_TILING_KEY_MULTI_TILE;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
+}

@@ -1064,6 +1064,82 @@ class TestMhcPreSplitPostRes(TestCase):
         logger.info(f"[cascade-perf] B-side eager p50={p50:.3f}ms (kernel 验收值 15.09us 同带自检)")
         self.assertLess(p50, 5.0)  # eager 端到端 sanity：launch 主导，应处亚毫秒~毫秒级
 
+    # ======================== 红线补齐：FP16/单核（统计表 13~18 缺口） ========================
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_fp16_BSND_31_5120_boundary_left(self):
+        """红线 FP16：T=31 双核边界左侧（Block Num=62）"""
+        self.__run_test_bsnd(B=1, S=31, N=4, D=5120, dtype=torch.float16)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_fp16_BSND_33_5120_single_transition(self):
+        """红线 FP16：T=33 单核过渡（Block Num=33）"""
+        self.__run_test_bsnd(B=1, S=33, N=4, D=5120, dtype=torch.float16)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_fp16_BSND_16_5120_post_only_single(self):
+        """红线 FP16·单核路径：T=16 仅 post 形态（恒单核 Block Num=16）"""
+        self.__run_test_bsnd(B=1, S=16, N=4, D=5120, dtype=torch.float16, phi_rows=4)
+
+    # ======================== 红线补齐：分核边界与核数余数（统计表 19~28 缺口；C=1 Host 注入走 UT） ========================
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_63_2560_core_minus1(self):
+        """C−1=63：单核非全载（未使用的核不启动）"""
+        self.__run_test_bsnd(B=1, S=63, N=4, D=2560, dtype=torch.bfloat16)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_129_2560_two_token_remainder1(self):
+        """2C+1=129：每核 2/3 token 余数 1"""
+        self.__run_test_bsnd(B=1, S=129, N=4, D=2560, dtype=torch.bfloat16)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_191_2560_big_remainder(self):
+        """3C−1=191：大余数（前 63 核各 3 token、末核 2 token）"""
+        self.__run_test_bsnd(B=1, S=191, N=4, D=2560, dtype=torch.bfloat16)
+
+    # ======================== 红线补齐：单核尾块泛化（统计表 29~34 缺口；双核尾块已由 D 典型值覆盖） ========================
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_33_6144_single_tail_1024(self):
+        """单核短尾 1024：T=33/D=6144，检查 Phi 预取/尾段掩码与输出"""
+        self.__run_test_bsnd(B=1, S=33, N=4, D=6144, dtype=torch.bfloat16)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_33_7168_single_tail_2048(self):
+        """单核长尾 2048：T=33/D=7168，检查 Phi 预取/尾段掩码与输出"""
+        self.__run_test_bsnd(B=1, S=33, N=4, D=7168, dtype=torch.bfloat16)
+
+    # ======================== 网络附近/BSND 全覆盖复验（统计表 134~146 主体；[2,2]/[3,5]/[4,1] 已有） ========================
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_tpoints_5120_matrix(self):
+        """BSND 前导复验矩阵（12 组 subTest）：12 个 T 代表点 × D=5120 完整形态，
+        与 TND 主矩阵（p1_matrix）对照验证折叠 T=B·S 同路径"""
+        for S in (1, 2, 4, 8, 16, 31, 32, 33, 64, 65, 128, 256):
+            with self.subTest(S=S):
+                self.__run_test_bsnd(B=1, S=S, N=4, D=5120, dtype=torch.bfloat16)
+
+    # ======================== 长序列补齐（统计表 153~155；1024/4096 已有） ========================
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_BSND_128_2560_long_seq(self):
+        """长序列 T=128（多轮 token 分配；1024/4096 见 large_t 用例）"""
+        self.__run_test_bsnd(B=1, S=128, N=4, D=2560, dtype=torch.bfloat16)
+
+    # ======================== 图模式补齐：[2,2,2560] 图复用（统计表 205~208 缺口） ========================
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_aclgraph_2x2_2560_reuse(self):
+        """AclGraph 图复用：B/S 分解 [2,2]/D=2560，捕获后重复执行复用同一图，输出一致"""
+        inputs = self._generate_input_tensors(2, 2, 4, 2560, torch.bfloat16, seed=20261011)
+        inputs_npu = MhcInputTensors(x=inputs.x.npu(), phi=inputs.phi.npu(),
+                                     alpha=inputs.alpha.npu(), bias=inputs.bias.npu())
+        first = self._run_npu_custom_op(inputs_npu, 1e-6, use_aclgraph=True)
+        again = self._run_npu_custom_op(inputs_npu, 1e-6, use_aclgraph=True)
+        self.assertTrue(torch.equal(first.h_post, again.h_post))
+        self.assertTrue(torch.equal(first.h_res, again.h_res))
+
     # ======================== epsilon 变体（须最后执行） ========================
     # 平台缺陷（2026-10-09 实测定位，机理已修正）：APT/GE 对同 (shape, TilingKey) 调用
     # 固化复用首次生成的 tilingData，normEps 不参与复用 key——同 shape 下非默认 eps 仅进程内
