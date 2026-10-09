@@ -84,6 +84,7 @@ constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512;
 constexpr uint64_t A5_CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL; // 32*32*32=32KB
 constexpr uint64_t A5_CUMSUM_WORKSPACE_MAX_CORE_NUM = 32U;
 constexpr uint32_t A5_CUMSUM_MAX_CORE_NUM = 8U;
+constexpr uint32_t BATCH_TOKEN_MAX = 4U; // 批量交错发送每批最多token搬入缓冲数
 constexpr uint64_t UB_ALIGN_VAL = 32U;
 constexpr uint32_t RANK_LIST_NUM = 2;
 constexpr int32_t HCCL_BUFFER_SIZE_DEFAULT = 200 * 1024 * 1024; // Bytes
@@ -1636,7 +1637,37 @@ static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context,
 
     uint32_t sizeofX = 2U;
     uint32_t hAlignSize = Ceil(hSize * sizeofX, UB_ALIGN, nodeName);
-    UbForBasic = UbForBasic + hAlignSize * BUFFER_NUM; // inQueue
+    // 批量交错发送：inQueue按每核token数动态扩到batchBufNum个token缓冲（与kernel侧batchBufNum_公式一致）
+    uint32_t bsSize = expertIdsCnt / tilingData.moeDistributeDispatchV2Info.k;
+    uint32_t moeExpertRankNum = tilingData.moeDistributeDispatchV2Info.epWorldSize -
+                                tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum;
+    uint32_t rscvStatusNum =
+        tilingData.moeDistributeDispatchV2Info.epRankId < tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum ?
+        tilingData.moeDistributeDispatchV2Info.epWorldSize :
+        tilingData.moeDistributeDispatchV2Info.epWorldSize *
+            (tilingData.moeDistributeDispatchV2Info.moeExpertNum / moeExpertRankNum);
+    uint32_t totalExpertNum =
+        tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum + tilingData.moeDistributeDispatchV2Info.moeExpertNum;
+    uint32_t aivNum = platform_ascendc::PlatformAscendC(context->GetPlatformInfo()).GetCoreNumAiv();
+    uint32_t aivUsedCumSum = totalExpertNum / 16;
+    aivUsedCumSum = (aivUsedCumSum == 0) ? 1 : aivUsedCumSum;
+    aivUsedCumSum = (aivUsedCumSum >= (aivNum / HALF_NUM)) ? (aivNum / HALF_NUM) : aivUsedCumSum;
+    aivUsedCumSum = (aivUsedCumSum >= A5_CUMSUM_MAX_CORE_NUM) ? A5_CUMSUM_MAX_CORE_NUM : aivUsedCumSum;
+    aivUsedCumSum = (aivUsedCumSum >= rscvStatusNum) ? rscvStatusNum : aivUsedCumSum;
+    uint32_t aivUsedAllToAll = aivNum - aivUsedCumSum;
+    uint32_t sharedUsedAivNum = 0;
+    if (tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum != 0U) {
+        sharedUsedAivNum =
+            (aivUsedAllToAll * tilingData.moeDistributeDispatchV2Info.sharedExpertNum) /
+            (tilingData.moeDistributeDispatchV2Info.k + tilingData.moeDistributeDispatchV2Info.sharedExpertNum);
+        if (sharedUsedAivNum == 0) {
+            sharedUsedAivNum = 1;
+        }
+    }
+    uint32_t moeUsedAivNum = aivUsedAllToAll - sharedUsedAivNum;
+    uint32_t batchBufNum = Ceil(bsSize, moeUsedAivNum, nodeName) + 1;
+    batchBufNum = (batchBufNum > BATCH_TOKEN_MAX) ? BATCH_TOKEN_MAX : batchBufNum;
+    UbForBasic = UbForBasic + hAlignSize * batchBufNum; // inQueue
 
     const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(SCALES_INDEX);
     bool isScales = (scalesStorageShape != nullptr);
