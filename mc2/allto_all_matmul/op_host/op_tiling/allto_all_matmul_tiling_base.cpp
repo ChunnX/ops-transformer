@@ -59,7 +59,8 @@ ge::graphStatus AllToAllMatmulTilingBase::GetPlatformInfo()
     const uint32_t aivCoreNum = ascendcPlatform.GetCoreNumAiv();
     cvRatio_ = 1U;
     if (contextInfo_.args_.aicCoreNum != 0U) {
-        cvRatio_ = std::max(1U, aivCoreNum / contextInfo_.args_.aicCoreNum);
+        const uint64_t cvRatio = static_cast<uint64_t>(aivCoreNum) / contextInfo_.args_.aicCoreNum;
+        cvRatio_ = cvRatio == 0U ? 1U : static_cast<uint32_t>(cvRatio);
     }
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
