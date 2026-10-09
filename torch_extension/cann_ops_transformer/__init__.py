@@ -23,7 +23,10 @@ except ImportError as e:
 _op_namespace = torch.ops.cann_ops_transformer
 
 for _name in dir(ops):
-    if _name.startswith("_") or hasattr(_op_namespace, _name):
+    if _name.startswith("_"):
+        continue
+    # Preserve the public Python wrapper and its argument/output contract.
+    if _name != "mhc_norm_post_preonly" and hasattr(_op_namespace, _name):
         continue
     globals()[_name] = getattr(ops, _name)
 del _name
