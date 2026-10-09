@@ -13,8 +13,7 @@
  * \brief
  */
 
-
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))
 #include "arch35/moe_v2_mrgsort_out_arch35.h"
 #include "arch35/moe_v2_mrgsort_arch35.h"
 #include "arch35/moe_v2_sort_multi_core_arch35.h"
@@ -61,7 +60,11 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
     }
     auto t = &tilingData;
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 9201) || (__NPU_ARCH__ == 9202))
+    // TODO, 覆写只修改此分支，是否有问题？
+    GET_TILING_DATA_WITH_STRUCT(MoeInitRoutingV2Arch35TilingData, tilingData, tiling);
+    using V2TilingData = MoeInitRoutingV2Arch35TilingData;
+    t = &tilingData;
     if (TILING_KEY_IS(10001) || TILING_KEY_IS(11001) || TILING_KEY_IS(10011) || TILING_KEY_IS(11011)) {
         TPipe sortPipe;
         MoeV2SortOneCore<DTYPE_EXPERT_IDX> op;
@@ -80,39 +83,39 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
         if (t->expertTokensCountOrCumsumFlag != EXERPT_TOKENS_NONE) {
             TPipe expertTokenOutPipe;
             MoeV2ExpertTokenOutRegBase expertTokenOutOp;
-            expertTokenOutOp.Init<MoeInitRoutingV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
-                                                              expandedRowIdx, userWS, t, &expertTokenOutPipe);
+            expertTokenOutOp.Init<V2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity, expandedRowIdx,
+                                                userWS, t, &expertTokenOutPipe);
             expertTokenOutOp.Process();
             expertTokenOutPipe.Destroy();
         }
     } else if (TILING_KEY_IS(11011) || TILING_KEY_IS(11012)) {
         TPipe expertTokenOutPipe;
         MoeV2ExpertTokenOutRegBase expertTokenOutOp;
-        expertTokenOutOp.Init<MoeInitRoutingV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
-                                                          expandedRowIdx, userWS, t, &expertTokenOutPipe);
+        expertTokenOutOp.Init<V2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity, expandedRowIdx,
+                                            userWS, t, &expertTokenOutPipe);
         expertTokenOutOp.Process();
         expertTokenOutPipe.Destroy();
 
         TPipe expertTokenOutSimtPipe;
         MoeV2ExpertTokenOutSimt expertTokenOutOpSimt;
-        expertTokenOutOpSimt.Init<MoeInitRoutingV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
-                                                              expandedRowIdx, userWS, t, &expertTokenOutSimtPipe);
+        expertTokenOutOpSimt.Init<V2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity, expandedRowIdx,
+                                                userWS, t, &expertTokenOutSimtPipe);
         expertTokenOutOpSimt.Process<false>();
         expertTokenOutSimtPipe.Destroy();
     } else if (TILING_KEY_IS(10001) || TILING_KEY_IS(10002)) {
         if (t->expertTokensCountOrCumsumFlag != EXERPT_TOKENS_NONE) {
             TPipe expertTokenOutPipe;
             MoeV2ExpertTokenOutSimt expertTokenOutOpSimt;
-            expertTokenOutOpSimt.Init<MoeInitRoutingV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
-                                                                  expandedRowIdx, userWS, t, &expertTokenOutPipe);
+            expertTokenOutOpSimt.Init<V2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
+                                                    expandedRowIdx, userWS, t, &expertTokenOutPipe);
             expertTokenOutOpSimt.Process();
             expertTokenOutPipe.Destroy();
         }
     } else if (TILING_KEY_IS(10011) || TILING_KEY_IS(10012)) {
         TPipe expertTokenOutPipe;
         MoeV2ExpertTokenOutSimt expertTokenOutOpSimt;
-        expertTokenOutOpSimt.Init<MoeInitRoutingV2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity,
-                                                              expandedRowIdx, userWS, t, &expertTokenOutPipe);
+        expertTokenOutOpSimt.Init<V2TilingData>(expertTokensCountOrCumsum, expertTokensBeforeCapacity, expandedRowIdx,
+                                                userWS, t, &expertTokenOutPipe);
         expertTokenOutOpSimt.Process();
         expertTokenOutPipe.Destroy();
     }
@@ -123,14 +126,14 @@ extern "C" __global__ __aicore__ void moe_init_routing_v2(GM_ADDR x, GM_ADDR exp
 
     if (isDroplessMode) {
         MoeV2SrcToDstOpSimt srcToDstOpSimt;
-        srcToDstOpSimt.Init<MoeInitRoutingV2TilingData>(expandedRowIdx, userWS, t);
+        srcToDstOpSimt.Init<V2TilingData>(expandedRowIdx, userWS, t);
         if (canParallel) {
             srcToDstOpSimt.ProcessWithoutSync();
         } else {
             srcToDstOpSimt.Process();
         }
     } else {
-        MoeV2SrcToDstWithCapacitySimt<DTYPE_X, MoeInitRoutingV2TilingData> srcToDstWithCapacityOpSimt;
+        MoeV2SrcToDstWithCapacitySimt<DTYPE_X, V2TilingData> srcToDstWithCapacityOpSimt;
         srcToDstWithCapacityOpSimt.Init(expandedRowIdx, expandedX, userWS, t);
         if (canParallel) {
             srcToDstWithCapacityOpSimt.ProcessWithoutSync();
