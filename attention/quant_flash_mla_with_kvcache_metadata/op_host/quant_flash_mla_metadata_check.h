@@ -26,47 +26,44 @@ extern "C" {
 
 class QuantFlashMlaMetadataCheck {
 public:
-    static inline aclnnStatus ParamsCheck(const aclTensor *cacheSeqlens, const aclTensor *cuSeqlensQOptional,
-                                          const aclTensor *sequsedQOptional, int64_t maxSeqlenQ,
-                                          int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-                                          int64_t headDimQk, int64_t headDimV, int64_t quantMode, int64_t maskMode,
-                                          const char *layoutQ, const aclTensor *metadata);
+    static inline aclnnStatus ParamsCheck(const aclTensor* cacheSeqlens, const aclTensor* cuSeqlensQOptional,
+                                          const aclTensor* sequsedQOptional, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                          int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
+                                          int64_t quantMode, int64_t maskMode, const char* layoutQ,
+                                          const aclTensor* metadata);
 
 private:
-    static inline bool IsTensorExist(const aclTensor *tensor);
+    static inline bool IsTensorExist(const aclTensor* tensor);
 
-    static inline aclnnStatus CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens);
+    static inline aclnnStatus CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor* seqLens);
 
     // 校验基础属性: maxSeqlen / numHeads / headDim / quantMode / layout
     // 文档约束: num_heads_kv仅支持1(MLA KV_N=1); head_dim_qk仅支持576; head_dim_v仅支持512;
     // quantMode当前仅支持1(FP8_E4M3)/0(HIFLOAT8)
-    static inline aclnnStatus CheckBaseAttr(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
-                                            int64_t headDimV, int64_t quantMode, const char *layoutQ);
+    static inline aclnnStatus CheckBaseAttr(int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                            int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV, int64_t quantMode,
+                                            const char* layoutQ);
 
     // 校验 mask 参数组: maskMode 仅支持 0(NO_MASK)/3(CAUSAL)
     static inline aclnnStatus CheckMask(int64_t maskMode);
 
     // 校验参数存在性: metadata/cache_seqlens必须传入; TND时必须传cu_seqlens_q且seqused_q与max_seqlen_q
     // 至少提供其一; 非TND时不可传cu_seqlens_q
-    static inline aclnnStatus CheckExistency(int64_t maxSeqlenQ, const char *layoutQ, const aclTensor *cacheSeqlens,
-                                             const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-                                             const aclTensor *metadata);
+    static inline aclnnStatus CheckExistency(int64_t maxSeqlenQ, const char* layoutQ, const aclTensor* cacheSeqlens,
+                                             const aclTensor* cuSeqlensQOptional, const aclTensor* sequsedQOptional,
+                                             const aclTensor* metadata);
 
     // 校验一致性: batchSize取自cache_seqlens shape; cache_seqlens/cu_seqlens_q/seqused_q仅支持int32
-    static inline aclnnStatus CheckConsistency(const aclTensor *cacheSeqlens,
-                                               const aclTensor *cuSeqlensQOptional,
-                                               const aclTensor *sequsedQOptional);
+    static inline aclnnStatus CheckConsistency(const aclTensor* cacheSeqlens, const aclTensor* cuSeqlensQOptional,
+                                               const aclTensor* sequsedQOptional);
 };
 
 inline aclnnStatus QuantFlashMlaMetadataCheck::ParamsCheck(
-    const aclTensor *cacheSeqlens, const aclTensor *cuSeqlensQOptional, const aclTensor *sequsedQOptional,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv,
-    int64_t headDimQk, int64_t headDimV, int64_t quantMode, int64_t maskMode, const char *layoutQ,
-    const aclTensor *metadata)
+    const aclTensor* cacheSeqlens, const aclTensor* cuSeqlensQOptional, const aclTensor* sequsedQOptional,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
+    int64_t quantMode, int64_t maskMode, const char* layoutQ, const aclTensor* metadata)
 {
-    auto ret = CheckBaseAttr(maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, quantMode,
-                             layoutQ);
+    auto ret = CheckBaseAttr(maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDimQk, headDimV, quantMode, layoutQ);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckMask(maskMode);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -77,16 +74,15 @@ inline aclnnStatus QuantFlashMlaMetadataCheck::ParamsCheck(
     return ACLNN_SUCCESS;
 }
 
-inline bool QuantFlashMlaMetadataCheck::IsTensorExist(const aclTensor *tensor)
+inline bool QuantFlashMlaMetadataCheck::IsTensorExist(const aclTensor* tensor)
 {
     return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0) &&
            (tensor->GetData() != nullptr);
 }
 
-inline aclnnStatus QuantFlashMlaMetadataCheck::CheckBaseAttr(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                                             int64_t numHeadsQ, int64_t numHeadsKv,
-                                                             int64_t headDimQk, int64_t headDimV,
-                                                             int64_t quantMode, const char *layoutQ)
+inline aclnnStatus QuantFlashMlaMetadataCheck::CheckBaseAttr(int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                                             int64_t numHeadsKv, int64_t headDimQk, int64_t headDimV,
+                                                             int64_t quantMode, const char* layoutQ)
 {
     constexpr int64_t MLA_FP8_E4M3_FULLQUANT = 1;
     constexpr int64_t MLA_HIF8_FULLQUANT = 0;
@@ -105,8 +101,8 @@ inline aclnnStatus QuantFlashMlaMetadataCheck::CheckBaseAttr(int64_t maxSeqlenQ,
 
     CHECK_COND(numHeadsQ > 0, ACLNN_ERR_RUNTIME_ERROR, "numHeadsQ must be greater than 0, but got %ld", numHeadsQ);
     // 文档约束: MLA场景KV共享单一latent头, num_heads_kv仅支持1
-    CHECK_COND(numHeadsKv == 1, ACLNN_ERR_RUNTIME_ERROR,
-               "numHeadsKv only supports 1 in MLA scenario, but got %ld", numHeadsKv);
+    CHECK_COND(numHeadsKv == 1, ACLNN_ERR_RUNTIME_ERROR, "numHeadsKv only supports 1 in MLA scenario, but got %ld",
+               numHeadsKv);
 
     // 文档约束: head_dim_qk仅支持576(512+64rope), head_dim_v仅支持512
     CHECK_COND(headDimQk == 576, ACLNN_ERR_RUNTIME_ERROR, "headDimQk only supports 576, but got %ld", headDimQk);
@@ -130,11 +126,11 @@ inline aclnnStatus QuantFlashMlaMetadataCheck::CheckMask(int64_t maskMode)
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus QuantFlashMlaMetadataCheck::CheckExistency(int64_t maxSeqlenQ, const char *layoutQ,
-                                                              const aclTensor *cacheSeqlens,
-                                                              const aclTensor *cuSeqlensQOptional,
-                                                              const aclTensor *sequsedQOptional,
-                                                              const aclTensor *metadata)
+inline aclnnStatus QuantFlashMlaMetadataCheck::CheckExistency(int64_t maxSeqlenQ, const char* layoutQ,
+                                                              const aclTensor* cacheSeqlens,
+                                                              const aclTensor* cuSeqlensQOptional,
+                                                              const aclTensor* sequsedQOptional,
+                                                              const aclTensor* metadata)
 {
     CHECK_COND(metadata != nullptr, ACLNN_ERR_RUNTIME_ERROR, "metadata should be provided, but got null");
 
@@ -157,9 +153,9 @@ inline aclnnStatus QuantFlashMlaMetadataCheck::CheckExistency(int64_t maxSeqlenQ
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus QuantFlashMlaMetadataCheck::CheckConsistency(const aclTensor *cacheSeqlens,
-                                                                const aclTensor *cuSeqlensQOptional,
-                                                                const aclTensor *sequsedQOptional)
+inline aclnnStatus QuantFlashMlaMetadataCheck::CheckConsistency(const aclTensor* cacheSeqlens,
+                                                                const aclTensor* cuSeqlensQOptional,
+                                                                const aclTensor* sequsedQOptional)
 {
     // 文档约束: cache_seqlens/cu_seqlens_q/seqused_q仅支持int32
     if (cacheSeqlens != nullptr && cacheSeqlens->GetViewShape().GetDimNum() > 0) {
@@ -179,8 +175,7 @@ inline aclnnStatus QuantFlashMlaMetadataCheck::CheckConsistency(const aclTensor 
     }
 
     // cache_seqlens为必选输入, batchSize直接取其shape首个维度
-    CHECK_COND(IsTensorExist(cacheSeqlens), ACLNN_ERR_RUNTIME_ERROR,
-               "cacheSeqlens must be provided and non-empty");
+    CHECK_COND(IsTensorExist(cacheSeqlens), ACLNN_ERR_RUNTIME_ERROR, "cacheSeqlens must be provided and non-empty");
     CHECK_COND(cacheSeqlens->GetViewShape().GetDimNum() == 1, ACLNN_ERR_RUNTIME_ERROR,
                "cacheSeqlens must be 1D tensor, but got %ld dims", cacheSeqlens->GetViewShape().GetDimNum());
     int64_t batchSize = cacheSeqlens->GetViewShape().GetDim(0);
@@ -196,7 +191,7 @@ inline aclnnStatus QuantFlashMlaMetadataCheck::CheckConsistency(const aclTensor 
     return ACLNN_SUCCESS;
 }
 
-inline aclnnStatus QuantFlashMlaMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor *seqLens)
+inline aclnnStatus QuantFlashMlaMetadataCheck::CheckSeqLens(bool isCu, int64_t batchSize, const aclTensor* seqLens)
 {
     if (seqLens == nullptr) {
         return ACLNN_SUCCESS;

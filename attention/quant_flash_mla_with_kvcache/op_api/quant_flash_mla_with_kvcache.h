@@ -45,13 +45,12 @@ namespace l0op {
  * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
  *         Any element being nullptr indicates InferShape or Launch failure for that output.
  */
-const std::array<const aclTensor *, 2> QuantFlashMlaWithKvcache(
-    const aclTensor *q, const aclTensor *kCache, const aclTensor *qDescale, const aclTensor *kDescale,
-    const aclTensor *blockTable, const aclTensor *cacheSeqlens, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *sequsedQOptional, const aclTensor *attnMaskOptional, const aclTensor *metadataOptional,
-    int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-    int64_t headDimV, const char *layoutQ, const char *layoutKv, const char *layoutOut, bool returnSoftmaxLse,
-    aclOpExecutor *executor);
+const std::array<const aclTensor*, 2> QuantFlashMlaWithKvcache(
+    const aclTensor* q, const aclTensor* kCache, const aclTensor* qDescale, const aclTensor* kDescale,
+    const aclTensor* blockTable, const aclTensor* cacheSeqlens, const aclTensor* cuSeqlensQOptional,
+    const aclTensor* sequsedQOptional, const aclTensor* attnMaskOptional, const aclTensor* metadataOptional,
+    int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t headDimV,
+    const char* layoutQ, const char* layoutKv, const char* layoutOut, bool returnSoftmaxLse, aclOpExecutor* executor);
 
 } // namespace l0op
 

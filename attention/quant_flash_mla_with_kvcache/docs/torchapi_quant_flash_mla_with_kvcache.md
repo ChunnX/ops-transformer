@@ -78,8 +78,8 @@
 >
 > Q、K、V数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、Q_T表示所有query Batch输入样本序列长度的累加和，KV_T表示所有K、V Batch输入样本序列长度的累加和。Q_S表示输入q tensor的序列长度，Q_N表示输入q tensor的头数，KV_S表示输入k/v tensor的序列长度，KV_N表示输入k/v tensor的头数。
 
-> [!NOTE]	 
- > 
+> [!NOTE]
+ >
  > MLA中K与V复用同一份数据（KV复用/KV共享），因此主算子`quant_flash_mla_with_kvcache`的输入中只有`k_cache`，不单独接收`v_cache`。算子内部基于这份共用的KV cache同时完成Key与Value的计算，无需（也不支持）额外传入V。对应的量化参数仅需提供K的`k_descale`（per-tensor静态量化，shape为(1,)）。
 > 该接口仅支持Paged Attention（PA）KV-cache场景，即必须传入`block_table`与`cache_seqlens`。
 
@@ -119,11 +119,11 @@ cann_ops_transformer.quant_flash_mla_with_kvcache(
     seqused_q=None,
     attn_mask=None,
     metadata=None,
+    head_dim_v=512,
     softmax_scale=None,
     mask_mode=0,
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
-    head_dim_v=512,
     layout_q="BSND",
     layout_kv="PA_BNBD",
     layout_out="BSND",
@@ -205,11 +205,11 @@ cann_ops_transformer.quant_flash_mla_with_kvcache(
 | attn_mask | Tensor | 可选 | 掩码矩阵，仅在mask_mode为3（CAUSAL）时需要 | int8/uint8/bool | ND | (2048, 2048) | × |
 | metadata | Tensor | 可选 | `quant_flash_mla_with_kvcache_metadata`生成的任务切分结果，传入后可优化调度 | int32 | ND | (max_schedule_size,) | x |
 | quant_mode | int | 必选 | 量化模式，支持传入枚举或对应 int 值 | int32 | - | - | - |
+| head_dim_v | int | 可选 | v的每个注意力头维度，默认值为512，当前仅支持512 | int32 | - | - | - |
 | softmax_scale | float | 可选 | 可显式设置缩放因子。不传入时默认取 1/sqrt(headdim) | float32 | - | - | - |
 | mask_mode | int/MaskMode | 可选 | 掩码模式，支持传入枚举或对应 int 值，枚举定义见「mask_mode 枚举」 | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
-| head_dim_v | int | 可选 | v的每个注意力头维度，默认值为512，当前仅支持512 | int32 | - | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
 | layout_kv | string | 可选 | 定义输入k_cache张量的布局格式 | string | - | - | - |
 | layout_out | string | 可选 | 定义输出attn_out张量的布局格式 | string | - | - | - |

@@ -62,18 +62,11 @@ transformer-1@ops-transformer:
     src:
         release:
             huawei_style:
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/ifa_public_define.h
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/incre_flash_attention.cpp
-                - ops/ops-transformer/attention/incre_flash_attention/op_kernel/incre_flash_attention_allvec_new.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch22/
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fia_tiling_info.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fia_tiling_info.cpp
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_base.h
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_shape.cpp
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_templates_registry.h
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_gqa.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_host/arch35/fia_tiling_nonquant_gqa.h
-                - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/
                 - ops/ops-transformer/attention/common/op_kernel/buffers_policy.h
                 - ops/ops-transformer/attention/common/op_kernel/attn_buffer_manager.h
                 - ops/ops-transformer/attention/common/op_kernel/attn_buffer.h
@@ -114,11 +107,6 @@ transformer-1@ops-transformer:
             kernel_style: null
         unrelease:
             test_code:
-                - ops/ops-transformer/attention/incre_flash_attention/README.md
-                - ops/ops-transformer/attention/incre_flash_attention/CMakeLists.txt
-                - ops/ops-transformer/attention/incre_flash_attention/tests/
-                - ops/ops-transformer/attention/incre_flash_attention/docs/
-                - ops/ops-transformer/attention/incre_flash_attention/examples/
                 - ops/ops-transformer/attention/flash_attn/tests/
                 - ops/ops-transformer/attention/recurrent_gated_delta_rule/tests/
                 - ops/ops-transformer/attention/recurrent_gated_delta_rule/examples/
@@ -130,7 +118,7 @@ transformer-1@ops-transformer:
             - ops/ops-transformer/attention/*/op_kernel/
             - ops/ops-transformer/attention/*/op_api/
             - ops/ops-transformer/attention/*/op_graph/
-            - ops/ops-transformer/attention/fused_infer_attention_score/op_host/fia_tiling_info.h
+            - ops/ops-transformer/attention/fused_infer_attention_score/op_host/*.h
             - ops/ops-transformer/attention/flash_attn/op_host/flash_attn_tiling.h
             - ops/ops-transformer/attention/flash_attn/op_host/flash_attn_tiling_common.h
             - ops/ops-transformer/attention/flash_attn/op_host/fa_tiling_info.h
@@ -573,7 +561,7 @@ ifa@ops-transformer:
         unrelease:
             test_code:
                 - ops/ops-transformer/attention/incre_flash_attention/op_kernel/arch35
-                - ops/ops-transformer/attention/incre_flash_attention/examples/test_aclnn_incre_flash_attention.cpp
+                - ops/ops-transformer/attention/incre_flash_attention/examples/test_aclnn_incre_flash_attention_v4.cpp
                 - asl/ops/cann/ops/built-in/fusion_pass/graph_fusion/ai_core/incre_flash_attention_fusion_pass_utils.cc
                 - asl/ops/cann/ops/built-in/fusion_pass/graph_fusion/ai_core/incre_flash_attention_fusion_pass_utils.h
                 - asl/ops/cann/ops/built-in/fusion_pass/graph_fusion/ai_core/incre_flash_attention_quant_deploy_pass.cc
@@ -595,7 +583,7 @@ pfa@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/unpad_flash_attention_common.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch22/prompt_flash_attention_base_api.h
                 - ops/ops-transformer/attention/prompt_flash_attention/op_kernel/arch22/prompt_flash_attention_base_common.h
-                - ops/ops-transformer/attention/prompt_flash_attention/examples/test_aclnn_prompt_flash_attention.cpp
+                - ops/ops-transformer/attention/prompt_flash_attention/examples/test_aclnn_prompt_flash_attention_v3.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/attn_infra
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/flash_attention_interface.cpp
                 - ops/ops-transformer/attention/fused_infer_attention_score/op_kernel/arch22/flash_attention_regular_decode.h
@@ -697,6 +685,12 @@ mc2_moe_advanced@ops-transformer:
     src:
         release:
             huawei_style:
+                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/op_host/
+                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/op_api/
+                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/op_graph/
+                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/op_kernel/
+                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/CMakeLists.txt
+                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/README.md
                 - ops/ops-transformer/mc2/distribute_barrier/op_host/
                 - ops/ops-transformer/mc2/distribute_barrier/op_api/
                 - ops/ops-transformer/mc2/distribute_barrier/op_graph/
@@ -743,14 +737,38 @@ mc2_moe_advanced@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_api/
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_graph/
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/arch35/
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_setup/README.md
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/arch35/
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_api/
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_graph/
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/arch35/
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_teardown/README.md
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/config/
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/moe_distribute_combine_setup_def.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/moe_distribute_combine_setup_infershape.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_base.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_tiling_data.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_tiling_key.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling_base.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling_base.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/CMakeLists.txt
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/config/
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/moe_distribute_combine_teardown_def.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/moe_distribute_combine_teardown_infershape.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/moe_distribute_combine_teardown.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/moe_distribute_combine_teardown_tiling_data.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/moe_distribute_combine_teardown_tiling_key.h
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/moe_distribute_combine_teardown_tiling.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/moe_distribute_combine_teardown_tiling_base.cpp
+                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/moe_distribute_combine_teardown_tiling_base.h
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/op_tiling/arch35/
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_api/
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_graph/
@@ -781,6 +799,28 @@ mc2_moe_advanced@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_kernel/arch35/
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/README.md
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/CMakeLists.txt
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/config/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/moe_distribute_dispatch_setup_def.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/common.h
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/moe_distribute_dispatch_setup.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/moe_distribute_dispatch_setup_tiling.h
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/op_tiling/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/op_tiling/moe_distribute_dispatch_setup_tiling.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/op_tiling/moe_distribute_dispatch_setup_tiling_base.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/op_tiling/moe_distribute_dispatch_setup_tiling_base.h
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/CMakeLists.txt
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/config/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/moe_distribute_dispatch_teardown_def.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_kernel/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_kernel/moe_distribute_dispatch_teardown.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_kernel/moe_distribute_dispatch_teardown_tiling.h
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/op_tiling/arch22/
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/op_tiling/moe_distribute_dispatch_teardown_tiling.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/op_tiling/moe_distribute_dispatch_teardown_tiling_base.cpp
+                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/op_tiling/moe_distribute_dispatch_teardown_tiling_base.h
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/op_tiling/arch35/
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_api/
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_graph/
@@ -1084,12 +1124,6 @@ mc2_inference@ops-transformer:
                 - ops/ops-transformer/mc2/ffn_to_attention/op_kernel/
                 - ops/ops-transformer/mc2/ffn_to_attention/CMakeLists.txt
                 - ops/ops-transformer/mc2/ffn_to_attention/README.md
-                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/op_host/
-                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/op_api/
-                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/op_graph/
-                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/op_kernel/
-                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/CMakeLists.txt
-                - ops/ops-transformer/mc2/grouped_mat_mul_all_reduce/README.md
                 - ops/ops-transformer/mc2/all_gather_matmul/op_host/all_gather_matmul_def.cpp
                 - ops/ops-transformer/mc2/all_gather_matmul/op_host/all_gather_matmul_infershape.cpp
                 - ops/ops-transformer/mc2/all_gather_matmul/op_host/CMakeLists.txt
@@ -1221,31 +1255,6 @@ mc2_inference@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/op_host/op_tiling/arch22/
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/op_host/op_tiling/moe_distribute_combine_add_rms_norm_tiling.cpp
                 - ops/ops-transformer/mc2/moe_distribute_combine_add_rms_norm/op_host/op_tiling/moe_distribute_combine_add_rms_norm_tiling_base.h
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/CMakeLists.txt
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/config/
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/moe_distribute_combine_setup_def.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/moe_distribute_combine_setup_infershape.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/arch22/
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_base.h
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_tiling_data.h
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_kernel/moe_distribute_combine_setup_tiling_key.h
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/arch22/
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling_base.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_setup/op_host/op_tiling/moe_distribute_combine_setup_tiling_base.h
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/CMakeLists.txt
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/config/
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/moe_distribute_combine_teardown_def.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/moe_distribute_combine_teardown_infershape.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/arch22/
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/moe_distribute_combine_teardown.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/moe_distribute_combine_teardown_tiling_data.h
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_kernel/moe_distribute_combine_teardown_tiling_key.h
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/arch22/
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/moe_distribute_combine_teardown_tiling.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/moe_distribute_combine_teardown_tiling_base.cpp
-                - ops/ops-transformer/mc2/moe_distribute_combine_teardown/op_host/op_tiling/moe_distribute_combine_teardown_tiling_base.h
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/config/
                 - ops/ops-transformer/mc2/moe_distribute_combine_v2/op_host/moe_distribute_combine_v2_def.cpp
@@ -1278,28 +1287,6 @@ mc2_inference@ops-transformer:
                 - ops/ops-transformer/mc2/moe_distribute_dispatch/op_host/op_tiling/arch22/
                 - ops/ops-transformer/mc2/moe_distribute_dispatch/op_host/op_tiling/moe_distribute_dispatch_tiling.cpp
                 - ops/ops-transformer/mc2/moe_distribute_dispatch/op_host/op_tiling/moe_distribute_dispatch_tiling_base.h
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/CMakeLists.txt
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/config/
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/moe_distribute_dispatch_setup_def.cpp
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/arch22/
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/common.h
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/moe_distribute_base.h
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/moe_distribute_dispatch_setup.cpp
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_kernel/moe_distribute_dispatch_setup_tiling.h
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/op_tiling/arch22/
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/op_tiling/moe_distribute_dispatch_setup_tiling.cpp
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/op_tiling/moe_distribute_dispatch_setup_tiling_base.cpp
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_setup/op_host/op_tiling/moe_distribute_dispatch_setup_tiling_base.h
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/CMakeLists.txt
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/config/
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/moe_distribute_dispatch_teardown_def.cpp
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_kernel/arch22/
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_kernel/moe_distribute_dispatch_teardown.cpp
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_kernel/moe_distribute_dispatch_teardown_tiling.h
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/op_tiling/arch22/
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/op_tiling/moe_distribute_dispatch_teardown_tiling.cpp
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/op_tiling/moe_distribute_dispatch_teardown_tiling_base.cpp
-                - ops/ops-transformer/mc2/moe_distribute_dispatch_teardown/op_host/op_tiling/moe_distribute_dispatch_teardown_tiling_base.h
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/CMakeLists.txt
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/config/
                 - ops/ops-transformer/mc2/moe_distribute_dispatch_v2/op_host/moe_distribute_dispatch_v2_def.cpp

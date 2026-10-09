@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
 """生成单 case 自包含性能脚本(字符串), 由 run_perf.py 调用, 经 msprof 子进程执行。
 
 数据构造对齐 tests/pytest/common/qmla_with_kvcache_golden.py 的 NPU 路径:
@@ -17,7 +24,7 @@ D_ROPE = 64
 D_V = 512
 BLOCK_SIZE = 128
 
-_TEMPLATE = r'''import math
+_TEMPLATE = r"""import math
 import traceback
 
 import torch
@@ -195,7 +202,7 @@ finally:
     gc.collect()
     torch.npu.empty_cache()
 print('done')
-'''
+"""
 
 
 def build_script(name: str, case: dict, runs: int) -> str:
@@ -207,21 +214,21 @@ def build_script(name: str, case: dict, runs: int) -> str:
       sparse_mode(即 mask_mode), enable_lse, num_blocks
     """
     subs = {
-        '@NAME@': str(name),
-        '@RUNS@': str(int(runs)),
-        '@D_NOPE@': str(D_NOPE),
-        '@D_ROPE@': str(D_ROPE),
-        '@D_V@': str(D_V),
-        '@B@': str(int(case['B'])),
-        '@NQ@': str(int(case['N_q'])),
-        '@NKV@': str(int(case['N_kv'])),
-        '@SEQUSED_Q@': repr([int(x) for x in case['seqused_q']]),
-        '@CACHE_SEQLENS@': repr([int(x) for x in case['cache_seqlens']]),
-        '@BLOCK_SIZE@': str(BLOCK_SIZE),
-        '@MASK_MODE@': str(int(case.get('sparse_mode', 0))),
-        '@ENABLE_LSE@': str(bool(case.get('enable_lse', False))),
-        '@KV_LAYOUT@': str(case.get('kv_cache_layout', 'BnNBsD')),
-        '@NUM_BLOCKS@': str(int(case.get('num_blocks', 0))),
+        "@NAME@": str(name),
+        "@RUNS@": str(int(runs)),
+        "@D_NOPE@": str(D_NOPE),
+        "@D_ROPE@": str(D_ROPE),
+        "@D_V@": str(D_V),
+        "@B@": str(int(case["B"])),
+        "@NQ@": str(int(case["N_q"])),
+        "@NKV@": str(int(case["N_kv"])),
+        "@SEQUSED_Q@": repr([int(x) for x in case["seqused_q"]]),
+        "@CACHE_SEQLENS@": repr([int(x) for x in case["cache_seqlens"]]),
+        "@BLOCK_SIZE@": str(BLOCK_SIZE),
+        "@MASK_MODE@": str(int(case.get("sparse_mode", 0))),
+        "@ENABLE_LSE@": str(bool(case.get("enable_lse", False))),
+        "@KV_LAYOUT@": str(case.get("kv_cache_layout", "BnNBsD")),
+        "@NUM_BLOCKS@": str(int(case.get("num_blocks", 0))),
     }
     script = _TEMPLATE
     for token, value in subs.items():

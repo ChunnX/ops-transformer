@@ -74,7 +74,6 @@ constexpr uint32_t HEAD_ATTR_IDX = 4;
 constexpr uint32_t LAYOUT_ATTR_IDX = 5;
 constexpr uint32_t SEED_ATTR_IDX = 9;
 constexpr uint32_t OFFSET_ATTR_IDX = 10;
-constexpr uint32_t OUTDTYPE_ATTR_IDX = 11;
 constexpr uint32_t TND_SOFTMAX_IN_ATTR_IDX = 12;
 
 constexpr uint32_t GM_ALIGN = 512;
@@ -106,6 +105,10 @@ constexpr int64_t BN2_MULTIBLK_BN_256 = 256;
 constexpr int64_t BN2_MAX_D = 512;
 constexpr int64_t BN2S2_WRITE_UB_D = 128;
 constexpr int64_t NEGATIVE_128 = -128;
+// token方向"不限窗"的哨兵值。不用INT32_MAX：它还要被右下角校正(± (s1 - s2))，
+// 紧贴类型边界不留余量。各消费点只把token拿去比较或先除再clamp到m/n，不做乘法，
+// 因此只需远大于实际序列长度即可；取1e8后 token ± (s1 - s2) 连int32都装得下。
+constexpr int64_t TOKEN_UNLIMITED = 100000000LL;
 
 constexpr uint32_t PRE_BUFFER_SIZE = static_cast<uint32_t>(112 * 1024);
 constexpr uint32_t REGBASE_POST_BASE = static_cast<uint32_t>(128 * 128);
@@ -320,7 +323,6 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
     float pScaleLog = 1;
     uint32_t bandIdx;
     int64_t offset;
-    DtypeEnum outDtype;
 
     uint32_t calTypeSize;
     int64_t s1Token;
@@ -451,8 +453,8 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
 
 ge::graphStatus CheckAttenMaskShape(FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus QuantShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams);
-ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams);
-ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_, const FuzzyBaseInfoParamsRegbase &fBaseParams);
+ge::graphStatus QuantScaleShapeValidCheck(gert::TilingContext *context_);
+ge::graphStatus QuantScaleDtypeValidCheck(gert::TilingContext *context_);
 void JudgeIsNeedDeter(FuzzyBaseInfoParamsRegbase &fBaseParams, std::array<int64_t, CORE_LIST_NUM> &dqOffset,
                       std::array<int64_t, CORE_LIST_NUM> &dkDvOffset, std::array<int64_t, CORE_LIST_NUM> &dqOffsetpre,
                       std::array<int64_t, CORE_LIST_NUM> &dkDvOffsetpre, int64_t calcNum, bool &noNeedDeter,
@@ -461,7 +463,6 @@ void GetOffset(FuzzyBaseInfoParamsRegbase &fBaseParams, int64_t &currentDqOffset
                int64_t blockIdx);
 void PrintShapeInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool CheckSparseModeValue(FuzzyBaseInfoParamsRegbase &fBaseParams);
-bool CheckVarLenSparseModeValue(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool CheckPrefixNExist(FuzzyBaseInfoParamsRegbase &fBaseParams, const int64_t bIdx, const int64_t prefixN,
                        std::vector<std::vector<std::pair<int64_t, int64_t>>> &s1ValidIdx);
 void CalcleBandDeterParam(FuzzyBaseInfoParamsRegbase &fBaseParams);
@@ -482,8 +483,6 @@ ge::graphStatus ProcessOptionalInput(gert::TilingContext *context_, FuzzyBaseInf
 ge::graphStatus ProcessQuantInfo(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 ge::graphStatus ProcessTokensInfo(FuzzyBaseInfoParamsRegbase &fBaseParams);
-void SetQKVStartIdx(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
-void SetPseLayout(FuzzyBaseInfoParamsRegbase &fBaseParams);
 bool SetSparseParams(gert::TilingContext *context_, FuzzyBaseInfoParamsRegbase &fBaseParams);
 void DetermineMode(FuzzyBaseInfoParamsRegbase &fBaseParams);
 } // namespace QuantFag

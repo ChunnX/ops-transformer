@@ -4,12 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Ascend 950PR&950DT系列产品</term>|      √     |
+|<term>Atlas A3系列产品</term>|      √     |
+|<term>Atlas A2系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2推理产品</term>|      ×     |
+|<term>Atlas推理系列产品</term>|      ×     |
+|<term>Atlas训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -28,7 +28,7 @@
         - queryNormOptional：公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$）。
         - dequantScaleQNormOptional：query_norm的输出tensor的量化参数。
     - 调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
-- **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
+- **算子功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为七路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；第五路是输出$q^N$经过DynamicQuant后得到的量化参数；第六路是queryNormFlag=true时，输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后得到压缩结果$c^Q$，作为queryNorm输出；第七路是queryNormFlag=true且量化场景（weightQuantMode≠0）下，对$c^Q$做DynamicQuant，最终得到量化后的queryNorm和对应量化参数dequantScaleQNorm。
 - **计算公式**：
 
     RmsNorm公式
@@ -79,6 +79,52 @@
     k^R = \mathrm{Cache}(\mathrm{ROPE}(x \cdot W^{KR}))
     $$
 
+    Dequant Scale Query Nope计算公式
+
+    $$
+    \mathrm{dequantScaleQNope} = {\mathrm{RowMax}(\mathrm{abs}(q^{N})) / Q_{max}}
+    $$
+
+    $$
+    q^{N} = {\mathrm{round}(q^{N} / \mathrm{dequantScaleQNope})}
+    $$
+
+    Query Norm及Dequant Scale Query Norm计算公式（queryNormFlag=true时输出）
+
+    非量化场景（weightQuantMode=0）：
+
+    $$
+    queryNorm = c^Q = \alpha_q\cdot\mathrm{RmsNorm}(x \cdot W^{DQ})
+    $$
+
+    此时queryNorm为BFLOAT16类型，dequantScaleQNorm不输出（为nullptr）。
+
+    量化场景（weightQuantMode=1/2/4/5，per-token动态量化），smoothScaleCq可选传入，未传入时视为1：
+
+    $$
+    \tilde{c}^Q = c^Q \cdot smoothScale
+    $$
+
+    $$
+    \mathrm{dequantScaleQNorm} = {\mathrm{RowMax}(\mathrm{abs}(\tilde{c}^Q)) / Q_{max}}
+    $$
+
+    $$
+    queryNorm = {\mathrm{round}(\tilde{c}^Q / \mathrm{dequantScaleQNorm})}
+    $$
+
+    mxfp8量化场景（weightQuantMode=3，每32个元素一组pergroup动态量化，量化参数为FLOAT8_E8M0类型）：
+
+    $$
+    \mathrm{dequantScaleQNorm} = 2^{\lfloor \mathrm{log}_2(\mathrm{GroupMax}(\mathrm{abs}(c^Q))) \rfloor - 8}
+    $$
+
+    $$
+    queryNorm = {\mathrm{cast\_to\_fp8}(c^Q / \mathrm{dequantScaleQNorm})}
+    $$
+
+    其中$Q_{max}$为量化输出类型的最大值：INT8取127，FLOAT8_E4M3FN取448，HIFLOAT8取32768，8为FLOAT8_E4M3FN指数位的最大值emax。
+
 ## 参数说明
 
 | 参数名                     | 输入/输出/属性 | 描述  | 数据类型 | 数据格式   |
@@ -122,7 +168,7 @@
 | query_norm               | 输出      | 公式中tokenX做rmsNorm后的输出tensor（对应$c^Q$）。 | BFLOAT16、FLOAT8_E4M3FN、INT8、HIFLOAT8 | ND |
 | dequant_scale_q_norm | 输出     | query_norm的输出tensor的量化参数。   | FLOAT、FLOAT8_E8M0 | ND         |
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
   - token_x、weight_dq、weight_uq_qr、weight_dkv_kr、kv_cache、query、query_norm不支持FLOAT8_E4M3FN、HIFLOAT8数据类型。
   - dequant_scale_x、dequant_scale_w_dq、dequant_scale_w_uq_qr、dequant_scale_w_dkv_kr、dequant_scale_q_norm不支持FLOAT8_E8M0数据类型。
 
@@ -159,15 +205,15 @@
         - krCache的维度应包含0，支持shape为(0)。
 
 - 特殊约束
-  - Atlas A2训练系列产品/Atlas A2推理系列产品、Atlas A3训练系列产品/Atlas A3推理系列产品、Ascend 950PR/Ascend 950DT上，kvCache和krCache支持首轴非连续；除首轴外的其余轴必须连续。
+  - Atlas A2训练系列产品/Atlas A2推理系列产品、Atlas A3训练系列产品/Atlas A3推理系列产品、Ascend 950PR&950DT系列产品上，kvCache和krCache支持首轴非连续；除首轴外的其余轴必须连续。
   - actualSeqLenOptional传入时，actualSeqLenOptional最后一个数需与T保持一致。
   - pertoken-pergroup量化模式下，ckvkrRepoMode和quantScaleRepoMode必须同时为1；其他量化模式以及非量化场景下，ckvkrRepoMode和quantScaleRepoMode必须同时为0。
   - pertoken-pergroup量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
   - kvcache pertensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
 - aclnnMlaPrologV3WeightNz接口支持场景：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前不支持fp8/hif8/mxfp8全量化场景
-    - <term>Ascend 950PR/Ascend 950DT</term>：当前支持所有量化场景
+    - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：当前不支持fp8/hif8/mxfp8全量化场景
+    - <term>Ascend 950PR&950DT系列产品</term>：当前支持所有量化场景
   <table style="table-layout: auto;" border="1">
     <tr>
       <th colspan="2">场景</th>

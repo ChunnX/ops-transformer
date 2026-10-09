@@ -40,45 +40,33 @@ protected:
 
 TEST_F(l2_attention_worker_scheduler_test, normal_input_success)
 {
-    auto scheduleContextDesc = TensorDesc({1024}, ACL_INT8, ACL_FORMAT_ND);
-    auto scheduleContextRef = DescToAclContainer(scheduleContextDesc);
+    TensorDesc scheduleContextDesc = TensorDesc({1024}, ACL_INT8, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnInplaceAttentionWorkerScheduler, INPUT(scheduleContextDesc), OUTPUT());
+
+    // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet =
-        aclnnInplaceAttentionWorkerSchedulerGetWorkspaceSize(scheduleContextRef, &workspace_size, &executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
-    unique_ptr<void, decltype(&FreeDeviceMemory)> workspace_ptr(MallocDeviceMemory(workspace_size), FreeDeviceMemory);
-    aclRet = aclnnInplaceAttentionWorkerScheduler(workspace_ptr.get(), workspace_size, executor, nullptr);
-    SynchronizeStream();
-    if (executor != nullptr) {
-        delete executor;
-    }
 }
 
 TEST_F(l2_attention_worker_scheduler_test, empty_tensor_success)
 {
-    auto scheduleContextDesc = TensorDesc({0}, ACL_INT8, ACL_FORMAT_ND);
-    auto scheduleContextRef = DescToAclContainer(scheduleContextDesc);
+    TensorDesc scheduleContextDesc = TensorDesc({0}, ACL_INT8, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnInplaceAttentionWorkerScheduler, INPUT(scheduleContextDesc), OUTPUT());
+
+    // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet =
-        aclnnInplaceAttentionWorkerSchedulerGetWorkspaceSize(scheduleContextRef, &workspace_size, &executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
-    if (executor != nullptr) {
-        delete executor;
-    }
 }
 
 TEST_F(l2_attention_worker_scheduler_test, invalid_input_dim)
 {
-    auto scheduleContextDesc = TensorDesc({1024, 2}, ACL_INT8, ACL_FORMAT_ND);
-    auto scheduleContextRef = DescToAclContainer(scheduleContextDesc);
+    TensorDesc scheduleContextDesc = TensorDesc({1024, 2}, ACL_INT8, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnInplaceAttentionWorkerScheduler, INPUT(scheduleContextDesc), OUTPUT());
+
+    // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
-    aclnnStatus aclRet =
-        aclnnInplaceAttentionWorkerSchedulerGetWorkspaceSize(scheduleContextRef, &workspace_size, &executor);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
-    if (executor != nullptr) {
-        delete executor;
-    }
 }

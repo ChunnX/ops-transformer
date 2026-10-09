@@ -68,17 +68,17 @@ struct QuantFlashMlaWithKvcacheStridesParams {
 
 struct QuantFlashMlaWithKvcacheBaseParams {
     uint32_t bSize = 0;
-    uint32_t t1Size = 0;     // Q_T, layout_q为TND时有效
-    uint32_t t2Size = 0;    // KV total
-    uint32_t n1Size = 0;    // Q_N
-    uint32_t n2Size = 0;    // KV_N, MLA固定为1
+    uint32_t t1Size = 0; // Q_T, layout_q为TND时有效
+    uint32_t t2Size = 0; // KV total
+    uint32_t n1Size = 0; // Q_N
+    uint32_t n2Size = 0; // KV_N, MLA固定为1
     uint32_t gSize = 0;
-    uint32_t s1Size = 0;    // max Q seq len
-    uint32_t s2Size = 0;    // max KV seq len
-    uint32_t dSize = 0;     // head_dim_qk = 576
-    uint32_t dSizeV = 0;    // head_dim_v = 512
-    uint32_t cuSeqLensQSize = 0;   // cu_seqlens_q 元素个数, 0表示未传入
-    uint32_t seqUsedQSize = 0;     // seqused_q 元素个数, 0表示未传入
+    uint32_t s1Size = 0;         // max Q seq len
+    uint32_t s2Size = 0;         // max KV seq len
+    uint32_t dSize = 0;          // head_dim_qk = 576
+    uint32_t dSizeV = 0;         // head_dim_v = 512
+    uint32_t cuSeqLensQSize = 0; // cu_seqlens_q 元素个数, 0表示未传入
+    uint32_t seqUsedQSize = 0;   // seqused_q 元素个数, 0表示未传入
     float scaleValue = 1.0f;
     uint8_t isSoftMaxLseEnable = 0;
     uint8_t isMetadataEnable = 0;

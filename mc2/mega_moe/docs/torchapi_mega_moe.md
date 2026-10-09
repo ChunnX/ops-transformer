@@ -3,22 +3,22 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
@@ -104,10 +104,10 @@
     | A4W4-FP | FLOAT4_E2M1        | FLOAT4_E2M1            |
 
     <!-- npu="A3,910b" id7 -->
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持A16W16、A8W8-INT和A8W4-INT场景。
+    - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：支持A16W16、A8W8-INT和A8W4-INT场景。
     <!-- end id7 -->
     <!-- npu="950" id8 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持A8W8-FP、A8W4-FP和A4W4-FP场景。
+    - <term>Ascend 950PR&950DT系列产品</term>：支持A8W8-FP、A8W4-FP和A4W4-FP场景。
     <!-- end id8 -->
 
     <details>
@@ -266,7 +266,7 @@
 
     - **Expert Compute**
 
-        在MoE层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将int8 值拆为高4位和低4位两个有符号int4，使得int8×int4 的矩阵乘可分解为两个int4×int4 的矩阵乘，从而利用硬件的int4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://gitcode.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
+        在MoE层中，每个专家本质上是一个独立的前馈网络（FFN），采用由 `activation` 指定的门控激活结构以提升表达能力。在A8W4-INT场景下，两个线性层都采用MSD（Mixed-precision Split-activation Decomposition，混合精度激活拆分分解）方案进行矩阵乘，通过将int8 值拆为高4位和低4位两个有符号int4，使得int8×int4 的矩阵乘可分解为两个int4×int4 的矩阵乘，从而利用硬件的int4 矩阵乘加速。该方案的数学原理和实现逻辑可参阅[GroupedMatmul W4A8量化与MSD方案](https://atomgit.com/cann/ops-transformer/wiki/GMM--GroupedMatmul%E9%87%8F%E5%8C%96%E6%9E%81%E8%87%B4%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96-%E6%8E%A8%E7%90%86%E6%8F%90%E5%8D%87%E7%99%BE%E5%88%86%E4%B9%8B%E4%B8%89%E5%8D%81)。
 
         **1. 生成精度补偿的偏置矩阵（离线生成，在算子外完成，并作为算子输入）**
 
@@ -624,11 +624,11 @@
 先调用get_symm_buffer_for_mega_moe接口封装输入参数并创建SymmBuffer结构体，再调用mega_moe接口进行计算。
 
 ```python
-get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="", topk_weights_type=0) -> SymmBuffer
+get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_topk, hidden, intermediate_hidden, *, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="", combine_comm_mode=0, topk_weights_type=0) -> SymmBuffer
 ```
 
 ```python
-mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, activation_params=None, weight1_type=None, weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
+mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, scales=None, activation="swiglu", activation_clamp=None, activation_params=None, weight1_type=None, weight2_type=None, shared_expert_quant_out_dtype=None, shared_weight1_type=None, shared_weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
 ```
 
 ### 弹性扩缩容接口
@@ -641,7 +641,7 @@ sym_buffer.get_local_buffer_tensor(dtype, size=None, offset=0) -> Tensor
 sym_buffer.update_group(group) -> None
 ```
 
-`mask_buffer` 及以上五个 `SymmBuffer` 弹性扩缩容接口当前仅支持 <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>。`SymmBuffer` 默认不创建 `mask_buffer`，因此各代际默认均不会向算子传入该参数。第一次调用 `query_mask_buffer`、`update_mask_buffer` 或 `clean_mask_buffer` 时，才会在 NPU 上创建 shape 为 `[ep_world_size]` 的全 0 int32 掩码；0 表示正常 rank，1 表示失能 rank，失能 rank 会在后续计算和卡间通信中被跳过。
+`mask_buffer` 及以上五个 `SymmBuffer` 弹性扩缩容接口当前仅支持 <term>Atlas A3系列产品</term>。`SymmBuffer` 默认不创建 `mask_buffer`，因此各代际默认均不会向算子传入该参数。第一次调用 `query_mask_buffer`、`update_mask_buffer` 或 `clean_mask_buffer` 时，才会在 NPU 上创建 shape 为 `[ep_world_size]` 的全 0 int32 掩码；0 表示正常 rank，1 表示失能 rank，失能 rank 会在后续计算和卡间通信中被跳过。
 
 - `query_mask_buffer` 接收调用者预先创建的 `mask_status`，其 dtype 必须为 `torch.int32`，shape、所在 NPU 必须与内部 `mask_buffer` 一致。接口通过 D2D 拷贝将当前掩码写入 `mask_status`，不返回 Tensor。
 - `update_mask_buffer` 只更新当前进程中的本地掩码，各 rank 的掩码一致性由调用者保证。当恢复 rank，即 `masked` 输入为 `False` 时，必须调用 `get_local_buffer_tensor` 清空算子现存通信缓存区标志位。样例如下：
@@ -655,7 +655,7 @@ sym_buffer.update_group(group) -> None
 
 - `clean_mask_buffer` 在当前 NPU stream 上将本地掩码的所有元素清零；各 rank 需要分别调用，跨 rank 的一致性仍由调用者保证。掩码尚未创建时，接口会创建全 0 掩码。
 - `get_local_buffer_tensor` 将当前 Rank 的本地 CCL Buffer 零拷贝包装为 NPU Tensor。`offset` 以 `dtype` 元素为单位，`size` 为 `None` 时返回从 `offset` 到 Buffer 末尾的一维视图，否则返回指定 shape。返回 Tensor 不持有底层内存，其生命周期不得超过 `SymmBuffer`；调用 `update_group` 后旧视图失效，必须重新获取。调用者写入原始通信 Buffer 前必须保证相关算子已经执行完成，并确保写入范围正确。
-- `update_group` 使用新 group 完整重建通信链路；旧通信链路的算子执行完成以及新 group 与现有 mask shape 的一致性需要调用者保证。如需清除失能状态，应显式调用 `clean_mask_buffer`。
+- `update_group` 使用新 group 原地更新 `context`，不会改变 `context` Tensor 的地址，以便已捕获的图继续复用。新 group 的 world size 必须与原通信域一致，旧通信链路的算子执行完成需要调用者保证。如需清除失能状态，应显式调用 `clean_mask_buffer`。
 
 ## 参数说明
 
@@ -692,7 +692,7 @@ sym_buffer.update_group(group) -> None
         <td>num_max_tokens_per_rank</td>
         <td>int</td>
         <td>必选</td>
-        <td>通信域内各Rank可能出现的最大单卡token数。<term>Ascend 950PR/Ascend 950DT</term>支持各Rank的实际token数不同，每次调用需满足x.shape[0]不大于该值；所有Rank必须配置相同的上界。</td>
+        <td>通信域内各Rank可能出现的最大单卡token数。每次调用需满足x.shape[0]不大于该值；所有Rank必须配置相同的上界。各Rank的实际token数是否允许不同见约束说明。</td>
     </tr>
     <tr>
         <td>num_topk</td>
@@ -722,13 +722,13 @@ sym_buffer.update_group(group) -> None
         <td>dispatch_quant_mode</td>
         <td>int</td>
         <td>可选</td>
-        <td>dispatch通信时量化模式。0表示非量化（A16W16场景），2表示int8量化（A8W8-INT、A8W4-INT场景），4表示MXFP量化（A8W8-FP、A8W4-FP、A4W4-FP场景）。各产品支持的取值见约束说明。默认值为0。</td>
+        <td>dispatch通信时量化模式。0表示算子内部不做dispatch量化，2表示int8 pertoken量化，4表示算子内部做MX逐组量化。各产品支持的取值、对应的计算场景以及取值0的具体含义见约束说明。默认值为0。</td>
     </tr>
     <tr>
         <td>dispatch_quant_out_dtype</td>
-        <td>torch.dtype</td>
+        <td>torch.dtype 或 int</td>
         <td>可选</td>
-        <td>dispatch量化后输出的数据类型。支持torch.int8、torch.float8_e5m2、torch.float8_e4m3fn、torch.float4_e2m1。各产品支持的取值见约束说明。默认值为None。</td>
+        <td>dispatch量化后输出的数据类型。支持torch.int8、torch.float8_e5m2、torch.float8_e4m3fn、torch_npu.float4_e2m1fn_x2。其中FLOAT4_E2M1只能传类型枚举torch_npu.float4_e2m1fn_x2（int，取值296），不能传torch.dtype。dispatch_quant_mode为4时该参数表示算子内量化的输出类型；预量化直通场景（dispatch_quant_mode为0且该参数为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）下表示预量化x的逻辑类型，此时必须与x的实际数据类型一致。各产品支持的取值见约束说明。默认值为None。</td>
     </tr>
     <tr>
         <td>combine_quant_mode</td>
@@ -740,7 +740,13 @@ sym_buffer.update_group(group) -> None
         <td>comm_alg</td>
         <td>str</td>
         <td>可选</td>
-        <td>暂不支持该参数，使用默认值即可。默认值为""。</td>
+        <td>预留参数，保持默认值即可。默认值为""。</td>
+    </tr>
+    <tr>
+        <td>combine_comm_mode</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>combine阶段通信去重开关。0表示关闭，1表示开启（同一token在本卡命中的多个专家，其combine结果先在本卡合并为一行再发回源卡，combine阶段通信量从组内行数降为1）。取值仅支持0或1，是否开启完全由调用方决定，算子内部不做收益裁决。开启会改变通信缓冲区布局，必须在创建sym_buffer时指定，且同一通信域内所有Rank取值一致。各产品支持情况与开启条件见约束说明。默认值为0。</td>
     </tr>
     <tr>
         <td>topk_weights_type</td>
@@ -754,10 +760,10 @@ sym_buffer.update_group(group) -> None
 ### mega_moe
 
 <!-- npu="A3,910b" id9 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持参数表上角标<sup>1</sup>的描述，不支持的参数使用默认值即可。
+- <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：不支持参数表上角标<sup>1</sup>的描述，不支持的参数使用默认值即可。
 <!-- end id9 -->
 <!-- npu="950" id10 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：不支持参数表上角标<sup>2</sup>的描述，不支持的参数使用默认值即可。
+- <term>Ascend 950PR&950DT系列产品</term>：不支持参数表上角标<sup>2</sup>的描述，不支持的参数使用默认值即可。
 <!-- end id10 -->
 
 <table style="undefined;table-layout: fixed; width:1400px"><colgroup>
@@ -782,13 +788,28 @@ sym_buffer.update_group(group) -> None
 </thead>
 <tbody>
     <tr>
-        <td>x</td>
-        <td>Tensor</td>
-        <td>必选</td>
-        <td>MoE层输入的token隐藏状态。</td>
+        <td rowspan="4">x</td>
+        <td rowspan="4">Tensor</td>
+        <td rowspan="4">必选</td>
+        <td rowspan="4">MoE层输入的token隐藏状态。除预量化直通场景外，x的数据类型必须为bfloat16，量化（若有）由算子内部完成；预量化直通场景（dispatch_quant_mode为0且dispatch_quant_out_dtype为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）下算子内部不做量化，此时x的数据类型必须与dispatch_quant_out_dtype指定的逻辑类型一致，并且必须同时传入scales。float4_e2m1在PyTorch侧以uint8打包传入，每字节2个元素。各产品支持的数据类型见约束说明。</td>
         <td>bfloat16</td>
         <td>ND</td>
         <td>(num_tokens, hidden)</td>
+    </tr>
+    <tr>
+        <td>float8_e5m2<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_tokens, hidden)</td>
+    </tr>
+    <tr>
+        <td>float8_e4m3fn<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_tokens, hidden)</td>
+    </tr>
+    <tr>
+        <td>float4_E2M1(uint8)<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_tokens, hidden / 2)</td>
     </tr>
     <tr>
         <td>topk_ids</td>
@@ -941,6 +962,15 @@ sym_buffer.update_group(group) -> None
         <td>(num_tokens, )</td>
     </tr>
     <tr>
+        <td>scales<sup>1</sup></td>
+        <td>Tensor</td>
+        <td>可选</td>
+        <td>dispatch阶段的缩放因子输入。预量化直通场景（dispatch_quant_mode为0且dispatch_quant_out_dtype为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）下为预量化x的MX反量化缩放因子，该场景下必选；其余场景必须传入None。各产品支持情况见约束说明。</td>
+        <td>float8_e8m0</td>
+        <td>ND</td>
+        <td>(num_tokens, CeilDiv(hidden, 32))</td>
+    </tr>
+    <tr>
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
@@ -986,12 +1016,38 @@ sym_buffer.update_group(group) -> None
         <td>不涉及</td>
         <td>不涉及</td>
     </tr>
-    <!-- end id22 -->
+    <tr>
+        <td>shared_expert_quant_out_dtype</td>
+        <td>torch.dtype 或 int</td>
+        <td>可选</td>
+        <td>共享专家输入的量化数据类型。默认值为None，表示与dispatch_quant_out_dtype保持一致；显式配置时支持float8_e5m2、float8_e4m3fn、torch_npu.float4_e2m1fn_x2，用于共享专家与MoE专家采用不同量化配置的场景。预量化直通（dispatch_quant_mode为0）场景下只能取None或与dispatch_quant_out_dtype相同。</td>
+        <td>int</td>
+        <td>不涉及</td>
+        <td>不涉及</td>
+    </tr>
+    <tr>
+        <td>shared_weight1_type</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>共享专家第一线性层权重的逻辑数据类型，取值与weight1_type同口径。默认值为None，表示与weight1_type一致；MoE专家与共享专家采用不同权重类型（如MoE专家W8配共享专家W4）时必须显式设置。</td>
+        <td>int</td>
+        <td>不涉及</td>
+        <td>不涉及</td>
+    </tr>
+    <tr>
+        <td>shared_weight2_type</td>
+        <td>int</td>
+        <td>可选</td>
+        <td>共享专家第二线性层权重的逻辑数据类型，取值与weight2_type同口径。默认值为None，表示与weight2_type一致；取值必须与shared_weight1_type一致。</td>
+        <td>int</td>
+        <td>不涉及</td>
+        <td>不涉及</td>
+    </tr>    <!-- end id22 -->
     <tr>
         <td rowspan="3">shared_l1_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
         <td rowspan="3">可选</td>
-        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。数据类型必须与MoE专家第一线性层权重l1_weights的逻辑数据类型一致。</td>
+        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。数据类型可以与MoE专家第一线性层权重l1_weights不同，支持MoE专家与共享专家采用不同的权重类型与量化类型（如MoE专家W8配共享专家W4、MoE专家W4配共享专家W8）；shared_l1_weights与shared_l2_weights的数据类型必须一致。该混合配置仅topo_type为0（MTE拓扑）时支持。</td>
         <td>FLOAT8_E5M2</td>
         <td>ND</td>
         <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
@@ -1010,7 +1066,7 @@ sym_buffer.update_group(group) -> None
         <td rowspan="3">shared_l2_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
         <td rowspan="3">可选</td>
-        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型必须与MoE专家第二线性层权重l2_weights的逻辑数据类型一致。</td>
+        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型可以与MoE专家第二线性层权重l2_weights不同，取值要求同shared_l1_weights。</td>
         <td>FLOAT8_E5M2</td>
         <td>ND</td>
         <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
@@ -1131,7 +1187,7 @@ sym_buffer.update_group(group) -> None
         <td>y</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>本卡收到的token数据，对应公式中的Y，数据类型与输入 <code>x</code> 保持一致。要求为2维张量，数据格式为ND，支持非连续的Tensor。</td>
+        <td>本卡收到的token数据，对应公式中的Y。要求为2维张量，数据格式为ND，支持非连续的Tensor。数据类型见约束说明。</td>
         <td>bfloat16</td>
         <td>(num_tokens, hidden)</td>
     </tr>
@@ -1185,25 +1241,25 @@ sym_buffer.update_group(group) -> None
         </tr>
         <tr>
             <td>l1_weights</td>
-            <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品为num_experts_per_rank；Ascend 950PR/Ascend 950DT的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
+            <td>逐专家布局为local_moe_expert_num，堆叠布局为1；支持的布局与具体取值见表下方约束</td>
             <td>否（bfloat16/int8/int4场景）/是（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l2_weights</td>
-            <td>Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品为num_experts_per_rank；Ascend 950PR/Ascend 950DT的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
+            <td>逐专家布局为local_moe_expert_num，堆叠布局为1；支持的布局与具体取值见表下方约束</td>
             <td>否（bfloat16/int8/int4场景）/是（float8_e5m2/float8_e4m3fn/float4_E2M1场景）</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l1_weights_sf</td>
-            <td>与对应权重的TensorList长度和布局一致；Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品为num_experts_per_rank；Ascend 950PR/Ascend 950DT的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
+            <td>与对应权重的TensorList长度和布局一致；逐专家布局为local_moe_expert_num，堆叠布局为1；支持的布局与具体取值见表下方约束</td>
             <td>否</td>
             <td>不支持</td>
         </tr>
         <tr>
             <td>l2_weights_sf</td>
-            <td>与对应权重的TensorList长度和布局一致；Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品为num_experts_per_rank；Ascend 950PR/Ascend 950DT的逐专家布局为local_moe_expert_num，堆叠布局为1</td>
+            <td>与对应权重的TensorList长度和布局一致；逐专家布局为local_moe_expert_num，堆叠布局为1；支持的布局与具体取值见表下方约束</td>
             <td>否</td>
             <td>不支持</td>
         </tr>
@@ -1229,66 +1285,69 @@ sym_buffer.update_group(group) -> None
     </table>
 
   <!-- npu="950" id21 -->
-  - Ascend 950PR/Ascend 950DT的MXFP场景支持两种TensorList布局。对于`l1_weights`、`l2_weights`、`l1_weights_sf`和`l2_weights_sf`，逐专家布局下四个TensorList的长度均为`local_moe_expert_num`，权重列表中的Tensor为二维，权重缩放因子列表中的Tensor为三维；堆叠布局下四个TensorList的长度均为1，权重Tensor为三维，权重缩放因子Tensor为四维，且各Tensor的dim0均为`local_moe_expert_num`。四个输入必须采用同一种布局；启用共享专家时，对应的四个共享专家输入也必须采用与MoE专家相同的布局。
+  - Ascend 950PR&950DT系列产品的MXFP场景支持两种TensorList布局。对于`l1_weights`、`l2_weights`、`l1_weights_sf`和`l2_weights_sf`，逐专家布局下四个TensorList的长度均为`local_moe_expert_num`，权重列表中的Tensor为二维，权重缩放因子列表中的Tensor为三维；堆叠布局下四个TensorList的长度均为1，权重Tensor为三维，权重缩放因子Tensor为四维，且各Tensor的dim0均为`local_moe_expert_num`。四个输入必须采用同一种布局；启用共享专家时，对应的四个共享专家输入也必须采用与MoE专家相同的布局。
   <!-- end id21 -->
+  <!-- npu="A3,910b" id27 -->
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：`l1_weights`、`l2_weights`、`l1_weights_sf`、`l2_weights_sf`仅支持逐专家布局，四个TensorList的长度均为`num_experts_per_rank`（= `num_experts` / `ep_world_size`，与`local_moe_expert_num`同值）。
+  <!-- end id27 -->
 
 - **参数一致性约束**：
   - mega_moe接口的所有输入参数及其对应的张量维度，必须与get_symm_buffer_for_mega_moe的同名参数（例如 `num_experts`、`hidden`、`intermediate_hidden` 等）保持一致。
-  - 调用算子过程中使用的`num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+  - 调用算子过程中使用的`num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`、`topk_weights_type`、`combine_comm_mode`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。其中`topk_weights_type`与`combine_comm_mode`决定通信记录的布局，跨卡取值不一致会导致读写错位。
 
 - **通信域约束**：
     - 所有卡的`ep_world_size`参数取值需保持一致。
-    - Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品的通信域缓存区大小应当一致。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
+    - Atlas A2系列产品、Atlas A3系列产品的通信域缓存区大小应当一致。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
 
         $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offsetTokenPerExpert} + \mathrm{offsetTensor} + \mathrm{offsetFlag} + 10\,\mathrm{MB}$$
     <!-- npu="910b" id11 -->
-     **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
+     **Atlas A2系列产品：**
 
     ```text
-    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
+    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4Byte
 
     // winIn
     offsetAAfterDispatch = max_recv_token_num × (quant ? hidden + 512 : hidden × 2)
-    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
+    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2Byte
     winInTensorSize      = offsetAAfterDispatch + offsetD
 
     // winOut
     offsetA              = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-    offsetC              = max_recv_token_num × hidden × 2B
+    offsetC              = max_recv_token_num × hidden × 2Byte
     winOutTensorSize     = offsetA + offsetC
 
     offsetTensor         = max(winInTensorSize, winOutTensorSize)
-                        + (quant ? max_recv_token_num × 4B : 0)
+                        + (quant ? max_recv_token_num × 4Byte : 0)
 
     // sync flags
-    offsetFlag           = ep_world_size × 512B
-                        + ep_world_size × maxExpertPerRank × 64B
-                        + ep_world_size × 64B
+    offsetFlag           = ep_world_size × 512Byte
+                        + ep_world_size × maxExpertPerRank × 64Byte
+                        + ep_world_size × 64Byte
     ```
     <!-- end id11 -->
 
     <!-- npu="A3" id12 -->
-     **Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
+     **Atlas A3系列产品：**
 
     ```text
-    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
+    offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4Byte
 
     // winIn（仅winIn，无winOut）
     offsetAAfterDispatch = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
+    offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2Byte
     winInTensorSize      = offsetAAfterDispatch + offsetD
 
     offsetTensor         = winInTensorSize
-                        + (quant ? num_max_tokens_per_rank × num_topk × 4B : 0)
+                        + (quant ? num_max_tokens_per_rank × num_topk × 4Byte : 0)
 
     // sync flags
     syncStateReservedSize = 512KB
-    offsetFlag            = max(ep_world_size × 512B, syncStateReservedSize)
+    offsetFlag            = max(ep_world_size × 512Byte, syncStateReservedSize)
     ```
     <!-- end id12 -->
 
     <!-- npu="950" id13 -->
-     **Ascend 950PR/Ascend 950DT：**
+     **Ascend 950PR&950DT系列产品：**
 
     通信buffer由`get_symm_buffer_for_mega_moe`根据通信域配置、`num_max_tokens_per_rank`等参数自动计算并申请，用户无需自行计算或设置`ccl_buffer_size`。`num_max_tokens_per_rank`越大，内部申请的通信内存越多，建议按预期最大单卡token数合理设置。
     <!-- end id13 -->
@@ -1297,19 +1356,19 @@ sym_buffer.update_group(group) -> None
 - **组网约束**：
 
   <!-- npu="910b" id14 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
+  - <term>Atlas A2系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
   <!-- end id14 -->
   <!-- npu="A3" id15 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
+  - <term>Atlas A3系列产品</term>：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
   <!-- end id15 -->
   <!-- npu="950" id16 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持UB Memory通信协议。
+  - <term>Ascend 950PR&950DT系列产品</term>：仅支持UB Memory通信协议。
   <!-- end id16 -->
 
 - **参数约束**：
 
   <!-- npu="A3,910b" id17 -->
-  - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
+  - **Atlas A2系列产品、Atlas A3系列产品：**
 
     - 各卡 `num_tokens` 需保持一致，取值范围为 `1 ≤ num_tokens ≤ num_max_tokens_per_rank`。
     - `ep_world_size`：取值为 `2`、`4`、`8`、`16`、`32`、`48`、`64`、`96`、`128`。
@@ -1319,7 +1378,7 @@ sym_buffer.update_group(group) -> None
     - `max_recv_token_num` 需大于0，输入0表示自动计算，公式为 `num_tokens × ep_world_size × min(num_topk, local_moe_expert_num)`。
     - `num_topk`：取值范围为 `1 ≤ num_topk ≤ 16`。
     - `hidden`：取值范围为 `1024 ≤ hidden ≤ 8192`，且 `hidden % 512 == 0`。
-    - `intermediate_hidden`：取值范围为 `512 ≤ intermediate_hidden ≤ 3072`，且 `intermediate_hidden % 512 == 0`。
+    - `intermediate_hidden`：取值范围为 `512 ≤ intermediate_hidden ≤ 3072`，且 `intermediate_hidden % 256 == 0`。
     - `dispatch_quant_mode`：取值范围为 `0`（非量化）、`2`（pertoken量化）。
     - `dispatch_quant_out_dtype`：取值为 `torch.int8`。
     - 支持三种计算场景（A16W16、A8W8-INT、A8W4-INT），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
@@ -1391,24 +1450,34 @@ sym_buffer.update_group(group) -> None
         </table>
 
   <!-- end id17 -->
+  <!-- npu="A3,910b" id26 -->
+  - <term>Atlas A2系列产品</term>、<term>Atlas A3系列产品</term>：不支持combine阶段通信去重，`combine_comm_mode`必须保持默认值0；`scales`为预留输入，当前必须传入None；输出`y`的数据类型与`x`一致。
+  <!-- end id26 -->
   <!-- npu="950" id18 -->
-  - **Ascend 950PR/Ascend 950DT：**
+  - **Ascend 950PR&950DT系列产品：**
     - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"。`activation_clamp`用于配置前三种激活的截断值；`activation_params`用于配置"swigluoai"的`alpha`、`beta`以及"situglu"的`beta`、`linear_beta`。
     - num_tokens（x.dim0）范围[1, +∞)，每次调用必须不大于创建`sym_buffer`时配置的`num_max_tokens_per_rank`。不同Rank的实际num_tokens可以不同，同一个`sym_buffer`也可以用于多次不同num_tokens的调用。
     - `num_max_tokens_per_rank`必须大于等于1，所有Rank取值必须一致，建议设置为`sym_buffer`复用期间所有Rank可能出现的最大单卡token数。超过原上界时需使用更大的上界重新创建`sym_buffer`。
-    - hidden（x.dim1）范围[1024, 8192]。A8W8-FP场景要求hidden为32的倍数；A8W4-FP场景要求hidden为64的倍数；A4W4-FP场景仅支持l1_weights为FRACTAL_NZ格式，要求hidden为64的倍数。
+    - hidden为逻辑隐藏维，范围[1024, 8192]；非打包类型下hidden = x.dim1，float4_e2m1以uint8打包传入时x.dim1 = hidden / 2。A8W8-FP场景要求hidden为32的倍数；A8W4-FP场景要求hidden为64的倍数；A4W4-FP场景仅支持l1_weights为FRACTAL_NZ格式，要求hidden为64的倍数。
     - num_topk（topk_ids.dim1）支持[1, 32]。
-    - num_experts_per_rank 范围 [1, 1024]。
+    - local_moe_expert_num（= num_experts / ep_world_size）范围 [1, 1024]；shared_expert_num_per_rank 另按 [0, 4] 单独约束，不计入该上限。
     - intermediate_hidden表示激活后的中间特征维度，范围[256, 4096]且128对齐；Linear1的完整输出宽度为2 × intermediate_hidden。
     - ep_world_size范围 [2, 1024]。
     - num_experts范围 [ep_world_size, 2048]，且num_experts % ep_world_size == 0。
     - max_recv_token_num范围 [0, num_max_tokens_per_rank × ep_world_size × min(num_topk, local_moe_expert_num)]；建议保持默认值0，由接口自动计算接收容量。
-    - dispatch_quant_out_dtype仅支持torch.float8_e5m2或torch.float8_e4m3fn或torch.float4_e2m1。
-    - 当前版本仅支持MXFP量化模式（dispatch_quant_mode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
-    - x_active_mask和scales参数当前版本必须传入None，不支持非空输入。
+    - dispatch_quant_out_dtype仅支持torch.float8_e5m2、torch.float8_e4m3fn或torch_npu.float4_e2m1fn_x2（该值是整型枚举，取值296；FLOAT4_E2M1只能以该整型枚举传入，不能传torch.dtype）。
+    - dispatch_quant_mode取值为0或4。4表示算子内部对bfloat16的x做MX逐组量化（group size = 32，量化缩放因子类型为FLOAT8_E8M0），对应A8W8-FP、A8W4-FP、A4W4-FP场景；0表示预量化直通，即x已经是量化后的数据、算子内部不再量化，缩放因子由scales入参给出。
+    - 预量化直通（dispatch_quant_mode = 0）的约束：x的数据类型必须与dispatch_quant_out_dtype指定的逻辑类型一致；scales为必选；仅支持topo_type = 0（MTE拓扑），跨超URMA拓扑不支持；shared_expert_quant_out_dtype只能取None或与dispatch_quant_out_dtype相同。
+    - x_active_mask当前版本必须传入None，不支持非空输入。
+    - scales仅在预量化直通（dispatch_quant_mode = 0且dispatch_quant_out_dtype为float8_e5m2、float8_e4m3fn或torch_npu.float4_e2m1fn_x2）场景为必选，数据类型为FLOAT8_E8M0，shape为(num_tokens, CeilDiv(hidden, 32))；其余场景必须传入None。
     - combine_quant_mode当前支持0（非量化），3（MX模式float8_e5m2类型），4（MX模式float8_e4m3类型）。
-    - comm_alg预留参数，必须为空字符串""。
-    - y的数据类型与x相同。
+    - comm_alg为预留参数，保持默认空字符串""即可。
+    - y的数据类型固定为bfloat16。
+    - **通信去重约束**：
+        - combine_comm_mode取值为0或1，0表示关闭combine阶段通信去重，1表示开启。是否开启完全由调用方决定，算子内部不做收益裁决。适用场景：num_topk较大、同一token命中同卡多个专家的比例较高、性能瓶颈在通信的形状，开启后收益明显；专家数多且瓶颈在计算的形状可能没有收益甚至变慢，建议按实际形状实测后再决定。
+        - combine_comm_mode在`get_symm_buffer_for_mega_moe`处设置，`mega_moe`调用时从`sym_buffer`继承，无需重复传入；同一通信域内所有Rank必须配置相同取值，否则跨卡的通信记录布局不一致会导致读写错位。
+        - combine_comm_mode = 1时的能力约束（不满足时算子在tiling阶段直接报错并提示改回0，不做静默回退）：仅支持topo_type = 0（MTE拓扑）；combine_quant_mode必须为0（combine不量化）；topk_weights_type = 0时不支持预量化x；num_max_tokens_per_rank需满足 num_max_tokens_per_rank ≤ 128 × min(512, ⌊4608 / num_topk⌋)（例如num_topk = 32时上限为18432，num_topk ≤ 9时上限为65536）。
+        - combine_comm_mode = 1时，同一token在同一张卡上的多个专家输出改为在该卡按float32累加后一次转bfloat16发送，累加顺序与中间取整次数与关闭态不同，因此y与combine_comm_mode = 0的结果不逐位相同。偏差来源是bfloat16累加顺序与中间取整次数的差异，在存在数值抵消的元素上相对偏差可能明显放大；需要与关闭态逐位一致时请使用combine_comm_mode = 0，切换该开关后请按目标形状重新做精度验证。
     - l1_weights的Linear1输出维必须等于2 × intermediate_hidden，l2_weights的输入维必须等于intermediate_hidden。
     - l1_weights_sf和l2_weights_sf不可为空指针。
     - local_moe_expert_num = num_experts / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
@@ -1427,10 +1496,10 @@ sym_buffer.update_group(group) -> None
         - shared_l1_weights的逻辑shape为(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)，shared_l2_weights的逻辑shape为(shared_expert_num_per_rank, hidden, intermediate_hidden)。FLOAT4_E2M1权重在PyTorch侧以uint8打包传入，对应的物理shape分别为(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden / 2)和(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)。
         - shared_l1_weights_sf shape为(shared_expert_num_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)，shared_l2_weights_sf shape为(shared_expert_num_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)。
         - l1_weights_sf的dim3和l2_weights_sf的dim3必须等于2。
-        - A8W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FRACTAL_NZ格式。两种场景的l2_weights均必须使用FORMAT_FRACTAL_NZ_C0_32格式。启用共享专家时，shared_l1_weights和shared_l2_weights必须分别与l1_weights和l2_weights使用相同格式。
+        - A8W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FORMAT_FRACTAL_NZ_C0_32格式；A4W4-FP场景下，FLOAT4_E2M1类型的l1_weights必须使用FRACTAL_NZ格式。两种场景的l2_weights均必须使用FORMAT_FRACTAL_NZ_C0_32格式。启用共享专家时，shared_l1_weights和shared_l2_weights的格式按共享专家自身的量化类型确定（W8走ND或FRACTAL_NZ、W4走FRACTAL_NZ或FORMAT_FRACTAL_NZ_C0_32），与l1_weights、l2_weights的格式可以不同。
         - A8W8-FP场景下，l1_weights和l2_weights必须同为FLOAT8_E5M2或同为FLOAT8_E4M3FN，`weight1_type`和`weight2_type`可省略并从权重Tensor的数据类型推导。A8W4-FP和A4W4-FP场景下，两层权重均为FLOAT4_E2M1，必须显式将`weight1_type`和`weight2_type`设置为`float4_e2m1fn_x2`对应的类型枚举，且两者一致。
-        - x_active_mask和scales必须为None。
-    - 支持三种计算场景（A8W8-FP、A8W4-FP、A4W4-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
+        - x_active_mask必须为None；dispatch_quant_mode = 4（算子内部量化）时scales必须为None，dispatch_quant_mode = 0（预量化直通）时scales为必选。
+    - 支持三种计算场景（A8W8-FP、A8W4-FP、A4W4-FP），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。下表按dispatch_quant_mode = 4（算子内部量化）列出；dispatch_quant_mode = 0（预量化直通）时，x的数据类型改为与dispatch_quant_out_dtype相同（FLOAT8_E5M2、FLOAT8_E4M3FN或FLOAT4_E2M1），scales为必选且数据类型为FLOAT8_E8M0，y仍为BFLOAT16，其余各列不变。
         <table>
         <thead>
             <tr>
@@ -1498,7 +1567,7 @@ sym_buffer.update_group(group) -> None
             <td>–</td>
             <td>BFLOAT16</td>
             <td>4</td>
-            <td>torch.float4_e2m1</td>
+            <td>torch_npu.float4_e2m1fn_x2</td>
             </tr>
         </tbody>
         <tfoot>
@@ -1524,7 +1593,7 @@ sym_buffer.update_group(group) -> None
   下面示例将两个接口按调用顺序串联：先初始化通信域，再用get_symm_buffer_for_mega_moe构造sym_buffer，最后调用mega_moe运行算子。
 
   <!-- npu="950" id19 -->
-  - **Ascend 950PR/Ascend 950DT**：
+  - **Ascend 950PR&950DT系列产品**：
 
     ```python
     import os
@@ -1645,7 +1714,10 @@ sym_buffer.update_group(group) -> None
             dispatch_quant_out_dtype=(
                 torch_npu.float4_e2m1fn_x2 if scene == "A4W4" else
                 torch.float8_e4m3fn if scene == "A8W4" else torch.float8_e5m2
-            )
+            ),
+            # combine通信去重开关：0关闭，1开启。开启要求combine_quant_mode=0、MTE拓扑，
+            # 且所有Rank取值一致；是否开启按实际形状决定，约束见约束说明。
+            combine_comm_mode=0,
         )
         # 步骤2：运行mega_moe，传入上一步构造的sym_buffer
         y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
@@ -1761,7 +1833,7 @@ sym_buffer.update_group(group) -> None
   <!-- end id19 -->
 
   <!-- npu="A3,910b" id20 -->
-  - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品**：
+  - **Atlas A2系列产品、Atlas A3系列产品**：
 
     ```python
     import torch

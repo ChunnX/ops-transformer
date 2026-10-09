@@ -123,6 +123,7 @@ public:
     uint64_t s1SizeAcc;
     uint64_t s2SizeAcc;
     int32_t aicIdx;
+    uint32_t cvRatio_ = 2U;
 };
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
@@ -288,7 +289,7 @@ FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType
                 if constexpr (isInfer) {
                     if (inputParamsRegbase.isGqa && inputParamsRegbase.s1Size > 1) {
                         constInfo.attentionOutStride =
-                            (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
+                            (constInfo.n2G - constInfo.gSize) * sizeof(OUTPUT_T) * constInfo.dSizeV;
                     } else if (inputParamsRegbase.isGqa) {
                         constInfo.attentionOutStride = 0;
                     }
@@ -412,7 +413,8 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
         this->aicIdx = GetBlockIdx();
     } else {
         constInfo.aivIdx = GetBlockIdx();
-        this->aicIdx = constInfo.aivIdx >> 1;
+        cvRatio_ = GetSubBlockNum();
+        this->aicIdx = constInfo.aivIdx / cvRatio_;
     }
     ListTensorDesc keyListTensorDescInit((__gm__ void *)key);
     currentKey = (__gm__ uint8_t *)keyListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);

@@ -85,7 +85,7 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Attr("quant_mode").AttrType(REQUIRED).Int();
+        this->Attr("quant_compute_mode").AttrType(REQUIRED).Int();
         this->Attr("softmax_scale").AttrType(OPTIONAL).Float(-1.0f);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("max_seqlen_q").AttrType(OPTIONAL).Int(-1);

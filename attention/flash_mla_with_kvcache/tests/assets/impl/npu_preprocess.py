@@ -8,7 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Materialize the metadata placeholder after H2D and before timing."""
+"""Materialize metadata after H2D, before timing and graph capture."""
 
 from .metadata import build_metadata
 
@@ -16,30 +16,42 @@ from .metadata import build_metadata
 def run(
     q,
     k_cache,
-    *,
     block_table=None,
     cache_seqlens=None,
     cu_seqlens_q=None,
     seqused_q=None,
     attn_mask=None,
     metadata=None,
+    head_dim_v=512,
+    softmax_scale=1.0,
+    mask_mode=0,
+    max_seqlen_q=-1,
+    max_seqlen_kv=-1,
+    layout_q="BSND",
+    layout_kv="PA_BBND",
+    layout_out="BSND",
+    return_softmax_lse=False,
     **kwargs,
 ):
-    if metadata is None:
-        # The metadata-first wrapper creates it when no slot was allocated.
-        return None
     generated = build_metadata(
         q,
         k_cache,
         cache_seqlens=cache_seqlens,
         cu_seqlens_q=cu_seqlens_q,
         seqused_q=seqused_q,
+        head_dim_v=head_dim_v,
+        mask_mode=mask_mode,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_kv=max_seqlen_kv,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
         **kwargs,
     )
-    if metadata.dtype != generated.dtype or metadata.numel() < generated.numel():
+    if metadata is None:
+        return {"metadata": generated}
+    if metadata.dtype != generated.dtype:
         raise ValueError(
-            f"MLA metadata placeholder must be {generated.dtype} with at least "
-            f"{generated.numel()} elements; got {metadata.dtype}, {metadata.numel()}"
+            f"MLA metadata placeholder must be {generated.dtype}; got {metadata.dtype}"
         )
-    metadata.zero_()
-    metadata.reshape(-1)[: generated.numel()].copy_(generated.reshape(-1))
+    metadata.resize_(generated.shape)
+    metadata.copy_(generated)

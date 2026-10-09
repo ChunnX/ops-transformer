@@ -48,7 +48,6 @@ static void CheckInputAbsent(const c10::optional<T> &input, const std::string &n
     TORCH_CHECK(!input.has_value(), name, " must be None on ", socName, ".");
 }
 
-// Validate the public type value before GetAclDataType interprets it.
 static void CheckWeightType(const c10::optional<int64_t> &weightType, const char *name, const char *socName)
 {
     if (!weightType.has_value()) {
@@ -63,7 +62,6 @@ static void CheckWeightType(const c10::optional<int64_t> &weightType, const char
                 static_cast<int64_t>(DType::FLOAT4_E2M1), ") on ", socName, ", but got ", value, ".");
 }
 
-// Validate storage types before TensorListWrapper replaces the ACL dtype.
 static void CheckWeightDtype(at::TensorList weights, aclDataType expectedDtype, const char *name, const char *socName)
 {
     if (weights.empty()) {
@@ -161,7 +159,6 @@ static void CheckMegaMoeInputsA5(const MegaMoeTensorInputs &inputs, int64_t epWo
     CheckNpuInput(inputs.sharedWeightScales2, "shared_l2_weights_sf", socName);
     CheckNpuInput(inputs.scales, "scales", socName);
     CheckNpuInput(inputs.maskBuffer, "mask_buffer", socName);
-    // Check the original dtype before TensorListWrapper overrides the ACL dtype.
     const auto checkScaleDtype = [socName](const c10::optional<std::vector<at::Tensor>> &scales, const char *name) {
         if (!scales.has_value()) {
             return;
@@ -217,7 +214,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     c10::optional<int64_t> dispatchQuantOutDtype, c10::optional<int64_t> sharedExpertQuantOutDtype,
     c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> sharedWeight1Type,
     c10::optional<int64_t> sharedWeight2Type, c10::optional<int64_t> topoType, c10::optional<int64_t> rankNumPerServer,
-    int64_t topkWeightsType)
+    int64_t topkWeightsType, int64_t combineCommMode)
 {
     const MegaMoeTensorInputs inputs{context,
                                      x,
@@ -316,7 +313,6 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     std::string activationStr = std::string(activation);
     char *activationPtr = const_cast<char *>(activationStr.c_str());
 
-    // The eager and graph Python paths validate and serialize activationParams before calling C++.
     int64_t topoTypeValue = topoType.value_or(0);
     int64_t rankNumPerServerValue = rankNumPerServer.value_or(2);
 
@@ -359,7 +355,6 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
     at::TensorList sharedBias1Ref = toTensorList(sharedBias1);
     at::TensorList sharedBias2Ref = toTensorList(sharedBias2);
 
-    // Legacy callers omit shared weight types; inherit MoE types, including uint8-packed FP4.
     aclDataType sharedWeight1RefDtype =
         sharedWeight1Type.has_value() ? GetAclDataType(sharedWeight1Type.value()) : weight1RefDtype;
     aclDataType sharedWeight2RefDtype =
@@ -389,7 +384,7 @@ std::tuple<at::Tensor, at::Tensor> NpuMegaMoe(
               sharedBias1Wrapper, sharedBias2Wrapper, maskBuffer, moeExpertNum, epWorldSize, cclBufferSize,
               maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, sharedExpertQuantResultType,
               combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationParams, topoTypeValue,
-              rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
+              rankNumPerServerValue, topkWeightsType, combineCommMode, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }
@@ -415,30 +410,24 @@ constexpr int64_t MOE_PERMUTE_CHUNK = 1024LL;
 constexpr int64_t EXCEPTION_DUMP_REGION_SIZE = 60LL * 1024LL;
 // rankSyncInWorld 同步区
 constexpr int64_t PEERMEM_DATA_OFFSET = 60LL * 1024LL;
+constexpr int64_t PEERMEM_MTE_COUNT_REGION_SIZE = 8LL * 1024LL;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
     return (val + align - 1) / align * align;
 }
 
-// A2 minimum buffer size (MB).
-// Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=false.
 int64_t CalcLeastCclBufferSizeA2(int64_t maxRecvTokenNum, int64_t h, int64_t epWorldSize, bool isQuantRouting,
                                  int64_t bs, int64_t topK)
 {
-    // Data block 1: TokenPerExpert
-    // EP × CeilAlign(EP × MAX_EXPERTS_PER_RANK_A2A3 + 1, 128) × 4B
     int64_t offsetTokenPerExpert = epWorldSize * CeilAlign(epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 + 1, ALIGN_128) *
                                    static_cast<int64_t>(sizeof(int32_t));
 
-    // Data block 2: tensors
-    // ===== winIn =====
     int64_t offsetAAfterDispatch =
         maxRecvTokenNum * (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
     int64_t offsetD = bs * topK * h * static_cast<int64_t>(sizeof(int16_t));
     int64_t winInTensorSize = offsetAAfterDispatch + offsetD;
 
-    // ===== winOut =====
     // winOut A 区按单 chunk（不超过 bs）的 permute 输出分配，逐 chunk 复用，
     // 与 tiling_arch22.cpp CalcLeastCclBufferSize 的 A2 分支一致
     const int64_t chunkTokensA2 = std::min(bs, MOE_PERMUTE_CHUNK);
@@ -451,25 +440,18 @@ int64_t CalcLeastCclBufferSizeA2(int64_t maxRecvTokenNum, int64_t h, int64_t epW
         offsetTensor += maxRecvTokenNum * static_cast<int64_t>(sizeof(float));
     }
 
-    // Data block 3: sync flags
-    int64_t offsetFlag = epWorldSize * ALIGN_512;                 // CrossRankSync
-    offsetFlag += epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 * 64LL; // DispatchFlag
-    offsetFlag += epWorldSize * 64LL;                             // AllGatherFlag
+    int64_t offsetFlag = epWorldSize * ALIGN_512;
+    offsetFlag += epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 * 64LL;
+    offsetFlag += epWorldSize * 64LL;
 
     return (offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE + MB_SIZE) / MB_SIZE;
 }
 
-// A3 minimum buffer size (MB).
-// Matches tiling_arch22.cpp CalcLeastCclBufferSize with isA3=true.
 int64_t CalcLeastCclBufferSizeA3(int64_t h, int64_t epWorldSize, bool isQuantRouting, int64_t bs, int64_t topK)
 {
-    // Data block 1: TokenPerExpert
-    // EP × CeilAlign(EP × MAX_EXPERTS_PER_RANK_A2A3 + 1, 128) × 4B
     int64_t offsetTokenPerExpert = epWorldSize * CeilAlign(epWorldSize * MAX_EXPERTS_PER_RANK_A2A3 + 1, ALIGN_128) *
                                    static_cast<int64_t>(sizeof(int32_t));
 
-    // Data block 2: tensors (winIn only, no winOut)
-    // Window layout is consistent with kernel PeermemInfo: number of rows per chunk (not exceeding bs)
     const int64_t chunkTokens = std::min(bs, MOE_PERMUTE_CHUNK);
     int64_t offsetAAfterDispatch =
         chunkTokens * topK * (isQuantRouting ? (h + ALIGN_512) : h * static_cast<int64_t>(sizeof(int16_t)));
@@ -479,14 +461,11 @@ int64_t CalcLeastCclBufferSizeA3(int64_t h, int64_t epWorldSize, bool isQuantRou
         offsetTensor += chunkTokens * topK * static_cast<int64_t>(sizeof(float));
     }
 
-    // Data block 3: sync flags
     int64_t offsetFlag = std::max(epWorldSize * ALIGN_512, SYNC_STATE_RESERVED_SIZE);
 
     return (offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE + MB_SIZE) / MB_SIZE;
 }
 
-// The Torch JIT wheel does not package op_kernel headers. Keep this pure sizing mirror synchronized with
-// mc2/mega_moe/op_kernel/arch35/common/mega_moe_peermem.h, which remains the host/device layout source of truth.
 int64_t CalcTokenScaleBytesA5(int64_t hidden, int64_t numTopk, int64_t topkWeightsType)
 {
     int64_t mxScaleNum = (hidden + ALIGN_32 - 1) / ALIGN_32;
@@ -510,19 +489,21 @@ int64_t CalcCombineTokenBytesA5(int64_t hidden, int64_t combineQuantMode)
     return CeilAlign(tokenStorageBytes + storedScaleBytes, ALIGN_32);
 }
 
-// Preserve the A5 MTE sizing baseline, including its non-quant combine width and exception-dump prefix.
 int64_t CalcMteCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
                                int64_t hidden, int64_t topkWeightsType)
 {
     int64_t expertPerRank = moeExpertNum / epWorldSize;
 
-    // Compact route-index receive area.
-    int64_t routeIndexAlignSize = CeilAlign(numMaxTokensPerRank * static_cast<int64_t>(sizeof(int32_t)), ALIGN_32);
+    constexpr int64_t maxInt16RouteItems = 1LL << 15;
+    bool useInt16RouteIndex =
+        numTopk > 0 && numMaxTokensPerRank >= 0 && numMaxTokensPerRank * numTopk <= maxInt16RouteItems;
+    int64_t routeIndexTypeBytes =
+        useInt16RouteIndex ? static_cast<int64_t>(sizeof(int16_t)) : static_cast<int64_t>(sizeof(int32_t));
+    int64_t routeIndexAlignSize = CeilAlign(numMaxTokensPerRank * routeIndexTypeBytes, ALIGN_32);
     int64_t routeRecvSize = CeilAlign(expertPerRank * epWorldSize * routeIndexAlignSize, ALIGN_512);
 
-    // Expert-major raw count table: [localExpert][sourceRank].
-    int64_t expertCountRecvSize =
-        CeilAlign(expertPerRank * epWorldSize * static_cast<int64_t>(sizeof(int32_t)), ALIGN_512);
+    // 与 kernel 的固定 MTE count 区容量保持一致。
+    int64_t expertCountRecvSize = PEERMEM_MTE_COUNT_REGION_SIZE;
 
     int64_t tokenBytes = CalcTokenScaleBytesA5(hidden, numTopk, topkWeightsType);
     int64_t dispatchRecordAreaSize = CeilAlign(numMaxTokensPerRank * tokenBytes, ALIGN_512);
@@ -535,7 +516,6 @@ int64_t CalcMteCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     return totalBytes;
 }
 
-// A5 URMA peermem minimum size in bytes. The symmetric layout uses capacity, never the current-rank BS.
 int64_t CalcUrmaCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
                                 int64_t hidden, int64_t combineQuantMode, int64_t topkWeightsType, int64_t serverNum)
 {
@@ -568,9 +548,9 @@ int64_t CalcUrmaCclBufferSizeA5(int64_t epWorldSize, int64_t moeExpertNum, int64
 int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
                                 int64_t hidden, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
                                 c10::optional<int64_t> dispatchQuantOutDtype, int64_t combineQuantMode,
-                                std::string commAlg, int64_t topkWeightsType, int64_t serverNum)
+                                std::string commAlg, int64_t combineCommMode, int64_t topkWeightsType,
+                                int64_t serverNum)
 {
-    // Zero selects the initial MTE layout; a confirmed cross-server context supplies the actual count (> 1).
     TORCH_CHECK(serverNum >= 0, "server_num must be non-negative, but got ", serverNum);
     const char *socName = aclrtGetSocName();
     bool isA2 = (socName != nullptr && std::strstr(socName, "Ascend910B") != nullptr);
@@ -604,7 +584,6 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
                                         numTopk);
     }
 
-    // A5 / 950 checks are aligned with the arch35 host tiling contract.
     TORCH_CHECK(epWorldSize >= 2 && epWorldSize <= 1024, "ep_world_size only support in [2, 1024], but got ",
                 epWorldSize);
     TORCH_CHECK(hidden >= 1024 && hidden <= 8192, "hidden only support in [1024, 8192], but got ", hidden);
@@ -641,7 +620,11 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
         return CalcUrmaCclBufferSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden,
                                        combineQuantMode, topkWeightsType, serverNum);
     }
-    return CalcMteCclBufferSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, topkWeightsType);
+    // 与 arch35 host/kernel 的记录带权重段判定同式：tkw=1 或 combine 去重开
+    // 去重位（"dedup"/"dedup_combine"）时记录尾携带 topk 权重段（tkw=0 的 combine 去重在发送端乘权）。
+    int64_t layoutTopkWeights =
+        (topkWeightsType == 1 || combineCommMode == 1 || commAlg == "dedup" || commAlg == "dedup_combine") ? 1 : 0;
+    return CalcMteCclBufferSizeA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, layoutTopkWeights);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
@@ -651,7 +634,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           py::arg("ep_world_size"), py::arg("moe_expert_num"), py::arg("num_max_tokens_per_rank"), py::arg("num_topk"),
           py::arg("hidden"), py::arg("max_recv_token_num"), py::arg("dispatch_quant_mode"),
           py::arg("dispatch_quant_out_dtype"), py::arg("combine_quant_mode"), py::arg("comm_alg"),
-          py::arg("topk_weights_type"), py::arg("server_num") = 0);
+          py::arg("combine_comm_mode") = 0, py::arg("topk_weights_type"), py::arg("server_num") = 0);
 }
 
 } // namespace op_api

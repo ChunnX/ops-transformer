@@ -94,6 +94,8 @@ struct RunInfoX {
     uint32_t actSingleLoopS2Size = 0; // S2方向长度
     uint32_t actSingleLoopS2SizeAlign;
     uint32_t kvL1BufId = 0; // bmm1加载K时使用的L1 buffer id, bmm2复用V时直接使用, 避免轮转推算错位
+    bool keyPrefetched = false; // K是否已由IterateBmm1Load提前加载到L1, 未预取时bmm1现场加载
+    bool qPreloaded = false;    // Q是否已由IterateQPreload提前加载到L1, 未预取时bmm1现场加载
     bool isS2SplitCore = false;
     uint32_t faTmpOutWsPos = 0; // FA阶段，S2外切，需要写到workspace时，写出到第几块M*D的GM块
 

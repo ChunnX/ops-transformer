@@ -8,7 +8,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Generate 50 supported-range TTK cases (or the 16-case --suite smoke)."""
+"""Generate supported-range TTK cases (or the 16-case --suite smoke).
+
+Cases call the installed torch.ops.cann_ops_transformer API directly;
+pass --plugin <assets directory> without adding assets to PYTHONPATH.
+
+Metadata defaults to (-1,) and requires TTK commit 7b305c89 or later.
+The generator always emits dynamic metadata slots.
+"""
 
 import argparse
 import ast
@@ -31,7 +38,7 @@ HEADER = [
     "precision_tolerances",
     "absolute_precision",
 ]
-API = "flash_mla_with_kvcache_ttk_ops.flash_mla_with_kvcache_ttk"
+API = "torch.ops.cann_ops_transformer.flash_mla_with_kvcache"
 DTYPES = ("float16", "bfloat16")
 COVERAGE_HEADER = HEADER + [
     "tensor_storage_shapes",
@@ -54,7 +61,6 @@ def coverage_row(
     kv_lengths,
     q_lengths,
     *,
-    core_count=256,
     layout="PA_BBND",
     mask=0,
     lse=True,
@@ -62,6 +68,7 @@ def coverage_row(
     omit_max=(),
     nc_axes=(),
     page_order="sequential",
+    num_blocks=None,
     scale=576**-0.5,
     num_heads_q=96,
 ):
@@ -72,9 +79,9 @@ def coverage_row(
     assert all(q <= kv for q, kv in zip(q_lengths, kv_lengths))
     batch = len(q_lengths)
     counts = [(length + 127) // 128 for length in kv_lengths]
-    pages = sum(counts)
+    pages = sum(counts) if num_blocks is None else num_blocks
+    assert pages > 0
     kshape = (pages, 128, 1, 576) if layout == "PA_BBND" else (pages, 1, 36, 128, 16)
-    metadata_size = (((core_count * batch + 1) * 16 + 4095) // 4096) * 4096
     assert num_heads_q in (64, 96)
     shapes = (
         (sum(q_lengths), num_heads_q, 576),
@@ -84,7 +91,7 @@ def coverage_row(
         (batch + 1,),
         None if no_seqused else (batch,),
         (2048, 2048) if mask else None,
-        (metadata_size,),
+        (-1,),  # Materialized by npu_preprocess; CPU golden receives None.
     )
     dtypes = (
         dtype,
@@ -139,9 +146,12 @@ def coverage_row(
     row["remark"] = name
     if nc_axes:
         assert set(nc_axes) <= ({0} if layout == "PA_BBND" else {0, 1})
-        strides = [contiguous_stride(s) if s is not None else None for s in shapes]
-        offsets = [0 if s is not None else None for s in shapes]
-        storage = list(shapes)
+        strides = [
+            contiguous_stride(s) if s is not None and -1 not in s else None
+            for s in shapes
+        ]
+        offsets = [0 if s is not None and -1 not in s else None for s in shapes]
+        storage = [s if s is None or -1 not in s else None for s in shapes]
         kv_stride = list(strides[1])
         for axis in nc_axes:
             kv_stride[axis] *= 2
@@ -157,9 +167,9 @@ def coverage_row(
     return row
 
 
-def coverage_cases(core_count=256):
+def coverage_cases():
     # 16: all currently reachable dtype/layout/mask/LSE template combinations.
-    rows = list(cases(core_count))
+    rows = list(cases())
     for row in rows:
         row["remark"] = "template_matrix"
     # 20: S2 tile=112, page=128, two-tile=224; test both sides and exact boundaries.
@@ -172,7 +182,6 @@ def coverage_cases(core_count=256):
                     [length],
                     [1],
                     num_heads_q=64,
-                    core_count=core_count,
                     layout="PA_NZ" if index % 2 else "PA_BBND",
                     mask=3 if index % 2 else 0,
                     page_order="reverse",
@@ -261,8 +270,25 @@ def coverage_cases(core_count=256):
         ),
     ]
     for name, dtype, kv, q, options in specials:
-        rows.append(coverage_row(name, dtype, kv, q, core_count=core_count, **options))
-    assert len(rows) == 50 and len({r["testcase_name"] for r in rows}) == 50
+        rows.append(coverage_row(name, dtype, kv, q, **options))
+    # Five logical pages share three physical pages across batches, or two
+    # physical pages both within a sequence and across batches.
+    for name, dtype, layout, pages in (
+        ("shared_pages_bbnd", "float16", "PA_BBND", 3),
+        ("shared_pages_nz", "bfloat16", "PA_NZ", 2),
+    ):
+        rows.append(
+            coverage_row(
+                name,
+                dtype,
+                [257, 129],
+                [3, 1],
+                layout=layout,
+                mask=3,
+                num_blocks=pages,
+            )
+        )
+    assert len(rows) == 52 and len({r["testcase_name"] for r in rows}) == 52
     # Bound input storage independently of host golden intermediates/workspace.
     for row in rows:
         shapes = ast.literal_eval(
@@ -279,9 +305,7 @@ def coverage_cases(core_count=256):
     return rows
 
 
-def cases(core_count=256):
-    # Reserve the extension's worst-case metadata capacity for B=2.
-    metadata_size = ((((core_count * 2 + 1) * 16) + 4095) // 4096) * 4096
+def cases():
     for dtype, layout_kv, mask, return_lse in itertools.product(
         ("float16", "bfloat16"),
         ("PA_BBND", "PA_NZ"),
@@ -301,7 +325,7 @@ def cases(core_count=256):
             (3,) if layout_q == "TND" else None,
             (2,),
             (2048, 2048) if mask == 3 else None,
-            (metadata_size,),
+            (-1,),  # Materialized by npu_preprocess; CPU golden receives None.
         )
         dtypes = (
             dtype,
@@ -356,15 +380,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-o", "--output", type=Path, default=None)
     parser.add_argument("--suite", choices=("smoke", "coverage"), default="coverage")
-    parser.add_argument(
-        "--core-count",
-        type=int,
-        default=256,
-        help="Upper bound on AIC + AIV cores for metadata allocation",
-    )
     args = parser.parse_args()
-    if args.core_count <= 0:
-        parser.error("--core-count must be positive")
     requested = args.output or Path(
         f"testcase/flash_mla_with_kvcache_e2e_{args.suite}.csv"
     )
@@ -377,11 +393,7 @@ def main():
             lineterminator="\n",
         )
         writer.writeheader()
-        writer.writerows(
-            coverage_cases(args.core_count)
-            if args.suite == "coverage"
-            else cases(args.core_count)
-        )
+        writer.writerows(coverage_cases() if args.suite == "coverage" else cases())
 
 
 if __name__ == "__main__":

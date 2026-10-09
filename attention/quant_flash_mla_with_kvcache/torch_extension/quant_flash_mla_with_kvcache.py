@@ -104,8 +104,8 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             "Tensor block_table, Tensor cache_seqlens, int quant_mode, *, "
             "Tensor? cu_seqlens_q=None, Tensor? seqused_q=None, "
             "Tensor? attn_mask=None, Tensor? metadata=None, "
-            "float softmax_scale=1.0, int mask_mode=0, "
-            "int max_seqlen_q=-1, int max_seqlen_kv=-1, int head_dim_v=512, "
+            "int head_dim_v=512, float softmax_scale=1.0, int mask_mode=0, "
+            "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
             'str layout_q="BSND", str layout_kv="PA_BNBD", str layout_out="BSND", '
             "bool return_softmax_lse=False) -> (Tensor, Tensor)",
         ]
@@ -134,7 +134,9 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             max_schedule_size = _calculate_max_schedule_size()
             return torch.empty((2, max_schedule_size), dtype=torch.int32, device="meta")
 
-        @impl(get_as_library(), self.name, "Meta")
+        @torch.library.register_fake(
+            "cann_ops_transformer::quant_flash_mla_with_kvcache"
+        )
         def quant_flash_mla_with_kvcache_meta(
             q: torch.Tensor,
             k_cache: torch.Tensor,
@@ -143,39 +145,41 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
             block_table: torch.Tensor,
             cache_seqlens: torch.Tensor,
             quant_mode: Union[QuantMode, int],
+            *,
             cu_seqlens_q: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
             attn_mask: Optional[torch.Tensor] = None,
             metadata: Optional[torch.Tensor] = None,
+            head_dim_v: Optional[int] = MLA_HEAD_DIM_V,
             softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
             max_seqlen_q: Optional[int] = -1,
             max_seqlen_kv: Optional[int] = -1,
-            head_dim_v: Optional[int] = MLA_HEAD_DIM_V,
             layout_q: Optional[str] = "BSND",
             layout_kv: Optional[str] = "PA_BNBD",
             layout_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False,
         ):
-            torch._check(q is not None, lambda: "q must not be None")
+            if q is None:
+                raise ValueError("q must not be None")
             q_expected = _LAYOUT_Q_EXPECTED_NDIM.get(layout_q)
-            torch._check(
-                q_expected is not None,
-                lambda: f"Unsupported layout_q: {layout_q!r}, expected one of TND/BSND/BNSD",
-            )
-            torch._check(
-                q.dim() == q_expected,
-                lambda: f"q with layout {layout_q} expects {q_expected} dims, but got {q.dim()} dims",
-            )
+            if q_expected is None:
+                raise ValueError(
+                    f"Unsupported layout_q: {layout_q!r}, expected one of TND/BSND/BNSD"
+                )
+            if q.dim() != q_expected:
+                raise ValueError(
+                    f"q with layout {layout_q} expects {q_expected} dims, but got {q.dim()} dims"
+                )
             kv_expected = _LAYOUT_KV_EXPECTED_NDIM.get(layout_kv)
-            torch._check(
-                kv_expected is not None,
-                lambda: f"Unsupported layout_kv: {layout_kv!r}, expected one of PA_BBND/PA_BNBD/PA_NZ",
-            )
-            torch._check(
-                k_cache.dim() == kv_expected,
-                lambda: f"k_cache with layout {layout_kv} expects {kv_expected} dims, but got {k_cache.dim()} dims",
-            )
+            if kv_expected is None:
+                raise ValueError(
+                    f"Unsupported layout_kv: {layout_kv!r}, expected one of PA_BBND/PA_BNBD/PA_NZ"
+                )
+            if k_cache.dim() != kv_expected:
+                raise ValueError(
+                    f"k_cache with layout {layout_kv} expects {kv_expected} dims, but got {k_cache.dim()} dims"
+                )
             if layout_q == "TND":
                 t_size = q.size(0)
                 n_size = q.size(1)
@@ -194,10 +198,10 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
                 t_size = 0
                 softmax_out_size = (b_size, n_size, s_size)
 
-            torch._check(
-                layout_out in ("BSND", "BNSD", "TND", "NTD"),
-                lambda: f"Unsupported layout_out: {layout_out!r}, expected one of BSND/BNSD/TND/NTD",
-            )
+            if layout_out not in ("BSND", "BNSD", "TND", "NTD"):
+                raise ValueError(
+                    f"Unsupported layout_out: {layout_out!r}, expected one of BSND/BNSD/TND/NTD"
+                )
             if layout_out == "BSND":
                 attention_out_size = (b_size, s_size, n_size, head_dim_v)
             elif layout_out == "BNSD":
@@ -209,7 +213,7 @@ class QuantFlashMlaWithKvcacheOpBuilder(OpBuilder):
 
             return (
                 torch.empty(attention_out_size, dtype=torch.bfloat16, device=q.device),
-                torch.empty(softmax_out_size, dtype=torch.float32, device=q.device),
+                torch.empty(softmax_out_size, dtype=torch.float, device=q.device),
             )
 
 
@@ -239,16 +243,16 @@ def quant_flash_mla_with_kvcache_metadata(
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
     """
-    torch._check(
-        quant_mode in (1, 2),
-        lambda: f"The quant_mode of quant_flash_mla_with_kvcache_metadata only supports "
-        f"1 (MLA_FP8_E4M3_FULLQUANT) or 2 (MLA_HIF8_FULLQUANT), but got {quant_mode}",
-    )
-    torch._check(
-        num_heads_kv == 1,
-        lambda: f"The num_heads_kv of quant_flash_mla_with_kvcache only supports 1 (MLA KV shared), "
-        f"but got {num_heads_kv}",
-    )
+    if quant_mode not in (1, 2):
+        raise ValueError(
+            f"The quant_mode of quant_flash_mla_with_kvcache_metadata only supports "
+            f"1 (MLA_FP8_E4M3_FULLQUANT) or 2 (MLA_HIF8_FULLQUANT), but got {quant_mode}"
+        )
+    if num_heads_kv != 1:
+        raise ValueError(
+            f"The num_heads_kv of quant_flash_mla_with_kvcache only supports 1 (MLA KV shared), "
+            f"but got {num_heads_kv}"
+        )
     max_seqlen_q = -1 if max_seqlen_q is None else max_seqlen_q
     max_seqlen_kv = -1 if max_seqlen_kv is None else max_seqlen_kv
     quant_mode = _resolve_quant_mode(quant_mode)
@@ -319,15 +323,16 @@ def quant_flash_mla_with_kvcache(
     block_table: torch.Tensor,
     cache_seqlens: torch.Tensor,
     quant_mode: Union[QuantMode, int],
+    *,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     attn_mask: Optional[torch.Tensor] = None,
     metadata: Optional[torch.Tensor] = None,
+    head_dim_v: Optional[int] = MLA_HEAD_DIM_V,
     softmax_scale: Optional[float] = 1.0,
     mask_mode: Optional[Union[MaskMode, int]] = MaskMode.NO_MASK,
     max_seqlen_q: Optional[int] = -1,
     max_seqlen_kv: Optional[int] = -1,
-    head_dim_v: Optional[int] = MLA_HEAD_DIM_V,
     layout_q: Optional[str] = "BSND",
     layout_kv: Optional[str] = "PA_BNBD",
     layout_out: Optional[str] = "BSND",
@@ -337,50 +342,52 @@ def quant_flash_mla_with_kvcache(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    torch._check(
-        quant_mode in (1, 2),
-        lambda: f"The quant_mode of quant_flash_mla_with_kvcache only supports "
-        f"1 (MLA_FP8_E4M3_FULLQUANT) or 2 (MLA_HIF8_FULLQUANT), but got {quant_mode}",
-    )
+    if quant_mode not in (1, 2):
+        raise ValueError(
+            f"The quant_mode of quant_flash_mla_with_kvcache only supports "
+            f"1 (MLA_FP8_E4M3_FULLQUANT) or 2 (MLA_HIF8_FULLQUANT), but got {quant_mode}"
+        )
     quant_mode = _resolve_quant_mode(quant_mode)
     mask_mode = _resolve_mask_mode(mask_mode)
     if head_dim_v is None:
         head_dim_v = MLA_HEAD_DIM_V
 
     # 取 shape 前校验 q/k_cache 非空及维度
-    torch._check(q is not None, lambda: "q must not be None")
-    torch._check(k_cache is not None, lambda: "k_cache must not be None")
+    if q is None:
+        raise ValueError("q must not be None")
+    if k_cache is None:
+        raise ValueError("k_cache must not be None")
     q_expected = _LAYOUT_Q_EXPECTED_NDIM.get(layout_q)
-    torch._check(
-        q_expected is not None,
-        lambda: f"Unsupported layout_q: {layout_q!r}, expected one of TND/BSND/BNSD",
-    )
-    torch._check(
-        q.dim() == q_expected,
-        lambda: f"q with layout {layout_q} expects {q_expected} dims, but got {q.dim()} dims",
-    )
+    if q_expected is None:
+        raise ValueError(
+            f"Unsupported layout_q: {layout_q!r}, expected one of TND/BSND/BNSD"
+        )
+    if q.dim() != q_expected:
+        raise ValueError(
+            f"q with layout {layout_q} expects {q_expected} dims, but got {q.dim()} dims"
+        )
     kv_expected = _LAYOUT_KV_EXPECTED_NDIM.get(layout_kv)
-    torch._check(
-        kv_expected is not None,
-        lambda: f"Unsupported layout_kv: {layout_kv!r}, expected one of PA_BBND/PA_BNBD/PA_NZ",
-    )
-    torch._check(
-        k_cache.dim() == kv_expected,
-        lambda: f"k_cache with layout {layout_kv} expects {kv_expected} dims, but got {k_cache.dim()} dims",
-    )
-    torch._check(
-        metadata is not None,
-        lambda: "metadata should be provided by quant_flash_mla_with_kvcache_metadata",
-    )
+    if kv_expected is None:
+        raise ValueError(
+            f"Unsupported layout_kv: {layout_kv!r}, expected one of PA_BBND/PA_BNBD/PA_NZ"
+        )
+    if k_cache.dim() != kv_expected:
+        raise ValueError(
+            f"k_cache with layout {layout_kv} expects {kv_expected} dims, but got {k_cache.dim()} dims"
+        )
+    if metadata is None:
+        raise ValueError(
+            "metadata should be provided by quant_flash_mla_with_kvcache_metadata"
+        )
     if quant_mode == int(QuantMode.MLA_FP8_E4M3_FULLQUANT):
-        torch._check(
-            q.dtype == torch.float8_e4m3fn,
-            lambda: f"In FP8_E4M3 mode (quant_mode=1), q must be float8_e4m3fn, but got {q.dtype}",
-        )
-        torch._check(
-            k_cache.dtype == torch.float8_e4m3fn,
-            lambda: f"In FP8_E4M3 mode (quant_mode=1), k_cache must be float8_e4m3fn, but got {k_cache.dtype}",
-        )
+        if q.dtype != torch.float8_e4m3fn:
+            raise ValueError(
+                f"In FP8_E4M3 mode (quant_mode=1), q must be float8_e4m3fn, but got {q.dtype}"
+            )
+        if k_cache.dtype != torch.float8_e4m3fn:
+            raise ValueError(
+                f"In FP8_E4M3 mode (quant_mode=1), k_cache must be float8_e4m3fn, but got {k_cache.dtype}"
+            )
 
     op_module = quant_flash_mla_with_kvcache_op_builder.load()
     return op_module.quant_flash_mla_with_kvcache(
@@ -395,11 +402,11 @@ def quant_flash_mla_with_kvcache(
         seqused_q,
         attn_mask,
         metadata,
+        head_dim_v,
         softmax_scale,
         mask_mode,
         max_seqlen_q,
         max_seqlen_kv,
-        head_dim_v,
         layout_q,
         layout_kv,
         layout_out,
@@ -411,3 +418,10 @@ quant_flash_mla_with_kvcache.QuantMode = QuantMode
 quant_flash_mla_with_kvcache.MaskMode = MaskMode
 quant_flash_mla_with_kvcache_metadata.QuantMode = QuantMode
 quant_flash_mla_with_kvcache_metadata.MaskMode = MaskMode
+
+quant_flash_mla_with_kvcache = (
+    torch.ops.cann_ops_transformer.quant_flash_mla_with_kvcache
+)
+quant_flash_mla_with_kvcache_metadata = (
+    torch.ops.cann_ops_transformer.quant_flash_mla_with_kvcache_metadata
+)

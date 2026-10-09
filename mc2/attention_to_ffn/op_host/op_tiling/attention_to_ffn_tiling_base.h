@@ -18,6 +18,7 @@
 
 #include <cstdint>
 
+#include "exe_graph/runtime/tiling_context.h"
 #include "register/tilingdata_base.h"
 
 namespace MC2Tiling {
@@ -45,10 +46,12 @@ struct AttentionToFFNTilingConfig {
 
     bool isMc2Context = false;
     bool allowMxQuantMode = false;
+    bool allowMultiLayer = false;
+    int64_t maxWorldSize = 768;
 };
 
-ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context, const AttentionToFFNTilingConfig &config);
-ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext *context);
+ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext* context, const AttentionToFFNTilingConfig& config);
+ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext* context);
 } // namespace MC2Tiling
 
 #endif // ATTENTION_TO_FFN_TILING_BASE_H

@@ -1,10 +1,10 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -35,9 +35,9 @@ constexpr uint32_t MLA_WS_WRITE_NUM_PER_CORE = 2;
 constexpr uint64_t MLA_CACHELINE_ALIGN_SIZE = 64;
 constexpr uint64_t MLA_RES_LSE_NUM = 2; // ResLse有2份，sum和max
 
-void QuantFlashMlaWithKvcacheTilingFp8Impl::InitTilingInfo(TilingInfo *tilingInfo)
+void QuantFlashMlaWithKvcacheTilingFp8Impl::InitTilingInfo(TilingInfo* tilingInfo)
 {
-    qmlaInfo_ = static_cast<QmlaTilingInfo *>(tilingInfo);
+    qmlaInfo_ = static_cast<QmlaTilingInfo*>(tilingInfo);
 }
 
 bool QuantFlashMlaWithKvcacheTilingFp8Impl::IsCapable()
@@ -63,8 +63,8 @@ void QuantFlashMlaWithKvcacheTilingFp8Impl::CalcScheduleMode()
 
 ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::DoOpTiling()
 {
-    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS,
-                OP_LOGE(qmlaInfo_->opName, "Set plat memory info fail."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(SetPlatMemoryInfo() != ge::GRAPH_SUCCESS, OP_LOGE(qmlaInfo_->opName, "Set plat memory info fail."),
+                return ge::GRAPH_FAILED);
 
     InitImplParam();
     FillTiling();
@@ -108,14 +108,14 @@ ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetPlatMemoryInfo()
 void QuantFlashMlaWithKvcacheTilingFp8Impl::InitImplParam()
 {
     // Online static compilation provides input shapes without runtime tensor data.
-    const auto *cuSeqLenQShape = qmlaInfo_->opParamInfo.cuSeqlensQ.shape;
+    const auto* cuSeqLenQShape = qmlaInfo_->opParamInfo.cuSeqlensQ.shape;
     cuSeqLenQFlag_ = cuSeqLenQShape != nullptr && cuSeqLenQShape->GetStorageShape().GetShapeSize() > 0;
-    const auto *seqUsedQShape = qmlaInfo_->opParamInfo.sequsedQ.shape;
+    const auto* seqUsedQShape = qmlaInfo_->opParamInfo.sequsedQ.shape;
     seqUsedQFlag_ = seqUsedQShape != nullptr && seqUsedQShape->GetStorageShape().GetShapeSize() > 0;
 
     // MLA固定切分
     sOuterFactor_ = MLA_SOUTER_32;
-    sInnerFactor_ = MLA_SINNER_128;
+    sInnerFactor_ = 256U;
     OP_LOGI(qmlaInfo_->opName, "MLA Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
 
     CalcNumBlocks(platformInfo_.aicNum);
@@ -153,8 +153,8 @@ void QuantFlashMlaWithKvcacheTilingFp8Impl::UpdateTilingKeyLayout()
 
 void QuantFlashMlaWithKvcacheTilingFp8Impl::UpdateTilingKeyConfig()
 {
-    // MLA FP8 固定 config: S1Aligned64(M=64) S2Aligned128 DAligned576 DVAligned512
-    tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512;
+    // MLA FP8 固定 config: S1Aligned64(M=64) S2Aligned256 DAligned576 DVAligned512
+    tilingKeyInfo_.config = Config_S1Aligned64_S2Aligned256_DAligned576_DVAligned512;
 }
 
 void QuantFlashMlaWithKvcacheTilingFp8Impl::UpdateTilingKeyKvLayout()
@@ -281,9 +281,8 @@ void QuantFlashMlaWithKvcacheTilingFp8Impl::SetQmlaTilingData()
     tilingData_.pageAttentionParams.maxBlockNumPerBatch = static_cast<uint32_t>(qmlaInfo_->maxBlockNumPerBatch);
 
     int64_t outSize = qmlaInfo_->opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
-    int64_t lseSize = qmlaInfo_->returnSoftmaxLse
-                          ? qmlaInfo_->opParamInfo.softmaxLse.shape->GetStorageShape().GetShapeSize()
-                          : 0;
+    int64_t lseSize =
+        qmlaInfo_->returnSoftmaxLse ? qmlaInfo_->opParamInfo.softmaxLse.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
     tilingData_.emptyTensorParams.singleCoreSize = singleCoreSize;
     tilingData_.emptyTensorParams.totalOutputSize = static_cast<uint64_t>(std::max(outSize, static_cast<int64_t>(0)));
@@ -307,10 +306,9 @@ bool QuantFlashMlaWithKvcacheTilingFp8Impl::CheckNeedInitOutput() const
     return false;
 }
 
-ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetTilingData(
-    QuantFlashMlaWithKvcacheTilingData &tilingData)
+ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetTilingData(QuantFlashMlaWithKvcacheTilingData& tilingData)
 {
-    QuantFlashMlaWithKvcacheTilingData *tiling = context_->GetTilingData<QuantFlashMlaWithKvcacheTilingData>();
+    QuantFlashMlaWithKvcacheTilingData* tiling = context_->GetTilingData<QuantFlashMlaWithKvcacheTilingData>();
     OP_CHECK_IF(tiling == nullptr, OP_LOGE(qmlaInfo_->opName, "The tiling data is nullptr"), return ge::GRAPH_FAILED);
     *tiling = tilingData;
     return ge::GRAPH_SUCCESS;
@@ -318,10 +316,10 @@ ge::graphStatus QuantFlashMlaWithKvcacheTilingFp8Impl::SetTilingData(
 
 void QuantFlashMlaWithKvcacheTilingFp8Impl::PrintAllTilingData()
 {
-    QuantFlashMlaWithKvcacheBaseParams &params = tilingData_.baseParams;
-    QuantFlashMlaWithKvcacheAttenMaskParams &maskParams = tilingData_.attenMaskParams;
-    QuantFlashMlaWithKvcachePageAttentionParams &paParams = tilingData_.pageAttentionParams;
-    QuantFlashMlaWithKvcacheWorkspaceParams &wsParams = tilingData_.workspaceParams;
+    QuantFlashMlaWithKvcacheBaseParams& params = tilingData_.baseParams;
+    QuantFlashMlaWithKvcacheAttenMaskParams& maskParams = tilingData_.attenMaskParams;
+    QuantFlashMlaWithKvcachePageAttentionParams& paParams = tilingData_.pageAttentionParams;
+    QuantFlashMlaWithKvcacheWorkspaceParams& wsParams = tilingData_.workspaceParams;
 
     OP_LOGD(qmlaInfo_->opName, "MLA bSize:%d", params.bSize);
     OP_LOGD(qmlaInfo_->opName, "MLA t1Size:%d", params.t1Size);

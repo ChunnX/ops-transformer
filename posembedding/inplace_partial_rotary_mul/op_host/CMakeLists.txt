@@ -22,6 +22,18 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
         COMPUTE_UNIT Ascend950PR_9599
         OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
     )
+elseif("${CONDITION_UNIT}" STREQUAL "ascend350")
+    add_ops_compile_options(
+        OP_NAME InplacePartialRotaryMul
+        COMPUTE_UNIT Ascend350_355e
+        OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
+    )
+elseif("${CONDITION_UNIT}" STREQUAL "ascend960dt")
+    add_ops_compile_options(
+        OP_NAME InplacePartialRotaryMul
+        COMPUTE_UNIT Ascend960DT_968B7
+        OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
+    )
 endif()
 
 if (BUILD_OPS_RTY_KERNEL)

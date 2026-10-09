@@ -3,29 +3,29 @@
 ## 产品支持情况
 
 <!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
+- <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+- <term>Atlas A3系列产品</term>：支持
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+- <term>Atlas A2系列产品</term>：支持
 <!-- end id3 -->
 <!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
 <!-- end id4 -->
 <!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
+- <term>Atlas推理系列产品</term>：不支持
 <!-- end id5 -->
 <!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
+- <term>Atlas训练系列产品</term>：不支持
 <!-- end id6 -->
 
 ## 功能说明
 
 - **接口功能**：
 
-  基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。
+  基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。其中，该接口在Cube中使用的计算模式为HF32。
 
 - **计算公式**：
 
@@ -118,7 +118,7 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
         <td>phi</td>
         <td>Tensor</td>
         <td>必选</td>
-        <td>MHC的参数矩阵。对应公式中ψ<sup>pre</sup>、ψ<sup>post</sup>、ψ<sup>res</sup>。使用时对N轴进行拆分，分别是(N, N*C), (N, N*C), (N*N, N*C)。</td>
+        <td>MHC的参数矩阵。对应公式中<span style="font-family: 'Cambria Math', 'Times New Roman', serif;">φ</span><sup>pre</sup>、<span style="font-family: 'Cambria Math', 'Times New Roman', serif;">φ</span><sup>post</sup>、<span style="font-family: 'Cambria Math', 'Times New Roman', serif;">φ</span><sup>res</sup>。使用时对N轴进行拆分，分别是(N, N*C), (N, N*C), (N*N, N*C)。</td>
         <td>float32</td>
         <td>(N*N+2*N, N*C)</td>
     </tr>
@@ -247,12 +247,12 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
   - numIters：表示迭代次数，目前仅支持20。
   - N：目前仅支持4。
   <!-- npu="A3,910b" id7 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
     - 输入x仅支持4维BSND格式，shape为(B, S, N, C)。
     - 尾轴C要求128对齐，取值范围为[1, 100000]。
   <!-- end id7 -->
   <!-- npu="950" id8 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Ascend 950PR&950DT系列产品</term>：
     - 输入x支持4维BSND格式和3维TND格式，shape分别为(B, S, N, C)和(T, N, C)。
     - TND格式下，T表示所有Batch序列长度的累加和；对应输出shape按参数说明中的T轴展开。
     - 尾轴C仅支持4096、7168。
@@ -266,11 +266,11 @@ cann_ops_transformer.mhc_pre_sinkhorn(x, phi, alpha, bias, hcMult, numIters, hcE
 
 - Batch一致性：
     <!-- npu="A3,910b" id9 -->
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A3系列产品</term>、<term>Atlas A2系列产品</term>：
         - 默认不支持Batch一致性。
     <!-- end id9 -->
     <!-- npu="950" id10 -->
-    - <term>Ascend 950PR/Ascend 950DT</term>：
+    - <term>Ascend 950PR&950DT系列产品</term>：
         - 默认不支持Batch一致性，可通过Pytorch开关（[《TorchNPU自定义API》](https://www.hiascend.com/document/detail/zh/Pytorch/latest/apiref/customapi/docs/zh/custom_APIs/overview.md)中torch_npu.npu.set_deterministic_level）支持。开启Batch一致性后性能可能会有一定程度的劣化。
     <!-- end id10 -->
 

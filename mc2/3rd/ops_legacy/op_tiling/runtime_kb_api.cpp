@@ -9,13 +9,13 @@
  */
 
 #include "runtime_kb_api.h"
-#ifdef BUILD_OPEN_PROJECT
+#if defined(BUILD_OPEN_PROJECT) && !defined(MC2_LEGACY_DECOUPLED)
 #include "legacy_common_manager.h"
 #include "mc2_log_compat.h"
 #endif
 
 namespace RuntimeKb {
-#ifdef BUILD_OPEN_PROJECT
+#if defined(BUILD_OPEN_PROJECT) && !defined(MC2_LEGACY_DECOUPLED)
 uint32_t QueryBank(const void *src, size_t src_len, const std::string &op_type, const std::string &soc_version,
                    uint32_t core_num, tuningtiling::TuningTilingDefPtr &tiling)
 {

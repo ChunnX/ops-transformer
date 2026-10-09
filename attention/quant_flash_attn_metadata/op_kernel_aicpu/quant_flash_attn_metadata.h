@@ -50,7 +50,39 @@ constexpr uint32_t FD_WORKSPACE_IDX_INDEX = 2U;
 constexpr uint32_t FD_WORKSPACE_NUM_INDEX = 3U;
 constexpr uint32_t FD_M_START_INDEX = 4U;
 constexpr uint32_t FD_M_NUM_INDEX = 5U;
-constexpr uint32_t QUANT_FAG_DETER_MAX_NUM_INDEX = 0U;
+
+// ---- QuantFlashAttnGrad 反向调度数据 (metadata 第二维) ----
+// 标量区 [0, 16)
+constexpr uint32_t QUANT_FAG_DETER_MAX_NUM_INDEX = 0U;    // 确定性调度总轮数, 即 kernel 的 loop_max
+constexpr uint32_t QUANT_FAG_NEED_INIT_OUTPUT_INDEX = 1U; // dq/dk/dv workspace 是否需要清零
+constexpr uint32_t QUANT_FAG_BATCH_SIZE_INDEX = 2U;       // batch 数, kernel 反查 batch 的循环上界
+constexpr uint32_t QUANT_FAG_SCHEDULE_VALID_INDEX = 3U;   // swizzle 调度是否安全, 0 表示不支持该 shape
+constexpr uint32_t QUANT_FAG_AIC_CORE_NUM_INDEX = 4U;
+constexpr uint32_t QUANT_FAG_ROUND_PREFIX_OFFSET_INDEX = 5U;
+constexpr uint32_t QUANT_FAG_S1_OUTER_OFFSET_INDEX = 6U;
+constexpr uint32_t QUANT_FAG_S2_OUTER_OFFSET_INDEX = 7U;
+constexpr uint32_t QUANT_FAG_ROW_BEGIN_OFFSET_INDEX = 8U;
+constexpr uint32_t QUANT_FAG_COL_BEGIN_OFFSET_INDEX = 9U;
+constexpr uint32_t QUANT_FAG_SCHEDULE_ROWS_OFFSET_INDEX = 10U;
+constexpr uint32_t QUANT_FAG_SCHEDULE_COLS_OFFSET_INDEX = 11U;
+constexpr uint32_t QUANT_FAG_S1_TOKEN_OFFSET_INDEX = 12U;
+constexpr uint32_t QUANT_FAG_S2_TOKEN_OFFSET_INDEX = 13U;
+constexpr uint32_t QUANT_FAG_SCHEDULE_KIND_INDEX = 14U;
+constexpr uint32_t QUANT_FAG_SPARSE_ARRAY_COUNT = 6U;
+// TND line swizzle: 槽14=3, 槽8为mode, 9-13为lineM/N/P/Q/runSize偏移, token紧跟runSize
+constexpr uint32_t QUANT_FAG_SCHEDULE_MODE_INDEX = 8U;
+constexpr uint32_t QUANT_FAG_TND_LINE_MODE = 1U;
+constexpr uint32_t QUANT_FAG_TND_LINE_M_OFFSET_INDEX = 9U;
+constexpr uint32_t QUANT_FAG_TND_LINE_N_OFFSET_INDEX = 10U;
+constexpr uint32_t QUANT_FAG_TND_LINE_P_OFFSET_INDEX = 11U;
+constexpr uint32_t QUANT_FAG_TND_LINE_Q_OFFSET_INDEX = 12U;
+constexpr uint32_t QUANT_FAG_TND_LINE_RUN_SIZE_OFFSET_INDEX = 13U;
+constexpr uint32_t QUANT_FAG_DENSE_SWIZZLE = 2U;
+constexpr uint32_t QUANT_FAG_TND_LINE_SWIZZLE = 3U;
+constexpr uint32_t QUANT_FAG_ARRAY_BASE_INDEX = 16U;
+// FAG分核基本块大小, 与 kernel 的 CUBE_BASEM / CUBE_BASEN 保持一致
+constexpr uint32_t QUANT_FAG_CUBE_BASE_M = 512U;
+constexpr uint32_t QUANT_FAG_CUBE_BASE_N = 512U;
 
 namespace detail {
 struct FaMetaData {
@@ -131,22 +163,36 @@ struct FaMetaData {
 
 struct QuantFAGMetaData {
     uint32_t *data;
+    uint32_t rowSize; // 第二行可用长度, 等于 fagOffset(两行等长)
     // metadata shape 为 (2, dim0)，第一维存正向 FA 调度数据，
     // 第二维存反向 QuantFAG 调度数据，偏移 dim0 个元素到达第二维起始。
     // dim0 由 torch 层按 sectionNum 最坏值动态分配，从输出 tensor shape 读取。
     QuantFAGMetaData(void *metadataPtr, uint32_t fagOffset)
-        : data(static_cast<uint32_t *>(metadataPtr) + fagOffset)
+        : data(static_cast<uint32_t *>(metadataPtr) + fagOffset),
+          rowSize(fagOffset)
     {}
 
     void SetDeterMaxRound(uint32_t metaIdx, int64_t val)
     {
-        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        assert(metaIdx < rowSize);
         data[metaIdx] = static_cast<uint32_t>(val);
     }
 
     int64_t GetDeterMaxRound(uint32_t metaIdx)
     {
-        assert(metaIdx < QUANT_FAG_METADATA_SIZE);
+        assert(metaIdx < rowSize);
+        return data[metaIdx];
+    }
+
+    void SetMetaData(uint32_t metaIdx, int64_t val)
+    {
+        assert(metaIdx < rowSize);
+        data[metaIdx] = static_cast<uint32_t>(val);
+    }
+
+    int64_t GetMetaData(uint32_t metaIdx)
+    {
+        assert(metaIdx < rowSize);
         return data[metaIdx];
     }
 };

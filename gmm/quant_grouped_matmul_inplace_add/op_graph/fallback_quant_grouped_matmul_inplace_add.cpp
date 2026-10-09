@@ -71,7 +71,11 @@ static bool ApplyTranspose(size_t index, bool enableTranspose, ge::DataType data
         // dimM the second-to-last dim， dimN the last dim
         auto dimM = viewShape.size() - 2;
         auto dimN = viewShape.size() - 1;
-        if (viewShape[dimM] != 1 && viewShape[dimN] != 0) {
+        // The fused graph provides X1 in the source (K, M) layout.  K == 1
+        // is a valid case and must not suppress the axis exchange; otherwise
+        // the aclnn fallback receives X1 as (K, M) while X2 is interpreted as
+        // (K, N), causing a K-dimension mismatch.
+        if (viewShape[dimN] != 0) {
             auto swap = strides[dimN];
             strides[dimN] = strides[dimM];
             strides[dimM] = swap;

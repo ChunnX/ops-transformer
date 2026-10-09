@@ -23,7 +23,7 @@
 #define KERNEL_STATUS_PARAM_INVALID 1
 
 namespace aicpu {
-uint32_t QuantFlashMlaWithKvcacheMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t QuantFlashMlaWithKvcacheMetadataCpuKernel::Compute(CpuKernelContext& ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
@@ -34,17 +34,17 @@ uint32_t QuantFlashMlaWithKvcacheMetadataCpuKernel::Compute(CpuKernelContext &ct
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool QuantFlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool QuantFlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext& ctx)
 {
     cacheSeqlens_ = ctx.Input(static_cast<uint32_t>(ParamId::cacheSeqlens));
     cuSeqlensQ_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensQ));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
-    bool requiredAttrs = GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
-                         GetAttrValue(ctx, "soc_version", socVersion_) &&
-                         GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-                         GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
+    bool requiredAttrs =
+        GetAttrValue(ctx, "num_heads_q", numHeadsQ_) && GetAttrValue(ctx, "num_heads_kv", numHeadsKv_) &&
+        GetAttrValue(ctx, "soc_version", socVersion_) && GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+        GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
     if (!requiredAttrs) {
         return false;
     }
@@ -58,7 +58,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     return ParamsInit();
 }
 
-std::vector<int64_t> QuantFlashMlaWithKvcacheMetadataCpuKernel::GetTensorDataAsInt64(Tensor *tensor, size_t size)
+std::vector<int64_t> QuantFlashMlaWithKvcacheMetadataCpuKernel::GetTensorDataAsInt64(Tensor* tensor, size_t size)
 {
     std::vector<int64_t> result(size);
     if (tensor == nullptr || tensor->GetData() == nullptr || size == 0) {
@@ -66,46 +66,46 @@ std::vector<int64_t> QuantFlashMlaWithKvcacheMetadataCpuKernel::GetTensorDataAsI
     }
 
     DataType dataType = tensor->GetDataType();
-    void *data = tensor->GetData();
+    void* data = tensor->GetData();
 
     switch (dataType) {
         case DT_INT32: {
-            int32_t *ptr = static_cast<int32_t *>(data);
+            int32_t* ptr = static_cast<int32_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
             break;
         }
         case DT_INT64: {
-            int64_t *ptr = static_cast<int64_t *>(data);
+            int64_t* ptr = static_cast<int64_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = ptr[i];
             }
             break;
         }
         case DT_INT16: {
-            int16_t *ptr = static_cast<int16_t *>(data);
+            int16_t* ptr = static_cast<int16_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
             break;
         }
         case DT_UINT32: {
-            uint32_t *ptr = static_cast<uint32_t *>(data);
+            uint32_t* ptr = static_cast<uint32_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
             break;
         }
         case DT_UINT64: {
-            uint64_t *ptr = static_cast<uint64_t *>(data);
+            uint64_t* ptr = static_cast<uint64_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
             break;
         }
         case DT_UINT16: {
-            uint16_t *ptr = static_cast<uint16_t *>(data);
+            uint16_t* ptr = static_cast<uint16_t*>(data);
             for (size_t i = 0; i < size; ++i) {
                 result[i] = static_cast<int64_t>(ptr[i]);
             }
@@ -132,8 +132,9 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     // KV侧: cache_seqlens为必选输入, shape为(batchSize,)
     const bool hasCacheSeqlens = cacheSeqlens_ != nullptr && cacheSeqlens_->GetData() != nullptr;
     if (hasCacheSeqlens) {
-        batchSize_ = cacheSeqlens_->GetTensorShape()->GetDimSize(0);
-        auto cacheSeqlens = GetTensorDataAsInt64(cacheSeqlens_, batchSize_);
+        auto cacheSeqlens = GetTensorDataAsInt64(cacheSeqlens_, cacheSeqlens_->NumElements());
+        // batch size 由 cacheSeqlens 实际长度推导(每batch一项), 与flmwkcc非量化版本一致
+        batchSize_ = static_cast<int32_t>(cacheSeqlens.size());
         baseInfo.actualKvSeqSize.resize(batchSize_, baseInfo.kvSeqSize);
         for (int64_t i = 0; i < batchSize_; ++i) {
             // PA场景: cache_seqlens为每batch实际长度, 直接存入actualKvSeqSize和kvSeqSize
@@ -161,8 +162,8 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
         }
     }
     if (baseInfo.isCumulativeQuerySeq && cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-        batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
-        auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, batchSize_ + 1);
+        auto cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_, cuSeqlensQ_->NumElements());
+        batchSize_ = static_cast<int32_t>(cuSeqlensQ.size()) - 1;
         baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
         for (int64_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i + 1];
@@ -171,8 +172,8 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
         }
     }
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
-        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, batchSize_);
+        auto sequsedQ = GetTensorDataAsInt64(sequsedQ_, sequsedQ_->NumElements());
+        batchSize_ = static_cast<int32_t>(sequsedQ.size());
         baseInfo.actualQuerySeqSize.resize(batchSize_, baseInfo.querySeqSize);
         for (int64_t i = 0; i < batchSize_; ++i) {
             baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
@@ -194,22 +195,22 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     // KV cache为PA布局, 分核侧统一按BSND处理
     baseInfo.layoutKv = ConvertToLayout("BSND");
     // MLA量化场景: quantMode 1=FP8_E4M3, 0=HIFLOAT8, 按量化模式设置分核代价估算的数据类型(均为1字节)
-    load_balance::DataType quantDtype = (quantMode_ == 1) ? load_balance::DataType::FP8
-                                        : (quantMode_ == 0) ? load_balance::DataType::HIFP8
-                                        : load_balance::DataType::INT8;
+    load_balance::DataType quantDtype = (quantMode_ == 1) ? load_balance::DataType::FP8_E4M3FN :
+                                        (quantMode_ == 0) ? load_balance::DataType::HIFP8 :
+                                                            load_balance::DataType::INT8;
     baseInfo.queryType = quantDtype;
     baseInfo.kvType = quantDtype;
 
-    // MLA固定切分: SOuter=32, SInner=128 (与FIA MLA tiling保持一致)
-    s2BaseSize_ = NUM_128; // SInner
+    // MLA固定切分: SOuter=32, SInner=256 (与QMLA kernel保持一致)
+    s2BaseSize_ = 256U;                                // SInner
     mBaseSize_ = NUM_32 * (aivCoreNum_ / aicCoreNum_); // SOuter * cvRatio
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
-    param.l2Byte = 96*1024*1024;
+    param.l2Byte = 96 * 1024 * 1024;
     // param.fdTolerance = 300;
     param.fdOn = true;
     // MLA的M轴为GS1合轴(n2=1, g=numHeadsQ), 与FA kernel的M轴遍历方式一致
-    param.outputLayout = load_balance::OutputLayout::BN2_S1G;
+    param.kernelSplitMode = load_balance::KernelSplitMode::BN2_S1G_S2;
 
     // 防御: 分核需要有效的Q/KV长度, 无任何varlen信息且max_seqlen未传时报错
     if (baseInfo.querySeqSize == 0U || baseInfo.kvSeqSize == 0U) {
@@ -223,7 +224,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-bool QuantFlashMlaWithKvcacheMetadataCpuKernel::BalanceSchedule(SectionStreamKResult &splitRes)
+bool QuantFlashMlaWithKvcacheMetadataCpuKernel::BalanceSchedule(SectionStreamKResult& splitRes)
 {
     auto ret = load_balance::SectionStreamK::Compute(deviceInfo, baseInfo, param, splitRes) == SECTION_STREAM_K_SUCCESS;
     return ret;
@@ -280,7 +281,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::CheckNeedInitOutput()
     return false;
 }
 
-bool QuantFlashMlaWithKvcacheMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
+bool QuantFlashMlaWithKvcacheMetadataCpuKernel::GenMetaData(SectionStreamKResult& splitRes)
 {
     if (metaData_ == nullptr || metaData_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
@@ -359,7 +360,7 @@ bool QuantFlashMlaWithKvcacheMetadataCpuKernel::GenMetaData(SectionStreamKResult
 }
 
 namespace {
-static const char *kernelType = "QuantFlashMlaWithKvcacheMetadata";
+static const char* kernelType = "QuantFlashMlaWithKvcacheMetadata";
 REGISTER_CPU_KERNEL(kernelType, QuantFlashMlaWithKvcacheMetadataCpuKernel);
 } // namespace
 

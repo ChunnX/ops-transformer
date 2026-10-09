@@ -100,6 +100,44 @@ TEST_F(SparseFlashAttentionTilingArch35, SparseFlashAttention_950_tiling_1)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
+// return_softmax_lse is true while layout_kv is PA_BSND, supported on Ascend950 only
+TEST_F(SparseFlashAttentionTilingArch35, SparseFlashAttention_950_tiling_2)
+{
+    struct SparseFlashAttentionCompileInfo {
+    } compileInfo;
+    int64_t actual_seq_qlist[] = {113};
+    int64_t actual_seq_kvlist[] = {113};
+    gert::TilingContextPara tilingContextPara(
+        "SparseFlashAttention",
+        {
+            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // query            input0
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // key              input1
+            {{{1, 128, 1, 512}, {1, 128, 1, 512}}, ge::DT_BF16, ge::FORMAT_ND},     // value            input2
+            {{{1, 128, 1, 2048}, {1, 128, 1, 2048}}, ge::DT_INT32, ge::FORMAT_ND},  // sparse_indices   input3
+            {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},                        // block_table      input4
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_qlist},      // actual_seq_lengths_query
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND, true, actual_seq_kvlist},     // actual_seq_lengths_kv
+            {{{1, 128, 128, 64}, {1, 128, 128, 64}}, ge::DT_BF16, ge::FORMAT_ND},   // query_rope       input5
+            {{{1, 128, 1, 64}, {1, 128, 1, 64}}, ge::DT_BF16, ge::FORMAT_ND}        // key_rope         input6
+        },
+        {
+            {{{1, 128, 128, 512}, {1, 128, 128, 512}}, ge::DT_BF16, ge::FORMAT_ND}, // attention_out
+            {{{1, 1, 128, 128}, {1, 1, 128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},    // softmax_max
+            {{{1, 1, 128, 128}, {1, 1, 128, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}     // softmax_sum
+        },
+        {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.0416666666666667)},
+         {"sparse_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+         {"layout_query", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSND")},
+         {"layout_kv", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_BSND")},
+         {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+         {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+         {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}},
+        &compileInfo, "Ascend950", 56, 262144, 16384);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, UINT64_MAX);
+}
+
 // Tiling data classes are registered for the op
 TEST_F(SparseFlashAttentionTilingArch35, SparseFlashAttention_tiling_data_class_registered)
 {

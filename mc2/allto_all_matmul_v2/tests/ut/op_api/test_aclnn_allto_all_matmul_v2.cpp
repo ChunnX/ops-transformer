@@ -90,7 +90,7 @@ INSTANTIATE_TEST_SUITE_P(
 // workspaceSize / executor pointers).
 TEST(AclnnAlltoAllMatmulV2NullptrTest, NullWorkspaceSizeAndExecutor)
 {
-    op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
+    op::SetPlatformNpuArch(Ops::Base::DAV_3510);
     TensorDesc context({1, 2052}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc x1({57086, 1536}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
     TensorDesc x2({9216, 3072}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);

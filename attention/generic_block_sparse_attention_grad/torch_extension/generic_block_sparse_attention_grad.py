@@ -20,12 +20,22 @@ GSAG_TASK_LIST_OFFSET = 80  # 8 + 2 * 36
 GSAG_TASK_ENTRY_SIZE = 4
 GSAG_METADATA_OP_NAME = "generic_block_sparse_attention_grad_metadata"
 ARC22_GBSAG_TASK_LIST_SIZE = 198  # 6 + 64 * 3
+_OP_PREFIX = "GenericBlockSparseAttentionGrad"
 
 
 class MaskMode(IntEnum):
     """mask_mode 枚举：对外 str/int/IntEnum 经由本枚举映射为传给算子侧的 int。"""
 
     CAUSAL = 1
+
+
+class ResidualBlockMode(IntEnum):
+    """尾部不完整 KV 块的处理模式。"""
+
+    MARKED_BY_SPARSE_BLK_IDX = 0  # 是否参与计算由 sparse_block_idx 决定。
+    INCOMPLETE_BLK_KEPT_BUT_NOT_IN_SPARSE_BLK_IDX = (
+        1  # 必定参与计算但不在索引中；当前不支持。
+    )
 
 
 def _resolve_mask_mode(mask_mode: Union[str, int, MaskMode, None]) -> int:
@@ -39,17 +49,50 @@ def _resolve_mask_mode(mask_mode: Union[str, int, MaskMode, None]) -> int:
         try:
             return int(MaskMode[mask_mode.strip().upper()])
         except KeyError as exc:
-            valid = ", ".join(m.name.lower() for m in MaskMode)
+            valid = ", ".join(f"{m.name}={m.value}" for m in MaskMode)
             raise ValueError(
-                f"mask_mode should be one of [{valid}], but got {mask_mode!r}"
+                f"{_OP_PREFIX}: only support mask_mode in [{valid}], got {mask_mode!r}"
             ) from exc
     try:
         return int(MaskMode(mask_mode))
     except ValueError as exc:
         valid = ", ".join(f"{m.name}={m.value}" for m in MaskMode)
         raise ValueError(
-            f"mask_mode should be one of [{valid}], but got {mask_mode!r}"
+            f"{_OP_PREFIX}: only support mask_mode == {int(MaskMode.CAUSAL)} (CAUSAL), "
+            f"got {mask_mode!r}. Supported: [{valid}]"
         ) from exc
+
+
+def _resolve_residual_block_mode(
+    residual_block_mode: Union[str, int, ResidualBlockMode],
+) -> int:
+    """将枚举名字符串、整数或枚举统一为算子侧整数；支持范围由属性检查负责。"""
+    try:
+        if isinstance(residual_block_mode, str):
+            return int(ResidualBlockMode[residual_block_mode.strip().upper()])
+        return int(ResidualBlockMode(residual_block_mode))
+    except (KeyError, TypeError, ValueError) as exc:
+        valid = ", ".join(f"{m.name}={m.value}" for m in ResidualBlockMode)
+        raise ValueError(
+            f"{_OP_PREFIX}: invalid residual_block_mode {residual_block_mode!r}; "
+            f"expected an enum name or value in [{valid}]. Only "
+            "ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX (0) is currently supported."
+        ) from exc
+
+
+def _check_sparse_attributes(
+    layout_sparse_pattern: int, residual_block_mode: int
+) -> None:
+    if layout_sparse_pattern != 1:
+        raise ValueError(
+            f"{_OP_PREFIX}: layout_sparse_pattern currently only supports 1 (BNKQ), got {layout_sparse_pattern}"
+        )
+    if residual_block_mode != ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX:
+        raise ValueError(
+            f"{_OP_PREFIX}: residual_block_mode currently only supports "
+            "ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX (0), "
+            f"got {residual_block_mode}"
+        )
 
 
 def calc_gsag_metadata_size(batch_size: int, num_heads_q: int, num_j: int) -> int:
@@ -65,7 +108,9 @@ def calc_gsag_metadata_size(batch_size: int, num_heads_q: int, num_j: int) -> in
 
 def _max_segment_from_cu_seqlens(cu_seqlens: torch.Tensor) -> int:
     if cu_seqlens.numel() < 2:
-        raise ValueError("cu_seqlens must have at least 2 elements to infer max_seqlen")
+        raise ValueError(
+            f"{_OP_PREFIX}: cu_seqlens must have at least 2 elements to infer max_seqlen"
+        )
     diffs = cu_seqlens[1:] - cu_seqlens[:-1]
     return int(diffs.max().item())
 
@@ -81,7 +126,9 @@ def _resolve_max_seqlen_q(
     if max_seqlen_q is not None:
         value = int(max_seqlen_q)
         if value < 0:
-            raise ValueError(f"max_seqlen_q must be >= 0, but got {value}")
+            raise ValueError(
+                f"{_OP_PREFIX}: max_seqlen_q must be >= 0, but got {value}"
+            )
         return value
     if seqused_q is not None:
         return int(seqused_q.max().item())
@@ -90,7 +137,7 @@ def _resolve_max_seqlen_q(
     if sparse_block_idx.dim() == 4:
         return int(sparse_block_idx.shape[3])
     raise ValueError(
-        "cannot infer max_seqlen_q; pass max_seqlen_q explicitly or provide "
+        f"{_OP_PREFIX}: cannot infer max_seqlen_q; pass max_seqlen_q explicitly or provide "
         "seqused_q / cu_seqlens_q / 4D sparse_block_idx"
     )
 
@@ -107,7 +154,9 @@ def _resolve_max_seqlen_kv(
     if max_seqlen_kv is not None:
         value = int(max_seqlen_kv)
         if value < 0:
-            raise ValueError(f"max_seqlen_kv must be >= 0, but got {value}")
+            raise ValueError(
+                f"{_OP_PREFIX}: max_seqlen_kv must be >= 0, but got {value}"
+            )
         return value
     if seqused_kv is not None:
         return int(seqused_kv.max().item())
@@ -120,7 +169,7 @@ def _resolve_max_seqlen_kv(
             # Satisfies host check: J == ceil(max_seqlen_kv / block_y)
             return num_j * block_y
     raise ValueError(
-        "cannot infer max_seqlen_kv; pass max_seqlen_kv explicitly or provide "
+        f"{_OP_PREFIX}: cannot infer max_seqlen_kv; pass max_seqlen_kv explicitly or provide "
         "seqused_kv / cu_seqlens_kv / 4D sparse_block_idx with block_shape"
     )
 
@@ -140,19 +189,19 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
             "int num_heads_q, int num_heads_kv, int head_dim, int[] block_shape, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
-            "int? max_seqlen_q=None, int? max_seqlen_kv=None, bool is_packed_gqa=True, "
-            'str layout_q="TND", str layout_kv="TND", '
+            "int? max_seqlen_q=None, int? max_seqlen_kv=None, "
+            'str layout_q="TND", str layout_kv="TND", int layout_sparse_pattern=1, '
             "int mask_mode=1, int softmax_precision=0, "
-            "int win_left=-1, int win_right=-1) -> Tensor",
+            "int win_left=-1, int win_right=-1, int residual_block_mode=0, bool is_consistent_topk=False) -> Tensor",
             "generic_block_sparse_attention_grad("
             "Tensor q, Tensor k, Tensor v, Tensor dout, Tensor attn_out, Tensor softmax_lse, "
             "Tensor sparse_block_idx, Tensor sparse_block_count, int[] block_shape, *, "
             "Tensor? metadata=None, Tensor? attn_mask=None, Tensor? cu_seqlens_q=None, "
             "Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None, "
-            "bool is_packed_gqa=True, "
-            'str layout_q="TND", str layout_kv="TND", '
+            'str layout_q="TND", str layout_kv="TND", int layout_sparse_pattern=1, '
             "float softmax_scale=1.0, int mask_mode=1, int softmax_precision=0, "
-            "int win_left=-1, int win_right=-1) -> (Tensor, Tensor, Tensor)",
+            "int win_left=-1, int win_right=-1, int residual_block_mode=0, "
+            "bool is_consistent_topk=False) -> (Tensor, Tensor, Tensor)",
         ]
 
     def register_meta(self):
@@ -171,19 +220,22 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
             seqused_kv: Optional[torch.Tensor] = None,
             max_seqlen_q: Optional[int] = None,
             max_seqlen_kv: Optional[int] = None,
-            is_packed_gqa: bool = True,
             layout_q: str = "TND",
             layout_kv: str = "TND",
+            layout_sparse_pattern: int = 1,
             mask_mode: int = 1,
             softmax_precision: int = 0,
             win_left: int = -1,
             win_right: int = -1,
+            residual_block_mode: int = 0,
+            is_consistent_topk: bool = False,
         ) -> torch.Tensor:
+            _check_sparse_attributes(layout_sparse_pattern, residual_block_mode)
             del (
+                is_consistent_topk,
                 sparse_block_count,
                 num_heads_kv,
                 head_dim,
-                is_packed_gqa,
                 layout_q,
                 layout_kv,
                 mask_mode,
@@ -191,9 +243,9 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
                 win_left,
                 win_right,
             )
-            if len(block_shape) < 2:
+            if len(block_shape) != 2:
                 raise ValueError(
-                    "block_shape is required and must be [block_x, block_y]"
+                    f"{_OP_PREFIX}: block_shape is required and must be [block_x, block_y]"
                 )
             block_y = int(block_shape[1])
             batch = int(sparse_block_idx.shape[0])
@@ -239,16 +291,24 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
             cu_seqlens_kv: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
-            is_packed_gqa: bool = True,
             layout_q: str = "TND",
             layout_kv: str = "TND",
+            layout_sparse_pattern: int = 1,
             softmax_scale: float = 1.0,
             mask_mode: int = 1,
             softmax_precision: int = 0,
             win_left: int = -1,
             win_right: int = -1,
+            residual_block_mode: int = 0,
+            is_consistent_topk: bool = False,
         ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            _check_sparse_attributes(layout_sparse_pattern, residual_block_mode)
+            if len(block_shape) != 2:
+                raise ValueError(
+                    f"{_OP_PREFIX}: block_shape is required and must be [block_x, block_y]"
+                )
             del (
+                is_consistent_topk,
                 dout,
                 attn_out,
                 softmax_lse,
@@ -261,7 +321,6 @@ class GenericBlockSparseAttentionGradOpBuilder(OpBuilder):
                 cu_seqlens_kv,
                 seqused_q,
                 seqused_kv,
-                is_packed_gqa,
                 layout_q,
                 layout_kv,
                 softmax_scale,
@@ -298,16 +357,25 @@ def generic_block_sparse_attention_grad_metadata(
     seqused_kv: Optional[torch.Tensor] = None,
     max_seqlen_q: Optional[int] = None,
     max_seqlen_kv: Optional[int] = None,
-    is_packed_gqa: bool = True,
     layout_q: str = "TND",
     layout_kv: str = "TND",
+    layout_sparse_pattern: int = 1,
     mask_mode: Union[int, MaskMode, str] = MaskMode.CAUSAL,
     softmax_precision: int = 0,
     win_left: int = -1,
     win_right: int = -1,
+    residual_block_mode: Union[
+        int, ResidualBlockMode, str
+    ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+    is_consistent_topk: bool = False,
 ) -> torch.Tensor:
-    if len(block_shape) < 2:
-        raise ValueError("block_shape is required and must be [block_x, block_y]")
+    """生成 GBSAG Metadata；residual_block_mode 支持模式 0 的枚举、整数或枚举名字符串。"""
+    residual_block_mode = _resolve_residual_block_mode(residual_block_mode)
+    _check_sparse_attributes(layout_sparse_pattern, residual_block_mode)
+    if len(block_shape) != 2:
+        raise ValueError(
+            f"{_OP_PREFIX}: block_shape is required and must be [block_x, block_y]"
+        )
     max_seqlen_q_i = _resolve_max_seqlen_q(
         max_seqlen_q,
         sparse_block_idx=sparse_block_idx,
@@ -336,13 +404,15 @@ def generic_block_sparse_attention_grad_metadata(
         num_heads_kv,
         head_dim,
         block_shape,
-        int(is_packed_gqa),
         layout_q,
         layout_kv,
+        layout_sparse_pattern,
         mask_mode_i,
         softmax_precision,
         win_left,
         win_right,
+        int(residual_block_mode),
+        is_consistent_topk,
     )
 
 
@@ -364,17 +434,26 @@ def generic_block_sparse_attention_grad(
     cu_seqlens_kv: Optional[torch.Tensor] = None,
     seqused_q: Optional[torch.Tensor] = None,
     seqused_kv: Optional[torch.Tensor] = None,
-    is_packed_gqa: bool = True,
     layout_q: str = "TND",
     layout_kv: str = "TND",
+    layout_sparse_pattern: int = 1,
     softmax_scale: float = 1.0,
     mask_mode: Union[int, MaskMode, str] = MaskMode.CAUSAL,
     softmax_precision: int = 0,
     win_left: int = -1,
     win_right: int = -1,
+    residual_block_mode: Union[
+        int, ResidualBlockMode, str
+    ] = ResidualBlockMode.MARKED_BY_SPARSE_BLK_IDX,
+    is_consistent_topk: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    if len(block_shape) < 2:
-        raise ValueError("block_shape is required and must be [block_x, block_y]")
+    """计算 GBSAG 梯度；residual_block_mode 支持模式 0 的枚举、整数或枚举名字符串。"""
+    residual_block_mode = _resolve_residual_block_mode(residual_block_mode)
+    _check_sparse_attributes(layout_sparse_pattern, residual_block_mode)
+    if len(block_shape) != 2:
+        raise ValueError(
+            f"{_OP_PREFIX}: block_shape is required and must be [block_x, block_y]"
+        )
     mask_mode_i = _resolve_mask_mode(mask_mode)
     op_module = generic_block_sparse_attention_grad_op_builder.load()
     return op_module.generic_block_sparse_attention_grad(
@@ -393,14 +472,16 @@ def generic_block_sparse_attention_grad(
         seqused_q,
         seqused_kv,
         block_shape,
-        int(is_packed_gqa),
         layout_q,
         layout_kv,
+        layout_sparse_pattern,
         softmax_scale,
         mask_mode_i,
         softmax_precision,
         win_left,
         win_right,
+        int(residual_block_mode),
+        is_consistent_topk,
     )
 
 

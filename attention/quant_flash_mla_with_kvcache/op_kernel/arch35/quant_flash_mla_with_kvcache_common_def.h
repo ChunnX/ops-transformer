@@ -35,9 +35,9 @@
 #define InOutLayoutType_TND_BNSD 2 // 输出BNSD
 #define InOutLayoutType_TND_NTD 3  // 输出NTD
 
-// Config: 分块对齐（M=64（cube视角, SOuter=32*cvRatio）, S2Inner=128, D=576, DV=512）
+// Config: 分块对齐（M=64（cube视角, SOuter=32*cvRatio）, S2Inner=256, D=576, DV=512）
 // 与FIA MLA实现及metadata分核mBaseSize=32*cvRatio=64保持一致
-#define Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512 0
+#define Config_S1Aligned64_S2Aligned256_DAligned576_DVAligned512 0
 
 // KvLayoutType
 #define KvLayoutType_PA_BBND 0
@@ -62,10 +62,10 @@ enum class QmlaInferLayOutType {
 
 // inOutLayoutType → (输入layout, 输出layout), BSND输出与BSH模板等价
 static constexpr QmlaInferLayOutType InOutLayoutTypeValue[4][2] = {
-    {QmlaInferLayOutType::LAYOUT_TND, QmlaInferLayOutType::LAYOUT_TND},   // InOutLayoutType_TND_TND
-    {QmlaInferLayOutType::LAYOUT_TND, QmlaInferLayOutType::LAYOUT_BSH},   // InOutLayoutType_TND_BSND
-    {QmlaInferLayOutType::LAYOUT_TND, QmlaInferLayOutType::LAYOUT_BNSD},  // InOutLayoutType_TND_BNSD
-    {QmlaInferLayOutType::LAYOUT_TND, QmlaInferLayOutType::LAYOUT_NTD},   // InOutLayoutType_TND_NTD
+    {QmlaInferLayOutType::LAYOUT_TND, QmlaInferLayOutType::LAYOUT_TND},  // InOutLayoutType_TND_TND
+    {QmlaInferLayOutType::LAYOUT_TND, QmlaInferLayOutType::LAYOUT_BSH},  // InOutLayoutType_TND_BSND
+    {QmlaInferLayOutType::LAYOUT_TND, QmlaInferLayOutType::LAYOUT_BNSD}, // InOutLayoutType_TND_BNSD
+    {QmlaInferLayOutType::LAYOUT_TND, QmlaInferLayOutType::LAYOUT_NTD},  // InOutLayoutType_TND_NTD
 };
 
 // 与kernel侧S1TemplateType/S2TemplateType/DTemplateType（util_regbase.h）取值一致
@@ -107,7 +107,7 @@ struct QmlaConfigParams {
 
 // config → 分块模板参数
 static constexpr QmlaConfigParams ConfigValue[] = {
-    {QmlaS1TemplateType::Aligned64, QmlaS2TemplateType::Aligned128, QmlaDTemplateType::Aligned576,
+    {QmlaS1TemplateType::Aligned64, QmlaS2TemplateType::Aligned256, QmlaDTemplateType::Aligned576,
      QmlaDTemplateType::Aligned512},
 };
 

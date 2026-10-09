@@ -17,7 +17,6 @@ from .flash_mla_with_kvcache_golden import FlashMlaWithKvcacheGolden
 def cpu_flash_mla_with_kvcache(
     q,
     k_cache,
-    *,
     block_table=None,
     cache_seqlens=None,
     cu_seqlens_q=None,

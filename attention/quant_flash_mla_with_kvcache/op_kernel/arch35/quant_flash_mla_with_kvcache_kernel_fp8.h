@@ -50,8 +50,9 @@ public:
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
 
-    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
-    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
+    static constexpr uint32_t PRELOAD_N = 1; // C1(i), C2(i-1)
+    // Four task slots keep L+1 (prefetch), L (QK), and L-1 (PV) distinct.
+    static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4U;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
@@ -114,26 +115,24 @@ public:
           vecFaBlock_(constInfo_),
           vecFdBlock_(constInfo_){};
 
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *qDescale,
-                                __gm__ uint8_t *kDescale, __gm__ uint8_t *blockTable, __gm__ uint8_t *cacheSeqLens,
-                                __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *attnMask,
-                                __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *workspace,
-                                const QuantFlashMlaWithKvcacheTilingData &tiling)
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* qDescale,
+                                __gm__ uint8_t* kDescale, __gm__ uint8_t* blockTable, __gm__ uint8_t* cacheSeqLens,
+                                __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* sequsedQ, __gm__ uint8_t* attnMask,
+                                __gm__ uint8_t* metadata, __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse,
+                                __gm__ uint8_t* workspace, const QuantFlashMlaWithKvcacheTilingData& tiling)
     {
         InitConstInfo(tiling);
 
         // metadata header: [0]=sectionNum
-        sectionNum_ = ((__gm__ uint32_t *)metadata)[QMLA_HEAD_SECTION_NUM_INDEX];
+        sectionNum_ = ((__gm__ uint32_t*)metadata)[QMLA_HEAD_SECTION_NUM_INDEX];
         // FA区: header之后, 布局[section][aicIdx][16]
-        faMetaDataGm_.SetGlobalBuffer(
-            (__gm__ uint32_t *)(metadata + QMLA_METADATA_HEADER_SIZE * sizeof(uint32_t)),
-            QMLA_AIC_CORE_NUM * QMLA_FA_METADATA_SIZE * sectionNum_);
+        faMetaDataGm_.SetGlobalBuffer((__gm__ uint32_t*)(metadata + QMLA_METADATA_HEADER_SIZE * sizeof(uint32_t)),
+                                      QMLA_AIC_CORE_NUM * QMLA_FA_METADATA_SIZE * sectionNum_);
         // FD区: FA区之后, 布局[section][aivIdx][16]
         fdMetaDataGm_.SetGlobalBuffer(
-            (__gm__ uint32_t *)(metadata +
-                                (QMLA_METADATA_HEADER_SIZE + sectionNum_ * QMLA_AIC_CORE_NUM * QMLA_FA_METADATA_SIZE) *
-                                    sizeof(uint32_t)),
+            (__gm__ uint32_t*)(metadata +
+                               (QMLA_METADATA_HEADER_SIZE + sectionNum_ * QMLA_AIC_CORE_NUM * QMLA_FA_METADATA_SIZE) *
+                                   sizeof(uint32_t)),
             QMLA_AIV_CORE_NUM * QMLA_FD_METADATA_SIZE * sectionNum_);
 
         // Q序列解析: cu_seqlens_q(B+1) + seqused_q(B)
@@ -141,24 +140,23 @@ public:
         // 重复+1会使GetTSize()越界读cu_seqlens_q[B+1], 批跑时该位置残留前序case脏数据导致死循环
         qCuSeqLensParser_.Init(cuSeqLensQ, constInfo_.cuSeqLensQSize, sequsedQ, constInfo_.seqUsedQSize);
         // KV序列解析: cache_seqlens(B)
-        cacheSeqLensGm_.SetGlobalBuffer((__gm__ int32_t *)cacheSeqLens, constInfo_.kvSeqUsedSize);
+        cacheSeqLensGm_.SetGlobalBuffer((__gm__ int32_t*)cacheSeqLens, constInfo_.kvSeqUsedSize);
         kvSeqUsedParser_.Init(cacheSeqLensGm_, constInfo_.kvSeqUsedSize, constInfo_.s2Size);
         // FD统一开关: metadata header[1], 由metadata算子按是否存在FD任务写入, 所有核一致
-        constInfo_.enableFlashDecode =
-            static_cast<bool>(((__gm__ uint32_t *)metadata)[QMLA_HEAD_IS_FD_INDEX]);
+        constInfo_.enableFlashDecode = static_cast<bool>(((__gm__ uint32_t*)metadata)[QMLA_HEAD_IS_FD_INDEX]);
         workspace = GetUserWorkspace(workspace);
 
         if ASCEND_IS_AIV {
             // MLA: V=K_nope, descale共用k_descale
-            vecFaBlock_.InitVecBlock(qDescale, kDescale, kDescale, softmaxLse, attnOut, workspace,
-                                     qCuSeqLensParser_, attnMask);
+            vecFaBlock_.InitVecBlock(qDescale, kDescale, kDescale, softmaxLse, attnOut, workspace, qCuSeqLensParser_,
+                                     attnMask);
             vecFaBlock_.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
             // MLA: 无独立v_cache, value复用key指针
-            cubeBlock_.InitCubeBlock(query, key, key, blockTable, qDescale, kDescale, kDescale,
-                                      qCuSeqLensParser_, kvSeqUsedParser_);
+            cubeBlock_.InitCubeBlock(query, key, key, blockTable, qDescale, kDescale, kDescale, qCuSeqLensParser_,
+                                     kvSeqUsedParser_);
         }
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
@@ -167,7 +165,7 @@ public:
                                              this->vecFaBlock_.accumOutGm_, this->vecFaBlock_.attentionOutGm_);
                 vecFdBlock_.SetCuSeqLensParsers(qCuSeqLensParser_);
                 if (constInfo_.isSoftmaxLseEnable) {
-                    softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
+                    softmaxLseGm_.SetGlobalBuffer((__gm__ float*)softmaxLse);
                     vecFdBlock_.InitSoftmaxLseGm(softmaxLseGm_);
                 }
             }
@@ -175,7 +173,7 @@ public:
         (void)attnMask;
     }
 
-    __aicore__ inline void InitConstInfo(const QuantFlashMlaWithKvcacheTilingData &tiling)
+    __aicore__ inline void InitConstInfo(const QuantFlashMlaWithKvcacheTilingData& tiling)
     {
         if ASCEND_IS_AIC {
             constInfo_.aicIdx = GetBlockIdx();
@@ -185,11 +183,11 @@ public:
             constInfo_.subBlockIdx = GetSubBlockIdx();
         }
 
-        const auto &baseParams = tiling.baseParams;
-        const auto &attenMaskParams = tiling.attenMaskParams;
-        const auto &pageAttentionParams = tiling.pageAttentionParams;
-        const auto &workspaceParams = tiling.workspaceParams;
-        const auto &emptyTensorParams = tiling.emptyTensorParams;
+        const auto& baseParams = tiling.baseParams;
+        const auto& attenMaskParams = tiling.attenMaskParams;
+        const auto& pageAttentionParams = tiling.pageAttentionParams;
+        const auto& workspaceParams = tiling.workspaceParams;
+        const auto& emptyTensorParams = tiling.emptyTensorParams;
 
         constInfo_.bSize = baseParams.bSize;
         constInfo_.t1Size = baseParams.t1Size;
@@ -304,7 +302,9 @@ public:
                     continue;
                 }
             }
-            if (validTaskCount) {
+            // 执行门控: 分发未结束时须保证ExecuteTask(L)前任务L+1已创建(validTaskCount>=2),
+            // 供ExecuteTask提前一轮预取下一任务的K/Q; 收尾阶段(分发完毕)放行, 逐个排空流水
+            if (validTaskCount >= 2 || (!shouldDispatchTask && validTaskCount > 0)) {
                 ExecuteTask(executedTaskCount, taskRunInfo);
                 executedTaskCount++;
                 if (executedTaskCount > PRELOAD_N) {
@@ -366,8 +366,8 @@ public:
         return TASK_DEAL_MODE::CREATE_TASK;
     }
 
-    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ_, int64_t actSeqLensKv_, int64_t &preTokenLeftUp,
-                                                 int64_t &nextTokenLeftUp)
+    __aicore__ inline void GetPreNextTokenLeftUp(int64_t actSeqLensQ_, int64_t actSeqLensKv_, int64_t& preTokenLeftUp,
+                                                 int64_t& nextTokenLeftUp)
     {
         preTokenLeftUp = 0;
         nextTokenLeftUp = 0;
@@ -395,13 +395,42 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-        RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX& runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务: C1
+        RunInfoX& runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮: C2
+        RunInfoX& runInfoNext = taskRunInfo[(loop + 1) % PRELOAD_TASK_CACHE_SIZE]; // 下一轮: 仅用于提前搬运K/Q
+
+        // 提前一轮发起下一任务的K搬运(仅MTE2、不等落地): MAC算本轮(L)与上轮(L-1)时, MTE2后台搬L+1
+        if (runInfoNext.isValid) {
+            if ASCEND_IS_AIC {
+                ComputeBmm1Load(runInfoNext);
+            }
+        }
+        // 首个任务(loop==0)无"上一轮"可预取, 须在本轮同轮发起K搬运
+        if (loop == 0) {
+            if (runInfo0.isValid) {
+                if ASCEND_IS_AIC {
+                    // Q的MTE2与首任务K同拍发出, 压缩启动期(仅首任务安全: 无前序Q的MTE1读)
+                    if (runInfo0.isFirstS2Loop) {
+                        ComputeQPreload(runInfo0);
+                    }
+                    ComputeBmm1Load(runInfo0);
+                }
+            }
+        }
+
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
+                ComputeMm1(runInfo0, runInfo0.qPreloaded);
             } else {
                 ComputeVec1(runInfo0);
+            }
+        }
+
+        // 下一任务为换Q块首任务: Q的MTE2提前到本轮发起(须在ComputeMm1之后:
+        // 本轮Q的MTE1锁已在IterateBmm1Internal末尾释放且qL1BufId_已轮转到新槽, 预取写新槽无冲突)
+        if (runInfo0.isValid && runInfoNext.isValid && runInfo0.isLastS2Loop && runInfoNext.isFirstS2Loop) {
+            if ASCEND_IS_AIC {
+                ComputeQPreload(runInfoNext);
             }
         }
 
@@ -417,22 +446,32 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeBmm1Load(RunInfoX& runInfo)
     {
-        cubeBlock_.IterateBmm1(runInfo);
+        cubeBlock_.IterateBmm1Load(runInfo);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeQPreload(RunInfoX& runInfo)
+    {
+        cubeBlock_.IterateQPreload(runInfo);
+    }
+
+    __aicore__ inline void ComputeMm1(RunInfoX& runInfo, bool qPreloaded = false)
+    {
+        cubeBlock_.IterateBmm1(runInfo, qPreloaded);
+    }
+
+    __aicore__ inline void ComputeMm2(RunInfoX& runInfo)
     {
         cubeBlock_.IterateBmm2(runInfo);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec1(RunInfoX& runInfo)
     {
         vecFaBlock_.ProcessVec1(runInfo);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec2(RunInfoX& runInfo)
     {
         this->vecFaBlock_.ProcessVec2(runInfo);
     }
@@ -440,12 +479,14 @@ public:
     __aicore__ inline void CreateTask(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur,
                                       RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+        RunInfoX& runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
         CalcParams(loop, bN2Cur, gS1Cur, s2Cur, runInfo);
         runInfo.isValid = true;
+        runInfo.keyPrefetched = false; // slot复用, 清除上一个任务残留的预取标记
+        runInfo.qPreloaded = false;
     }
 
-    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX &info)
+    __aicore__ inline void CalcParams(uint64_t loop, uint32_t bN2Cur, uint32_t gS1Cur, uint32_t s2Cur, RunInfoX& info)
     {
         info.loop = loop;
         info.mloop = mloop_;
@@ -501,8 +542,8 @@ public:
         }
     }
 
-    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t &bN2Cur, uint32_t &gS1Cur,
-                                          uint32_t &s2Cur)
+    __aicore__ inline void UpdateAxisInfo(TASK_DEAL_MODE taskDealMode, uint32_t& bN2Cur, uint32_t& gS1Cur,
+                                          uint32_t& s2Cur)
     {
         uint64_t s2LoopTimes = (actSeqLensKv_ + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ_ * constInfo_.realGSize;
