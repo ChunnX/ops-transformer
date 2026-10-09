@@ -11,6 +11,7 @@
 /*!
  * \file apace_common_utils.h
  * \brief Host-side argument parsing, shape helpers, and error utilities for matmul examples.
+ * CeilDiv 为 host/device 双态方法, 可同时被宿主侧与 kernel 侧 (bisheng -xasc) 包含。
  */
 
 #pragma once
@@ -18,6 +19,14 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+
+// 双态标注: 纯宿主编译态将 __aicore__ 展开为空, 保证本头文件可被纯 host TU 解析
+// (bisheng 混合 TU (-xasc) 中 host(__host__)/device(__aicore__) 函数禁止互调, 故 CeilDiv 双版本共存)
+#ifndef __CCE_AICORE__
+#ifndef __aicore__
+#define __aicore__
+#endif
+#endif
 
 namespace mm {
 // Quantized MX element layouts for non-type template parameters.
@@ -59,14 +68,29 @@ constexpr uint64_t GetBiasDataSize()
         } \
     } while (0)
 
+// CeilDiv host 侧模板: tiling/ST 等宿主函数调用
+// 先除后加形式: (a+b-1)/b 在 a+b-1 超过类型上限时回绕, 本写法对任意值域安全
 template <typename T>
 inline T CeilDiv(T a, T b)
 {
     if (b == 0) {
         return a;
     }
-    return a / b + static_cast<T>(a % b != 0);
+    return a / b + (a % b != 0 ? 1 : 0);
 }
+
+// CeilDiv 设备侧版本: kernel 内 __aicore__ 函数调用
+// bisheng 禁止 __host__↔__aicore__ 互调; 独立命名空间隔离, 避免与 host 模板及
+// Blaze::Gemm::CeilDiv 产生跨侧重载干扰
+namespace ApaceKernel {
+__aicore__ inline uint64_t CeilDiv(uint64_t a, uint64_t b)
+{
+    if (b == 0) {
+        return a;
+    }
+    return a / b + (a % b != 0 ? 1U : 0U);
+}
+} // namespace ApaceKernel
 
 template <typename T>
 inline T Align(T a, T b)

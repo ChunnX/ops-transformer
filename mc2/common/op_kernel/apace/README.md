@@ -7,7 +7,8 @@ apace/
 ├── kernel/                       # 通算融合算子实现
 │   ├── fusions/                  #   通信 + Matmul 融合算子
 │   │   ├── all_gather_quant_matmul/
-│   │   └── all_to_all_quant_matmul/
+│   │   ├── all_to_all_quant_matmul/
+│   │   └── matmul_reduce_scatter/
 │   └── matmul/                   #   Matmul kernel
 │       ├── grouped_matmul/
 │       └── quant_batch_matmul/
