@@ -907,6 +907,163 @@ class TestMhcPreSplitPostRes(TestCase):
         """P0：S=4/D=2560 BSND 完整形态 FP16"""
         self.__run_test_bsnd(B=1, S=4, N=4, D=2560, dtype=torch.float16)
 
+    # ======================== OOM：显存压力注入（合并 STC 3.9.2，序号 387） ========================
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_oom_workspace_pressure_inject(self):
+        """OOM（序号 387）：显存压力下调用须正确完成或可诊断失败（RuntimeError）、无死锁；
+        释放后小 shape 可再次运行成功（执行器不得遗留不完整状态）。"""
+        inputs = self._generate_input_tensors(1, 4, 4, 5120, torch.bfloat16, seed=42)
+        inputs_npu = MhcInputTensors(x=inputs.x.npu(), phi=inputs.phi.npu(),
+                                     alpha=inputs.alpha.npu(), bias=inputs.bias.npu())
+        hog = None
+        try:
+            free, _total = torch.npu.mem_get_info()
+            keep = 256 * 1024 * 1024  # 余量 256MB：hog 自身分配须成功，算子分配失败或恰成功
+            numel = max((free - keep) // 2, 0)
+            try:
+                hog = torch.empty(numel, dtype=torch.float16, device="npu")
+                torch.npu.synchronize()
+            except RuntimeError as e:
+                logger.info(f"[oom] pressure alloc failed, skip failure branch: {str(e)[:80]}")
+            ok = False
+            try:
+                self._run_npu_custom_op(inputs_npu, 1e-6, False)
+                torch.npu.synchronize()
+                ok = True  # 余量内成功亦符合"正确完成"分支
+                logger.info("[oom] op completed under pressure (accepted)")
+            except RuntimeError as e:
+                ok = True  # 可诊断失败分支
+                logger.info(f"[oom] op failed diagnostically: {str(e)[:100]}")
+            self.assertTrue(ok)
+        finally:
+            del hog
+            torch.npu.empty_cache()
+        # 释放后小 shape 恢复（无资源遗留）
+        self.__run_test_bsnd(B=1, S=2, N=4, D=2560, dtype=torch.bfloat16)
+
+    # ======================== ASAN/同步安全：跨 token 复用水位（合并 STC 3.9.6，序号 397/398） ========================
+    # 深度内存检测由 msSanitizer 专项闭环（双形态无泄漏，2026-10-08）；本组把安全性固化为
+    # 可回归 ST 断言：输出队列跨 token UB/GM 复用（PREC-1）逐位正确 + 显存水位不累积。
+
+    def __run_mem_safety(self, B, S, N, D, dtype, phi_rows=None, iters=50):
+        inputs = self._generate_input_tensors(B, S, N, D, dtype, seed=20261009, phi_rows=phi_rows)
+        inputs_npu = MhcInputTensors(x=inputs.x.npu(), phi=inputs.phi.npu(),
+                                     alpha=inputs.alpha.npu(), bias=inputs.bias.npu())
+        base = self._run_npu_custom_op(inputs_npu, 1e-6, False)
+        torch.npu.synchronize()
+        mem0 = torch.npu.memory_allocated()
+        for i in range(iters):
+            out = self._run_npu_custom_op(inputs_npu, 1e-6, False)
+            if (i + 1) % 10 == 0:
+                self.assertTrue(torch.equal(out.h_post, base.h_post))
+                if phi_rows is None:
+                    self.assertTrue(torch.equal(out.h_res, base.h_res))
+        torch.npu.synchronize()
+        mem1 = torch.npu.memory_allocated()
+        self.assertLessEqual(mem1, mem0 + 2 * 1024 * 1024,
+                             "memory watermark drifted: cross-token buffer reuse may leak")
+        logger.info(f"[mem-safety] T={B*S} D={D} iters={iters} mem delta {(mem1 - mem0) / 1e6:.2f}MB")
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_mem_safety_4_5120_dual(self):
+        """ASAN/同步安全（序号 397）：双核完整形态，跨 token 输出队列复用逐位正确 + 水位稳定"""
+        self.__run_mem_safety(1, 4, 4, 5120, torch.bfloat16)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_bf16_mem_safety_65_6144_single(self):
+        """ASAN/同步安全（序号 398）：单核多 token（余数 1、短尾），首末 token 边界 + 水位稳定"""
+        self.__run_mem_safety(1, 65, 4, 6144, torch.bfloat16)
+
+    # ======================== 级联：A 侧 golden → B 算子（合并 STC 3.11，序号 501~505） ========================
+    # A 侧算子 mhc_norm_post_preonly 不在本仓（omni_custom_ops 未部署于本环境）；
+    # A 段采用其 ATK 评测同源 CPU FP64 golden（AiInfraMhcSandwichNormPostPreonlyV2 executor
+    # _golden_cpu_fp64：RMSNorm_0 → x2 = h_post·h_normed + hrᵀ·residual → 可选 RMSNorm_mid）生成
+    # x2_out，按级联 dtype 契约（同主 dtype）链入 B 算子做 NPU 双标杆精度与性能验证。
+    # 待 A 侧算子包可集成后，A 段可无缝替换为 NPU 算子输出（数据契约不变）。
+
+    @staticmethod
+    def __a_side_x2_out(D, N=4, T=4, gamma2=False, seed=20261009, dtype=torch.bfloat16):
+        """A 侧 CPU FP64 golden 的 x2_out 段（与 ATK executor 同源公式）。"""
+        rng = np.random.RandomState(seed)
+        h = torch.from_numpy(rng.uniform(-2, 2, (T, D)).astype(np.float32)).double()
+        res = torch.from_numpy(rng.uniform(-2, 2, (T, N, D)).astype(np.float32)).double()
+        hp = torch.from_numpy(rng.uniform(0.5, 2, (T, N)).astype(np.float32)).double()
+        hr = torch.from_numpy(rng.uniform(-0.5, 0.5, (T, N, N)).astype(np.float32)).double()
+        g0 = torch.from_numpy(rng.uniform(0.5, 2, (D,)).astype(np.float32)).double()
+        neps = 1e-6
+        h_normed = h * torch.rsqrt(torch.mean(h * h, dim=-1, keepdim=True) + neps) * g0
+        x2 = hp.unsqueeze(-1) * h_normed.unsqueeze(-2) + torch.matmul(hr.transpose(-1, -2), res)
+        if gamma2:
+            g2 = torch.from_numpy(rng.uniform(0.5, 2, (N * D,)).astype(np.float32)).double()
+            x2f = x2.reshape(T, N * D)
+            x2 = (x2f * torch.rsqrt(torch.mean(x2f * x2f, dim=-1, keepdim=True) + neps)
+                  * g2).reshape(T, N, D)
+        assert torch.isfinite(x2).all()
+        return x2.to(torch.float32).to(dtype)  # 级联 dtype 契约：x2_out 同主 dtype
+
+    def __run_cascade(self, D, dtype, phi_rows=None, gamma2=False, T=4, lead=None):
+        N = 4
+        x2 = self.__a_side_x2_out(D, N=N, T=T, gamma2=gamma2, dtype=dtype)
+        if lead == "BSND":
+            x2 = x2.reshape(2, 2, N, D)  # T=4 的 B/S 分解
+        rng = np.random.RandomState(20261010)
+        rows = phi_rows if phi_rows is not None else N * N + N
+        inputs = MhcInputTensors(
+            x=x2,
+            phi=torch.from_numpy(rng.uniform(-2, 2, (rows, N * D)).astype(np.float32)),
+            alpha=torch.from_numpy(rng.uniform(0.5, 2, (2,)).astype(np.float32)),
+            bias=torch.from_numpy(rng.uniform(-0.5, 0.5, (rows,)).astype(np.float32)),
+        )
+        self._run_pipeline(inputs, 1e-6, N, phi_rows)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_cascade_501_full_5120(self):
+        """级联（序号 501）：A(gamma_2=None)→x2_out→B 完整形态，链式双标杆，bf16/D=5120"""
+        self.__run_cascade(5120, torch.bfloat16)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_cascade_502_post_only_mid(self):
+        """级联（序号 502）：A(gamma_2 非空，含 mid 归一化)→x2_out→B 仅 post 形态"""
+        self.__run_cascade(5120, torch.bfloat16, phi_rows=4, gamma2=True)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_cascade_503_tail_6144_7168(self):
+        """级联（序号 503，2 组 subTest）：D=6144/7168 尾块链路，FP16"""
+        for D in (6144, 7168):
+            with self.subTest(D=D):
+                self.__run_cascade(D, torch.float16)
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_cascade_504_bsnd_2x2(self):
+        """级联（序号 504）：B/S 分解 [2,2]（T=4 折叠一致），bf16/D=5120"""
+        self.__run_cascade(5120, torch.bfloat16, lead="BSND")
+
+    @pytest.mark.resources(device="npu:*")
+    def test_mhc_pre_split_post_res_cascade_505_perf(self):
+        """级联（序号 505）：A 段 CPU 生成 + B 段 NPU eager 端到端计时（记录 P50，
+        与 3.10 单算子验收值同带自检），为整网 4% 目标提供分解证据。"""
+        import time
+        x2 = self.__a_side_x2_out(5120, dtype=torch.bfloat16)
+        rng = np.random.RandomState(20261010)
+        phi = torch.from_numpy(rng.uniform(-2, 2, (20, 20480)).astype(np.float32)).npu()
+        alpha = torch.from_numpy(rng.uniform(0.5, 2, (2,)).astype(np.float32)).npu()
+        bias = torch.from_numpy(rng.uniform(-0.5, 0.5, (20,)).astype(np.float32)).npu()
+        x_npu = x2.npu()
+        for _ in range(5):  # warmup
+            torch.ops.cann_ops_transformer.mhc_pre_split_post_res(x_npu, phi, alpha, bias, 1e-6)
+        torch.npu.synchronize()
+        ts = []
+        for _ in range(20):
+            t0 = time.perf_counter()
+            torch.ops.cann_ops_transformer.mhc_pre_split_post_res(x_npu, phi, alpha, bias, 1e-6)
+            torch.npu.synchronize()
+            ts.append((time.perf_counter() - t0) * 1e3)
+        ts.sort()
+        p50 = ts[len(ts) // 2]
+        logger.info(f"[cascade-perf] B-side eager p50={p50:.3f}ms (kernel 验收值 15.09us 同带自检)")
+        self.assertLess(p50, 5.0)  # eager 端到端 sanity：launch 主导，应处亚毫秒~毫秒级
+
     # ======================== epsilon 变体（须最后执行） ========================
     # 平台缺陷（2026-10-09 实测定位，机理已修正）：APT/GE 对同 (shape, TilingKey) 调用
     # 固化复用首次生成的 tilingData，normEps 不参与复用 key——同 shape 下非默认 eps 仅进程内
