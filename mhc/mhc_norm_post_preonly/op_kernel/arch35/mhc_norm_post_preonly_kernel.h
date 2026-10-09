@@ -185,7 +185,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         // 仅大D启用；D<=5120保留原有标量取值和UB分配路径。
         if constexpr (ACCUMULATE_IN_UB) {
             if (tOff == 0U) {
-                LocalTensor<float> accumulator = this->bufPartialAccum_.Get<float>();
+                LocalTensor<float> accumulator = this->bufPartialAccum_.template Get<float>();
                 for (uint32_t half = halfBegin; half < halfEnd; ++half) {
                     Duplicate(accumulator[half * MhcNormRegBase::VL_FP32], 0.0f,
                               MhcNormRegBase::VL_FP32);
@@ -337,7 +337,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     LocalTensor<float> scBuf, uint32_t half, uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
     float (&dotHalf)[2][N])
 {
-    LocalTensor<float> result = this->bufPartialAccum_.Get<float>()[half * MhcNormRegBase::VL_FP32];
+    LocalTensor<float> result = this->bufPartialAccum_.template Get<float>()[half * MhcNormRegBase::VL_FP32];
     AscendC::Add(result, result, scBuf, N + 1U);
     PipeBarrier<PIPE_V>();
     if (tOff + tD < D_) {
@@ -720,7 +720,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         // 为initcheck建立一次性的MTE2初始化；后续Vector结果会覆盖这些槽位。
         DataCopy(bufScalar_.Get<float>(), gamma0Gm_, PARTIAL_SLOT_ELEMS);
         if constexpr (ACCUMULATE_IN_UB) {
-            LocalTensor<float> accumulator = this->bufPartialAccum_.Get<float>();
+            LocalTensor<float> accumulator = this->bufPartialAccum_.template Get<float>();
             if constexpr (DUAL_SIBLING) {
                 DataCopy(accumulator[siblingAivIdx_ * MhcNormRegBase::VL_FP32], gamma0Gm_, PARTIAL_SLOT_ELEMS);
             } else {
