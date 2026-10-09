@@ -1557,14 +1557,16 @@ bool SparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
 {
     constexpr uint32_t SMLA_A6_AIC_CORE_MAX_NUM = 80U;
     constexpr uint32_t SMLA_A6_AIV_CORE_MAX_NUM = 80U;
-    struct FaView {
-        uint32_t faMetadata[SMLA_A6_AIC_CORE_MAX_NUM][FA_METADATA_SIZE];
-    };
-    struct FdView {
-        uint32_t fdMetadata[SMLA_A6_AIV_CORE_MAX_NUM][FD_METADATA_SIZE];
-    };
     const uint32_t aicCoreMaxNum =
         ProcessSocVersion() == ValidSocVersion::ASCEND960 ? SMLA_A6_AIC_CORE_MAX_NUM : AIC_CORE_MAX_NUM;
+    const uint32_t aivCoreMaxNum =
+        ProcessSocVersion() == ValidSocVersion::ASCEND960 ? SMLA_A6_AIV_CORE_MAX_NUM : AIV_CORE_MAX_NUM;
+    struct FaView {
+        uint32_t faMetadata[aicCoreMaxNum][FA_METADATA_SIZE];
+    };
+    struct FdView {
+        uint32_t fdMetadata[aivCoreMaxNum][FD_METADATA_SIZE];
+    };
     uint32_t *metadataBase = static_cast<uint32_t *>(metadata_->GetData());
     auto *metadataPtr = static_cast<FaView *>(static_cast<void *>(metadataBase));
     auto *fdPtr = static_cast<FdView *>(static_cast<void *>(metadataBase + FA_METADATA_SIZE * aicCoreMaxNum));
