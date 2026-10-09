@@ -23,7 +23,7 @@
         op.Init(permuted_tokens, sorted_indices, probs, unpermuted_tokens, tiling_data, &pipe); \
         op.Process();                                                                    \
     } while (0)
-
+// 测试
 extern "C" __global__ __aicore__ void moe_token_unpermute(
     GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens, GM_ADDR workspace,
     GM_ADDR tiling)
