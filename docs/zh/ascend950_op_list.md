@@ -438,7 +438,7 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>mc2</td>
-    <td><a href="../../mc2/3rd/batch_mat_mul_v3/README.md">batch_mat_mul_v3</a></td>
+    <td>batch_mat_mul_v3</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
@@ -478,7 +478,7 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>mc2</td>
-    <td><a href="../../mc2/3rd/mat_mul_v3/README.md">mat_mul_v3</a></td>
+    <td>mat_mul_v3</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
@@ -938,7 +938,7 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>moe</td>
-    <td><a href="../../moe/3rd/moe_inplace_index_add/README.md">moe_inplace_index_add</a></td>
+    <td>moe_inplace_index_add</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
@@ -948,7 +948,7 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>moe</td>
-    <td><a href="../../moe/3rd/moe_inplace_index_add_with_sorted/README.md">moe_inplace_index_add_with_sorted</a></td>
+    <td>moe_inplace_index_add_with_sorted</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
@@ -958,7 +958,7 @@ Ascend 950支持的算子分类和算子列表如下：
   </tr>
   <tr>
     <td>moe</td>
-    <td><a href="../../moe/3rd/moe_masked_scatter/README.md">moe_masked_scatter</a></td>
+    <td>moe_masked_scatter</td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
