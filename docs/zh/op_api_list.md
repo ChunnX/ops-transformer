@@ -26,7 +26,6 @@
 
 |    接口名   |   说明     | 确定性说明（A2）  | 确定性说明（A3）  | 确定性说明（Ascend 950） |
 | ----------- | ------------------- | ---------  | ---------  | --------- |
-|[aclnnAllGatherAdd](../../examples/mc2/all_gather_add/docs/aclnnAllGatherAdd.md)|完成[AllGather](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/API/ascendcopapi/atlasascendc_api_07_0873.html)通信和[Add](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/API/ascendcopapi/atlasascendc_api_07_0035.html)加法的融合。|默认确定性实现|默认确定性实现|-|
 |[aclnnAllGatherMatmul](../../mc2/all_gather_matmul/docs/aclnnAllGatherMatmul.md)|完成AllGather通信与MatMul计算融合。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnAllGatherMatmulV2](../../mc2/all_gather_matmul_v2/docs/aclnnAllGatherMatmulV2.md)|aclnnAllGatherMatmulV2接口是对aclnnAllGatherMatmul接口的功能拓展。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnAlltoAllAllGatherBatchMatMul](../../mc2/allto_all_all_gather_batch_mat_mul/docs/aclnnAlltoAllAllGatherBatchMatMul.md)|完成AllToAll、AllGather集合通信与BatchMatMul计算融合、并行。|-|默认确定性实现|-|
@@ -118,6 +117,7 @@
 |[aclnnGroupedMatmulSwigluQuantV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantV2.md)|融合GroupedMatmul 、Dequant、Swiglu和Quant。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnGroupedMatmulSwigluQuantWeightNZ](../../gmm/grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuantWeightNZ.md)|融合GroupedMatMul、Dequant、Swiglu和Quant，输入权重Weight会被强制视为NZ格式。|默认确定性实现|默认确定性实现|-|
 |[aclnnGroupedMatmulSwigluQuantWeightNzV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantWeightNzV2.md)|融合GroupedMatMul、Dequant、Swiglu和Quant，输入权重Weight会被强制视为NZ格式。|默认确定性实现|默认确定性实现|默认确定性实现|
+|[aclnnGroupedMatmulSwigluQuantWeightNzV3](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantWeightNzV3.md)|融合GroupedMatmul、Dequant、SwiGLU和MXFP8量化，支持weight为FRACTAL_NZ格式的单Tensor输入，swigluMode仅支持2。|-|-|默认确定性实现|
 |[aclnnGroupedMatmulWeightNz](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulWeightNz.md)|实现分组矩阵乘计算，每组矩阵乘的维度大小可以不同，输入权重Weight会被强制视为NZ格式。|默认确定性实现|默认确定性实现|默认确定性实现|
 |[aclnnIncreFlashAttentionV4](../../attention/incre_flash_attention/docs/aclnnIncreFlashAttentionV4.md)|在全量推理场景的FlashAttention算子的基础上实现增量推理。|默认确定性实现|默认确定性实现|-|
 |[aclnnIndexerQuantCache](../../attention/indexer_quant_cache/docs/aclnnIndexerQuantCache.md)|在Indexer注意力机制的Epilog阶段，对KV Cache进行原地逐块动态量化压缩更新，支持MX-FP8、Normal、HiFloat8、MX-FP4四种量化模式。|-|-|默认确定性实现|

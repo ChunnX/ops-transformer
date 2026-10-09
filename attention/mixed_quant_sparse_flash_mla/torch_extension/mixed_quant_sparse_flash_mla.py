@@ -37,7 +37,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             "int? cmp_ratio=None, int? ori_mask_mode=None, int? cmp_mask_mode=None, int? ori_win_left=None,"
             "int? ori_win_right=None, str? layout_q=None, str? layout_kv=None, bool? has_ori_kv=None,"
             "bool? has_cmp_kv=None) -> Tensor",
-            "mixed_quant_sparse_flash_mla(Tensor q, *,"
+            "mixed_quant_sparse_flash_mla(Tensor q, int quant_mode, *,"
             "Tensor? ori_kv=None, Tensor? cmp_kv=None, "
             "Tensor? ori_sparse_indices=None, Tensor? cmp_sparse_indices=None, "
             "Tensor? ori_block_table=None, Tensor? cmp_block_table=None, "
@@ -47,7 +47,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             "Tensor? cmp_residual_kv=None, "
             "Tensor? ori_topk_length=None, Tensor? cmp_topk_length=None, "
             "Tensor? sinks=None, Tensor? metadata=None, "
-            "int quant_mode=None, int rope_head_dim=None, "
+            "int rope_head_dim=None, "
             "float softmax_scale=None, int cmp_ratio=1, "
             "int ori_mask_mode=0, int cmp_mask_mode=0, "
             "int ori_win_left=-1, int ori_win_right=-1, "
@@ -99,6 +99,7 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
         @impl(get_as_library(), self.name, "Meta")
         def mixed_quant_sparse_flash_mla_meta(
             q,
+            quant_mode,
             ori_kv=None,
             cmp_kv=None,
             ori_sparse_indices=None,
@@ -116,7 +117,6 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             cmp_topk_length=None,
             sinks=None,
             metadata=None,
-            quant_mode=None,
             rope_head_dim=None,
             softmax_scale=None,
             cmp_ratio=1,
@@ -347,6 +347,7 @@ torch.compiler.allow_in_graph(mixed_quant_sparse_flash_mla_metadata)
 @impl(get_as_library(), mixed_quant_sparse_flash_mla_op_builder.name, "PrivateUse1")
 def mixed_quant_sparse_flash_mla(
     q,
+    quant_mode,
     ori_kv=None,
     cmp_kv=None,
     ori_sparse_indices=None,
@@ -364,7 +365,6 @@ def mixed_quant_sparse_flash_mla(
     cmp_topk_length=None,
     sinks=None,
     metadata=None,
-    quant_mode=None,
     rope_head_dim=None,
     softmax_scale=None,
     cmp_ratio=1,
@@ -386,6 +386,7 @@ def mixed_quant_sparse_flash_mla(
     op_module = mixed_quant_sparse_flash_mla_op_builder.load()
     return op_module.mixed_quant_sparse_flash_mla(
         q,
+        quant_mode,
         ori_kv,
         cmp_kv,
         ori_sparse_indices,
@@ -403,7 +404,6 @@ def mixed_quant_sparse_flash_mla(
         cmp_topk_length,
         sinks,
         metadata,
-        quant_mode,
         rope_head_dim,
         softmax_scale,
         cmp_ratio,

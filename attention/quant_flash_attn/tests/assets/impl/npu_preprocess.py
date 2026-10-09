@@ -246,6 +246,9 @@ def run(
     sinks=None,
     attn_mask=None,
     metadata=None,
+    v_tail=None,
+    block_table_tail=None,
+    seqused_v_tail=None,
     softmax_scale=1.0,
     mask_mode=0,
     win_left=-1,
@@ -259,14 +262,17 @@ def run(
     return_softmax_lse=False,
     **kwargs,
 ):
-    """Generate and copy metadata for a main QuantFlashAttn invocation.
+    """Materialize metadata after H2D, before timing and graph capture.
 
     Signature mirrors ``torch.ops.cann_ops_transformer.quant_flash_attn`` so TTK
     delivers the op-schema-ordered positional args; extra sidecar attributes
     (batch_size / N_q / N_kv / D / head_dim_v / *_values ...) arrive via kwargs.
+
+    动态槽位 (CSV tensor_view_shapes 含 -1, ttk 传 metadata=None): 按参数名返回
+    ``{"metadata": generated}``, 由 ttk 回填主算子 args/kwargs (参考
+    flash_mla_with_kvcache 资产); 静态槽位 (旧 (0,) 占位或已有 Tensor):
+    原地 resize_/copy_ 回填并隐式返回 None。
     """
-    if metadata is None:
-        raise ValueError("QuantFlashAttn npu_preprocess requires metadata")
     if quant_mode is None:
         quant_mode = get_attribute(kwargs, "quant_mode", 1)
     # 位置标量参数桥接进 kwargs, 供 build_metadata_arguments 统一读取。
@@ -308,12 +314,34 @@ def run(
         and k.dim() == 4
         and k.shape[2] == _block_size_attr + 4  # 4 = K_SCALE_ROWS
     ):
+        # set_ 之前 k 仍是 132 行, 直接 view 链派生 k_descale (参考 qfa_fp8_test)
+        # 共享 k cache 的 132 行大 storage, stride (8448, 4224, 1)
+        if k_descale is not None and k_descale.dim() == 3:
+            try:
+                _cap = k_descale.shape[2]  # scale 容量, D=128 时 = 128
+                _k_pa_f32 = (
+                    k.view(torch.uint8)
+                    .view(k.shape[0], k.shape[1], -1)
+                    .view(torch.float32)
+                )
+                k_descale.set_(_k_pa_f32[:, :, -_cap:])
+                logging.info(
+                    "[%s] GQA FP8 PA: rebind k_descale to k storage, "
+                    "stride=%s, shape=%s",
+                    testcase_name,
+                    tuple(k_descale.stride()),
+                    tuple(k_descale.shape),
+                )
+            except Exception as e:
+                logging.info("[%s] k_descale rebind failed: %s", testcase_name, e)
         k.set_(k[:, :, :_block_size_attr, :])
         v.set_(v[:, :, :_block_size_attr, :])
         logging.info(
-            "[%s] GQA FP8 PA: slice k/v cache to data rows %s",
+            "[%s] GQA FP8 PA: slice k/v to data rows %s, k stride=%s, v stride=%s",
             testcase_name,
             tuple(k.shape),
+            tuple(k.stride()),
+            tuple(v.stride()),
         )
 
     arguments = build_metadata_arguments(
@@ -326,7 +354,23 @@ def run(
         seqused_kv,
         hook_kwargs,
     )
+    # 动态槽位 (CSV tensor_view_shapes 含 -1, ttk 传入 None): 按参数名物化并返回,
+    # 由 ttk 回填主算子调用 (参考 flash_mla_with_kvcache 资产: 返回
+    # {"metadata": generated}, 键必须是 API 参数名);
+    # 静态槽位 (旧 (0,) 占位或已有 Tensor): 原地 copy_ 回填并返回 None。
+    # run_metadata 需要设备锚点 tensor, 动态槽位下用 q 提供 device。
+    if metadata is None:
+        generated = run_metadata(arguments, q)
+        logging.info(
+            "[%s] materialize dynamic metadata slot: shape=%s",
+            testcase_name,
+            tuple(generated.shape),
+        )
+        return {"metadata": generated}
+
     generated = run_metadata(arguments, metadata)
+    if tuple(metadata.shape) == (0,):
+        metadata.resize_(generated.shape)
     if tuple(metadata.shape) != tuple(generated.shape):
         raise ValueError(
             "QuantFlashAttn metadata shape mismatch: "

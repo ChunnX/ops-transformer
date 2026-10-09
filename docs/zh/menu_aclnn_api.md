@@ -1,7 +1,6 @@
 # Transformer类接口
 
 - [Transformer类aclnn接口列表](op_api_list.md)
-- [aclnnAllGatherAdd](../../examples/mc2/all_gather_add/docs/aclnnAllGatherAdd.md)
 - [aclnnAllGatherMatmul](../../mc2/all_gather_matmul/docs/aclnnAllGatherMatmul.md)
 - [aclnnAllGatherMatmulV2](../../mc2/all_gather_matmul_v2/docs/aclnnAllGatherMatmulV2.md)
 - [aclnnAlltoAllAllGatherBatchMatMul](../../mc2/allto_all_all_gather_batch_mat_mul/docs/aclnnAlltoAllAllGatherBatchMatMul.md)
@@ -47,6 +46,7 @@
 - [aclnnFFNV2](../../ffn/ffn/docs/aclnnFFNV2.md)
 - [aclnnFFNV3](../../ffn/ffn/docs/aclnnFFNV3.md)
 - [aclnnFfnWorkerBatching](../../ffn/ffn_worker_batching/docs/aclnnFfnWorkerBatching.md)
+- [aclnnFfnWorkerBatchingV2](../../ffn/ffn_worker_batching/docs/aclnnFfnWorkerBatchingV2.md)
 - [aclnnFlashAttentionScore](../../attention/flash_attention_score/docs/aclnnFlashAttentionScore.md)
 - [aclnnFlashAttentionScoreGrad](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionScoreGrad.md)
 - [aclnnFlashAttentionScoreGradV2](../../attention/flash_attention_score_grad/docs/aclnnFlashAttentionScoreGradV2.md)
@@ -95,6 +95,7 @@
 - [aclnnGroupedMatmulSwigluQuantV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantV2.md)
 - [aclnnGroupedMatmulSwigluQuantWeightNZ](../../gmm/grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuantWeightNZ.md)
 - [aclnnGroupedMatmulSwigluQuantWeightNzV2](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantWeightNzV2.md)
+- [aclnnGroupedMatmulSwigluQuantWeightNzV3](../../gmm/grouped_matmul_swiglu_quant_v2/docs/aclnnGroupedMatmulSwigluQuantWeightNzV3.md)
 - [aclnnGroupedMatmulV2](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV2.md)
 - [aclnnGroupedMatmulV3](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV3.md)
 - [aclnnGroupedMatmulV4](../../gmm/grouped_matmul/docs/aclnnGroupedMatmulV4.md)

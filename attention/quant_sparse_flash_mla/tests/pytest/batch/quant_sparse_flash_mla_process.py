@@ -28,6 +28,7 @@ class Network(torch.nn.Module):
     def forward(
         self,
         q,
+        quant_mode,
         ori_kv,
         cmp_kv,
         q_descale,
@@ -48,7 +49,6 @@ class Network(torch.nn.Module):
         cmp_topk_length,
         sinks,
         metadata,
-        quant_mode,
         softmax_scale,
         cmp_ratio,
         ori_mask_mode,
@@ -67,6 +67,7 @@ class Network(torch.nn.Module):
             win_kwargs["ori_win_right"] = ori_win_right
         npu_result, npu_lse = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
             q=q,
+            quant_mode=quant_mode,
             ori_kv=ori_kv,
             cmp_kv=cmp_kv,
             q_descale=q_descale,
@@ -87,7 +88,6 @@ class Network(torch.nn.Module):
             cmp_topk_length=cmp_topk_length,
             sinks=sinks,
             metadata=metadata,
-            quant_mode=quant_mode,
             softmax_scale=softmax_scale,
             cmp_ratio=cmp_ratio,
             ori_mask_mode=ori_mask_mode,
@@ -201,6 +201,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
         op_win_kwargs["ori_win_right"] = op_input["ori_win_right"]
     npu_result, npu_lse = npu_model(
         q=op_input["q"].npu() if op_input["q"] is not None else None,
+        quant_mode=op_input["quant_mode"],
         ori_kv=op_input["ori_kv"].npu() if op_input["ori_kv"] is not None else None,
         cmp_kv=op_input["cmp_kv"].npu() if op_input["cmp_kv"] is not None else None,
         q_descale=op_input["q_descale"].npu()
@@ -253,7 +254,6 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
         else None,
         sinks=op_input["sinks"].npu() if op_input["sinks"] is not None else None,
         metadata=metadata,
-        quant_mode=op_input["quant_mode"],
         softmax_scale=op_input["softmax_scale"],
         cmp_ratio=op_input["cmp_ratio"],
         ori_mask_mode=op_input["ori_mask_mode"],
@@ -348,6 +348,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
         op_win_kwargs["ori_win_right"] = op_input["ori_win_right"]
     npu_result, npu_lse = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
         q=op_input["q"].npu() if op_input["q"] is not None else None,
+        quant_mode=op_input["quant_mode"],
         ori_kv=op_input["ori_kv"].npu() if op_input["ori_kv"] is not None else None,
         cmp_kv=op_input["cmp_kv"].npu() if op_input["cmp_kv"] is not None else None,
         q_descale=op_input["q_descale"].npu()
@@ -400,7 +401,6 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
         else None,
         sinks=op_input["sinks"].npu() if op_input["sinks"] is not None else None,
         metadata=metadata,
-        quant_mode=op_input["quant_mode"],
         softmax_scale=op_input["softmax_scale"],
         cmp_ratio=op_input["cmp_ratio"],
         ori_mask_mode=op_input["ori_mask_mode"],

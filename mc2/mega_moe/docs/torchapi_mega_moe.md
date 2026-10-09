@@ -655,7 +655,7 @@ sym_buffer.update_group(group) -> None
 
 - `clean_mask_buffer` 在当前 NPU stream 上将本地掩码的所有元素清零；各 rank 需要分别调用，跨 rank 的一致性仍由调用者保证。掩码尚未创建时，接口会创建全 0 掩码。
 - `get_local_buffer_tensor` 将当前 Rank 的本地 CCL Buffer 零拷贝包装为 NPU Tensor。`offset` 以 `dtype` 元素为单位，`size` 为 `None` 时返回从 `offset` 到 Buffer 末尾的一维视图，否则返回指定 shape。返回 Tensor 不持有底层内存，其生命周期不得超过 `SymmBuffer`；调用 `update_group` 后旧视图失效，必须重新获取。调用者写入原始通信 Buffer 前必须保证相关算子已经执行完成，并确保写入范围正确。
-- `update_group` 使用新 group 完整重建通信链路；旧通信链路的算子执行完成以及新 group 与现有 mask shape 的一致性需要调用者保证。如需清除失能状态，应显式调用 `clean_mask_buffer`。
+- `update_group` 使用新 group 原地更新 `context`，不会改变 `context` Tensor 的地址，以便已捕获的图继续复用。新 group 的 world size 必须与原通信域一致，旧通信链路的算子执行完成需要调用者保证。如需清除失能状态，应显式调用 `clean_mask_buffer`。
 
 ## 参数说明
 
@@ -1458,7 +1458,7 @@ sym_buffer.update_group(group) -> None
     - `activation`支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"。`activation_clamp`用于配置前三种激活的截断值；`activation_params`用于配置"swigluoai"的`alpha`、`beta`以及"situglu"的`beta`、`linear_beta`。
     - num_tokens（x.dim0）范围[1, +∞)，每次调用必须不大于创建`sym_buffer`时配置的`num_max_tokens_per_rank`。不同Rank的实际num_tokens可以不同，同一个`sym_buffer`也可以用于多次不同num_tokens的调用。
     - `num_max_tokens_per_rank`必须大于等于1，所有Rank取值必须一致，建议设置为`sym_buffer`复用期间所有Rank可能出现的最大单卡token数。超过原上界时需使用更大的上界重新创建`sym_buffer`。
-    - hidden为逻辑隐藏维，范围[1024, 8192]；非打包类型下hidden = x.dim1，float4_e2m1以uint8打包传入时x.dim1 = hidden / 2。A8W8-FP场景要求hidden为32的倍数；A8W4-FP场景要求hidden为64的倍数；A4W4-FP场景仅支持l1_weights为FRACTAL_NZ格式，要求hidden为64的倍数。
+    - hidden为逻辑隐藏维，范围[1024, 8192]；topo_type = 0（MTE拓扑）下各量化场景均要求hidden为64的倍数，topo_type = 1（URMA跨超拓扑）要求hidden为1024的倍数。非打包类型下hidden = x.dim1，float4_e2m1以uint8打包传入时x.dim1 = hidden / 2。A4W4-FP场景仅支持l1_weights为FRACTAL_NZ格式。
     - num_topk（topk_ids.dim1）支持[1, 32]。
     - local_moe_expert_num（= num_experts / ep_world_size）范围 [1, 1024]；shared_expert_num_per_rank 另按 [0, 4] 单独约束，不计入该上限。
     - intermediate_hidden表示激活后的中间特征维度，范围[256, 4096]且128对齐；Linear1的完整输出宽度为2 × intermediate_hidden。
