@@ -27,7 +27,7 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
@@ -86,10 +86,10 @@ struct ScatterPaKvCacheCompileInfo {
 
 class ScatterPaKvCacheTiling : public TilingBaseClass {
 public:
-    explicit ScatterPaKvCacheTiling(gert::TilingContext *context, int64_t inOutMode)
-        : TilingBaseClass(context), inOutMode_(inOutMode)
-    {
-    }
+    explicit ScatterPaKvCacheTiling(gert::TilingContext* context, int64_t inOutMode)
+        : TilingBaseClass(context),
+          inOutMode_(inOutMode)
+    {}
 
 protected:
     bool IsCapable() override;
@@ -114,17 +114,17 @@ protected:
     ge::graphStatus CheckAlibi();
     ge::graphStatus CheckNz();
     ge::graphStatus GetTemplateType(int64_t inputKeyDimNum);
-    ge::graphStatus GetContiguousTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetContiguousTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
     void GetNonContigousStrideInfo();
-    ge::graphStatus GetTensorInfo(gert::Shape &shape, gert::Stride &stride, size_t idx);
+    ge::graphStatus GetTensorInfo(gert::Shape& shape, gert::Stride& stride, size_t idx);
     void SetInputPos();
     void GetCommonTilingInfo();
     ge::graphStatus CheckSlotMappingShape(int64_t requiredDimNum);
     int64_t RoundUp(int64_t x, int64_t dtypeSize);
     void GenTilingKey();
     bool IsNonContiguous();
-    bool IsAxesContiguous(const gert::Stride &stride, const gert::Shape &shape, int64_t startAxis, int64_t endAxis);
-    bool IsLastAxisContiguous(const gert::Stride &stride, const gert::Shape &shape);
+    bool IsAxesContiguous(const gert::Stride& stride, const gert::Shape& shape, int64_t startAxis, int64_t endAxis);
+    bool IsLastAxisContiguous(const gert::Stride& stride, const gert::Shape& shape);
 
 private:
     platform_ascendc::SocVersion socVersion_;
@@ -237,9 +237,9 @@ struct ScatterPaKvCacheMembaseParams {
 
 class ScatterPaKvCacheMembaseTiling : public TilingBaseClass {
 public:
-    explicit ScatterPaKvCacheMembaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit ScatterPaKvCacheMembaseTiling(gert::TilingContext* context)
+        : TilingBaseClass(context)
+    {}
 
 protected:
     bool IsCapable() override;
@@ -273,6 +273,7 @@ private:
     ge::graphStatus DoCompressRopeAndOmniOpTiling();
     ge::graphStatus CheckInputShapeNHSD();
     ge::graphStatus DoNHSDOpTiling();
+
 private:
     ScatterPaKvCacheMembaseParams params_;
     ScatterPaKvCacheTilingData tilingData_;
