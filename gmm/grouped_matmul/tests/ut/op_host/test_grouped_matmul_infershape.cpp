@@ -84,8 +84,8 @@ void AppendTensorDescs(vector<gert::InfershapeContextPara::TensorDescription> &d
                        ge::DataType dtype, ge::Format format, bool isConst = false, void *constValue = nullptr)
 {
     for (const auto &spec : ParseTensorSpecs(shapeSpec)) {
-        descs.emplace_back(ops::ut::MakeGertStorageShape(ops::ut::ParseDims(spec, {}, Trim(spec) == "NONE")),
-                           dtype, format, isConst, constValue);
+        descs.emplace_back(ops::ut::MakeGertStorageShape(ops::ut::ParseDims(spec, {}, Trim(spec) == "NONE")), dtype,
+                           format, isConst, constValue);
     }
 }
 
@@ -193,15 +193,14 @@ struct GroupedMatmulInfershapeCase {
             outputInstanceNum.front() != 1U;
 
         if (usesDynamicInstanceNum) {
-            gert::InfershapeContextPara infershapeContextPara(
-                "GroupedMatmul", inputTensorDescs, outputTensorDescs, BuildShapeAttrs(), inputInstanceNum,
-                outputInstanceNum);
+            gert::InfershapeContextPara infershapeContextPara("GroupedMatmul", inputTensorDescs, outputTensorDescs,
+                                                              BuildShapeAttrs(), inputInstanceNum, outputInstanceNum);
             ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
             return;
         }
 
-        gert::InfershapeContextPara infershapeContextPara(
-            "GroupedMatmul", inputTensorDescs, outputTensorDescs, BuildShapeAttrs());
+        gert::InfershapeContextPara infershapeContextPara("GroupedMatmul", inputTensorDescs, outputTensorDescs,
+                                                          BuildShapeAttrs());
         ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
     }
 
@@ -315,8 +314,8 @@ struct GroupedMatmulInfershapeCase {
 vector<GroupedMatmulInfershapeCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulInfershapeCase> cases;
-    string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_infershape.csv",
-                                             "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
+    string csvPath =
+        ops::ut::ResolveCsvPath("test_grouped_matmul_infershape.csv", "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -421,7 +420,9 @@ const vector<GroupedMatmulInfershapeCase> &GetGroupedMatmulInfershapeCsvCases()
     static const vector<GroupedMatmulInfershapeCase> cases = [] {
         vector<GroupedMatmulInfershapeCase> merged = LoadCases("Ascend950");
         vector<GroupedMatmulInfershapeCase> ascend910b = LoadCases("Ascend910B");
+        vector<GroupedMatmulInfershapeCase> ascend91093 = LoadCases("Ascend910_93");
         merged.insert(merged.end(), ascend910b.begin(), ascend910b.end());
+        merged.insert(merged.end(), ascend91093.begin(), ascend91093.end());
         return merged;
     }();
     return cases;
