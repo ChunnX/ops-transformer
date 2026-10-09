@@ -24,8 +24,8 @@ using namespace AscendC;
 
 namespace k2q_csr_simt {
 
-__simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void HistEdgesVf(__gm__ int32_t *q2k, __gm__ int32_t *tokenBatch,
-                                                                        __gm__ int32_t *rowMap, __gm__ int32_t *hist,
+__simt_vf__ __aicore__ LAUNCH_BOUND(THREAD_NUM) inline void HistEdgesVf(__gm__ int32_t* q2k, __gm__ int32_t* tokenBatch,
+                                                                        __gm__ int32_t* rowMap, __gm__ int32_t* hist,
                                                                         int32_t hid, int32_t N, int32_t topk,
                                                                         int32_t q0, int32_t qLen, int32_t maxKv,
                                                                         int32_t totalRows, int32_t B)
@@ -58,7 +58,7 @@ public:
     __aicore__ inline K2qCsrSimtHist() {}
 
     __aicore__ inline void Init(GM_ADDR q2k, GM_ADDR rowMap, GM_ADDR tokenBatch, GM_ADDR scratch,
-                                const K2qCsrTilingData *tiling, TPipe *pipe)
+                                const K2qCsrTilingData* tiling, TPipe* pipe)
     {
         tiling_ = tiling;
         pipe_ = pipe;
@@ -76,12 +76,12 @@ public:
         qPerGroup_ = tiling->qPerGroup > 0 ? tiling->qPerGroup : (T_ > 0 ? T_ : 1);
         tileCountsAddr_ = scratch;
         int64_t tileElems = K2qCsrScratch::TileElems(tiling);
-        tileCountsGm_.SetGlobalBuffer((__gm__ int32_t *)tileCountsAddr_, tileElems);
+        tileCountsGm_.SetGlobalBuffer((__gm__ int32_t*)tileCountsAddr_, tileElems);
         int64_t rowCountElems = H_ * (totalRows_ > 0 ? totalRows_ : 1);
         if (rowCountElems < 1) {
             rowCountElems = 1;
         }
-        rowCountsGm_.SetGlobalBuffer((__gm__ int32_t *)K2qCsrScratch::RowCountsAddr(scratch, tiling), rowCountElems);
+        rowCountsGm_.SetGlobalBuffer((__gm__ int32_t*)K2qCsrScratch::RowCountsAddr(scratch, tiling), rowCountElems);
         pipe_->InitBuffer(tileBuf_, K2qCsrCommon::Align32((totalRows_ > 0 ? totalRows_ : 1) * sizeof(int32_t)));
     }
 
@@ -114,10 +114,10 @@ private:
         K2qCsrCommon::CopyOutInt32(tileCountsGm_[histOff], tile, totalRows_);
         PipeBarrier<PIPE_ALL>();
 
-        __gm__ int32_t *histGm = (__gm__ int32_t *)(tileCountsAddr_ + histOff * static_cast<int64_t>(sizeof(int32_t)));
+        __gm__ int32_t* histGm = (__gm__ int32_t*)(tileCountsAddr_ + histOff * static_cast<int64_t>(sizeof(int32_t)));
         Simt::VF_CALL<k2q_csr_simt::HistEdgesVf>(
-            Simt::Dim3(k2q_csr_simt::THREAD_NUM), (__gm__ int32_t *)q2kAddr_, (__gm__ int32_t *)tokenBatchAddr_,
-            (__gm__ int32_t *)rowMapAddr_, histGm, static_cast<int32_t>(hid), static_cast<int32_t>(N_),
+            Simt::Dim3(k2q_csr_simt::THREAD_NUM), (__gm__ int32_t*)q2kAddr_, (__gm__ int32_t*)tokenBatchAddr_,
+            (__gm__ int32_t*)rowMapAddr_, histGm, static_cast<int32_t>(hid), static_cast<int32_t>(N_),
             static_cast<int32_t>(topk_), static_cast<int32_t>(q0), static_cast<int32_t>(q1 - q0),
             static_cast<int32_t>(maxKv_), static_cast<int32_t>(totalRows_), static_cast<int32_t>(B_));
         PipeBarrier<PIPE_ALL>();
@@ -131,8 +131,8 @@ private:
         }
     }
 
-    const K2qCsrTilingData *tiling_;
-    TPipe *pipe_;
+    const K2qCsrTilingData* tiling_;
+    TPipe* pipe_;
     GM_ADDR q2kAddr_;
     GM_ADDR rowMapAddr_;
     GM_ADDR tokenBatchAddr_;

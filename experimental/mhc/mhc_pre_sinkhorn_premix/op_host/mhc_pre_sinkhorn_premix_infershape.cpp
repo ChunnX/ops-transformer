@@ -40,7 +40,7 @@ constexpr int64_t DIM_FOUR = 4;
 constexpr int64_t EMPTY_DIM = 0;
 } // namespace
 
-static void SetShape(gert::Shape *shape, const std::initializer_list<int64_t> &dims)
+static void SetShape(gert::Shape* shape, const std::initializer_list<int64_t>& dims)
 {
     shape->SetDimNum(dims.size());
     size_t index = 0;
@@ -49,10 +49,10 @@ static void SetShape(gert::Shape *shape, const std::initializer_list<int64_t> &d
     }
 }
 
-static ge::graphStatus InferShapeForMhcPreSinkhornPremix(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeForMhcPreSinkhornPremix(gert::InferShapeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do MhcPreSinkhornPremix infershape.");
-    const gert::Shape *xShape = context->GetInputShape(INDEX_X);
+    const gert::Shape* xShape = context->GetInputShape(INDEX_X);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
 
     const size_t xDimNum = xShape->GetDimNum();
@@ -79,8 +79,8 @@ static ge::graphStatus InferShapeForMhcPreSinkhornPremix(gert::InferShapeContext
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *numItersAttr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ITERS);
-    const bool *needBackwardAttr = attrs->GetAttrPointer<bool>(ATTR_NEED_BACKWARD);
+    const int64_t* numItersAttr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ITERS);
+    const bool* needBackwardAttr = attrs->GetAttrPointer<bool>(ATTR_NEED_BACKWARD);
     const int64_t numIters = numItersAttr == nullptr ? DEFAULT_NUM_ITERS : *numItersAttr;
     const bool needBackward = needBackwardAttr == nullptr ? true : *needBackwardAttr;
     // needGrad=false 但传入 premix 时也要输出 hPre
@@ -89,7 +89,7 @@ static ge::graphStatus InferShapeForMhcPreSinkhornPremix(gert::InferShapeContext
     const int64_t hcMix = hcMult * hcMult + 2 * hcMult;
 
     // premix 为可选输入，传入时 shape 应为 x.shape[:-1]，即 (t, n) 或 (b, s, n)
-    const gert::Shape *premixShape = context->GetOptionalInputShape(INDEX_PREMIX);
+    const gert::Shape* premixShape = context->GetOptionalInputShape(INDEX_PREMIX);
     if (premixShape != nullptr) {
         OP_CHECK_IF(premixShape->GetDimNum() != xDimNum - 1,
                     OP_LOGE(context->GetNodeName(), "premix dim must be x dim - 1 (%zu), but got %zu.", xDimNum - 1,
@@ -103,14 +103,14 @@ static ge::graphStatus InferShapeForMhcPreSinkhornPremix(gert::InferShapeContext
         }
     }
 
-    gert::Shape *hinShape = context->GetOutputShape(OUTPUT_HIN);
-    gert::Shape *hPostShape = context->GetOutputShape(OUTPUT_HPOST);
-    gert::Shape *hResShape = context->GetOutputShape(OUTPUT_HRES);
-    gert::Shape *hPreShape = context->GetOutputShape(OUTPUT_HPRE);
-    gert::Shape *hcBeforeNormShape = context->GetOutputShape(OUTPUT_HC_BEFORE_NORM);
-    gert::Shape *invRmsShape = context->GetOutputShape(OUTPUT_INV_RMS);
-    gert::Shape *sumOutShape = context->GetOutputShape(OUTPUT_SUM_OUT);
-    gert::Shape *normOutShape = context->GetOutputShape(OUTPUT_NORM_OUT);
+    gert::Shape* hinShape = context->GetOutputShape(OUTPUT_HIN);
+    gert::Shape* hPostShape = context->GetOutputShape(OUTPUT_HPOST);
+    gert::Shape* hResShape = context->GetOutputShape(OUTPUT_HRES);
+    gert::Shape* hPreShape = context->GetOutputShape(OUTPUT_HPRE);
+    gert::Shape* hcBeforeNormShape = context->GetOutputShape(OUTPUT_HC_BEFORE_NORM);
+    gert::Shape* invRmsShape = context->GetOutputShape(OUTPUT_INV_RMS);
+    gert::Shape* sumOutShape = context->GetOutputShape(OUTPUT_SUM_OUT);
+    gert::Shape* normOutShape = context->GetOutputShape(OUTPUT_NORM_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, hinShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, hPostShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, hResShape);
@@ -168,7 +168,7 @@ static ge::graphStatus InferShapeForMhcPreSinkhornPremix(gert::InferShapeContext
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeForMhcPreSinkhornPremix(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeForMhcPreSinkhornPremix(gert::InferDataTypeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do MhcPreSinkhornPremix infer datatype.");
     const ge::DataType xDtype = context->GetInputDataType(INDEX_X);

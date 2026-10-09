@@ -24,15 +24,15 @@ extern "C" {
 // softmaxLse: fp32 [T, N, 1] (TND), [B, N, S, 1] (BNSD) or [B, S, N, 1] (BSND)
 // when softmaxLseFlag is true; ignored (may be nullptr) when false.
 __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
-    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *blockTable,
-    const aclTensor *k2qRowPtr, const aclTensor *k2qQIndices, const aclTensor *k2qSlotIndices,
-    const aclTensor *actualSeqLengths, const aclTensor *actualSeqLengthsKv, int64_t numKeyValueHeads, double scaleValue,
-    int64_t blockSize, int64_t topK, int64_t innerPrecise, bool softmaxLseFlag, const char *inputLayout,
-    aclTensor *attentionOut, aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* query, const aclTensor* key, const aclTensor* value, const aclTensor* blockTable,
+    const aclTensor* k2qRowPtr, const aclTensor* k2qQIndices, const aclTensor* k2qSlotIndices,
+    const aclTensor* actualSeqLengths, const aclTensor* actualSeqLengthsKv, int64_t numKeyValueHeads, double scaleValue,
+    int64_t blockSize, int64_t topK, int64_t innerPrecise, bool softmaxLseFlag, const char* inputLayout,
+    aclTensor* attentionOut, aclTensor* softmaxLse, uint64_t* workspaceSize, aclOpExecutor** executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKv(void *workspace,
+__attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSplitKv(void* workspace,
                                                                                       uint64_t workspaceSize,
-                                                                                      aclOpExecutor *executor,
+                                                                                      aclOpExecutor* executor,
                                                                                       aclrtStream stream);
 
 #ifdef __cplusplus

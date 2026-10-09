@@ -58,19 +58,19 @@ TEST_F(FusedQkvProjectionKernelTest, test_basic_m16)
     size_t kSize = M * kDim * sizeof(DataType);
     size_t vSize = M * vDim * sizeof(DataType);
 
-    uint8_t *hs = (uint8_t *)AscendC::GmAlloc(hsSize);
-    uint8_t *wt = (uint8_t *)AscendC::GmAlloc(wtSize);
-    uint8_t *bias = (uint8_t *)AscendC::GmAlloc(biasSize);
-    uint8_t *q = (uint8_t *)AscendC::GmAlloc(qSize);
-    uint8_t *k = (uint8_t *)AscendC::GmAlloc(kSize);
-    uint8_t *v = (uint8_t *)AscendC::GmAlloc(vSize);
-    uint8_t *ws = (uint8_t *)AscendC::GmAlloc(1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(sizeof(FusedQkvProjectionTilingData));
+    uint8_t* hs = (uint8_t*)AscendC::GmAlloc(hsSize);
+    uint8_t* wt = (uint8_t*)AscendC::GmAlloc(wtSize);
+    uint8_t* bias = (uint8_t*)AscendC::GmAlloc(biasSize);
+    uint8_t* q = (uint8_t*)AscendC::GmAlloc(qSize);
+    uint8_t* k = (uint8_t*)AscendC::GmAlloc(kSize);
+    uint8_t* v = (uint8_t*)AscendC::GmAlloc(vSize);
+    uint8_t* ws = (uint8_t*)AscendC::GmAlloc(1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(sizeof(FusedQkvProjectionTilingData));
 
     // 填入测试数据
-    auto *hsData = reinterpret_cast<DataType *>((uintptr_t)hs);
-    auto *wtData = reinterpret_cast<DataType *>((uintptr_t)wt);
-    auto *biasData = reinterpret_cast<DataType *>((uintptr_t)bias);
+    auto* hsData = reinterpret_cast<DataType*>((uintptr_t)hs);
+    auto* wtData = reinterpret_cast<DataType*>((uintptr_t)wt);
+    auto* biasData = reinterpret_cast<DataType*>((uintptr_t)bias);
     for (int64_t i = 0; i < M * hiddenSize; i++)
         hsData[i] = static_cast<DataType>(sin(i * 0.73f) * 1.5f);
     for (int64_t i = 0; i < hiddenSize * fusedDim; i++)
@@ -79,7 +79,7 @@ TEST_F(FusedQkvProjectionKernelTest, test_basic_m16)
         biasData[i] = static_cast<DataType>(sin(i * 2.37f) * 0.5f);
 
     // 配置 tiling 数据
-    auto *td = reinterpret_cast<FusedQkvProjectionTilingData *>((uintptr_t)tiling);
+    auto* td = reinterpret_cast<FusedQkvProjectionTilingData*>((uintptr_t)tiling);
     memset(td, 0, sizeof(FusedQkvProjectionTilingData));
     td->M = static_cast<int32_t>(M);
     td->N = static_cast<int32_t>(fusedDim);
@@ -102,7 +102,7 @@ TEST_F(FusedQkvProjectionKernelTest, test_basic_m16)
     AscendC::Synchronize();
 
     // 验证 Q 输出
-    auto *qData = reinterpret_cast<DataType *>((uintptr_t)q);
+    auto* qData = reinterpret_cast<DataType*>((uintptr_t)q);
     for (int64_t r = 0; r < M; r++) {
         for (int64_t fd = 0; fd < qDim; fd++) {
             float sum = 0.0f;
@@ -142,22 +142,22 @@ TEST_F(FusedQkvProjectionKernelTest, test_no_bias)
     size_t kSize = M * kDim * sizeof(DataType);
     size_t vSize = M * vDim * sizeof(DataType);
 
-    uint8_t *hs = (uint8_t *)AscendC::GmAlloc(hsSize);
-    uint8_t *wt = (uint8_t *)AscendC::GmAlloc(wtSize);
-    uint8_t *q = (uint8_t *)AscendC::GmAlloc(qSize);
-    uint8_t *k = (uint8_t *)AscendC::GmAlloc(kSize);
-    uint8_t *v = (uint8_t *)AscendC::GmAlloc(vSize);
-    uint8_t *ws = (uint8_t *)AscendC::GmAlloc(1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(sizeof(FusedQkvProjectionTilingData));
+    uint8_t* hs = (uint8_t*)AscendC::GmAlloc(hsSize);
+    uint8_t* wt = (uint8_t*)AscendC::GmAlloc(wtSize);
+    uint8_t* q = (uint8_t*)AscendC::GmAlloc(qSize);
+    uint8_t* k = (uint8_t*)AscendC::GmAlloc(kSize);
+    uint8_t* v = (uint8_t*)AscendC::GmAlloc(vSize);
+    uint8_t* ws = (uint8_t*)AscendC::GmAlloc(1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(sizeof(FusedQkvProjectionTilingData));
 
-    auto *hsData = reinterpret_cast<DataType *>((uintptr_t)hs);
-    auto *wtData = reinterpret_cast<DataType *>((uintptr_t)wt);
+    auto* hsData = reinterpret_cast<DataType*>((uintptr_t)hs);
+    auto* wtData = reinterpret_cast<DataType*>((uintptr_t)wt);
     for (int64_t i = 0; i < M * hiddenSize; i++)
         hsData[i] = static_cast<DataType>(sin(i * 0.73f) * 1.5f);
     for (int64_t i = 0; i < hiddenSize * fusedDim; i++)
         wtData[i] = static_cast<DataType>(cos(i * 1.19f));
 
-    auto *td = reinterpret_cast<FusedQkvProjectionTilingData *>((uintptr_t)tiling);
+    auto* td = reinterpret_cast<FusedQkvProjectionTilingData*>((uintptr_t)tiling);
     memset(td, 0, sizeof(FusedQkvProjectionTilingData));
     td->M = static_cast<int32_t>(M);
     td->N = static_cast<int32_t>(fusedDim);
@@ -178,7 +178,7 @@ TEST_F(FusedQkvProjectionKernelTest, test_no_bias)
     fused_qkv_projection<<<blockDim, nullptr, nullptr>>>(hs, wt, nullptr, q, k, v, ws, tiling);
     AscendC::Synchronize();
 
-    auto *qData = reinterpret_cast<DataType *>((uintptr_t)q);
+    auto* qData = reinterpret_cast<DataType*>((uintptr_t)q);
     for (int64_t r = 0; r < M; r++) {
         for (int64_t fd = 0; fd < qDim; fd++) {
             float sum = 0.0f;

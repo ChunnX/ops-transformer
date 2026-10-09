@@ -176,46 +176,46 @@ public:
 
     __aicore__ inline MinimaxSparseAttentionSplitKvKernelArch35() {}
 
-    __aicore__ inline void operator()(MinimaxSaSplitKvKernelParamsArch35 const &params)
+    __aicore__ inline void operator()(MinimaxSaSplitKvKernelParamsArch35 const& params)
     {
-        __gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData *tilingData =
-            reinterpret_cast<__gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData *>(params.tiling);
+        __gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData* tilingData =
+            reinterpret_cast<__gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData*>(params.tiling);
         FetchBaseShapeInfo(tilingData);
 
         AscendC::GlobalTensor<ElementQ> gQ;
-        gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
+        gQ.SetGlobalBuffer((__gm__ ElementQ*)params.q);
         AscendC::GlobalTensor<ElementK> gK;
-        gK.SetGlobalBuffer((__gm__ ElementK *)params.k);
+        gK.SetGlobalBuffer((__gm__ ElementK*)params.k);
         AscendC::GlobalTensor<ElementV> gV;
-        gV.SetGlobalBuffer((__gm__ ElementV *)params.v);
+        gV.SetGlobalBuffer((__gm__ ElementV*)params.v);
         AscendC::GlobalTensor<int32_t> gK2qRowPtr;
-        gK2qRowPtr.SetGlobalBuffer((__gm__ int32_t *)params.k2qRowPtr);
+        gK2qRowPtr.SetGlobalBuffer((__gm__ int32_t*)params.k2qRowPtr);
         AscendC::GlobalTensor<int32_t> gK2qQIndices;
-        gK2qQIndices.SetGlobalBuffer((__gm__ int32_t *)params.k2qQIndices);
+        gK2qQIndices.SetGlobalBuffer((__gm__ int32_t*)params.k2qQIndices);
         AscendC::GlobalTensor<int32_t> gK2qSlotIndices;
-        gK2qSlotIndices.SetGlobalBuffer((__gm__ int32_t *)params.k2qSlotIndices);
+        gK2qSlotIndices.SetGlobalBuffer((__gm__ int32_t*)params.k2qSlotIndices);
         AscendC::GlobalTensor<int32_t> gBlockTable;
         if (isPageAttention_ == 1U) {
-            gBlockTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTable);
+            gBlockTable.SetGlobalBuffer((__gm__ int32_t*)params.blockTable);
         }
-        gActualQseqlen_.SetGlobalBuffer((__gm__ int32_t *)params.actualQseqlen);
-        gActualKvseqlen_.SetGlobalBuffer((__gm__ int32_t *)params.actualKvseqlen);
+        gActualQseqlen_.SetGlobalBuffer((__gm__ int32_t*)params.actualQseqlen);
+        gActualKvseqlen_.SetGlobalBuffer((__gm__ int32_t*)params.actualKvseqlen);
         AscendC::GlobalTensor<ElementO> gO;
-        gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        gO.SetGlobalBuffer((__gm__ ElementO*)params.o);
         AscendC::GlobalTensor<float> gSoftmaxLse;
         if (softmaxLseFlag_ == 1U) {
-            gSoftmaxLse.SetGlobalBuffer((__gm__ float *)params.softmaxLse);
+            gSoftmaxLse.SetGlobalBuffer((__gm__ float*)params.softmaxLse);
         }
 
         uint64_t wsOffset = 0U;
         AscendC::GlobalTensor<ElementWorkspaceO> gAccumOut;
-        gAccumOut.SetGlobalBuffer((__gm__ ElementWorkspaceO *)(params.workSpace + wsOffset));
+        gAccumOut.SetGlobalBuffer((__gm__ ElementWorkspaceO*)(params.workSpace + wsOffset));
         wsOffset += accumOutSize_ * sizeof(ElementWorkspaceO);
         AscendC::GlobalTensor<float> gSoftmaxMax;
-        gSoftmaxMax.SetGlobalBuffer((__gm__ float *)(params.workSpace + wsOffset));
+        gSoftmaxMax.SetGlobalBuffer((__gm__ float*)(params.workSpace + wsOffset));
         wsOffset += lseStatSize_ * sizeof(float);
         AscendC::GlobalTensor<float> gSoftmaxSum;
-        gSoftmaxSum.SetGlobalBuffer((__gm__ float *)(params.workSpace + wsOffset));
+        gSoftmaxSum.SetGlobalBuffer((__gm__ float*)(params.workSpace + wsOffset));
 
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
@@ -244,7 +244,7 @@ public:
 
 private:
     __aicore__ inline void FetchBaseShapeInfo(
-        __gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData *tilingData)
+        __gm__ MinimaxSaSplitKv::MinimaxSparseAttentionSplitKvTilingData* tilingData)
     {
         batch_ = tilingData->batch;
         qHeads_ = tilingData->numHeads;
@@ -274,8 +274,8 @@ private:
     // WS_INIT_CHUNK blocks (tail chunk uses remainder length). UB filled once
     // per buffer; one loop writes both GM regions per chunk. Work split across
     // VEC sub-blocks by chunk index.
-    __aicore__ inline void InitWorkspaceStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
-                                              AscendC::GlobalTensor<float> &gSoftmaxSum)
+    __aicore__ inline void InitWorkspaceStats(AscendC::GlobalTensor<float>& gSoftmaxMax,
+                                              AscendC::GlobalTensor<float>& gSoftmaxSum)
     {
         if (lseStatSize_ == 0U) {
             return;
@@ -323,7 +323,7 @@ private:
     }
 
     // Advance past batches with no row at this kvBlockIdx (kv_len=0 => 0 rows).
-    __aicore__ inline void SkipEmptyAtCurrentBlk(uint32_t &batchIdx, uint32_t kvBlockIdx)
+    __aicore__ inline void SkipEmptyAtCurrentBlk(uint32_t& batchIdx, uint32_t kvBlockIdx)
     {
         while (batchIdx < batch_ && kvBlockIdx >= KvRowsPerBatch(batchIdx)) {
             batchIdx++;
@@ -332,14 +332,14 @@ private:
 
     // packedRow 0 coordinate. Does not wrap to blk 1: that row only exists if some
     // batch has kv_len>0 (then it sits at blk 0). All-empty is totalKvRows_==0.
-    __aicore__ inline void InitPackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
+    __aicore__ inline void InitPackedRowCoord(uint32_t& batchIdx, uint32_t& kvBlockIdx)
     {
         batchIdx = 0;
         kvBlockIdx = 0;
         SkipEmptyAtCurrentBlk(batchIdx, kvBlockIdx);
     }
 
-    __aicore__ inline void AdvancePackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
+    __aicore__ inline void AdvancePackedRowCoord(uint32_t& batchIdx, uint32_t& kvBlockIdx)
     {
         batchIdx++;
         SkipEmptyAtCurrentBlk(batchIdx, kvBlockIdx);
@@ -358,8 +358,8 @@ private:
     // (batchIdx+1) qseqlen GetValues per task (1 each for batch_=1). Replaces the old
     // FindBatchAndLocalQ scan (redundant: Q/KV same batch) + the per-cvl kv/qseqlen
     // re-fetches.
-    __aicore__ inline void ResolveBatchQSide(uint32_t batchIdx, uint32_t &kvSeqlenBatch, uint32_t &numBlocksB,
-                                             uint32_t &cumQStart, uint32_t &qSeqlenBatch, uint32_t &cumKvStart)
+    __aicore__ inline void ResolveBatchQSide(uint32_t batchIdx, uint32_t& kvSeqlenBatch, uint32_t& numBlocksB,
+                                             uint32_t& cumQStart, uint32_t& qSeqlenBatch, uint32_t& cumKvStart)
     {
         kvSeqlenBatch = static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx));
         numBlocksB = CeilDiv(kvSeqlenBatch, blockSize_);
@@ -468,10 +468,10 @@ private:
     // actual (qToken, slotK) lseOff -- no uniform-stride assumption (ndNum=2 needs only
     // the one inter-pair gap, computed per pair). Falls back to blockCount=1 (single group)
     // at the caller when the pair's gaps aren't 32B-aligned or exceed the uint16 stride.
-    __aicore__ inline void CopyPartialStatsToGm(AscendC::GlobalTensor<float> &gSoftmaxMax,
-                                                AscendC::GlobalTensor<float> &gSoftmaxSum,
-                                                const AscendC::LocalTensor<float> &rowMaxLocal,
-                                                const AscendC::LocalTensor<float> &rowSumLocal, uint64_t lseOffset,
+    __aicore__ inline void CopyPartialStatsToGm(AscendC::GlobalTensor<float>& gSoftmaxMax,
+                                                AscendC::GlobalTensor<float>& gSoftmaxSum,
+                                                const AscendC::LocalTensor<float>& rowMaxLocal,
+                                                const AscendC::LocalTensor<float>& rowSumLocal, uint64_t lseOffset,
                                                 uint32_t rowCount, uint16_t blockCount, uint32_t srcStride,
                                                 uint32_t dstStride)
     {
@@ -498,10 +498,10 @@ private:
     // 8-float-aligned stride (matches the softmax epilogue's statsOff): CopyPartialStatsToGm's
     // DataCopyPad needs a 32B-aligned source; groupRows<8 (local groupSize=4) would otherwise
     // misalign it. No-op for groupRows>=8 (production groupSize=16).
-    __aicore__ inline void ScatterBatchStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
-                                             AscendC::GlobalTensor<float> &gSoftmaxSum, uint32_t ubSBufId,
-                                             uint32_t batchM, uint32_t groupRows, const uint32_t *qTokens,
-                                             const uint32_t *slotKs, uint32_t kvHeadIdx, uint32_t groupCount)
+    __aicore__ inline void ScatterBatchStats(AscendC::GlobalTensor<float>& gSoftmaxMax,
+                                             AscendC::GlobalTensor<float>& gSoftmaxSum, uint32_t ubSBufId,
+                                             uint32_t batchM, uint32_t groupRows, const uint32_t* qTokens,
+                                             const uint32_t* slotKs, uint32_t kvHeadIdx, uint32_t groupCount)
     {
         // AIV0-only for fp32 S (innerPrecise=0): matches QK NoQuant Fixpipe and high-prec
         // softmax. AIV1 returns immediately (no stats to scatter).
@@ -571,8 +571,8 @@ private:
     // matching the old trailing-core fill. Deterministic -> every core derives
     // the same two values it would have read from the array -> no cross-core sync.
     __aicore__ inline void ComputeCoreBounds(uint32_t coreIdx, uint32_t activeCores, uint32_t batchGroupsMax,
-                                             AscendC::GlobalTensor<int32_t> const &gK2qRowPtr, uint32_t &rowLo,
-                                             uint32_t &offLo, uint32_t &rowHi, uint32_t &offHi)
+                                             AscendC::GlobalTensor<int32_t> const& gK2qRowPtr, uint32_t& rowLo,
+                                             uint32_t& offLo, uint32_t& rowHi, uint32_t& offHi)
     {
         uint32_t totalTasks = totalKvRows_ * kvHeads_;
         uint32_t headStride = totalKvRows_ + 1U;
@@ -632,12 +632,12 @@ private:
 
     // Phase 1: KV-centric partial compute (Cube QK/PV + Vector softmax).
     __aicore__ inline void Phase1KvCentricCompute(
-        uint32_t coreIdx, uint32_t coreNum, AscendC::GlobalTensor<ElementQ> const &gQ,
-        AscendC::GlobalTensor<ElementK> const &gK, AscendC::GlobalTensor<ElementV> const &gV,
-        AscendC::GlobalTensor<int32_t> const &gK2qRowPtr, AscendC::GlobalTensor<int32_t> const &gK2qQIndices,
-        AscendC::GlobalTensor<int32_t> const &gK2qSlotIndices, AscendC::GlobalTensor<int32_t> const &gBlockTable,
-        AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut, AscendC::GlobalTensor<float> &gSoftmaxMax,
-        AscendC::GlobalTensor<float> &gSoftmaxSum)
+        uint32_t coreIdx, uint32_t coreNum, AscendC::GlobalTensor<ElementQ> const& gQ,
+        AscendC::GlobalTensor<ElementK> const& gK, AscendC::GlobalTensor<ElementV> const& gV,
+        AscendC::GlobalTensor<int32_t> const& gK2qRowPtr, AscendC::GlobalTensor<int32_t> const& gK2qQIndices,
+        AscendC::GlobalTensor<int32_t> const& gK2qSlotIndices, AscendC::GlobalTensor<int32_t> const& gBlockTable,
+        AscendC::GlobalTensor<ElementWorkspaceO>& gAccumOut, AscendC::GlobalTensor<float>& gSoftmaxMax,
+        AscendC::GlobalTensor<float>& gSoftmaxSum)
     {
         // Batched QK/softmax/PV: BATCH_GROUPS qTokens per batch -> M = groupCount*groupSize_
         // (up to BlockMmadQK::L0_TILE_M=128). MAX_BATCH_GROUPS caps per-batch arrays; groupSize>=16
@@ -952,11 +952,11 @@ private:
     }
 
     // Phase 2: FlashDecode-style combine (IFA FlashDecodeCompute / CombineSplitKVRes).
-    __aicore__ inline void Phase2CombineScale(AscendC::GlobalTensor<ElementO> &gO,
-                                              AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
-                                              AscendC::GlobalTensor<float> &gSoftmaxMax,
-                                              AscendC::GlobalTensor<float> &gSoftmaxSum,
-                                              AscendC::GlobalTensor<float> &gSoftmaxLse)
+    __aicore__ inline void Phase2CombineScale(AscendC::GlobalTensor<ElementO>& gO,
+                                              AscendC::GlobalTensor<ElementWorkspaceO>& gAccumOut,
+                                              AscendC::GlobalTensor<float>& gSoftmaxMax,
+                                              AscendC::GlobalTensor<float>& gSoftmaxSum,
+                                              AscendC::GlobalTensor<float>& gSoftmaxLse)
     {
 #ifdef __DAV_VEC__
         AscendC::LocalTensor<float> ubBase = resource.ubBuf.template GetBufferByByte<float>(0);

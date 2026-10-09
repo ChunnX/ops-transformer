@@ -52,14 +52,14 @@ class GMMProcess {
 private:
     __aicore__ inline void Process_();
 
-    ComputeType &computeOp; // inernal computation operator
-    const GmmLocalExpTilingData &tilingData;
+    ComputeType& computeOp; // inernal computation operator
+    const GmmLocalExpTilingData& tilingData;
     uint32_t coreIdx;
     MNConfig mnConfig;
 
 public:
     /** @brief constructor */
-    __aicore__ inline GMMProcess(ComputeType &computeOp_, const GmmLocalExpTilingData &tilingData)
+    __aicore__ inline GMMProcess(ComputeType& computeOp_, const GmmLocalExpTilingData& tilingData)
         : computeOp(computeOp_),
           tilingData(tilingData)
     {}
@@ -161,13 +161,13 @@ public:
     using BT = AT;
 
     /** @brief constructor */
-    __aicore__ inline GMMCompute(mmType &mm_)
+    __aicore__ inline GMMCompute(mmType& mm_)
         : mm(mm_)
     {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR group, GM_ADDR y);
 
-    __aicore__ inline void MMCompute(uint32_t groupIdx, const MNConfig &mnConfig);
+    __aicore__ inline void MMCompute(uint32_t groupIdx, const MNConfig& mnConfig);
 
     __aicore__ inline int32_t CalcMForThisGroup(int group_id)
     {
@@ -175,7 +175,7 @@ public:
     }
 
 private:
-    mmType &mm; // matmul operator
+    mmType& mm; // matmul operator
     GlobalTensor<AT> xGm;
     GlobalTensor<BT> weightGm;
     GlobalTensor<GT> groupGm;
@@ -186,15 +186,15 @@ template <typename mmType, typename AT, typename CT, typename GT, bool trans_b, 
 __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_b, sync, is_b_nz>::Init(GM_ADDR x, GM_ADDR weight,
                                                                                     GM_ADDR group, GM_ADDR y)
 {
-    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ AT *>(x));
-    weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ BT *>(weight));
-    groupGm.SetGlobalBuffer(reinterpret_cast<__gm__ GT *>(group));
-    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT *>(y));
+    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ AT*>(x));
+    weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ BT*>(weight));
+    groupGm.SetGlobalBuffer(reinterpret_cast<__gm__ GT*>(group));
+    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT*>(y));
 }
 
 template <typename mmType, typename AT, typename CT, typename GT, bool trans_b, bool sync, bool is_b_nz>
 __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_b, sync, is_b_nz>::MMCompute(uint32_t groupIdx,
-                                                                                         const MNConfig &mnConfig)
+                                                                                         const MNConfig& mnConfig)
 {
     uint32_t curSingleN = mnConfig.singleN;
     uint32_t tailN = mnConfig.nIdx * mnConfig.singleN;

@@ -33,7 +33,7 @@ python test_quest_prefill_metadata.py
 To see latency and memory bandwidth
 
 ```bash
- python benchmark_quest_prefill_metadata.py 
+ python benchmark_quest_prefill_metadata.py
 ```
 
 when setting the DTYPE to float16, benchmarking on x86 host and 910B4 card shows that the kernel reaches at least 0.55 TB/sec out of 0.80 TB/sec nominal Global memory BW of 910B4 - 69% bandwidth utilization.

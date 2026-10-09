@@ -46,8 +46,7 @@ const aclTensor* QuantLightningIndexerMetadata(
                        "query_quant_mode", "key_quant_mode", "batch_size", "max_seqlen_q", "max_seqlen_k",
                        "layout_query", "layout_key", "sparse_count", "sparse_mode", "pre_tokens", "next_tokens",
                        "cmp_ratio"}),
-        OP_INPUT(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional),
-        OP_OUTPUT(metadata),
+        OP_INPUT(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional), OP_OUTPUT(metadata),
         OP_ATTR(aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, queryQuantMode, keyQuantMode,
                 batchSize, maxSeqlenQ, maxSeqlenK, layoutQueryOptional, layoutKeyOptional, sparseCount, sparseMode,
                 preTokens, nextTokens, cmpRatio));
@@ -56,4 +55,4 @@ const aclTensor* QuantLightningIndexerMetadata(
              return nullptr);
     return metadata;
 }
-}  // namespace l0op
+} // namespace l0op

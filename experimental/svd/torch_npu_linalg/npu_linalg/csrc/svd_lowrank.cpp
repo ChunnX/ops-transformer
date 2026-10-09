@@ -16,13 +16,12 @@ namespace npu_linalg {
 using namespace at_npu::native;
 
 // torch.svd_lowrank: https://github.com/pytorch/pytorch/blob/main/torch/_lowrank.py#L64
-std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_lowrank_npu(
-    const at::Tensor& A,
-    const c10::optional<at::Tensor>& M,
-    const c10::optional<at::Tensor>& omega,
-    int64_t q, int64_t niter)
+std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_lowrank_npu(const at::Tensor& A, const c10::optional<at::Tensor>& M,
+                                                               const c10::optional<at::Tensor>& omega, int64_t q,
+                                                               int64_t niter)
 {
-    if (M.has_value()) TORCH_WARN("Argument 'M' is not supported.\n");
+    if (M.has_value())
+        TORCH_WARN("Argument 'M' is not supported.\n");
 
     auto aShape = A.sizes();
     int64_t nd = aShape.size();
@@ -31,9 +30,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_lowrank_npu(
     int64_t m = aShape[nd - 2];
     int64_t n = aShape[nd - 1];
 
-    TORCH_CHECK(q >= 0 && q <= std::min(m, n),
-                "svd_lowrank: q must be in [0, min(m,n)], got q=", q,
-                ", m=", m, ", n=", n);
+    TORCH_CHECK(q >= 0 && q <= std::min(m, n), "svd_lowrank: q must be in [0, min(m,n)], got q=", q, ", m=", m,
+                ", n=", n);
 
     auto opts = A.options();
 
@@ -59,19 +57,21 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_lowrank_npu(
     EXEC_NPU_CMD_V1(aclnnMatmul, A, G, Y, mm_type);
 
     auto tsqr_output_tensors = construct_tsqr_output_tensor(Y);
-    at::Tensor Q  = std::get<0>(tsqr_output_tensors);
+    at::Tensor Q = std::get<0>(tsqr_output_tensors);
     at::Tensor R = std::get<1>(tsqr_output_tensors);
     int64_t block_size = 32;
-    
-    if (m > 1024) block_size = 1024;
-    if (block_size < n) block_size = n * 2;
+
+    if (m > 1024)
+        block_size = 1024;
+    if (block_size < n)
+        block_size = n * 2;
     EXEC_NPU_CMD_V1(aclnnTsqr, Y, block_size, Q, R);
 
     auto Qt = Q.transpose(-2, -1);
     EXEC_NPU_CMD_V1(aclnnMatmul, Qt, A, tempA, mm_type);
 
     auto svd_output_tensors = construct_svd_output_tensor(tempA);
-    at::Tensor tempU  = std::get<0>(svd_output_tensors);
+    at::Tensor tempU = std::get<0>(svd_output_tensors);
     at::Tensor S = std::get<1>(svd_output_tensors);
     at::Tensor V = std::get<2>(svd_output_tensors);
     int64_t num_iterations = 5;
@@ -84,8 +84,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_lowrank_npu(
     return std::tuple<at::Tensor, at::Tensor, at::Tensor>(U, S, V);
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor>
-construct_svd_lowrank_output_tensor(const at::Tensor& A, int64_t q) {
+std::tuple<at::Tensor, at::Tensor, at::Tensor> construct_svd_lowrank_output_tensor(const at::Tensor& A, int64_t q)
+{
     auto aShape = A.sizes();
     const int64_t nd = aShape.size();
 
@@ -110,11 +110,9 @@ construct_svd_lowrank_output_tensor(const at::Tensor& A, int64_t q) {
     return {U, S, V};
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_lowrank_meta(
-    const at::Tensor& A,
-    const c10::optional<at::Tensor>& M,
-    const c10::optional<at::Tensor>& omega,
-    int64_t q, int64_t niter)
+std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_lowrank_meta(const at::Tensor& A, const c10::optional<at::Tensor>& M,
+                                                                const c10::optional<at::Tensor>& omega, int64_t q,
+                                                                int64_t niter)
 {
     // construct the output tensor
     auto output_tensors = construct_svd_lowrank_output_tensor(A, q);
@@ -126,10 +124,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> svd_lowrank_meta(
 }
 } // namespace npu_linalg
 
-TORCH_LIBRARY_IMPL(npu_linalg, PrivateUse1, m) {
+TORCH_LIBRARY_IMPL(npu_linalg, PrivateUse1, m)
+{
     m.impl("svd_lowrank", &npu_linalg::svd_lowrank_npu);
 }
 
-TORCH_LIBRARY_IMPL(npu_linalg, Meta, m) {
+TORCH_LIBRARY_IMPL(npu_linalg, Meta, m)
+{
     m.impl("svd_lowrank", &npu_linalg::svd_lowrank_meta);
 }

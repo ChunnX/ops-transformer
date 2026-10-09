@@ -67,19 +67,20 @@ REGISTER_TILING_DATA_CLASS(KvQuantSparseAttnSharedkv, KvQuantSparseAttnSharedkvT
 // ---------------算子Tiling类---------------
 class KvQuantSparseAttnSharedkvTiling {
 public:
-    explicit KvQuantSparseAttnSharedkvTiling(gert::TilingContext *context) : context_(context){};
-    ge::graphStatus DoOpTiling(KvQuantSASTilingInfo *tilingInfo);
+    explicit KvQuantSparseAttnSharedkvTiling(gert::TilingContext* context)
+        : context_(context) {};
+    ge::graphStatus DoOpTiling(KvQuantSASTilingInfo* tilingInfo);
 
 private:
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     SASTemplateMode perfMode_ = SASTemplateMode::SWA_TEMPLATE_MODE;
     KvQuantSparseAttnSharedkvTilingData tilingData_;
     uint32_t blockDim_{0};
     uint64_t workspaceSize_{0};
     uint64_t tilingKey_{0};
 
-    KvQuantSASTilingInfo *sasInfo_ = nullptr;
+    KvQuantSASTilingInfo* sasInfo_ = nullptr;
 };
 
-}
+} // namespace optiling
 #endif

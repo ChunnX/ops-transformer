@@ -54,7 +54,7 @@ struct CaseSpec {
     int64_t numHeads;
     int64_t kvHeads;
     int64_t topK;
-    const char *name;
+    const char* name;
     bool pagedKv;
     LayoutKind layout = LayoutKind::TND;
     // Dummy requests prepended with q_len=kv_len=0. TND/PA query T stays `seq`
@@ -62,7 +62,7 @@ struct CaseSpec {
     int64_t padBatches = 0;
 };
 
-const char *LayoutStr(const CaseSpec &spec)
+const char* LayoutStr(const CaseSpec& spec)
 {
     if (spec.layout == LayoutKind::BNSD) {
         return "BNSD";
@@ -73,7 +73,7 @@ const char *LayoutStr(const CaseSpec &spec)
     return "TND";
 }
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t n = 1;
     for (auto d : shape) {
@@ -99,7 +99,7 @@ float Bf16ToFloat(uint16_t b)
     return f;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     LOG_PRINT("aclInit start, deviceId=%d\n", deviceId);
     auto ret = aclInit(nullptr);
@@ -115,8 +115,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = static_cast<size_t>(GetShapeSize(shape)) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -133,13 +133,13 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
-void FillOnes(std::vector<uint16_t> &dst)
+void FillOnes(std::vector<uint16_t>& dst)
 {
     const uint16_t one = FloatToBf16(1.0f);
     std::fill(dst.begin(), dst.end(), one);
 }
 
-void FillRandom(std::vector<uint16_t> &dst, uint32_t seed)
+void FillRandom(std::vector<uint16_t>& dst, uint32_t seed)
 {
     uint32_t s = seed;
     for (size_t i = 0; i < dst.size(); ++i) {
@@ -149,7 +149,7 @@ void FillRandom(std::vector<uint16_t> &dst, uint32_t seed)
     }
 }
 
-size_t QElem(const CaseSpec &spec, int64_t t, int64_t h, int64_t d)
+size_t QElem(const CaseSpec& spec, int64_t t, int64_t h, int64_t d)
 {
     if (spec.layout == LayoutKind::BNSD) {
         return static_cast<size_t>(((h * spec.seq + t) * kHeadDim) + d);
@@ -157,7 +157,7 @@ size_t QElem(const CaseSpec &spec, int64_t t, int64_t h, int64_t d)
     return static_cast<size_t>(((t * spec.numHeads + h) * kHeadDim) + d);
 }
 
-size_t KvElem(const CaseSpec &spec, int64_t tok, int64_t kvh, int64_t d)
+size_t KvElem(const CaseSpec& spec, int64_t tok, int64_t kvh, int64_t d)
 {
     if (spec.layout == LayoutKind::BNSD) {
         return static_cast<size_t>(((kvh * spec.seq + tok) * kHeadDim) + d);
@@ -165,7 +165,7 @@ size_t KvElem(const CaseSpec &spec, int64_t tok, int64_t kvh, int64_t d)
     return static_cast<size_t>(((tok * spec.kvHeads + kvh) * kHeadDim) + d);
 }
 
-size_t LseElem(const CaseSpec &spec, int64_t t, int64_t h)
+size_t LseElem(const CaseSpec& spec, int64_t t, int64_t h)
 {
     if (spec.layout == LayoutKind::BNSD) {
         return static_cast<size_t>(h * spec.seq + t);
@@ -176,8 +176,8 @@ size_t LseElem(const CaseSpec &spec, int64_t t, int64_t h)
 // innerPrecise=0 golden: fp32 softmax, P rounded to bf16 before PV.
 // pagedKv: K/V stored as [1, blockSize, kvHeads, D]; else TND [seq, kvHeads, D],
 // BNSD [1, kvHeads, seq, D], or BSND [1, seq, kvHeads, D].
-void CpuGolden(const CaseSpec &spec, const std::vector<uint16_t> &q, const std::vector<uint16_t> &k,
-               const std::vector<uint16_t> &v, std::vector<float> &outFp32, std::vector<float> &lseFp32, float scale,
+void CpuGolden(const CaseSpec& spec, const std::vector<uint16_t>& q, const std::vector<uint16_t>& k,
+               const std::vector<uint16_t>& v, std::vector<float>& outFp32, std::vector<float>& lseFp32, float scale,
                bool roundPToBf16)
 {
     const int64_t groupSize = spec.numHeads / spec.kvHeads;
@@ -231,8 +231,8 @@ bool CloseEnough(float a, float b)
     return diff <= kAbsTol + kRelTol * scale;
 }
 
-int CompareOut(const CaseSpec &spec, const std::vector<uint16_t> &got, const std::vector<float> &golden,
-               const char *tag)
+int CompareOut(const CaseSpec& spec, const std::vector<uint16_t>& got, const std::vector<float>& golden,
+               const char* tag)
 {
     int64_t n = spec.seq * spec.numHeads * kHeadDim;
     int64_t mismatch = 0;
@@ -285,7 +285,7 @@ int CompareOut(const CaseSpec &spec, const std::vector<uint16_t> &got, const std
     return (mismatch == 0 && nanCount == 0) ? 0 : 1;
 }
 
-int CompareLse(const CaseSpec &spec, const std::vector<float> &got, const std::vector<float> &golden, const char *tag)
+int CompareLse(const CaseSpec& spec, const std::vector<float>& got, const std::vector<float>& golden, const char* tag)
 {
     int64_t n = spec.seq * spec.numHeads;
     int64_t mismatch = 0;
@@ -313,29 +313,29 @@ int CompareLse(const CaseSpec &spec, const std::vector<float> &got, const std::v
 }
 
 struct CaseTensors {
-    aclTensor *query = nullptr;
-    aclTensor *key = nullptr;
-    aclTensor *value = nullptr;
-    aclTensor *blockTable = nullptr;
-    aclTensor *k2qRowPtr = nullptr;
-    aclTensor *k2qQIndices = nullptr;
-    aclTensor *k2qSlotIndices = nullptr;
-    aclTensor *actualSeqQ = nullptr;
-    aclTensor *actualSeqKv = nullptr;
-    aclTensor *attentionOut = nullptr;
-    aclTensor *softmaxLse = nullptr;
-    void *queryAddr = nullptr;
-    void *keyAddr = nullptr;
-    void *valueAddr = nullptr;
-    void *blockTableAddr = nullptr;
-    void *k2qRowPtrAddr = nullptr;
-    void *k2qQAddr = nullptr;
-    void *k2qSlotAddr = nullptr;
-    void *seqQAddr = nullptr;
-    void *seqKvAddr = nullptr;
-    void *outAddr = nullptr;
-    void *lseAddr = nullptr;
-    void *workspaceAddr = nullptr;
+    aclTensor* query = nullptr;
+    aclTensor* key = nullptr;
+    aclTensor* value = nullptr;
+    aclTensor* blockTable = nullptr;
+    aclTensor* k2qRowPtr = nullptr;
+    aclTensor* k2qQIndices = nullptr;
+    aclTensor* k2qSlotIndices = nullptr;
+    aclTensor* actualSeqQ = nullptr;
+    aclTensor* actualSeqKv = nullptr;
+    aclTensor* attentionOut = nullptr;
+    aclTensor* softmaxLse = nullptr;
+    void* queryAddr = nullptr;
+    void* keyAddr = nullptr;
+    void* valueAddr = nullptr;
+    void* blockTableAddr = nullptr;
+    void* k2qRowPtrAddr = nullptr;
+    void* k2qQAddr = nullptr;
+    void* k2qSlotAddr = nullptr;
+    void* seqQAddr = nullptr;
+    void* seqKvAddr = nullptr;
+    void* outAddr = nullptr;
+    void* lseAddr = nullptr;
+    void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
     std::vector<uint16_t> qHost;
     std::vector<uint16_t> kHost;
@@ -344,7 +344,7 @@ struct CaseTensors {
     std::vector<float> lseHost;
 };
 
-int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
+int BuildCase(const CaseSpec& spec, CaseTensors& c, bool ones)
 {
     std::vector<int64_t> qShape;
     std::vector<int64_t> kvShape;
@@ -436,7 +436,7 @@ int BuildCase(const CaseSpec &spec, CaseTensors &c, bool ones)
     return 0;
 }
 
-void DestroyCase(CaseTensors &c)
+void DestroyCase(CaseTensors& c)
 {
     aclDestroyTensor(c.query);
     aclDestroyTensor(c.key);
@@ -473,15 +473,15 @@ void DestroyCase(CaseTensors &c)
     }
 }
 
-int RunOnce(aclrtStream stream, const CaseSpec &spec, bool ones, int64_t innerPrecise, bool softmaxLseFlag,
-            const char *tag)
+int RunOnce(aclrtStream stream, const CaseSpec& spec, bool ones, int64_t innerPrecise, bool softmaxLseFlag,
+            const char* tag)
 {
     CaseTensors c;
     int ret = BuildCase(spec, c, ones);
     CHECK_RET(ret == 0, return ret);
 
     const float scale = 1.0f / std::sqrt(static_cast<float>(kHeadDim));
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     ret = aclnnMinimaxSparseAttentionSplitKvGetWorkspaceSize(
         c.query, c.key, c.value, c.blockTable, c.k2qRowPtr, c.k2qQIndices, c.k2qSlotIndices, c.actualSeqQ,
         c.actualSeqKv, spec.kvHeads, static_cast<double>(scale), spec.blockSize, spec.topK, innerPrecise,
@@ -528,7 +528,7 @@ int main()
 {
     setvbuf(stdout, nullptr, _IOLBF, 0);
     int32_t deviceId = 0;
-    if (const char *env = std::getenv("ASCEND_DEVICE_ID")) {
+    if (const char* env = std::getenv("ASCEND_DEVICE_ID")) {
         deviceId = static_cast<int32_t>(std::atoi(env));
     }
     aclrtStream stream;
@@ -569,14 +569,14 @@ int main()
         {16, 64, 64, 4, 1, "bsnd_prod_gqa_h64_kv4", false, LayoutKind::BSND},
     };
 
-    const char *ipEnv = std::getenv("MSA_INNER_PRECISE");
+    const char* ipEnv = std::getenv("MSA_INNER_PRECISE");
     const bool run0 = (ipEnv == nullptr) || (std::string(ipEnv).find('0') != std::string::npos);
     const bool run4 = (ipEnv == nullptr) || (std::string(ipEnv).find('4') != std::string::npos);
-    const char *filter = std::getenv("MSA_CASE");
+    const char* filter = std::getenv("MSA_CASE");
 
     int fail = 0;
     int ran = 0;
-    for (const auto &spec : kCases) {
+    for (const auto& spec : kCases) {
         if (filter != nullptr && std::string(spec.name).find(filter) == std::string::npos) {
             continue;
         }
@@ -608,7 +608,7 @@ int main()
         {32, 32, 16, 1, 1, "bnsd_t32_g16", false, LayoutKind::BNSD},
         {32, 32, 16, 1, 1, "bsnd_t32_g16", false, LayoutKind::BSND},
     };
-    for (const auto &spec : kLseCases) {
+    for (const auto& spec : kLseCases) {
         if (filter != nullptr && std::string(spec.name).find(filter) == std::string::npos) {
             continue;
         }

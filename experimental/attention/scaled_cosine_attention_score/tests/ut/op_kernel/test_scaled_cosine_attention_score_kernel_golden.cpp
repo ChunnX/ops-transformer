@@ -26,7 +26,7 @@ namespace {
 class GmBuffer {
 public:
     explicit GmBuffer(size_t bytes)
-        : ptr_(reinterpret_cast<uint8_t *>(AscendC::GmAlloc(bytes)))
+        : ptr_(reinterpret_cast<uint8_t*>(AscendC::GmAlloc(bytes)))
     {
         if (ptr_ != nullptr)
             std::memset(ptr_, 0, bytes);
@@ -36,13 +36,13 @@ public:
         if (ptr_ != nullptr)
             AscendC::GmFree(ptr_);
     }
-    uint8_t *Get() const
+    uint8_t* Get() const
     {
         return ptr_;
     }
 
 private:
-    uint8_t *ptr_ = nullptr;
+    uint8_t* ptr_ = nullptr;
 };
 
 template <typename T>
@@ -68,7 +68,7 @@ uint32_t AlignHeadDim(uint32_t dim)
 }
 
 template <typename T>
-std::vector<float> Golden(const std::vector<T> &query, const std::vector<T> &key, const std::vector<float> &scale,
+std::vector<float> Golden(const std::vector<T>& query, const std::vector<T>& key, const std::vector<float>& scale,
                           uint32_t batch, uint32_t heads, uint32_t seqLen, uint32_t dim, float clampMax, float eps)
 {
     std::vector<float> out(static_cast<size_t>(batch) * heads * seqLen * seqLen);
@@ -141,7 +141,7 @@ void RunCase(uint64_t tilingKey, uint32_t batch, uint32_t heads, uint32_t seqLen
     std::memcpy(keyGm.Get(), key.data(), key.size() * sizeof(T));
     std::memcpy(scaleGm.Get(), scale.data(), scale.size() * sizeof(float));
 
-    auto *tiling = reinterpret_cast<optiling::ScaledCosineAttentionScoreTilingData *>(tilingGm.Get());
+    auto* tiling = reinterpret_cast<optiling::ScaledCosineAttentionScoreTilingData*>(tilingGm.Get());
     std::memset(tiling, 0, sizeof(*tiling));
     tiling->batch = batch;
     tiling->heads = heads;
@@ -159,7 +159,7 @@ void RunCase(uint64_t tilingKey, uint32_t batch, uint32_t heads, uint32_t seqLen
     ICPU_RUN_KF(scaled_cosine_attention_score, usedCoreNum, queryGm.Get(), keyGm.Get(), scaleGm.Get(), outputGm.Get(),
                 workspaceGm.Get(), tilingGm.Get());
 
-    const T *actual = reinterpret_cast<const T *>(outputGm.Get());
+    const T* actual = reinterpret_cast<const T*>(outputGm.Get());
     for (size_t i = 0; i < expected.size(); ++i) {
         EXPECT_NEAR(ToFloat(actual[i]), ToFloat(FromFloat<T>(expected[i])), Tolerance<T>())
             << "mismatch at output index " << i;

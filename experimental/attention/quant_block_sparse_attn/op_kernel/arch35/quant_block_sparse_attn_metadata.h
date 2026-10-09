@@ -51,7 +51,7 @@ struct BsaFaCoreMetadata {
     uint32_t firstFdDataWorkspaceIdx{0U};
 };
 
-__aicore__ inline uint32_t GetBsaSectionNum(AscendC::GlobalTensor<int32_t> &metadataGm)
+__aicore__ inline uint32_t GetBsaSectionNum(AscendC::GlobalTensor<int32_t>& metadataGm)
 {
     return metadataGm.GetValue(QBSA_FA_HEAD_SECTION_NUM_INDEX);
 }
@@ -63,19 +63,19 @@ __aicore__ inline uint64_t GetBsaCoreMetadataOffset(uint32_t sectionIdx, uint32_
            static_cast<uint64_t>(coreIdx) * QBSA_FA_METADATA_SIZE;
 }
 
-__aicore__ inline uint32_t GetBsaAttrMetadata(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
+__aicore__ inline uint32_t GetBsaAttrMetadata(AscendC::GlobalTensor<int32_t>& metadataGm, uint32_t sectionIdx,
                                               uint32_t coreIdx, uint32_t metaIdx)
 {
     return metadataGm.GetValue(GetBsaCoreMetadataOffset(sectionIdx, coreIdx) + metaIdx);
 }
 
-__aicore__ inline bool IsBsaCoreEnabled(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
+__aicore__ inline bool IsBsaCoreEnabled(AscendC::GlobalTensor<int32_t>& metadataGm, uint32_t sectionIdx,
                                         uint32_t coreIdx)
 {
     return GetBsaAttrMetadata(metadataGm, sectionIdx, coreIdx, QBSA_FA_CORE_ENABLE_INDEX) != 0U;
 }
 
-__aicore__ inline uint32_t GetBsaLastValidSectionIdx(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionNum,
+__aicore__ inline uint32_t GetBsaLastValidSectionIdx(AscendC::GlobalTensor<int32_t>& metadataGm, uint32_t sectionNum,
                                                      uint32_t coreIdx)
 {
     uint32_t lastValidSectionIdx = sectionNum;
@@ -87,7 +87,7 @@ __aicore__ inline uint32_t GetBsaLastValidSectionIdx(AscendC::GlobalTensor<int32
     return lastValidSectionIdx;
 }
 
-__aicore__ inline BsaFaCoreMetadata GetBsaCoreMetadata(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
+__aicore__ inline BsaFaCoreMetadata GetBsaCoreMetadata(AscendC::GlobalTensor<int32_t>& metadataGm, uint32_t sectionIdx,
                                                        uint32_t coreIdx)
 {
     uint64_t baseOffset = GetBsaCoreMetadataOffset(sectionIdx, coreIdx);

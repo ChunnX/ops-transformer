@@ -57,7 +57,7 @@ constexpr size_t OFFSET_SOFTMAX_SCALE = 136; // 17 * 8，用于锚定布局
 constexpr size_t OFFSET_HAS_PER_BLOCK_SIZE_MASK = 152;
 constexpr size_t OFFSET_MAX_BLOCK_NUM = 156;
 
-uint8_t ReadHasPerBlockSizeMask(const TilingInfo &tilingInfo)
+uint8_t ReadHasPerBlockSizeMask(const TilingInfo& tilingInfo)
 {
     // 锚点校验：softmaxScale=0.088388f，若布局变化此处会先行暴露
     float scale = 0.0F;
@@ -66,16 +66,16 @@ uint8_t ReadHasPerBlockSizeMask(const TilingInfo &tilingInfo)
     return *(tilingInfo.tilingData.get() + OFFSET_HAS_PER_BLOCK_SIZE_MASK);
 }
 
-uint32_t ReadMaxBlockNum(const TilingInfo &tilingInfo)
+uint32_t ReadMaxBlockNum(const TilingInfo& tilingInfo)
 {
     uint32_t value = 0;
     std::memcpy(&value, tilingInfo.tilingData.get() + OFFSET_MAX_BLOCK_NUM, sizeof(uint32_t));
     return value;
 }
 
-gert::TilingContextPara MakeBnsdCase(optiling::BlockSparseAttentionGradCompileInfo &compileInfo,
-                                     const TensorDescPara &attenMaskDesc, int64_t maskType, int64_t *blockShapeData,
-                                     int64_t *seqQData, int64_t *seqKvData)
+gert::TilingContextPara MakeBnsdCase(optiling::BlockSparseAttentionGradCompileInfo& compileInfo,
+                                     const TensorDescPara& attenMaskDesc, int64_t maskType, int64_t* blockShapeData,
+                                     int64_t* seqQData, int64_t* seqKvData)
 {
     return gert::TilingContextPara(
         "BlockSparseAttentionGrad",

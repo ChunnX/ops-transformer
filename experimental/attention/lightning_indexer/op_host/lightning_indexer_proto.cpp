@@ -26,26 +26,26 @@ constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 0;
 constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 1;
 constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 2;
 
-static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexer", "InferShapeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
-    const gert::Shape *keyShape = context->GetInputShape(KEY_INDEX);
+    const gert::Shape* keyShape = context->GetInputShape(KEY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
-    gert::Shape *sparseIndicesShape = context->GetOutputShape(0);
+    gert::Shape* sparseIndicesShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseIndicesShape);
-    gert::Shape *sparseValuesShape = context->GetOutputShape(1);
+    gert::Shape* sparseValuesShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseValuesShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const char *inputLayoutQueryPtr = attrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
+    const char* inputLayoutQueryPtr = attrs->GetAttrPointer<char>(ATTR_QUERY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
-    const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
+    const char* inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKeyPtr);
-    const int64_t *seleced_count = attrs->GetInt(ATTR_SPARSE_COUNT_INDEX);
+    const int64_t* seleced_count = attrs->GetInt(ATTR_SPARSE_COUNT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, seleced_count);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
@@ -89,7 +89,7 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeLightningIndexer(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeLightningIndexer(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexer", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);

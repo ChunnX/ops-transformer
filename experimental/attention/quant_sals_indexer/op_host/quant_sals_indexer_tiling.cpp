@@ -150,31 +150,29 @@ ge::graphStatus QSIInfoParser::GetAndCheckAttrParaInfo()
                OPS_LOG_E(opName_, "input attr fixed_tail_count must not be null"), return ge::GRAPH_FAILED);
 
     OPS_ERR_IF(
-        (*opParamInfo_.sparseBlockSize) <= 0 || (*opParamInfo_.sparseRatio) <= 0 ||
-            (*opParamInfo_.maxSeqlenKey) <= 0 || (*opParamInfo_.fixedTailCount) <= 0,
+        (*opParamInfo_.sparseBlockSize) <= 0 || (*opParamInfo_.sparseRatio) <= 0 || (*opParamInfo_.maxSeqlenKey) <= 0 ||
+            (*opParamInfo_.fixedTailCount) <= 0,
         OPS_LOG_E(opName_,
                   "input attr max_seqlen_key, sparse_block_size, sparse_ratio,fixed_tail_count must greater than "
                   "0, but max_seqlen_key: %d, sparse_block_size: %d, sparse_ratio: %f, fixed_tail_count: %d.",
                   (*opParamInfo_.maxSeqlenKey), (*opParamInfo_.sparseBlockSize), (*opParamInfo_.sparseRatio),
                   (*opParamInfo_.fixedTailCount)),
         return ge::GRAPH_FAILED);
-    
-    OPS_ERR_IF(
-        (*opParamInfo_.sparseBlockSize) != 16,
-        OPS_LOG_E(opName_,
-                  "input attr sparse_block_size, must equal %d"
-                  ", but sparse_block_size: %d.",
-                  16, (*opParamInfo_.sparseBlockSize)),
-        return ge::GRAPH_FAILED);
+
+    OPS_ERR_IF((*opParamInfo_.sparseBlockSize) != 16,
+               OPS_LOG_E(opName_,
+                         "input attr sparse_block_size, must equal %d"
+                         ", but sparse_block_size: %d.",
+                         16, (*opParamInfo_.sparseBlockSize)),
+               return ge::GRAPH_FAILED);
 
     opParamInfo_.layOutKey = attrs->GetStr(ATTR_KEY_LAYOUT_INDEX);
     if (opParamInfo_.layOutKey != nullptr) {
         OPS_LOG_I(context_->GetNodeName(), "layout_key is:%s", opParamInfo_.layOutKey);
     }
 
-    OPS_ERR_IF(
-        ((std::string(opParamInfo_.layOutKey) != "PA_BNSD") && (std::string(opParamInfo_.layOutKey) != "PA_NZ")),
-        OPS_LOG_E(opName_, "input attr layout_key only supported PA_BNSD, PA_NZ"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(((std::string(opParamInfo_.layOutKey) != "PA_BNSD") && (std::string(opParamInfo_.layOutKey) != "PA_NZ")),
+               OPS_LOG_E(opName_, "input attr layout_key only supported PA_BNSD, PA_NZ"), return ge::GRAPH_FAILED);
 
     OPS_LOG_I(context_->GetNodeName(), "GetAndCheckAttrParaInfo end");
     return ge::GRAPH_SUCCESS;
@@ -193,30 +191,30 @@ ge::graphStatus QSIInfoParser::GetOpParaInfo()
 ge::graphStatus QSIInfoParser::GetAndCheckInOutDataType()
 {
     inputQType_ = opParamInfo_.query.desc->GetDataType();
-    inputQType_ = (inputQType_== ge::DT_INT32) ? ge::DT_INT4 : ge::DT_INT8;
+    inputQType_ = (inputQType_ == ge::DT_INT32) ? ge::DT_INT4 : ge::DT_INT8;
     inputKType_ = opParamInfo_.key.desc->GetDataType();
-    inputKType_ = (inputKType_== ge::DT_INT32) ? ge::DT_INT4 : ge::DT_INT8;
+    inputKType_ = (inputKType_ == ge::DT_INT32) ? ge::DT_INT4 : ge::DT_INT8;
     inputQueryScaleType_ = opParamInfo_.query_dequant_scale.desc->GetDataType();
     inputKeyScaleType_ = opParamInfo_.key_dequant_scale.desc->GetDataType();
 
     sparseIndicesType_ = opParamInfo_.sparseIndices.desc->GetDataType();
 
     bool inDTypeAllEqual = (inputQType_ == inputKType_);
-    OPS_ERR_IF(!inDTypeAllEqual,
-               OPS_LOG_E(opName_, "The data types of the input query and key must be the same."),
+    OPS_ERR_IF(!inDTypeAllEqual, OPS_LOG_E(opName_, "The data types of the input query and key must be the same."),
                return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF((inputQType_ !=ge::DT_INT4),
-               OPS_LOG_E(opName_, "The data types of the input query and key must be int4."),
-               return ge::GRAPH_FAILED);
+    OPS_ERR_IF((inputQType_ != ge::DT_INT4),
+               OPS_LOG_E(opName_, "The data types of the input query and key must be int4."), return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF(!(inputQueryScaleType_ == inputKeyScaleType_),
-               OPS_LOG_E(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be the same."),
-               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(
+        !(inputQueryScaleType_ == inputKeyScaleType_),
+        OPS_LOG_E(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be the same."),
+        return ge::GRAPH_FAILED);
 
-    OPS_ERR_IF((inputQueryScaleType_ != ge::DT_FLOAT),
-               OPS_LOG_E(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float32."),
-               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(
+        (inputQueryScaleType_ != ge::DT_FLOAT),
+        OPS_LOG_E(opName_, "The data types of the input query_dequant_scale and key_dequant_scale must be float32."),
+        return ge::GRAPH_FAILED);
 
     OPS_ERR_IF(sparseIndicesType_ != ge::DT_INT32,
                OPS_LOG_E(opName_, "The data types of the output sparse_indices must be int32."),
@@ -258,12 +256,13 @@ ge::graphStatus QSIInfoParser::GetAndCheckOptionalInput()
                    OPS_LOG_E(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
     }
     OPS_ERR_IF(opParamInfo_.actualSeqLengths.tensor != nullptr &&
-               opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32,
-                   OPS_LOG_E(opName_, "input actual_seq_lengths_key data type only support int32"),
-                   return ge::GRAPH_FAILED);
-    OPS_ERR_IF(kLayout_ != DataLayout::PA_NZ && kLayout_ != DataLayout::PA_BNSD && opParamInfo_.blockTable.tensor != nullptr,
-                   OPS_LOG_E(opName_, "when key layout is not PA_BNSD or PA_NZ, input block_table must be null"),
-                   return ge::GRAPH_FAILED);
+                   opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32,
+               OPS_LOG_E(opName_, "input actual_seq_lengths_key data type only support int32"),
+               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(
+        kLayout_ != DataLayout::PA_NZ && kLayout_ != DataLayout::PA_BNSD && opParamInfo_.blockTable.tensor != nullptr,
+        OPS_LOG_E(opName_, "when key layout is not PA_BNSD or PA_NZ, input block_table must be null"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -285,23 +284,23 @@ ge::graphStatus QSIInfoParser::CheckShapeDim()
     OPS_ERR_IF(kShapeDim != kExpectShapeDim,
                OPS_LOG_E(opName_, "the dim num of key's shape should be %u, but now is %u", kExpectShapeDim, kShapeDim),
                return ge::GRAPH_FAILED);
-    OPS_ERR_IF(qShapeDim != qExpectShapeDim,
-               OPS_LOG_E(opName_, "the dim num of query's shape should be %u, but now is %u",
-                qExpectShapeDim, qShapeDim),
-               return ge::GRAPH_FAILED);
-             
-    uint32_t sparseIndicesShapeDim = opParamInfo_.sparseIndices.shape->GetStorageShape().GetDimNum();  
+    OPS_ERR_IF(
+        qShapeDim != qExpectShapeDim,
+        OPS_LOG_E(opName_, "the dim num of query's shape should be %u, but now is %u", qExpectShapeDim, qShapeDim),
+        return ge::GRAPH_FAILED);
+
+    uint32_t sparseIndicesShapeDim = opParamInfo_.sparseIndices.shape->GetStorageShape().GetDimNum();
 
     OPS_ERR_IF(sparseIndicesShapeDim != qExpectShapeDim,
-               OPS_LOG_E(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u",
-                qExpectShapeDim, sparseIndicesShapeDim),
+               OPS_LOG_E(opName_, "the dim num of sparse_indices's shape should be %u, but now is %u", qExpectShapeDim,
+                         sparseIndicesShapeDim),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                  const std::string &actualSeqLenName)
+ge::graphStatus QSIInfoParser::GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor,
+                                                   const std::string& actualSeqLenName)
 {
     size = static_cast<uint32_t>(tensor->GetShapeSize());
     if (size <= 0) {
@@ -313,7 +312,7 @@ ge::graphStatus QSIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::T
 
 ge::graphStatus QSIInfoParser::GetAndCheckN2Size()
 {
-    uint32_t n2Index = DIM_IDX_TWO; // PA_BSND/BSND
+    uint32_t n2Index = DIM_IDX_TWO;                                         // PA_BSND/BSND
     if (kLayout_ == DataLayout::PA_BNSD || kLayout_ == DataLayout::PA_NZ) { // PA_BNSD
         n2Index = DIM_IDX_ONE;
     }
@@ -331,10 +330,10 @@ ge::graphStatus QSIInfoParser::GetBatchSize()
 ge::graphStatus QSIInfoParser::GetHeadDim()
 {
     // 以query的D维度为基准
-    headDim_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO) * 8; // INT4伪装成IN32, D轴每8个数合成一个数，*8还原shape
+    headDim_ = opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO) *
+               8; // INT4伪装成IN32, D轴每8个数合成一个数，*8还原shape
     OPS_ERR_IF(headDim_ != 64,
-               OPS_LOG_E(opName_, "the head dim of query and key should be %u, but now is %u",
-                64, headDim_),
+               OPS_LOG_E(opName_, "the head dim of query and key should be %u, but now is %u", 64, headDim_),
                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -366,9 +365,7 @@ ge::graphStatus QSIInfoParser::GetAndCheckBlockSize()
 ge::graphStatus QSIInfoParser::CheckBlockCount()
 {
     int32_t blockCount_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(0));
-    OPS_ERR_IF((blockCount_ == 0),
-                OPS_LOG_E(opName_, "input key's block_count cannot be 0."),
-                return ge::GRAPH_FAILED);
+    OPS_ERR_IF((blockCount_ == 0), OPS_LOG_E(opName_, "input key's block_count cannot be 0."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -412,25 +409,28 @@ ge::graphStatus QSIInfoParser::ValidateInputShapesMatch()
     out [BatchSize,S1,N2,topk]
     */
     uint32_t outN2Dim = DIM_IDX_ONE;
-        // -----------------------check BatchSize-------------------
-        // bSize_ 来源于query
-        OPS_ERR_IF(
-                       ((opParamInfo_.blockTable.tensor != nullptr) &&
-                       (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_)) ||
-                       (opParamInfo_.actualSeqLengths.tensor->GetShapeSize() != bSize_) ||
-                       (opParamInfo_.sparseIndices.shape->GetStorageShape().GetDim(0) != bSize_),
-                   OPS_LOG_E(opName_, "BSND case input query, actual_seq_lengths_key, block_table, sparse_indices dim 0 must be same."),
-                   return ge::GRAPH_FAILED);
+    // -----------------------check BatchSize-------------------
+    // bSize_ 来源于query
+    OPS_ERR_IF(
+        ((opParamInfo_.blockTable.tensor != nullptr) &&
+         (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_)) ||
+            (opParamInfo_.actualSeqLengths.tensor->GetShapeSize() != bSize_) ||
+            (opParamInfo_.sparseIndices.shape->GetStorageShape().GetDim(0) != bSize_),
+        OPS_LOG_E(opName_,
+                  "BSND case input query, actual_seq_lengths_key, block_table, sparse_indices dim 0 must be same."),
+        return ge::GRAPH_FAILED);
 
     // -----------------------check D-------------------
     uint32_t keyDDim = DIM_IDX_THREE;
     if (kLayout_ == DataLayout::PA_NZ) {
         keyDDim = DIM_IDX_TWO;
         OPS_ERR_IF((opParamInfo_.key.shape->GetStorageShape().GetDim(keyDDim) * 8 * 8 != headDim_),
-               OPS_LOG_E(opName_, "input query, key shape last dim must be same."), return ge::GRAPH_FAILED); // INT4伪装成IN32, D轴每8个数合成一个数，*8还原shape
+                   OPS_LOG_E(opName_, "input query, key shape last dim must be same."),
+                   return ge::GRAPH_FAILED); // INT4伪装成IN32, D轴每8个数合成一个数，*8还原shape
     } else {
         OPS_ERR_IF((opParamInfo_.key.shape->GetStorageShape().GetDim(keyDDim) * 8 != headDim_),
-               OPS_LOG_E(opName_, "input query, key shape last dim must be same."), return ge::GRAPH_FAILED); // INT4伪装成IN32, D轴每8个数合成一个数，*8还原shape
+                   OPS_LOG_E(opName_, "input query, key shape last dim must be same."),
+                   return ge::GRAPH_FAILED); // INT4伪装成IN32, D轴每8个数合成一个数，*8还原shape
     }
     // -----------------------check N2-------------------
     OPS_ERR_IF((opParamInfo_.sparseIndices.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
@@ -451,28 +451,28 @@ ge::graphStatus QSIInfoParser::CheckScaleShape()
                return ge::GRAPH_FAILED);
     if (kLayout_ == DataLayout::PA_NZ) {
         OPS_ERR_IF(kDequantScaleShapeDim != (kShapeDim - 2),
-               OPS_LOG_E(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u", kShapeDim - 1,
-                         kDequantScaleShapeDim),
-               return ge::GRAPH_FAILED);
+                   OPS_LOG_E(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u",
+                             kShapeDim - 1, kDequantScaleShapeDim),
+                   return ge::GRAPH_FAILED);
     } else {
         OPS_ERR_IF(kDequantScaleShapeDim != (kShapeDim - 1),
-               OPS_LOG_E(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u", kShapeDim - 1,
-                         kDequantScaleShapeDim),
-               return ge::GRAPH_FAILED);
+                   OPS_LOG_E(opName_, "the dim num of key_dequant_scale's shape should be %u, but now is %u",
+                             kShapeDim - 1, kDequantScaleShapeDim),
+                   return ge::GRAPH_FAILED);
     }
     // check q scale
     for (uint32_t i = 0; i < (qShapeDim - 2); i++) {
         uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
         uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
         OPS_ERR_IF(dimValueQueryScale != dimValueQuery,
-            OPS_LOG_E(opName_, "query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same", i,
-                      dimValueQueryScale, i, dimValueQuery),
-            return ge::GRAPH_FAILED);
+                   OPS_LOG_E(opName_, "query_dequant_scale's shape[%u] %u and query's shape[%u] %u is not same", i,
+                             dimValueQueryScale, i, dimValueQuery),
+                   return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-void QSIInfoParser::GenerateInfo(QSITilingInfo &siInfo)
+void QSIInfoParser::GenerateInfo(QSITilingInfo& siInfo)
 {
     siInfo.opName = opName_;
     siInfo.platformInfo = platformInfo_;
@@ -502,7 +502,7 @@ void QSIInfoParser::GenerateInfo(QSITilingInfo &siInfo)
     siInfo.inputKLayout = kLayout_;
 }
 
-ge::graphStatus QSIInfoParser::ParseAndCheck(QSITilingInfo &siInfo)
+ge::graphStatus QSIInfoParser::ParseAndCheck(QSITilingInfo& siInfo)
 {
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
@@ -514,13 +514,12 @@ ge::graphStatus QSIInfoParser::ParseAndCheck(QSITilingInfo &siInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != CheckShapeDim() ||
-        ge::GRAPH_SUCCESS != GetAndCheckN2Size()) {
+    if (ge::GRAPH_SUCCESS != CheckShapeDim() || ge::GRAPH_SUCCESS != GetAndCheckN2Size()) {
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetHeadDim() ||
-        ge::GRAPH_SUCCESS != GetS2Size() || ge::GRAPH_SUCCESS != GetSparseCount()) {
+    if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetHeadDim() || ge::GRAPH_SUCCESS != GetS2Size() ||
+        ge::GRAPH_SUCCESS != GetSparseCount()) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != ValidateInputShapesMatch() || ge::GRAPH_SUCCESS != CheckScaleShape()) {
@@ -532,7 +531,8 @@ ge::graphStatus QSIInfoParser::ParseAndCheck(QSITilingInfo &siInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-void QuantSalsIndexerTiling::SplitCoreBN(uint32_t coreNum, QSITilingInfo *siInfo, SplitParams splitParams) {
+void QuantSalsIndexerTiling::SplitCoreBN(uint32_t coreNum, QSITilingInfo* siInfo, SplitParams splitParams)
+{
     std::vector<uint32_t> s1GBaseNum(siInfo->bSize);
     std::vector<uint32_t> s2BaseNum(siInfo->bSize);
     std::vector<uint32_t> s1Size(siInfo->bSize);
@@ -586,13 +586,13 @@ void QuantSalsIndexerTiling::SplitCoreBN(uint32_t coreNum, QSITilingInfo *siInfo
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForQuantSalsIndexer(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForQuantSalsIndexer(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // --------------------------QuantSalsIndexerTiling类成员函数定义-----------------------
-ge::graphStatus QuantSalsIndexerTiling::DoTiling(QSITilingInfo *tilingInfo)
+ge::graphStatus QuantSalsIndexerTiling::DoTiling(QSITilingInfo* tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -610,9 +610,8 @@ ge::graphStatus QuantSalsIndexerTiling::DoTiling(QSITilingInfo *tilingInfo)
         SplitCoreBN(aicNum, tilingInfo, splitParams);
         tilingData_.set_usedCoreNum(blockDim);
     }
-    
-    // ------------------------------------------------------------
 
+    // ------------------------------------------------------------
 
     // -------------set workspacesize-----------------
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4;         // 4: fp32
@@ -632,10 +631,11 @@ ge::graphStatus QuantSalsIndexerTiling::DoTiling(QSITilingInfo *tilingInfo)
     workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
     // Decode流程(LD)需要Workspace大小
     // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
-    workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * (TOPK_MAX_SIZE + tilingInfo->fixedTailCount) * V1_RES_ELEM_SIZE * aicNum;
+    workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE *
+                     (TOPK_MAX_SIZE + tilingInfo->fixedTailCount) * V1_RES_ELEM_SIZE * aicNum;
     // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
     workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
@@ -660,15 +660,14 @@ ge::graphStatus QuantSalsIndexerTiling::DoTiling(QSITilingInfo *tilingInfo)
     uint32_t outputType = static_cast<uint32_t>(tilingInfo->outputType);
     uint32_t pageAttentionFlag = static_cast<uint32_t>(tilingInfo->pageAttentionFlag);
     uint32_t inputKLayout = static_cast<uint32_t>(tilingInfo->inputKLayout);
-    uint32_t tilingKey =
-        GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputKLayout);
+    uint32_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, pageAttentionFlag, inputKLayout);
     context_->SetTilingKey(tilingKey);
 
     return ge::GRAPH_SUCCESS;
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingForQuantSalsIndexer(gert::TilingContext *context)
+ge::graphStatus TilingForQuantSalsIndexer(gert::TilingContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("SalsIndexer", "Tiling context is null."),
                return ge::GRAPH_FAILED);

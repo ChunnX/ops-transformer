@@ -63,7 +63,7 @@ extern "C" __global__ __aicore__ void gmm_k_dim(GM_ADDR x, GM_ADDR weight, GM_AD
     // TODO: SetOverflow?
     AscendCUtils::SetOverflow(1);
 
-    const TCubeTiling *__restrict mmTiling = &(tiling_data.mmTilingData);
+    const TCubeTiling* __restrict mmTiling = &(tiling_data.mmTilingData);
 
     if (TILING_KEY_IS(0)) {
         constexpr bool trans_a = false;

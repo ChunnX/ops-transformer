@@ -15,12 +15,12 @@ using namespace ge;
 
 namespace ops {
 
-static ge::graphStatus InferShapeRotaryPositionEmbedding3d(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeRotaryPositionEmbedding3d(gert::InferShapeContext* context)
 {
-    const gert::Shape *inputShape = context->GetInputShape(0);
+    const gert::Shape* inputShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputShape);
 
-    gert::Shape *outputShape = context->GetOutputShape(0);
+    gert::Shape* outputShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, outputShape);
 
     auto dimNum = inputShape->GetDimNum();

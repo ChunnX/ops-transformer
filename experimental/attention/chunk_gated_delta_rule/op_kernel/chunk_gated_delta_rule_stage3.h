@@ -40,9 +40,9 @@ struct StageThreeParams {
                                    // 累加结果 = q_state + cube_out 仍为 fp32
     GlobalTensor<bfloat16_t> out;  // (Nv, Sp, Dv) 最终 bf16 输出
                                    // stage3 AIV 把 attnInter 累加结果 cast 成 bf16 后覆盖写回
-    StageThreeMT *mm3;
-    TPipe *pipe;
-    ChunkGroup *cg;
+    StageThreeMT* mm3;
+    TPipe* pipe;
+    ChunkGroup* cg;
     float scale;
     int64_t Nv;
     int64_t Nk;
@@ -53,7 +53,7 @@ struct StageThreeParams {
 template <bool hasG>
 class Stage3 {
 public:
-    __aicore__ inline void Init(StageThreeParams *initParams, int32_t coreNum)
+    __aicore__ inline void Init(StageThreeParams* initParams, int32_t coreNum)
     {
         coreId_ = GetBlockIdx();
         sTP_ = initParams;
@@ -69,7 +69,7 @@ public:
         Dk_ = sTP_->Dk;
         paddedDv_ = Ceil(Dv_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         uint64_t workSpaceOffset = 0;
-        tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
+        tmpGM_.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(
             initParams->ws + workSpaceOffset + coreNum_ * chunkSize_ * chunkSize_ * sizeof(float)));
         if ASCEND_IS_AIC {
             return;
@@ -262,8 +262,8 @@ public:
     }
 
 private:
-    StageThreeParams *sTP_;
-    TPipe *pipe_;
+    StageThreeParams* sTP_;
+    TPipe* pipe_;
     TQue<QuePosition::VECIN, BUFFER_NUM_ONE> inQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;
     TBuf<TPosition::VECCALC> tmpBuff_;

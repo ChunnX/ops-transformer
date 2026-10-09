@@ -24,9 +24,8 @@ using namespace QuantAllReduceImpl;
 #define MTE_ONE_SHOT 1
 
 template <uint32_t quantAllReduceCommMode, typename DTYPE_X, typename DTYPE_SCALES, typename DTYPE_OUT_PUT>
-__attribute__((always_inline)) __aicore__ __inline__ void
-quant_all_reduce_with_mc2context(GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM, GM_ADDR mc2Context,
-                                 GM_ADDR tilingGM)
+__attribute__((always_inline)) __aicore__ __inline__ void quant_all_reduce_with_mc2context(
+    GM_ADDR x, GM_ADDR scales, GM_ADDR output, GM_ADDR workspaceGM, GM_ADDR mc2Context, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     TPipe pipe;
@@ -61,8 +60,8 @@ extern "C" __global__ __aicore__ void QuantAllReduce_MTE_ONE_SHOT_Generic(int8_t
     }
 }
 // <<<>>>调用函数
-void quant_all_reduce_demo(int8_t type, uint32_t blockDim, void *stream, uint8_t *x, uint8_t *scales, uint8_t *output,
-                           uint8_t *workspaceGM, uint8_t *mc2Context, uint8_t *tilingGM)
+void quant_all_reduce_demo(int8_t type, uint32_t blockDim, void* stream, uint8_t* x, uint8_t* scales, uint8_t* output,
+                           uint8_t* workspaceGM, uint8_t* mc2Context, uint8_t* tilingGM)
 {
     QuantAllReduce_MTE_ONE_SHOT_Generic<<<blockDim, nullptr, stream>>>(type, x, scales, output, workspaceGM, mc2Context,
                                                                        tilingGM);

@@ -96,22 +96,22 @@ REGISTER_TILING_DATA_CLASS(MoeFFN, MoeFFNTilingData)
 
 class MoeFFNTiling {
 public:
-    ge::graphStatus runTiling(gert::TilingContext *context);
+    ge::graphStatus runTiling(gert::TilingContext* context);
 
 protected:
-    bool GetPlatformInfo(gert::TilingContext *context);
+    bool GetPlatformInfo(gert::TilingContext* context);
 
-    bool GetCheckAttr(gert::TilingContext *context);
+    bool GetCheckAttr(gert::TilingContext* context);
 
-    bool CheckTensorShape(gert::TilingContext *context, gert::Shape &shape, uint64_t ndim, std::vector<uint64_t> dims);
+    bool CheckTensorShape(gert::TilingContext* context, gert::Shape& shape, uint64_t ndim, std::vector<uint64_t> dims);
 
-    bool CheckInOutShapes(gert::TilingContext *context);
+    bool CheckInOutShapes(gert::TilingContext* context);
 
-    bool GetTilingData(gert::TilingContext *context);
+    bool GetTilingData(gert::TilingContext* context);
 
-    bool SetTilingData(gert::TilingContext *context);
+    bool SetTilingData(gert::TilingContext* context);
 
-    bool SetLaunchInfo(gert::TilingContext *context);
+    bool SetLaunchInfo(gert::TilingContext* context);
 
 private:
     MoeFFNTilingKey tilingKey;
@@ -119,7 +119,7 @@ private:
     MoeFFNParam _Params;
 };
 
-ge::graphStatus TilingMoeFFN(gert::TilingContext *context);
+ge::graphStatus TilingMoeFFN(gert::TilingContext* context);
 
 } // namespace optiling
 #endif // MOE_FFN_TILING_H

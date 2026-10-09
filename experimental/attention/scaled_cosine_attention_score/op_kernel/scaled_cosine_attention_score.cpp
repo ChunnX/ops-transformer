@@ -15,10 +15,10 @@
 
 using namespace AscendC;
 
-__aicore__ inline void CopyTilingData(optiling::ScaledCosineAttentionScoreTilingData &dst, GM_ADDR tiling)
+__aicore__ inline void CopyTilingData(optiling::ScaledCosineAttentionScoreTilingData& dst, GM_ADDR tiling)
 {
-    uint32_t *local = reinterpret_cast<uint32_t *>(&dst);
-    auto global = reinterpret_cast<__gm__ uint32_t *>(tiling);
+    uint32_t* local = reinterpret_cast<uint32_t*>(&dst);
+    auto global = reinterpret_cast<__gm__ uint32_t*>(tiling);
     for (uint32_t i = 0; i < sizeof(optiling::ScaledCosineAttentionScoreTilingData) / sizeof(uint32_t); ++i) {
         local[i] = global[i];
     }
@@ -31,7 +31,7 @@ extern "C" __global__ __aicore__ void scaled_cosine_attention_score(GM_ADDR quer
     REGISTER_TILING_DEFAULT(optiling::ScaledCosineAttentionScoreTilingData);
     optiling::ScaledCosineAttentionScoreTilingData tilingDataIn;
     CopyTilingData(tilingDataIn, tiling);
-    const auto *tilingData = &tilingDataIn;
+    const auto* tilingData = &tilingDataIn;
     if (TILING_KEY_IS(0)) {
         NsScaledCosineAttentionScore::ScaledCosineAttentionScoreImpl<half> op;
         op.Init(query, key, scale, attnScore, tilingData);

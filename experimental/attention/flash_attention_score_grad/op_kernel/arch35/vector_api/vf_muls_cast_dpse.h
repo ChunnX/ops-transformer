@@ -46,14 +46,14 @@ __simd_vf__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalIn
         uint32_t offset1 = offset0 + regSize;
         MaskReg mask0 = UpdateMask<float>(sreg);
         MaskReg mask1 = UpdateMask<float>(sreg);
-        LoadAlign(srcReg0, (__ubuf__ float *&)srcLocalInt + offset0);
-        LoadAlign(srcReg1, (__ubuf__ float *&)srcLocalInt + offset1);
+        LoadAlign(srcReg0, (__ubuf__ float*&)srcLocalInt + offset0);
+        LoadAlign(srcReg1, (__ubuf__ float*&)srcLocalInt + offset1);
         Muls(scaledReg0, srcReg0, scaleValue, mask0);
         Muls(scaledReg1, srcReg1, scaleValue, mask1);
         Cast<T, float, DPSE_CAST_TRAIT_B32_TO_B16>(dstReg0, scaledReg0, mask0);
         Cast<T, float, DPSE_CAST_TRAIT_B32_TO_B16>(dstReg1, scaledReg1, mask1);
-        StoreAlign<T, StoreDist::DIST_PACK_B32>((__ubuf__ T *&)dstLocalInt + offset0, dstReg0, mask0);
-        StoreAlign<T, StoreDist::DIST_PACK_B32>((__ubuf__ T *&)dstLocalInt + offset1, dstReg1, mask1);
+        StoreAlign<T, StoreDist::DIST_PACK_B32>((__ubuf__ T*&)dstLocalInt + offset0, dstReg0, mask0);
+        StoreAlign<T, StoreDist::DIST_PACK_B32>((__ubuf__ T*&)dstLocalInt + offset1, dstReg1, mask1);
     }
 
     if constexpr (repeatTimes % unrollFactor != 0) {
@@ -62,10 +62,10 @@ __simd_vf__ inline void MulsCastDpseVF(uint64_t dstLocalInt, uint64_t srcLocalIn
         RegTensor<T> dstRegTail;
         MaskReg maskTail = UpdateMask<float>(sreg);
         constexpr uint32_t tailOffset = unrollTimes * unrollFactor * regSize;
-        LoadAlign(srcRegTail, (__ubuf__ float *&)srcLocalInt + tailOffset);
+        LoadAlign(srcRegTail, (__ubuf__ float*&)srcLocalInt + tailOffset);
         Muls(scaledRegTail, srcRegTail, scaleValue, maskTail);
         Cast<T, float, DPSE_CAST_TRAIT_B32_TO_B16>(dstRegTail, scaledRegTail, maskTail);
-        StoreAlign<T, StoreDist::DIST_PACK_B32>((__ubuf__ T *&)dstLocalInt + tailOffset, dstRegTail, maskTail);
+        StoreAlign<T, StoreDist::DIST_PACK_B32>((__ubuf__ T*&)dstLocalInt + tailOffset, dstRegTail, maskTail);
     }
 }
 #else

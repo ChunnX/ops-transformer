@@ -17,11 +17,11 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeK2qCsrScatter(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeK2qCsrScatter(gert::InferShapeContext* context)
 {
-    const gert::Shape *q2kShape = context->GetInputShape(0);
-    gert::Shape *qIndShape = context->GetOutputShape(0);
-    gert::Shape *slotShape = context->GetOutputShape(1);
+    const gert::Shape* q2kShape = context->GetInputShape(0);
+    gert::Shape* qIndShape = context->GetOutputShape(0);
+    gert::Shape* slotShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, q2kShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, qIndShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, slotShape);

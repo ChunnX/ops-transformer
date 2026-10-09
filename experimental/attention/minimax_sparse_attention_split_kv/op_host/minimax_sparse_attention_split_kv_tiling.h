@@ -86,19 +86,19 @@ struct MinimaxSparseAttentionSplitKvCompileInfo {
 // =========================================================================================
 class MinimaxSaSplitKvTilingA5 {
 public:
-    ge::graphStatus GetTiling(gert::TilingContext *context, MinimaxSparseAttentionSplitKvTilingData &tilingData);
-    ge::graphStatus SetTilingData(gert::TilingContext *context, MinimaxSparseAttentionSplitKvTilingData &tilingData);
+    ge::graphStatus GetTiling(gert::TilingContext* context, MinimaxSparseAttentionSplitKvTilingData& tilingData);
+    ge::graphStatus SetTilingData(gert::TilingContext* context, MinimaxSparseAttentionSplitKvTilingData& tilingData);
 
 private:
-    ge::graphStatus GetNpuInfo(gert::TilingContext *context);
-    ge::graphStatus ParseAttrs(gert::TilingContext *context);
-    ge::graphStatus ParseInputTensors(gert::TilingContext *context);
-    ge::graphStatus CheckTilingConstraints(gert::TilingContext *context);
-    ge::graphStatus ParseSeqlens(gert::TilingContext *context);
-    ge::graphStatus CalculateReverseIndexMeta(gert::TilingContext *context);
-    ge::graphStatus CalculateTaskSplit(gert::TilingContext *context);
-    ge::graphStatus CalculateWorkSpace(gert::TilingContext *context);
-    ge::graphStatus FillTilingData(gert::TilingContext *context);
+    ge::graphStatus GetNpuInfo(gert::TilingContext* context);
+    ge::graphStatus ParseAttrs(gert::TilingContext* context);
+    ge::graphStatus ParseInputTensors(gert::TilingContext* context);
+    ge::graphStatus CheckTilingConstraints(gert::TilingContext* context);
+    ge::graphStatus ParseSeqlens(gert::TilingContext* context);
+    ge::graphStatus CalculateReverseIndexMeta(gert::TilingContext* context);
+    ge::graphStatus CalculateTaskSplit(gert::TilingContext* context);
+    ge::graphStatus CalculateWorkSpace(gert::TilingContext* context);
+    ge::graphStatus FillTilingData(gert::TilingContext* context);
 
     uint32_t batch_ = 0;
     uint32_t numHeads_ = 0;
@@ -131,7 +131,7 @@ private:
     uint64_t libapiSize_ = 0;
 
     ge::DataType dataType_ = ge::DT_BF16;
-    MinimaxSparseAttentionSplitKvTilingData *tilingData_ = nullptr;
+    MinimaxSparseAttentionSplitKvTilingData* tilingData_ = nullptr;
 };
 
 // =========================================================================================
@@ -144,19 +144,19 @@ private:
 // =========================================================================================
 class MinimaxSaSplitKvTilingA2 {
 public:
-    ge::graphStatus GetTiling(gert::TilingContext *context, MinimaxSparseAttentionSplitKvTilingData &tilingData);
-    ge::graphStatus SetTilingData(gert::TilingContext *context, MinimaxSparseAttentionSplitKvTilingData &tilingData);
+    ge::graphStatus GetTiling(gert::TilingContext* context, MinimaxSparseAttentionSplitKvTilingData& tilingData);
+    ge::graphStatus SetTilingData(gert::TilingContext* context, MinimaxSparseAttentionSplitKvTilingData& tilingData);
 
 private:
-    ge::graphStatus GetNpuInfo(gert::TilingContext *context);
-    ge::graphStatus ParseAttrs(gert::TilingContext *context);
-    ge::graphStatus ParseInputTensors(gert::TilingContext *context);
-    ge::graphStatus CheckTilingConstraints(gert::TilingContext *context);
-    ge::graphStatus ParseSeqlens(gert::TilingContext *context);
-    ge::graphStatus CalculateReverseIndexMeta(gert::TilingContext *context);
-    ge::graphStatus CalculateTaskSplit(gert::TilingContext *context);
-    ge::graphStatus CalculateWorkSpace(gert::TilingContext *context);
-    ge::graphStatus FillTilingData(gert::TilingContext *context);
+    ge::graphStatus GetNpuInfo(gert::TilingContext* context);
+    ge::graphStatus ParseAttrs(gert::TilingContext* context);
+    ge::graphStatus ParseInputTensors(gert::TilingContext* context);
+    ge::graphStatus CheckTilingConstraints(gert::TilingContext* context);
+    ge::graphStatus ParseSeqlens(gert::TilingContext* context);
+    ge::graphStatus CalculateReverseIndexMeta(gert::TilingContext* context);
+    ge::graphStatus CalculateTaskSplit(gert::TilingContext* context);
+    ge::graphStatus CalculateWorkSpace(gert::TilingContext* context);
+    ge::graphStatus FillTilingData(gert::TilingContext* context);
 
     uint32_t batch_ = 0;
     uint32_t numHeads_ = 0;
@@ -198,7 +198,7 @@ private:
     uint64_t libapiSize_ = 0;
 
     ge::DataType dataType_ = ge::DT_BF16;
-    MinimaxSparseAttentionSplitKvTilingData *tilingData_ = nullptr;
+    MinimaxSparseAttentionSplitKvTilingData* tilingData_ = nullptr;
 };
 
 } // namespace optiling

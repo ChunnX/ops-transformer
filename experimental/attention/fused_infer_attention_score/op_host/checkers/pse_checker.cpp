@@ -39,7 +39,7 @@ constexpr int64_t PSE_INNER_MUL_ADD_SQRT_TYPE = 3;
 constexpr int64_t PSE_NONE_TYPE = 9;
 
 // singlepara
-ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo& fiaInfo)
 {
     // 校验pseType的合法性
     if (fiaInfo.opParamInfo.pseType == nullptr) {
@@ -55,7 +55,7 @@ ge::graphStatus PSEChecker::CheckPseType(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo& fiaInfo)
 {
     // 校验pseShift的数据类型
     if (fiaInfo.opParamInfo.pseType == nullptr || fiaInfo.opParamInfo.pseShift.desc == nullptr) {
@@ -63,7 +63,7 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_SUCCESS;
     }
     int64_t pseType = *fiaInfo.opParamInfo.pseType;
-    auto &pseShiftDesc = fiaInfo.opParamInfo.pseShift.desc;
+    auto& pseShiftDesc = fiaInfo.opParamInfo.pseShift.desc;
     if (fiaInfo.enableAlibiPse) {
         // 使能alibi，pseShift的数据类型必须为FLOAT32
         OP_CHECK_IF((pseShiftDesc->GetDataType() != ge::DT_FLOAT),
@@ -99,10 +99,10 @@ ge::graphStatus PSEChecker::CheckPseShiftDataType(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo& fiaInfo)
 {
     // 校验pseShift的shape
-    auto &pseShiftTensor = fiaInfo.opParamInfo.pseShift.tensor;
+    auto& pseShiftTensor = fiaInfo.opParamInfo.pseShift.tensor;
     if (pseShiftTensor == nullptr) {
         // 若pseShiftTensor不存在，则放弃后续校验
         return ge::GRAPH_SUCCESS;
@@ -168,7 +168,7 @@ ge::graphStatus PSEChecker::CheckPseShiftShape(const FiaTilingInfo &fiaInfo)
 }
 
 // existence
-ge::graphStatus PSEChecker::CheckPseShiftExistence(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckPseShiftExistence(const FiaTilingInfo& fiaInfo)
 {
     // 校验pseShift的存在性
     if (fiaInfo.enableAlibiPse) {
@@ -187,7 +187,7 @@ ge::graphStatus PSEChecker::CheckPseShiftExistence(const FiaTilingInfo &fiaInfo)
 }
 
 // feature
-ge::graphStatus PSEChecker::CheckFeaturePA(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckFeaturePA(const FiaTilingInfo& fiaInfo)
 {
     if (fiaInfo.opParamInfo.pseType == nullptr || fiaInfo.enableAlibiPse) {
         // 若不存在pseType或pseType = 2/3，则放弃后续校验
@@ -210,7 +210,7 @@ ge::graphStatus PSEChecker::CheckFeaturePA(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo& fiaInfo)
 {
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     // 校验使能alibi时与其他特性交叉的约束
@@ -243,16 +243,16 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
 }
 
 // multipara
-ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo& fiaInfo)
 {
     // 使能alibi时，校验qStartIdx和kvStartIdx的取值范围，和kvStartIdx - qStartIdx的取值范围
     // qstartIdx的取值范围应满足[-2147483648, 2147483647]
-    auto &qStartIdxTensor = fiaInfo.opParamInfo.qStartIdx.tensor;
-    auto &kvStartIdxTensor = fiaInfo.opParamInfo.kvStartIdx.tensor;
+    auto& qStartIdxTensor = fiaInfo.opParamInfo.qStartIdx.tensor;
+    auto& kvStartIdxTensor = fiaInfo.opParamInfo.kvStartIdx.tensor;
     int64_t qStartIdx = 0;
     int64_t kvStartIdx = 0;
     if (qStartIdxTensor != nullptr && qStartIdxTensor->GetShapeSize() >= 1) {
-        const int64_t *qStartIdxs = qStartIdxTensor->GetData<int64_t>();
+        const int64_t* qStartIdxs = qStartIdxTensor->GetData<int64_t>();
         if (qStartIdxs != nullptr) {
             qStartIdx = qStartIdxs[0];
             OP_CHECK_IF(qStartIdx > INT32_MAX || qStartIdx < INT32_MIN,
@@ -265,7 +265,7 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
     }
     // kvStartIdx的取值范围应满足[-2147483648, 2147483647]
     if (kvStartIdxTensor != nullptr && kvStartIdxTensor->GetShapeSize() >= 1) {
-        const int64_t *kvStartIdxs = kvStartIdxTensor->GetData<int64_t>();
+        const int64_t* kvStartIdxs = kvStartIdxTensor->GetData<int64_t>();
         if (kvStartIdxs != nullptr) {
             kvStartIdx = kvStartIdxs[0];
             OP_CHECK_IF(kvStartIdx > INT32_MAX || kvStartIdx < INT32_MIN,
@@ -286,7 +286,7 @@ ge::graphStatus PSEChecker::CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PSEChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckSinglePara(const FiaTilingInfo& fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckPseType(fiaInfo) || ge::GRAPH_SUCCESS != CheckPseShiftDataType(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckPseShiftShape(fiaInfo)) {
@@ -295,7 +295,7 @@ ge::graphStatus PSEChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PSEChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckParaExistence(const FiaTilingInfo& fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckPseShiftExistence(fiaInfo)) {
         return ge::GRAPH_FAILED;
@@ -303,7 +303,7 @@ ge::graphStatus PSEChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckCrossFeature(const FiaTilingInfo& fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckFeaturePA(fiaInfo) || ge::GRAPH_SUCCESS != CheckerFeatureCrossover(fiaInfo)) {
         return ge::GRAPH_FAILED;
@@ -311,7 +311,7 @@ ge::graphStatus PSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus PSEChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
+ge::graphStatus PSEChecker::CheckMultiParaConsistency(const FiaTilingInfo& fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckAlibiStartIdx(fiaInfo)) {
         return ge::GRAPH_FAILED;

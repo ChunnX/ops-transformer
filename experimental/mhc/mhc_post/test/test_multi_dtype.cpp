@@ -28,78 +28,79 @@
 #include <cstring>
 #include <random>
 template <typename To, typename From>
-inline To bit_copy(const From& src) {
+inline To bit_copy(const From& src)
+{
     static_assert(sizeof(To) == sizeof(From), "size mismatch");
     To dst;
     std::memcpy(&dst, &src, sizeof(To));
     return dst;
 }
 
-extern "C" void mhc_post_do_fp32(
-    uint32_t blockDim, void* stream,
-    uint8_t* branch_output, uint8_t* h_post, uint8_t* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-);
+extern "C" void mhc_post_do_fp32(uint32_t blockDim, void* stream, uint8_t* branch_output, uint8_t* h_post,
+                                 uint8_t* output, int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-extern "C" void mhc_post_do_fp16(
-    uint32_t blockDim, void* stream,
-    uint8_t* branch_output, uint8_t* h_post, uint8_t* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-);
+extern "C" void mhc_post_do_fp16(uint32_t blockDim, void* stream, uint8_t* branch_output, uint8_t* h_post,
+                                 uint8_t* output, int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-extern "C" void mhc_post_do_bf16(
-    uint32_t blockDim, void* stream,
-    uint8_t* branch_output, uint8_t* h_post_fp32, uint8_t* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-);
+extern "C" void mhc_post_do_bf16(uint32_t blockDim, void* stream, uint8_t* branch_output, uint8_t* h_post_fp32,
+                                 uint8_t* output, int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-#define CHECK_ACL(x) do { \
-    aclError err = (x); \
-    if (err != ACL_SUCCESS) { \
-        printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
-        exit(1); \
-    } \
-} while(0)
+#define CHECK_ACL(x) \
+    do { \
+        aclError err = (x); \
+        if (err != ACL_SUCCESS) { \
+            printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
+            exit(1); \
+        } \
+    } while (0)
 
-uint16_t float_to_half(float f) {
+uint16_t float_to_half(float f)
+{
     uint32_t x;
     x = bit_copy<uint32_t>(f);
     uint16_t sign = (x >> 16) & 0x8000;
     int32_t exp = ((x >> 23) & 0xFF) - 127 + 15;
     uint32_t mant = x & 0x7FFFFF;
-    if (exp <= 0) return sign;
-    if (exp >= 31) return sign | 0x7C00;
+    if (exp <= 0)
+        return sign;
+    if (exp >= 31)
+        return sign | 0x7C00;
     return sign | (exp << 10) | (mant >> 13);
 }
 
-float half_to_float(uint16_t h) {
+float half_to_float(uint16_t h)
+{
     uint32_t sign = (h & 0x8000) << 16;
     int32_t exp = (h >> 10) & 0x1F;
     uint32_t mant = h & 0x3FF;
     uint32_t result;
-    if (exp == 0) result = sign;
-    else if (exp == 31) result = sign | 0x7F800000 | (mant << 13);
-    else result = sign | ((exp - 15 + 127) << 23) | (mant << 13);
+    if (exp == 0)
+        result = sign;
+    else if (exp == 31)
+        result = sign | 0x7F800000 | (mant << 13);
+    else
+        result = sign | ((exp - 15 + 127) << 23) | (mant << 13);
     float f = bit_copy<float>(result);
     return f;
 }
 
-uint16_t float_to_bf16(float f) {
+uint16_t float_to_bf16(float f)
+{
     uint32_t x;
     x = bit_copy<uint32_t>(f);
     return (uint16_t)(x >> 16);
 }
 
-float bf16_to_float(uint16_t h) {
+float bf16_to_float(uint16_t h)
+{
     uint32_t x = (uint32_t)h << 16;
     float f = bit_copy<float>(x);
     return f;
 }
 
-void cpu_reference_fp32(
-    const float* branch_output, const float* h_post, float* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-) {
+void cpu_reference_fp32(const float* branch_output, const float* h_post, float* output, int64_t batch, int64_t seq_len,
+                        int64_t dim, int64_t num_streams)
+{
     int64_t batch_elements = seq_len * dim;
     for (int64_t b = 0; b < batch; ++b) {
         for (int64_t s = 0; s < num_streams; ++s) {
@@ -120,10 +121,8 @@ struct AllCloseResult {
     int64_t total;
 };
 
-AllCloseResult allclose(
-    const float* actual, const float* expected, int64_t size,
-    float atol, float rtol
-) {
+AllCloseResult allclose(const float* actual, const float* expected, int64_t size, float atol, float rtol)
+{
     AllCloseResult r = {true, 0, 0, 0, size};
     for (int64_t i = 0; i < size; ++i) {
         float abs_err = std::abs(actual[i] - expected[i]);
@@ -140,7 +139,8 @@ AllCloseResult allclose(
     return r;
 }
 
-bool test_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams) {
+bool test_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
+{
     printf("FP32 Test: [%ld, %ld, %ld] x %ld\n", batch, seq_len, dim, num_streams);
 
     int64_t input_size = batch * seq_len * dim;
@@ -160,35 +160,35 @@ bool test_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
         h_weight[i] = dist_pos(rng);
         sum += h_weight[i];
     }
-    for (int64_t i = 0; i < weight_size; ++i) h_weight[i] /= sum;
+    for (int64_t i = 0; i < weight_size; ++i)
+        h_weight[i] /= sum;
 
-    cpu_reference_fp32(h_branch.data(), h_weight.data(), h_ref.data(),
-                       batch, seq_len, dim, num_streams);
+    cpu_reference_fp32(h_branch.data(), h_weight.data(), h_ref.data(), batch, seq_len, dim, num_streams);
 
     void *d_branch, *d_weight, *d_output;
     CHECK_ACL(aclrtMalloc(&d_branch, input_size * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST));
     CHECK_ACL(aclrtMalloc(&d_weight, weight_size * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST));
     CHECK_ACL(aclrtMalloc(&d_output, output_size * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST));
-    CHECK_ACL(aclrtMemcpy(d_branch, input_size * sizeof(float), h_branch.data(),
-                          input_size * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE));
-    CHECK_ACL(aclrtMemcpy(d_weight, weight_size * sizeof(float), h_weight.data(),
-                          weight_size * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(d_branch, input_size * sizeof(float), h_branch.data(), input_size * sizeof(float),
+                          ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(d_weight, weight_size * sizeof(float), h_weight.data(), weight_size * sizeof(float),
+                          ACL_MEMCPY_HOST_TO_DEVICE));
 
     aclrtStream stream;
     CHECK_ACL(aclrtCreateStream(&stream));
-    mhc_post_do_fp32(batch * num_streams, stream,
-                     (uint8_t*)d_branch, (uint8_t*)d_weight, (uint8_t*)d_output,
-                     batch, seq_len, dim, num_streams);
+    mhc_post_do_fp32(batch * num_streams, stream, (uint8_t*)d_branch, (uint8_t*)d_weight, (uint8_t*)d_output, batch,
+                     seq_len, dim, num_streams);
     CHECK_ACL(aclrtSynchronizeStream(stream));
-    CHECK_ACL(aclrtMemcpy(h_output.data(), output_size * sizeof(float),
-                          d_output, output_size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST));
+    CHECK_ACL(aclrtMemcpy(h_output.data(), output_size * sizeof(float), d_output, output_size * sizeof(float),
+                          ACL_MEMCPY_DEVICE_TO_HOST));
 
     int64_t mismatch = 0;
     for (int64_t i = 0; i < output_size; ++i) {
         uint32_t a, b;
         a = bit_copy<uint32_t>(h_output[i]);
         b = bit_copy<uint32_t>(h_ref[i]);
-        if (a != b) mismatch++;
+        if (a != b)
+            mismatch++;
     }
 
     CHECK_ACL(aclrtFree(d_branch));
@@ -197,12 +197,13 @@ bool test_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
     CHECK_ACL(aclrtDestroyStream(stream));
 
     bool pass = (mismatch == 0);
-    printf("  bit_exact=%s (%ld/%ld mismatch)  %s\n\n",
-           pass ? "yes" : "no", mismatch, output_size, pass ? "PASS" : "FAIL");
+    printf("  bit_exact=%s (%ld/%ld mismatch)  %s\n\n", pass ? "yes" : "no", mismatch, output_size,
+           pass ? "PASS" : "FAIL");
     return pass;
 }
 
-bool test_fp16(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams) {
+bool test_fp16(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
+{
     printf("FP16 Test: [%ld, %ld, %ld] x %ld\n", batch, seq_len, dim, num_streams);
 
     int64_t input_size = batch * seq_len * dim;
@@ -232,26 +233,24 @@ bool test_fp16(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
         h_weight_f[i] = half_to_float(h_weight[i]);
     }
 
-    cpu_reference_fp32(h_branch_f.data(), h_weight_f.data(), h_ref.data(),
-                       batch, seq_len, dim, num_streams);
+    cpu_reference_fp32(h_branch_f.data(), h_weight_f.data(), h_ref.data(), batch, seq_len, dim, num_streams);
 
     void *d_branch, *d_weight, *d_output;
     CHECK_ACL(aclrtMalloc(&d_branch, input_size * sizeof(uint16_t), ACL_MEM_MALLOC_HUGE_FIRST));
     CHECK_ACL(aclrtMalloc(&d_weight, weight_size * sizeof(uint16_t), ACL_MEM_MALLOC_HUGE_FIRST));
     CHECK_ACL(aclrtMalloc(&d_output, output_size * sizeof(uint16_t), ACL_MEM_MALLOC_HUGE_FIRST));
-    CHECK_ACL(aclrtMemcpy(d_branch, input_size * sizeof(uint16_t), h_branch.data(),
-                          input_size * sizeof(uint16_t), ACL_MEMCPY_HOST_TO_DEVICE));
-    CHECK_ACL(aclrtMemcpy(d_weight, weight_size * sizeof(uint16_t), h_weight.data(),
-                          weight_size * sizeof(uint16_t), ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(d_branch, input_size * sizeof(uint16_t), h_branch.data(), input_size * sizeof(uint16_t),
+                          ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(d_weight, weight_size * sizeof(uint16_t), h_weight.data(), weight_size * sizeof(uint16_t),
+                          ACL_MEMCPY_HOST_TO_DEVICE));
 
     aclrtStream stream;
     CHECK_ACL(aclrtCreateStream(&stream));
-    mhc_post_do_fp16(batch * num_streams, stream,
-                     (uint8_t*)d_branch, (uint8_t*)d_weight, (uint8_t*)d_output,
-                     batch, seq_len, dim, num_streams);
+    mhc_post_do_fp16(batch * num_streams, stream, (uint8_t*)d_branch, (uint8_t*)d_weight, (uint8_t*)d_output, batch,
+                     seq_len, dim, num_streams);
     CHECK_ACL(aclrtSynchronizeStream(stream));
-    CHECK_ACL(aclrtMemcpy(h_output.data(), output_size * sizeof(uint16_t),
-                          d_output, output_size * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST));
+    CHECK_ACL(aclrtMemcpy(h_output.data(), output_size * sizeof(uint16_t), d_output, output_size * sizeof(uint16_t),
+                          ACL_MEMCPY_DEVICE_TO_HOST));
 
     for (int64_t i = 0; i < output_size; ++i)
         h_npu_f[i] = half_to_float(h_output[i]);
@@ -264,12 +263,13 @@ bool test_fp16(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
     CHECK_ACL(aclrtFree(d_output));
     CHECK_ACL(aclrtDestroyStream(stream));
 
-    printf("  max_abs=%.2e  max_rel=%.2e  fail=%ld/%ld  %s\n\n",
-           r.max_abs_err, r.max_rel_err, r.fail_count, r.total, r.pass ? "PASS" : "FAIL");
+    printf("  max_abs=%.2e  max_rel=%.2e  fail=%ld/%ld  %s\n\n", r.max_abs_err, r.max_rel_err, r.fail_count, r.total,
+           r.pass ? "PASS" : "FAIL");
     return r.pass;
 }
 
-bool test_bf16(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams) {
+bool test_bf16(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
+{
     printf("BF16 Test: [%ld, %ld, %ld] x %ld\n", batch, seq_len, dim, num_streams);
 
     int64_t input_size = batch * seq_len * dim;
@@ -296,26 +296,24 @@ bool test_bf16(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
     for (int64_t i = 0; i < weight_size; ++i)
         h_weight_f[i] /= sum;
 
-    cpu_reference_fp32(h_branch_f.data(), h_weight_f.data(), h_ref.data(),
-                       batch, seq_len, dim, num_streams);
+    cpu_reference_fp32(h_branch_f.data(), h_weight_f.data(), h_ref.data(), batch, seq_len, dim, num_streams);
 
     void *d_branch, *d_weight, *d_output;
     CHECK_ACL(aclrtMalloc(&d_branch, input_size * sizeof(uint16_t), ACL_MEM_MALLOC_HUGE_FIRST));
     CHECK_ACL(aclrtMalloc(&d_weight, weight_size * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST));
     CHECK_ACL(aclrtMalloc(&d_output, output_size * sizeof(uint16_t), ACL_MEM_MALLOC_HUGE_FIRST));
-    CHECK_ACL(aclrtMemcpy(d_branch, input_size * sizeof(uint16_t), h_branch.data(),
-                          input_size * sizeof(uint16_t), ACL_MEMCPY_HOST_TO_DEVICE));
-    CHECK_ACL(aclrtMemcpy(d_weight, weight_size * sizeof(float), h_weight_f.data(),
-                          weight_size * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(d_branch, input_size * sizeof(uint16_t), h_branch.data(), input_size * sizeof(uint16_t),
+                          ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(d_weight, weight_size * sizeof(float), h_weight_f.data(), weight_size * sizeof(float),
+                          ACL_MEMCPY_HOST_TO_DEVICE));
 
     aclrtStream stream;
     CHECK_ACL(aclrtCreateStream(&stream));
-    mhc_post_do_bf16(batch * num_streams, stream,
-                     (uint8_t*)d_branch, (uint8_t*)d_weight, (uint8_t*)d_output,
-                     batch, seq_len, dim, num_streams);
+    mhc_post_do_bf16(batch * num_streams, stream, (uint8_t*)d_branch, (uint8_t*)d_weight, (uint8_t*)d_output, batch,
+                     seq_len, dim, num_streams);
     CHECK_ACL(aclrtSynchronizeStream(stream));
-    CHECK_ACL(aclrtMemcpy(h_output.data(), output_size * sizeof(uint16_t),
-                          d_output, output_size * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST));
+    CHECK_ACL(aclrtMemcpy(h_output.data(), output_size * sizeof(uint16_t), d_output, output_size * sizeof(uint16_t),
+                          ACL_MEMCPY_DEVICE_TO_HOST));
 
     for (int64_t i = 0; i < output_size; ++i)
         h_npu_f[i] = bf16_to_float(h_output[i]);
@@ -328,12 +326,13 @@ bool test_bf16(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
     CHECK_ACL(aclrtFree(d_output));
     CHECK_ACL(aclrtDestroyStream(stream));
 
-    printf("  max_abs=%.2e  max_rel=%.2e  fail=%ld/%ld  %s\n\n",
-           r.max_abs_err, r.max_rel_err, r.fail_count, r.total, r.pass ? "PASS" : "FAIL");
+    printf("  max_abs=%.2e  max_rel=%.2e  fail=%ld/%ld  %s\n\n", r.max_abs_err, r.max_rel_err, r.fail_count, r.total,
+           r.pass ? "PASS" : "FAIL");
     return r.pass;
 }
 
-int main() {
+int main()
+{
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(0));
 

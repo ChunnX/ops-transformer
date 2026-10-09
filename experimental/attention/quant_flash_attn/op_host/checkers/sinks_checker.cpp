@@ -32,9 +32,9 @@ using std::string;
 using namespace ge;
 using namespace Ops::Base;
 
-ge::graphStatus SinksChecker::CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo)
+ge::graphStatus SinksChecker::CheckSinglePara(const QuantFlashAttnTilingInfo& qfaInfo)
 {
-    const gert::Tensor *sinksTensor = qfaInfo.opParamInfo.sinks.tensor;
+    const gert::Tensor* sinksTensor = qfaInfo.opParamInfo.sinks.tensor;
     if (sinksTensor != nullptr) {
         OP_LOGE(qfaInfo.opName, "%s is currently not supported.", SINKS_NAME.c_str());
         return ge::GRAPH_FAILED;

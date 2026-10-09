@@ -43,7 +43,7 @@ static uint64_t GetTilingKeyByDtype(ge::DataType dt)
     }
 }
 
-static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context)
+static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -52,11 +52,11 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
     GenPositionIdsFromMaskTilingData tiling;
 
     // ---- shape: 仅支持 [B, S] ----
-    const gert::StorageShape *maskShape = context->GetInputShape(0);
+    const gert::StorageShape* maskShape = context->GetInputShape(0);
     if (maskShape == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape &shape = maskShape->GetStorageShape();
+    const gert::Shape& shape = maskShape->GetStorageShape();
     if (shape.GetDimNum() != DIMS_LIMIT) {
         return ge::GRAPH_FAILED;
     }
@@ -67,11 +67,11 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
     }
 
     // ---- 读属性 paddingFillValue ----
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    const gert::RuntimeAttrs* attrs = context->GetAttrs();
     if (attrs == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    const int64_t *pFill = attrs->GetAttrPointer<int64_t>(ATTR_PADDING_FILL_VALUE_INDEX);
+    const int64_t* pFill = attrs->GetAttrPointer<int64_t>(ATTR_PADDING_FILL_VALUE_INDEX);
     const int64_t fillValue = (pFill != nullptr) ? *pFill : 1;
 
     // 各行相互独立，按可用 Vector 核分配整行任务，保证 carry 不跨核。
@@ -92,7 +92,7 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
 
     context->SetBlockDim(blockDim);
 
-    const gert::CompileTimeTensorDesc *maskDesc = context->GetInputDesc(0);
+    const gert::CompileTimeTensorDesc* maskDesc = context->GetInputDesc(0);
     if (maskDesc == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -101,7 +101,7 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    size_t *workspaces = context->GetWorkspaceSizes(1);
+    size_t* workspaces = context->GetWorkspaceSizes(1);
     if (workspaces == nullptr) {
         return ge::GRAPH_FAILED;
     }

@@ -54,10 +54,10 @@ extern "C" __global__ __aicore__ void gmm_add(GM_ADDR x, GM_ADDR weight, GM_ADDR
     // TODO: SetOverflow?
     AscendCUtils::SetOverflow(1);
 
-    const TCubeTiling *__restrict mmTiling = &(tiling_data.mmTilingData);
+    const TCubeTiling* __restrict mmTiling = &(tiling_data.mmTilingData);
 
     SetSysWorkspace(workspace);
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    __gm__ uint8_t* user = GetUserWorkspace(workspace);
 
     if (TILING_KEY_IS(0)) {
         constexpr bool trans_a = false;

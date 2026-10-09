@@ -40,11 +40,9 @@ class MhcPostPerStream {
 public:
     __aicore__ inline MhcPostPerStream() {}
 
-    __aicore__ inline void Init(
-        GM_ADDR branch_output, GM_ADDR h_post, GM_ADDR output,
-        int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams,
-        int64_t tile_length, int64_t block_dim
-    ) {
+    __aicore__ inline void Init(GM_ADDR branch_output, GM_ADDR h_post, GM_ADDR output, int64_t batch, int64_t seq_len,
+                                int64_t dim, int64_t num_streams, int64_t tile_length, int64_t block_dim)
+    {
         gm_input = reinterpret_cast<__gm__ T*>(branch_output);
         gm_output = reinterpret_cast<__gm__ T*>(output);
         gm_weight.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(h_post), num_streams);
@@ -58,7 +56,8 @@ public:
         pipe.InitBuffer(outQue, BUFFER_NUM, tile_length * sizeof(T));
     }
 
-    __aicore__ inline void Process() {
+    __aicore__ inline void Process()
+    {
         int64_t block_idx = GetBlockIdx();
         for (int64_t task_idx = block_idx; task_idx < total_tasks; task_idx += block_dim) {
             int64_t batch_idx = task_idx / num_streams;
@@ -76,13 +75,15 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessTile(int64_t in_addr, int64_t out_addr, int64_t len, T weight) {
+    __aicore__ inline void ProcessTile(int64_t in_addr, int64_t out_addr, int64_t len, T weight)
+    {
         LocalTensor<T> local_in = inQue.AllocTensor<T>();
         uint32_t l = static_cast<uint32_t>(len);
         uint32_t aligned = (l + ALIGN - 1) / ALIGN * ALIGN;
         GlobalTensor<T> gm_in;
         gm_in.SetGlobalBuffer(gm_input + in_addr, len);
-        if (l % ALIGN == 0) DataCopy(local_in, gm_in, l);
+        if (l % ALIGN == 0)
+            DataCopy(local_in, gm_in, l);
         else {
             DataCopyExtParams p{1, l * (uint32_t)sizeof(T), 0, 0, 0};
             DataCopyPadExtParams<T> pad{false, 0, 0, T(0)};
@@ -99,7 +100,8 @@ private:
         LocalTensor<T> local_out = outQue.DeQue<T>();
         GlobalTensor<T> gm_out;
         gm_out.SetGlobalBuffer(gm_output + out_addr, len);
-        if (l % ALIGN == 0) DataCopy(gm_out, local_out, l);
+        if (l % ALIGN == 0)
+            DataCopy(gm_out, local_out, l);
         else {
             DataCopyExtParams p{1, l * (uint32_t)sizeof(T), 0, 0, 0};
             DataCopyPad(gm_out, local_out, p);
@@ -126,11 +128,9 @@ class MhcPostReadOnce {
 public:
     __aicore__ inline MhcPostReadOnce() {}
 
-    __aicore__ inline void Init(
-        GM_ADDR branch_output, GM_ADDR h_post, GM_ADDR output,
-        int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams,
-        int64_t tile_length, int64_t block_dim
-    ) {
+    __aicore__ inline void Init(GM_ADDR branch_output, GM_ADDR h_post, GM_ADDR output, int64_t batch, int64_t seq_len,
+                                int64_t dim, int64_t num_streams, int64_t tile_length, int64_t block_dim)
+    {
         gm_input = reinterpret_cast<__gm__ T*>(branch_output);
         gm_output = reinterpret_cast<__gm__ T*>(output);
         this->batch = batch;
@@ -150,7 +150,8 @@ public:
         pipe.InitBuffer(outQue, BUFFER_NUM, tile_length * sizeof(T));
     }
 
-    __aicore__ inline void Process() {
+    __aicore__ inline void Process()
+    {
         int64_t block_idx = GetBlockIdx();
         for (int64_t task = block_idx; task < total_tasks; task += block_dim) {
             int64_t batch_idx = task / tiles_per_batch;
@@ -160,7 +161,8 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessTileAllStreams(int64_t batch_idx, int64_t tile_idx) {
+    __aicore__ inline void ProcessTileAllStreams(int64_t batch_idx, int64_t tile_idx)
+    {
         int64_t off = tile_idx * tile_length;
         int64_t len = (off + tile_length > batch_elements) ? (batch_elements - off) : tile_length;
         int64_t in_gm = batch_idx * batch_elements + off;
@@ -171,7 +173,8 @@ private:
         LocalTensor<T> local_in = inQue.AllocTensor<T>();
         GlobalTensor<T> gm_in;
         gm_in.SetGlobalBuffer(gm_input + in_gm, len);
-        if (l % ALIGN == 0) DataCopy(local_in, gm_in, l);
+        if (l % ALIGN == 0)
+            DataCopy(local_in, gm_in, l);
         else {
             DataCopyExtParams p{1, l * (uint32_t)sizeof(T), 0, 0, 0};
             DataCopyPadExtParams<T> pad{false, 0, 0, T(0)};
@@ -189,7 +192,8 @@ private:
             LocalTensor<T> local_out = outQue.DeQue<T>();
             GlobalTensor<T> gm_out;
             gm_out.SetGlobalBuffer(gm_output + out_gm, len);
-            if (l % ALIGN == 0) DataCopy(gm_out, local_out, l);
+            if (l % ALIGN == 0)
+                DataCopy(gm_out, local_out, l);
             else {
                 DataCopyExtParams p{1, l * (uint32_t)sizeof(T), 0, 0, 0};
                 DataCopyPad(gm_out, local_out, p);
@@ -217,11 +221,10 @@ class MhcPostPerStreamBF16 {
 public:
     __aicore__ inline MhcPostPerStreamBF16() {}
 
-    __aicore__ inline void Init(
-        GM_ADDR branch_output, GM_ADDR h_post_fp32, GM_ADDR output,
-        int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams,
-        int64_t tile_length, int64_t block_dim
-    ) {
+    __aicore__ inline void Init(GM_ADDR branch_output, GM_ADDR h_post_fp32, GM_ADDR output, int64_t batch,
+                                int64_t seq_len, int64_t dim, int64_t num_streams, int64_t tile_length,
+                                int64_t block_dim)
+    {
         gm_input = reinterpret_cast<__gm__ bfloat16_t*>(branch_output);
         gm_output = reinterpret_cast<__gm__ bfloat16_t*>(output);
         gm_weight.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(h_post_fp32), num_streams);
@@ -236,7 +239,8 @@ public:
         pipe.InitBuffer(tmpBuf, tile_length * sizeof(float));
     }
 
-    __aicore__ inline void Process() {
+    __aicore__ inline void Process()
+    {
         int64_t block_idx = GetBlockIdx();
         for (int64_t task_idx = block_idx; task_idx < total_tasks; task_idx += block_dim) {
             int64_t batch_idx = task_idx / num_streams;
@@ -254,13 +258,15 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessTile(int64_t in_addr, int64_t out_addr, int64_t len, float weight) {
+    __aicore__ inline void ProcessTile(int64_t in_addr, int64_t out_addr, int64_t len, float weight)
+    {
         LocalTensor<bfloat16_t> local_in = inQue.AllocTensor<bfloat16_t>();
         uint32_t l = static_cast<uint32_t>(len);
         uint32_t aligned = (l + 15) / 16 * 16;
         GlobalTensor<bfloat16_t> gm_in;
         gm_in.SetGlobalBuffer(gm_input + in_addr, len);
-        if (l % 16 == 0) DataCopy(local_in, gm_in, l);
+        if (l % 16 == 0)
+            DataCopy(local_in, gm_in, l);
         else {
             DataCopyExtParams p{1, l * 2, 0, 0, 0};
             DataCopyPadExtParams<bfloat16_t> pad{false, 0, 0, bfloat16_t(0)};
@@ -280,7 +286,8 @@ private:
         LocalTensor<bfloat16_t> local_out = outQue.DeQue<bfloat16_t>();
         GlobalTensor<bfloat16_t> gm_out;
         gm_out.SetGlobalBuffer(gm_output + out_addr, len);
-        if (l % 16 == 0) DataCopy(gm_out, local_out, l);
+        if (l % 16 == 0)
+            DataCopy(gm_out, local_out, l);
         else {
             DataCopyExtParams p{1, l * 2, 0, 0, 0};
             DataCopyPad(gm_out, local_out, p);
@@ -305,11 +312,10 @@ class MhcPostReadOnceBF16 {
 public:
     __aicore__ inline MhcPostReadOnceBF16() {}
 
-    __aicore__ inline void Init(
-        GM_ADDR branch_output, GM_ADDR h_post_fp32, GM_ADDR output,
-        int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams,
-        int64_t tile_length, int64_t block_dim
-    ) {
+    __aicore__ inline void Init(GM_ADDR branch_output, GM_ADDR h_post_fp32, GM_ADDR output, int64_t batch,
+                                int64_t seq_len, int64_t dim, int64_t num_streams, int64_t tile_length,
+                                int64_t block_dim)
+    {
         gm_input = reinterpret_cast<__gm__ bfloat16_t*>(branch_output);
         gm_output = reinterpret_cast<__gm__ bfloat16_t*>(output);
         this->batch = batch;
@@ -330,7 +336,8 @@ public:
         pipe.InitBuffer(tmpBuf, tile_length * sizeof(float));
     }
 
-    __aicore__ inline void Process() {
+    __aicore__ inline void Process()
+    {
         int64_t block_idx = GetBlockIdx();
         for (int64_t task = block_idx; task < total_tasks; task += block_dim) {
             int64_t batch_idx = task / tiles_per_batch;
@@ -340,7 +347,8 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessTileAllStreams(int64_t batch_idx, int64_t tile_idx) {
+    __aicore__ inline void ProcessTileAllStreams(int64_t batch_idx, int64_t tile_idx)
+    {
         int64_t off = tile_idx * tile_length;
         int64_t len = (off + tile_length > batch_elements) ? (batch_elements - off) : tile_length;
         int64_t in_gm = batch_idx * batch_elements + off;
@@ -350,7 +358,8 @@ private:
         LocalTensor<bfloat16_t> local_in = inQue.AllocTensor<bfloat16_t>();
         GlobalTensor<bfloat16_t> gm_in;
         gm_in.SetGlobalBuffer(gm_input + in_gm, len);
-        if (l % 16 == 0) DataCopy(local_in, gm_in, l);
+        if (l % 16 == 0)
+            DataCopy(local_in, gm_in, l);
         else {
             DataCopyExtParams p{1, l * 2, 0, 0, 0};
             DataCopyPadExtParams<bfloat16_t> pad{false, 0, 0, bfloat16_t(0)};
@@ -370,7 +379,8 @@ private:
             LocalTensor<bfloat16_t> local_out = outQue.DeQue<bfloat16_t>();
             GlobalTensor<bfloat16_t> gm_out;
             gm_out.SetGlobalBuffer(gm_output + out_gm, len);
-            if (l % 16 == 0) DataCopy(gm_out, local_out, l);
+            if (l % 16 == 0)
+                DataCopy(gm_out, local_out, l);
             else {
                 DataCopyExtParams p{1, l * 2, 0, 0, 0};
                 DataCopyPad(gm_out, local_out, p);
@@ -395,10 +405,12 @@ private:
 // ============================================================
 // Tile calculation
 // ============================================================
-inline int64_t CalcTile(int64_t elem, int64_t sz, int64_t align) {
+inline int64_t CalcTile(int64_t elem, int64_t sz, int64_t align)
+{
     int64_t t = UB_SIZE / (BUFFER_NUM * 2 * sz);
     t = (t / align) * align;
-    if (t > elem) t = ((elem + align - 1) / align) * align;
+    if (t > elem)
+        t = ((elem + align - 1) / align) * align;
     return t < align ? align : t;
 }
 
@@ -407,7 +419,8 @@ inline int64_t CalcTile(int64_t elem, int64_t sz, int64_t align) {
 // Empirically ~4MB total read traffic (elem >= 256K for N=4 fp32, i.e. read >= 4MB)
 constexpr int64_t READONCE_THRESHOLD_BYTES = 4 * 1024 * 1024;
 
-inline bool UseReadOnce(int64_t batch_elements, int64_t elem_size, int64_t num_streams, int64_t batch) {
+inline bool UseReadOnce(int64_t batch_elements, int64_t elem_size, int64_t num_streams, int64_t batch)
+{
     int64_t total_read = batch_elements * elem_size * num_streams;
     return total_read >= READONCE_THRESHOLD_BYTES && batch >= 16;
 }
@@ -415,29 +428,26 @@ inline bool UseReadOnce(int64_t batch_elements, int64_t elem_size, int64_t num_s
 // ============================================================
 // Kernel entry points - Strategy A (per-stream)
 // ============================================================
-extern "C" __global__ __aicore__ void mhc_post_kernel_a_fp32(
-    GM_ADDR in, GM_ADDR h, GM_ADDR out,
-    int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim
-) {
+extern "C" __global__ __aicore__ void mhc_post_kernel_a_fp32(GM_ADDR in, GM_ADDR h, GM_ADDR out, int64_t b, int64_t s,
+                                                             int64_t d, int64_t n, int64_t tile, int64_t blkDim)
+{
     MhcPostPerStream<float, 8> op;
     op.Init(in, h, out, b, s, d, n, tile, blkDim);
     op.Process();
 }
 
-extern "C" __global__ __aicore__ void mhc_post_kernel_a_fp16(
-    GM_ADDR in, GM_ADDR h, GM_ADDR out,
-    int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim
-) {
+extern "C" __global__ __aicore__ void mhc_post_kernel_a_fp16(GM_ADDR in, GM_ADDR h, GM_ADDR out, int64_t b, int64_t s,
+                                                             int64_t d, int64_t n, int64_t tile, int64_t blkDim)
+{
     MhcPostPerStream<half, 16> op;
     op.Init(in, h, out, b, s, d, n, tile, blkDim);
     op.Process();
 }
 
 #if __CCE_AICORE__ == 220
-extern "C" __global__ __aicore__ void mhc_post_kernel_a_bf16(
-    GM_ADDR in, GM_ADDR h, GM_ADDR out,
-    int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim
-) {
+extern "C" __global__ __aicore__ void mhc_post_kernel_a_bf16(GM_ADDR in, GM_ADDR h, GM_ADDR out, int64_t b, int64_t s,
+                                                             int64_t d, int64_t n, int64_t tile, int64_t blkDim)
+{
     MhcPostPerStreamBF16 op;
     op.Init(in, h, out, b, s, d, n, tile, blkDim);
     op.Process();
@@ -447,29 +457,26 @@ extern "C" __global__ __aicore__ void mhc_post_kernel_a_bf16(
 // ============================================================
 // Kernel entry points - Strategy B (read-once)
 // ============================================================
-extern "C" __global__ __aicore__ void mhc_post_kernel_b_fp32(
-    GM_ADDR in, GM_ADDR h, GM_ADDR out,
-    int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim
-) {
+extern "C" __global__ __aicore__ void mhc_post_kernel_b_fp32(GM_ADDR in, GM_ADDR h, GM_ADDR out, int64_t b, int64_t s,
+                                                             int64_t d, int64_t n, int64_t tile, int64_t blkDim)
+{
     MhcPostReadOnce<float, 8> op;
     op.Init(in, h, out, b, s, d, n, tile, blkDim);
     op.Process();
 }
 
-extern "C" __global__ __aicore__ void mhc_post_kernel_b_fp16(
-    GM_ADDR in, GM_ADDR h, GM_ADDR out,
-    int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim
-) {
+extern "C" __global__ __aicore__ void mhc_post_kernel_b_fp16(GM_ADDR in, GM_ADDR h, GM_ADDR out, int64_t b, int64_t s,
+                                                             int64_t d, int64_t n, int64_t tile, int64_t blkDim)
+{
     MhcPostReadOnce<half, 16> op;
     op.Init(in, h, out, b, s, d, n, tile, blkDim);
     op.Process();
 }
 
 #if __CCE_AICORE__ == 220
-extern "C" __global__ __aicore__ void mhc_post_kernel_b_bf16(
-    GM_ADDR in, GM_ADDR h, GM_ADDR out,
-    int64_t b, int64_t s, int64_t d, int64_t n, int64_t tile, int64_t blkDim
-) {
+extern "C" __global__ __aicore__ void mhc_post_kernel_b_bf16(GM_ADDR in, GM_ADDR h, GM_ADDR out, int64_t b, int64_t s,
+                                                             int64_t d, int64_t n, int64_t tile, int64_t blkDim)
+{
     MhcPostReadOnceBF16 op;
     op.Init(in, h, out, b, s, d, n, tile, blkDim);
     op.Process();
@@ -479,60 +486,62 @@ extern "C" __global__ __aicore__ void mhc_post_kernel_b_bf16(
 // ============================================================
 // Host dispatch: auto-select strategy
 // ============================================================
-extern "C" void mhc_post_do_fp32(
-    uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out,
-    int64_t b, int64_t s, int64_t d, int64_t n
-) {
+extern "C" void mhc_post_do_fp32(uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out, int64_t b,
+                                 int64_t s, int64_t d, int64_t n)
+{
     int64_t tile = CalcTile(s * d, sizeof(float), 8);
     if (UseReadOnce(s * d, sizeof(float), n, b)) {
         int64_t tiles = (s * d + tile - 1) / tile;
         uint32_t maxBlk = b * tiles;
-        if (blockDim == 0 || blockDim > maxBlk) blockDim = (maxBlk > 20) ? 20 : maxBlk;
+        if (blockDim == 0 || blockDim > maxBlk)
+            blockDim = (maxBlk > 20) ? 20 : maxBlk;
         mhc_post_kernel_b_fp32<<<blockDim, nullptr, stream>>>(in, h, out, b, s, d, n, tile, blockDim);
     } else {
         uint32_t maxBlk = b * n;
-        if (blockDim == 0 || blockDim > maxBlk) blockDim = maxBlk;
+        if (blockDim == 0 || blockDim > maxBlk)
+            blockDim = maxBlk;
         mhc_post_kernel_a_fp32<<<blockDim, nullptr, stream>>>(in, h, out, b, s, d, n, tile, blockDim);
     }
 }
 
-extern "C" void mhc_post_do_fp16(
-    uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out,
-    int64_t b, int64_t s, int64_t d, int64_t n
-) {
+extern "C" void mhc_post_do_fp16(uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out, int64_t b,
+                                 int64_t s, int64_t d, int64_t n)
+{
     int64_t tile = CalcTile(s * d, sizeof(half), 16);
     if (UseReadOnce(s * d, sizeof(half), n, b)) {
         int64_t tiles = (s * d + tile - 1) / tile;
         uint32_t maxBlk = b * tiles;
-        if (blockDim == 0 || blockDim > maxBlk) blockDim = (maxBlk > 20) ? 20 : maxBlk;
+        if (blockDim == 0 || blockDim > maxBlk)
+            blockDim = (maxBlk > 20) ? 20 : maxBlk;
         mhc_post_kernel_b_fp16<<<blockDim, nullptr, stream>>>(in, h, out, b, s, d, n, tile, blockDim);
     } else {
         uint32_t maxBlk = b * n;
-        if (blockDim == 0 || blockDim > maxBlk) blockDim = maxBlk;
+        if (blockDim == 0 || blockDim > maxBlk)
+            blockDim = maxBlk;
         mhc_post_kernel_a_fp16<<<blockDim, nullptr, stream>>>(in, h, out, b, s, d, n, tile, blockDim);
     }
 }
 
-extern "C" void mhc_post_do_bf16(
-    uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out,
-    int64_t b, int64_t s, int64_t d, int64_t n
-) {
+extern "C" void mhc_post_do_bf16(uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out, int64_t b,
+                                 int64_t s, int64_t d, int64_t n)
+{
     int64_t tile = CalcTile(s * d, 2 + 4, 16);
     if (UseReadOnce(s * d, 2, n, b)) {
         int64_t tiles = (s * d + tile - 1) / tile;
         uint32_t maxBlk = b * tiles;
-        if (blockDim == 0 || blockDim > maxBlk) blockDim = (maxBlk > 20) ? 20 : maxBlk;
+        if (blockDim == 0 || blockDim > maxBlk)
+            blockDim = (maxBlk > 20) ? 20 : maxBlk;
         mhc_post_kernel_b_bf16<<<blockDim, nullptr, stream>>>(in, h, out, b, s, d, n, tile, blockDim);
     } else {
         uint32_t maxBlk = b * n;
-        if (blockDim == 0 || blockDim > maxBlk) blockDim = maxBlk;
+        if (blockDim == 0 || blockDim > maxBlk)
+            blockDim = maxBlk;
         mhc_post_kernel_a_bf16<<<blockDim, nullptr, stream>>>(in, h, out, b, s, d, n, tile, blockDim);
     }
 }
 
-extern "C" void mhc_post_do(
-    uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out,
-    int64_t b, int64_t s, int64_t d, int64_t n
-) {
+extern "C" void mhc_post_do(uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out, int64_t b,
+                            int64_t s, int64_t d, int64_t n)
+{
     mhc_post_do_fp32(blockDim, stream, in, h, out, b, s, d, n);
 }

@@ -22,7 +22,7 @@ __aicore__ inline void MOEW4A16<T>::Init(GM_ADDR x, GM_ADDR quantized_weight_13,
                                          GM_ADDR weight_offset_13, GM_ADDR quantized_weight_2, GM_ADDR weight_scale_2,
                                          GM_ADDR weight_offset_2, GM_ADDR expanded_expert_idx, GM_ADDR sorted_row_idx,
                                          GM_ADDR expanded_row_idx, GM_ADDR topk_weights, GM_ADDR y,
-                                         GM_ADDR usrworkspace, const MoeFFNTilingData *__restrict moeTiling)
+                                         GM_ADDR usrworkspace, const MoeFFNTilingData* __restrict moeTiling)
 {
     tilingData = moeTiling;
     block_id = get_block_idx();
@@ -71,15 +71,15 @@ __aicore__ inline void MOEW4A16<T>::InitEventId()
 template <typename T>
 __aicore__ inline void MOEW4A16<T>::InitWorkspaceTensors(GM_ADDR usrWorkspace)
 {
-    groupListGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(usrWorkspace), tilingData->originE);
+    groupListGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(usrWorkspace), tilingData->originE);
     usrWorkspace += (tilingData->originE * 4 + 512 - 1) / 512 * 512;
 
     uint32_t workspaceBaseN = tilingData->L0ASize / 2 / sizeof(T);
     workspaceWGm[0][0].SetGlobalBuffer(
-        reinterpret_cast<__gm__ T *>(usrWorkspace + tilingData->L0ASize / 2 * block_id * 2 * MY_BUFFER_NUM),
+        reinterpret_cast<__gm__ T*>(usrWorkspace + tilingData->L0ASize / 2 * block_id * 2 * MY_BUFFER_NUM),
         workspaceBaseN);
     workspaceWGm[1][0].SetGlobalBuffer(
-        reinterpret_cast<__gm__ T *>(usrWorkspace + tilingData->L0ASize / 2 * (block_id * 2 + 1) * MY_BUFFER_NUM),
+        reinterpret_cast<__gm__ T*>(usrWorkspace + tilingData->L0ASize / 2 * (block_id * 2 + 1) * MY_BUFFER_NUM),
         workspaceBaseN);
     for (int32_t i = 1; i < MY_BUFFER_NUM; i++) {
         workspaceWGm[0][i] = workspaceWGm[0][i - 1][workspaceBaseN];
@@ -87,14 +87,14 @@ __aicore__ inline void MOEW4A16<T>::InitWorkspaceTensors(GM_ADDR usrWorkspace)
     }
     usrWorkspace += tilingData->L0ASize * tilingData->CoreNum * MY_BUFFER_NUM;
 
-    MM1InputGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(usrWorkspace), expandedM * tilingData->originK_13);
+    MM1InputGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(usrWorkspace), expandedM * tilingData->originK_13);
     MM2OutputGm = MM1InputGm;
     usrWorkspace += (expandedM * tilingData->originK_13 * 2 + 512 - 1) / 512 * 512;
 
-    MM1OutputGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(usrWorkspace), expandedM * tilingData->originN_13);
+    MM1OutputGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(usrWorkspace), expandedM * tilingData->originN_13);
     usrWorkspace += (expandedM * tilingData->originN_13 * 4 + 512 - 1) / 512 * 512;
 
-    MM2InputGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(usrWorkspace), expandedM * tilingData->originK_2);
+    MM2InputGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(usrWorkspace), expandedM * tilingData->originK_2);
 }
 
 template <typename T>
@@ -104,26 +104,26 @@ __aicore__ inline void MOEW4A16<T>::InitGlobalTensors(GM_ADDR x, GM_ADDR quantiz
                                                       GM_ADDR expanded_expert_idx, GM_ADDR sorted_row_idx,
                                                       GM_ADDR expanded_row_idx, GM_ADDR topk_weights, GM_ADDR y)
 {
-    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(x), tilingData->originM * tilingData->originK_13);
-    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(y), tilingData->originM * tilingData->originN_2);
-    wGm_13.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(quantized_weight_13),
+    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(x), tilingData->originM * tilingData->originK_13);
+    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(y), tilingData->originM * tilingData->originN_2);
+    wGm_13.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(quantized_weight_13),
                            tilingData->originE * tilingData->originK_13 * tilingData->originN_13 / 8);
     wGm_13.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-    wScaleGm_13.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(weight_scale_13),
+    wScaleGm_13.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(weight_scale_13),
                                 tilingData->originE * tilingData->scaleK_13 * tilingData->originN_13);
-    wOffsetGm_13.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(weight_offset_13),
+    wOffsetGm_13.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(weight_offset_13),
                                  tilingData->originE * tilingData->scaleK_13 * tilingData->originN_13);
-    wGm_2.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(quantized_weight_2),
+    wGm_2.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(quantized_weight_2),
                           tilingData->originE * tilingData->originK_2 * tilingData->originN_2 / 8);
-    wScaleGm_2.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(weight_scale_2),
+    wScaleGm_2.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(weight_scale_2),
                                tilingData->originE * tilingData->scaleK_2 * tilingData->originN_2);
-    wOffsetGm_2.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(weight_offset_2),
+    wOffsetGm_2.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(weight_offset_2),
                                 tilingData->originE * tilingData->scaleK_2 * tilingData->originN_2);
     expandedM = tilingData->originM * tilingData->topK;
-    expertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(expanded_expert_idx), expandedM);
-    rowIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sorted_row_idx), expandedM);
-    rowIdxGmRev.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(expanded_row_idx), expandedM);
-    topKwGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(topk_weights), expandedM);
+    expertIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(expanded_expert_idx), expandedM);
+    rowIdxGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(sorted_row_idx), expandedM);
+    rowIdxGmRev.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(expanded_row_idx), expandedM);
+    topKwGm.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(topk_weights), expandedM);
 }
 
 template <typename T>
@@ -363,7 +363,6 @@ __aicore__ inline void MOEW4A16<bfloat16_t>::AntiQuantWeight(uint32_t task_id, u
     }
     SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2[0]);
 
-
     BinaryRepeatParams binaryParams;
     uint32_t mulOffsetA = 0;
     uint32_t mulOffsetB = 0;
@@ -555,7 +554,7 @@ __aicore__ inline void MOEW4A16<T>::ComputeMatMul(uint32_t task_id, uint32_t pin
             repeatParamsC.quantPre = QuantMode_t::F322BF16;
         }
         repeatParamsC.nz2ndEn = true;
-        SetFixpipePreQuantFlag(static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&deqScalar)));
+        SetFixpipePreQuantFlag(static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&deqScalar)));
         SetFixpipeNz2ndFlag(1, 0, 0);
         DataCopy<T, float>(mmCGm[offsetM * fracN * 256 + offsetN * 16], L0MatC, repeatParamsC);
 
@@ -934,7 +933,7 @@ __aicore__ inline void MOEW4A16<T>::PrepareSwigluCommon()
 
 template <typename T>
 template <typename U>
-__aicore__ inline void MOEW4A16<T>::SwishFunc(const LocalTensor<U> &dst, const LocalTensor<U> &src)
+__aicore__ inline void MOEW4A16<T>::SwishFunc(const LocalTensor<U>& dst, const LocalTensor<U>& src)
 {
     BinaryRepeatParams binaryParams;
     UnaryRepeatParams unaryParams;

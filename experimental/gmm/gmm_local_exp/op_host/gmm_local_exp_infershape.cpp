@@ -12,10 +12,10 @@
 #include "log/log.h"
 namespace ge {
 
-static ge::graphStatus InferShape(gert::InferShapeContext *context)
+static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
-    const gert::Shape *x_shape = context->GetInputShape(0);
-    const gert::Shape *weight_shape = context->GetInputShape(1);
+    const gert::Shape* x_shape = context->GetInputShape(0);
+    const gert::Shape* weight_shape = context->GetInputShape(1);
     // check dim
     if (x_shape->GetDimNum() != 2 || weight_shape->GetDimNum() != 3) {
         OP_LOGE(context->GetNodeName(), "Dim of inputs not right");
@@ -26,12 +26,12 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
 
     auto M = x_shape->GetDim(0);
     auto N = trans_b ? weight_shape->GetDim(1) : weight_shape->GetDim(2);
-    gert::Shape *y_shape = context->GetOutputShape(0);
+    gert::Shape* y_shape = context->GetOutputShape(0);
     *y_shape = gert::Shape({M, N});
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataType(gert::InferDataTypeContext* context)
 {
     // auto dtype = context->GetInputDataType(0);
     // context->SetOutputDataType(0, dtype);

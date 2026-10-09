@@ -32,7 +32,7 @@ constexpr int64_t OUTPUT_SEQ_LEN = 1;
 
 } // namespace
 
-static ge::graphStatus InferShapeFusedGdnGating(InferShapeContext *context)
+static ge::graphStatus InferShapeFusedGdnGating(InferShapeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -64,7 +64,7 @@ static ge::graphStatus InferShapeFusedGdnGating(InferShapeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeFusedGdnGating(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeFusedGdnGating(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

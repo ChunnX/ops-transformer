@@ -28,7 +28,10 @@
 namespace Act {
 namespace Gemm {
 namespace Block {
-enum class GeluApproxiMate : uint8_t { ERF = 0, TANH = 1 };
+enum class GeluApproxiMate : uint8_t {
+    ERF = 0,
+    TANH = 1
+};
 
 constexpr float SCALAR_ONE = 1.0;
 constexpr float BETA = 0.044715;

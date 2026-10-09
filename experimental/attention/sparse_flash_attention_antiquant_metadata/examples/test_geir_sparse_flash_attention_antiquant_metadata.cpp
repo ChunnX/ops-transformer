@@ -19,7 +19,7 @@
 #include "ge_error_codes.h"
 #include "ge_api_types.h"
 #include "ge_api.h"
-#include "array_ops.h"  // REG_OP(Data)
+#include "array_ops.h" // REG_OP(Data)
 #include "ge_ir_build.h"
 
 // #include "experiment_ops.h"
@@ -63,23 +63,28 @@ using namespace ge;
 
 class GeEnv {
 public:
-    GeEnv() {
-        std::map<AscendString, AscendString> opt = {{"ge.exec.deviceId", "0"},
-                                                    {"ge.graphRunMode", "1"}};
+    GeEnv()
+    {
+        std::map<AscendString, AscendString> opt = {{"ge.exec.deviceId", "0"}, {"ge.graphRunMode", "1"}};
         inited_ = GEInitialize(opt) == SUCCESS;
     }
-    ~GeEnv() {
+    ~GeEnv()
+    {
         if (inited_)
-        GEFinalize();
+            GEFinalize();
     }
 
-    bool Ok() { return inited_; }
+    bool Ok()
+    {
+        return inited_;
+    }
 
 private:
     bool inited_;
 };
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv)
+{
     GeEnv geEnv;
     if (!geEnv.Ok()) {
         printf("GEInitialize fail\n");
@@ -88,8 +93,7 @@ int main(int argc, char **argv) {
 
     Graph graph("GraphKvQuantSparseFlashAttentionMetadata");
 
-    auto metaDataOp = op::KvQuantSparseFlashAttentionMetadata(
-        "KvQuantSparseFlashAttentionMetadata-0");
+    auto metaDataOp = op::KvQuantSparseFlashAttentionMetadata("KvQuantSparseFlashAttentionMetadata-0");
 
     // gen graph
     auto dataOp0 = op::Data("input0").set_attr_index(0); // Data 算子
@@ -112,7 +116,7 @@ int main(int argc, char **argv) {
         dataOp1.update_input_desc_x(desc);
         graph.AddOp(dataOp1);
         metaDataOp.set_input_actual_seq_lengths_kv(dataOp1);
-    } 
+    }
 
     auto dataOp2 = op::Data("input2").set_attr_index(0); // Data 算子
     if (enablesparseSeqLenKV) {
@@ -155,24 +159,18 @@ int main(int argc, char **argv) {
     std::vector<ge::Tensor> outputTensors;
 
     if (enableActLenQuery) {
-        inputTensors.push_back(
-            Tensor{dataOp0.get_input_desc_x(),
-                reinterpret_cast<const uint8_t *>(&actSeqLenQuery[0]),
-                actSeqLenQuery.size() * sizeof(actSeqLenQuery[0])});
+        inputTensors.push_back(Tensor{dataOp0.get_input_desc_x(), reinterpret_cast<const uint8_t*>(&actSeqLenQuery[0]),
+                                      actSeqLenQuery.size() * sizeof(actSeqLenQuery[0])});
     }
 
     if (enableActLenKV) {
-        inputTensors.push_back(
-            Tensor{dataOp1.get_input_desc_x(),
-                reinterpret_cast<const uint8_t *>(&actSeqLenKV[0]),
-                actSeqLenKV.size() * sizeof(actSeqLenKV[0])});
+        inputTensors.push_back(Tensor{dataOp1.get_input_desc_x(), reinterpret_cast<const uint8_t*>(&actSeqLenKV[0]),
+                                      actSeqLenKV.size() * sizeof(actSeqLenKV[0])});
     }
 
     if (enablesparseSeqLenKV) {
-        inputTensors.push_back(
-            Tensor{dataOp2.get_input_desc_x(),
-                reinterpret_cast<const uint8_t *>(&sparseSeqLenKV[0]),
-                sparseSeqLenKV.size() * sizeof(sparseSeqLenKV[0])});
+        inputTensors.push_back(Tensor{dataOp2.get_input_desc_x(), reinterpret_cast<const uint8_t*>(&sparseSeqLenKV[0]),
+                                      sparseSeqLenKV.size() * sizeof(sparseSeqLenKV[0])});
     }
 
     std::map<AscendString, AscendString> build_options;
@@ -188,22 +186,22 @@ int main(int argc, char **argv) {
     auto tensor = outputTensors[0];
     auto data = tensor.GetData();
     auto dataSize = tensor.GetTensorDesc().GetShape().GetShapeSize();
-    
-    optiling::detail::SfaMetaData *metaDataPtr = (optiling::detail::SfaMetaData*)data;
+
+    optiling::detail::SfaMetaData* metaDataPtr = (optiling::detail::SfaMetaData*)data;
     printf("mBaseSize: %d \n", metaDataPtr->mBaseSize);
     printf("s2BaseSize: %d \n", metaDataPtr->s2BaseSize);
     printf("gS1BaseSizeOfFd: %d \n", metaDataPtr->gS1BaseSizeOfFd);
     printf("usedCoreNum: %d \n", metaDataPtr->usedCoreNum);
     printf("numOfFdHead: %d \n", metaDataPtr->numOfFdHead);
     printf("usedVecNumOfFd: %d \n", metaDataPtr->usedVecNumOfFd);
-    for (uint32_t i = 0; i < metaDataPtr->usedCoreNum; i ++) {
+    for (uint32_t i = 0; i < metaDataPtr->usedCoreNum; i++) {
         printf("bN2End[%d]: %d \n", i, metaDataPtr->bN2End[i]);
         printf("gS1End[%d]: %d \n", i, metaDataPtr->gS1End[i]);
         printf("s2End[%d]: %d \n", i, metaDataPtr->s2End[i]);
         printf("s2SplitStartIdxOfCore[%d]: %d \n", i, metaDataPtr->fdRes.s2SplitStartIdxOfCore[i]);
     }
 
-    for (uint32_t i = 0; i < metaDataPtr->numOfFdHead; i ++) {
+    for (uint32_t i = 0; i < metaDataPtr->numOfFdHead; i++) {
         printf("bN2IdxOfFdHead[%d]: %d \n", i, metaDataPtr->fdRes.bN2IdxOfFdHead[i]);
         printf("gS1IdxOfFdHead[%d]: %d \n", i, metaDataPtr->fdRes.gS1IdxOfFdHead[i]);
         printf("s2SplitNumOfFdHead[%d]: %d \n", i, metaDataPtr->fdRes.s2SplitNumOfFdHead[i]);
@@ -211,10 +209,10 @@ int main(int argc, char **argv) {
         printf("gS1LastPartSizeOfFdHead[%d]: %d \n", i, metaDataPtr->fdRes.gS1LastPartSizeOfFdHead[i]);
     }
 
-    for (uint32_t i = 0; i < metaDataPtr->usedVecNumOfFd; i ++) {
+    for (uint32_t i = 0; i < metaDataPtr->usedVecNumOfFd; i++) {
         printf("gS1IdxEndOfFdHead[%d]: %d \n", i, metaDataPtr->fdRes.gS1IdxEndOfFdHead[i]);
         printf("gS1IdxEndOfFdHeadSplit[%d]: %d \n", i, metaDataPtr->fdRes.gS1IdxEndOfFdHeadSplit[i]);
     }
 
-  return 0;
+    return 0;
 }

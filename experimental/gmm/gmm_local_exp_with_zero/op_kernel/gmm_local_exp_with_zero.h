@@ -53,14 +53,14 @@ private:
     __aicore__ inline void Cube_Process_();
     __aicore__ inline void Vec_Process_();
 
-    ComputeType &computeOp; // inernal computation operator
-    const GmmLocalExpWithZeroTilingData &tilingData;
+    ComputeType& computeOp; // inernal computation operator
+    const GmmLocalExpWithZeroTilingData& tilingData;
     uint32_t coreIdx;
     MNConfig mnConfig;
 
 public:
     /** @brief constructor */
-    __aicore__ inline GMMProcess(ComputeType &computeOp_, const GmmLocalExpWithZeroTilingData &tilingData)
+    __aicore__ inline GMMProcess(ComputeType& computeOp_, const GmmLocalExpWithZeroTilingData& tilingData)
         : computeOp(computeOp_),
           tilingData(tilingData)
     {}
@@ -179,7 +179,7 @@ public:
     // using CT = AT;
 
     /** @brief constructor */
-    __aicore__ inline GMMCompute(mmType &mm_, const GmmLocalExpWithZeroTilingData &tilingData_)
+    __aicore__ inline GMMCompute(mmType& mm_, const GmmLocalExpWithZeroTilingData& tilingData_)
         : mm(mm_),
           tilingData(tilingData_)
     {}
@@ -188,7 +188,7 @@ public:
 
     __aicore__ inline void Zero();
 
-    __aicore__ inline void MMCompute(uint32_t groupIdx, const MNConfig &mnConfig);
+    __aicore__ inline void MMCompute(uint32_t groupIdx, const MNConfig& mnConfig);
 
     __aicore__ inline int32_t CalcMForThisGroup(int group_id)
     {
@@ -196,9 +196,9 @@ public:
     }
 
 private:
-    const GmmLocalExpWithZeroTilingData &tilingData;
+    const GmmLocalExpWithZeroTilingData& tilingData;
 
-    mmType &mm; // matmul operator
+    mmType& mm; // matmul operator
     GlobalTensor<AT> xGm;
     GlobalTensor<BT> weightGm;
     GlobalTensor<GT> groupGm;
@@ -213,10 +213,10 @@ template <typename mmType, typename AT, typename CT, typename GT, bool trans_b, 
 __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_b, sync, is_b_nz>::Init(GM_ADDR x, GM_ADDR weight,
                                                                                     GM_ADDR group, GM_ADDR y)
 {
-    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ AT *>(x));
-    weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ BT *>(weight));
-    groupGm.SetGlobalBuffer(reinterpret_cast<__gm__ GT *>(group));
-    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT *>(y));
+    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ AT*>(x));
+    weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ BT*>(weight));
+    groupGm.SetGlobalBuffer(reinterpret_cast<__gm__ GT*>(group));
+    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT*>(y));
 
     if (g_coreType == AIV) {
         auto blockIdx = GetBlockIdx();
@@ -229,7 +229,7 @@ __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_b, sync, is_b_nz>::I
             length = 0;
         }
 
-        dstGm.SetGlobalBuffer((__gm__ uint16_t *)y);
+        dstGm.SetGlobalBuffer((__gm__ uint16_t*)y);
     }
 }
 
@@ -243,7 +243,7 @@ __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_b, sync, is_b_nz>::Z
 
 template <typename mmType, typename AT, typename CT, typename GT, bool trans_b, bool sync, bool is_b_nz>
 __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_b, sync, is_b_nz>::MMCompute(uint32_t groupIdx,
-                                                                                         const MNConfig &mnConfig)
+                                                                                         const MNConfig& mnConfig)
 {
     uint32_t curSingleN = mnConfig.singleN;
     uint32_t tailN = mnConfig.nIdx * mnConfig.singleN;

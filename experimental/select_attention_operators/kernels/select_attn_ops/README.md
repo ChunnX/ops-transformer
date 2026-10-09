@@ -2,7 +2,7 @@
 
 ## 1 - Quest Prefill Metadata (initialization of metadata) operator
 
-Operator `quest_prefill_metadata` computes initial metadata from the K cache. Based on the paper [Quest ICML2024 paper](https://arxiv.org/abs/2406.10774). 
+Operator `quest_prefill_metadata` computes initial metadata from the K cache. Based on the paper [Quest ICML2024 paper](https://arxiv.org/abs/2406.10774).
 
 __Brief functionality description:__ in every K-cache block - a D-dimentional vector metadata-MAX-vector is computed (maximum along token dimension -> D to 1 reduction), and for BLOCK_SIZE of such blocks (16384 tokens) we obtain BLOCK_SIZE such metadata-MAX-vectors which are packed into a single metadata-MAX-block. This metadata-block is be written into a specially determined region _maxblocks_ in GM. Same procedure, but with minimum instead of maximum reduction, is performed to determine a metadata-MIN-block, which is stored in the _minblocks_ in the same specially predetermined block index. These special predetermined indices are an argument passed to the kernel "metadata_block_tables" - a 2D table with MMBPR indices per request.
 
@@ -10,19 +10,19 @@ __Operator prototype:__
 
 ```c++
 /**
- * @brief Interface the `quest prefill metadata` kernel.  This is the interface 
+ * @brief Interface the `quest prefill metadata` kernel.  This is the interface
  *        function which is invoked from the python level. It handles
  *        1. resolving tensor shapes
  *        2. Passing the pointers of the input tensors to the kernel
  *        3. Invocation of the kernel
- *        4. Returning the pointer of the output 
+ *        4. Returning the pointer of the output
  *
  * @param [in] k_cache (num_kv_blocks, BLOCK_SIZE, N, D)
- * @param [in] block_tables (B, MKBPR) - for every request b: block_tables[b] is 
-                             a list of kv block indices 
+ * @param [in] block_tables (B, MKBPR) - for every request b: block_tables[b] is
+                             a list of kv block indices
  * @param [in] seq_lens (B,) - sequence length (in token number) per request
- * @param [in] metadata_block_tables (B, MMBPR) - for every request b: block_tables[b] is 
-                             a list of metadata block indices 
+ * @param [in] metadata_block_tables (B, MMBPR) - for every request b: block_tables[b] is
+                             a list of metadata block indices
  * @param [out] maxblocks (num_meta_blocks, BLOCK_SIZE, N, D) - maxblock metadata, arranged in blocks of equivalent size to kv_cache blocks
  * @param [out] minblocks (num_meta_blocks, BLOCK_SIZE, N, D) - maxblock metadata, arranged in blocks of equivalent size to kv_cache blocks
  *
@@ -44,7 +44,7 @@ Operator sizing parameters are:
  - `D` - head dimension (default: 128)
  * `MKBPR` - maximum number of blocks in every entry of the block_tables (num columns)
  * `MMBPR` - maximum number of blocks in every entry of the metadata_block_tables (num columns)
- 
+
 __Kernel Limitations__: BLOCK_SIZE=D=128
 
 ### Usage
@@ -61,16 +61,16 @@ B, N, BLOCK_SIZE, D = 4, 8, 128, 128
 MKBPR = 200 # number of kb blocks in every request
 MMBPR = (MKBPR + BLOCK_SIZE - 1) // BLOCK_SIZE
 num_kv_blocks = B * MKBPR
-num_meta_blocks = B * MMBPR 
+num_meta_blocks = B * MMBPR
 max_seq_len_per_req = BLOCK_SIZE * MKBPR
 seq_lens = torch.tensor([max_seq_len_per_req]*B, dtype=dtype_ind, device=device)
 # k_cache:
 k_cache = torch.randn(num_kv_blocks, BLOCK_SIZE, N, D, dtype=dtype_val, device=device)
 # block tables and metadata block table - containing block ids:
-perm_kv_blk_ids = torch.randperm(num_kv_blocks, device=device)[:num_kv_blocks]      
-block_tables = perm_kv_blk_ids.reshape((B, MKBPR)).to(dtype=dtype_ind, device=device)                       
-perm_meta_blk_ids = torch.randperm(num_meta_blocks, device=device)[:num_meta_blocks]      
-metadata_block_tables = perm_meta_blk_ids.reshape((B, MMBPR)).to(dtype=dtype_ind, device=device)      
+perm_kv_blk_ids = torch.randperm(num_kv_blocks, device=device)[:num_kv_blocks]  
+block_tables = perm_kv_blk_ids.reshape((B, MKBPR)).to(dtype=dtype_ind, device=device)  
+perm_meta_blk_ids = torch.randperm(num_meta_blocks, device=device)[:num_meta_blocks]  
+metadata_block_tables = perm_meta_blk_ids.reshape((B, MMBPR)).to(dtype=dtype_ind, device=device)  
 # placeholder for kernel outputs:
 maxblocks = torch.zeros(num_meta_blocks, BLOCK_SIZE, N, D, dtype=dtype_val, device=device)
 minblocks = torch.zeros(num_meta_blocks, BLOCK_SIZE, N, D, dtype=dtype_val, device=device)
@@ -89,7 +89,7 @@ quest_prefill_metadata(k_cache, seq_lens, block_tables, metadata_block_tables, m
 
 ## 2 - Quest Block Select - predict sparsity pattern for LLM decoding
 
-Operator `quest_block_select_paged` is implemented in this directory. The operator allows to predict the top k important KV-blocks based on their metadata (maxblocks and minblocks, arranged in blocks of BLOCK_SIZExBLOCK_SZIE) and the incoming query. The implementation is a vector-only kernel that follows the [Quest ICML2024 paper](https://arxiv.org/abs/2406.10774). We extend the original implementation with GQA support: query heads are grouped and averaged such that the prediction of the importnat k blocks are returned per KV-head and not per attention head. 
+Operator `quest_block_select_paged` is implemented in this directory. The operator allows to predict the top k important KV-blocks based on their metadata (maxblocks and minblocks, arranged in blocks of BLOCK_SIZExBLOCK_SZIE) and the incoming query. The implementation is a vector-only kernel that follows the [Quest ICML2024 paper](https://arxiv.org/abs/2406.10774). We extend the original implementation with GQA support: query heads are grouped and averaged such that the prediction of the importnat k blocks are returned per KV-head and not per attention head.
 
 This operator works with arbitrary number of metadata blocks, which is essential for handling variable-length sequences efficiently in attention mechanisms. The metadaa is managed in VLLM-compatible metadata blocks, which can be stored in the same blocks as the KV-cache.
 
@@ -103,7 +103,7 @@ Input:
     k - integer specifying how many block-indices to return for each KV-head
 
 Algorithm steps:
-1. For every batch, reduce-mean the query tensor across H dimension 
+1. For every batch, reduce-mean the query tensor across H dimension
     such that every group of H/N vectors of shape D are reduced to one vector
     of shape D denoted as "grouped_query[b,n]".
 2. For each batch b and KV-head n:
@@ -125,8 +125,8 @@ The operator prototype is as follows.
  * @param [in] metadata_block_tables Tensor(int32) containing the metadata block tables [B,MMBPR]
  * @param [in] seq_lens Tensor(int32) containing sequence length of each request in the batch [B]
  * @param [in] k natural number of highest indices to return for every KV head
- * 
- * @returns selected_indices - Tensor(int32) where the kernel will output the selected indices vector. [B,N,k] 
+ *
+ * @returns selected_indices - Tensor(int32) where the kernel will output the selected indices vector. [B,N,k]
  */
 at::Tensor quest_block_select_paged(at::Tensor query,
                                     at::Tensor maxblocks,
@@ -145,7 +145,7 @@ at::Tensor quest_block_select_paged(at::Tensor query,
  * @param [in] metadata_block_tables Tensor(int32) the metadata block tables [B,MMBPR]
  * @param [in] seq_lens Tensor(int32) sequence length of each request in the batch [B]
  * @param [in] k natural number of highest indices to return for every KV head
- * @param [out] selected_indices - Tensor(int32) where the kernel will output the selected 
+ * @param [out] selected_indices - Tensor(int32) where the kernel will output the selected
  *          indices vector. [B,N,k]
  */
 void quest_block_select_paged_in_out(at::Tensor query,
@@ -158,24 +158,24 @@ void quest_block_select_paged_in_out(at::Tensor query,
 
 
 /**
- * @brief Alternative Interface the `quest_block_select_paged` kernel which 
+ * @brief Alternative Interface the `quest_block_select_paged` kernel which
  *        ** FEATURE 1 ** WITH PREALLOCATED OUTPUT TENSOR (selected_indices)
- *        ** FEATURE 2 ** "w" 2 stands for "window" i.e. the kernel decides 
- *        whether to add local window blocks ids to the selected indices based 
- *        on the number of tokens since the last update and based on the sequence 
+ *        ** FEATURE 2 ** "w" 2 stands for "window" i.e. the kernel decides
+ *        whether to add local window blocks ids to the selected indices based
+ *        on the number of tokens since the last update and based on the sequence
  *       length
  *
  * @param [in] query Tensor(fp16) the query vector [B,H,D]
- * @param [in] maxblocks Tensor(fp16) quest metadata with the maximum vectors 
+ * @param [in] maxblocks Tensor(fp16) quest metadata with the maximum vectors
  *                       of every key-cache block (num_meta_blocks, BLOCK_SIZE, N, D)
- * @param [in] minblocks Tensor(fp16) quest metadata with the minimum vectors 
+ * @param [in] minblocks Tensor(fp16) quest metadata with the minimum vectors
  *                       of every key-cache block (num_meta_blocks, BLOCK_SIZE, N, D)
  * @param [in] metadata_block_tables Tensor(int32) the metadata block tables [B,MMBPR]
  * @param [in] seq_lens Tensor(int32) sequence length of each request in the batch [B]
  * @param [in] tokens_since_metadata_update
- * @param [out] selected_indices - Tensor(int32) where the kernel will output the 
+ * @param [out] selected_indices - Tensor(int32) where the kernel will output the
  *                                 selected indices vector. [B,N,k]
- * 
+ *
  */
 void quest_block_select_paged_in_out_w(at::Tensor query,
                               at::Tensor maxblocks,
@@ -201,7 +201,7 @@ Implementation Notes
  - Performance limitations require *D* = 128 and *BLOCK_SIZE* = 128
  - Requires Grouped Query Attention (GQA) configuration where H % N == 0
  - When for a given request r: `k > seq_lens[r] // BLOCK_SIZE` (i.e. there is not yet k blocks in the kv-cache at all) the kernel will run nevertheless, providing top-k indices, although some of them garbage (computed on the filler part of the metadata block) - it is therefore the user's responsibility to use this kernel with a k that is larger than the number of the KV blocks.
- 
+
 ### Build the operators and their torch extension
 
 ```bash
@@ -235,7 +235,7 @@ seq_lens = torch.randint(max_seq_len, max_seq_len+1, (B,), dtype=torch.int32).to
 ids = quest_block_select_paged(query, maxblocks, minblocks, metadata_block_tables, seq_lens, k)
 # Output shape: [B, N, k]
 
-# Option 2: Run the quest predictor with a pre-allocated output tensor: 
+# Option 2: Run the quest predictor with a pre-allocated output tensor:
 ids = torch.zeros((B, N, k), dtype=torch.int32, device=device) # k has to be rounded to neareast multiple of 8
 quest_block_select_paged_in_out(query, maxblocks, minblocks, metadata_block_tables, seq_lens, ids)
 # ids were filled with the predicted indices

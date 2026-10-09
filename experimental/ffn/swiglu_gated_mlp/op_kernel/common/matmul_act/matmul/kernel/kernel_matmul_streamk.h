@@ -49,31 +49,45 @@ class KernelMatmulStreamK {
 };
 
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, class BlockScheduler_>
-class KernelMatmulStreamK<ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_, AscendC::Std::enable_if_t<
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, float,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, float,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, half,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, half,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, float,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, float,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, half,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
-                          AscendC::Std::is_base_of_v<BlockEpilogue_, Block::BlockEpilogueStreamK<float, half,
-                          MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>>>>{
+class KernelMatmulStreamK<
+    ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
+    AscendC::Std::enable_if_t<
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, float, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, float, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, bfloat16_t, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<float, bfloat16_t,
+                                                        MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, half, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, half, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, float, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<
+                                float, float, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<
+                                float, bfloat16_t, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<
+                                float, bfloat16_t, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_,
+            Block::BlockEpilogueStreamK<float, half, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>>> ||
+        AscendC::Std::is_base_of_v<
+            BlockEpilogue_, Block::BlockEpilogueStreamK<
+                                float, half, MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>>>>> {
 public:
     __aicore__ inline KernelMatmulStreamK() {}
     __aicore__ inline ~KernelMatmulStreamK() {}
@@ -86,9 +100,10 @@ public:
     static constexpr bool transA = BlockMmadBuilder::transA;
     static constexpr bool transB = BlockMmadBuilder::transB;
     // schedulerOp
-    using BlockSchedulerOp = typename Block::BlockSchedulerSelector<ProblemShape,
-        typename BlockMmadBuilder::L1TileShape, typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA,
-        transB>::SchedulerOp;
+    using BlockSchedulerOp =
+        typename Block::BlockSchedulerSelector<ProblemShape, typename BlockMmadBuilder::L1TileShape,
+                                               typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA,
+                                               transB>::SchedulerOp;
     // mmadOp
     using BlockMmadOp = typename BlockMmadBuilder::BlockMmadOp;
     using BlockMmadArguments = typename BlockMmadBuilder::Arguments;
@@ -210,25 +225,26 @@ public:
             for (int64_t tileIdx = curBlockIdx; tileIdx < tileNum; tileIdx += usedCoreNum_) {
                 int64_t tmpTileIdx = tileIdx;
                 if (!bs.CheckIsSkScene(0)) { // SK Preload in DP+SK
-                    if (tileIdx % usedCoreNum_ < tailSKTotalTileNum && (CeilDiv(tileIdx + 1, usedCoreNum_) ==
-                                                                        (CeilDiv(tileNum, usedCoreNum_) - 1))) {
+                    if (tileIdx % usedCoreNum_ < tailSKTotalTileNum &&
+                        (CeilDiv(tileIdx + 1, usedCoreNum_) == (CeilDiv(tileNum, usedCoreNum_) - 1))) {
                         tmpTileIdx = tileIdx + usedCoreNum_;
-                    } else if (tileIdx % usedCoreNum_ < tailSKTotalTileNum && (CeilDiv(tileIdx + 1, usedCoreNum_) ==
-                                                                               CeilDiv(tileNum, usedCoreNum_))) {
+                    } else if (tileIdx % usedCoreNum_ < tailSKTotalTileNum &&
+                               (CeilDiv(tileIdx + 1, usedCoreNum_) == CeilDiv(tileNum, usedCoreNum_))) {
                         tmpTileIdx = tileIdx - usedCoreNum_;
                     }
                 }
                 auto singleCoreShape = bs.GetSingleCoreShape(tmpTileIdx);
                 auto singleCoreCoord = bs.GetSingleCoreCoord(tmpTileIdx);
-                auto blockOffset = GetOffsetStreamK(singleCoreCoord, problemShape_, tileL1,
-                                                    bs.GetCurKSingleCore(tmpTileIdx), aGlobal_, bGlobal_, cGlobal_,
-                                                    transA, transB, isBias_);
+                auto blockOffset =
+                    GetOffsetStreamK(singleCoreCoord, problemShape_, tileL1, bs.GetCurKSingleCore(tmpTileIdx), aGlobal_,
+                                     bGlobal_, cGlobal_, transA, transB, isBias_);
                 int64_t offsetA = Get<MNK_M>(blockOffset);
                 int64_t offsetB = Get<MNK_N>(blockOffset);
                 int64_t offsetC = Get<2>(blockOffset);
                 int64_t offsetBias = Get<3>(blockOffset);
-                int64_t offsetWorkspace = (((tmpTileIdx % usedCoreNum_) / skKTileNum) * skKTileNum +
-                                           Get<MNK_K>(singleCoreCoord)) * BLOCK_BASE_M * BLOCK_BASE_N;
+                int64_t offsetWorkspace =
+                    (((tmpTileIdx % usedCoreNum_) / skKTileNum) * skKTileNum + Get<MNK_K>(singleCoreCoord)) *
+                    BLOCK_BASE_M * BLOCK_BASE_N;
                 blockMmadOp(cGlobal_[offsetC], aGlobal_[offsetA], bGlobal_[offsetB], biasGlobal_[offsetBias],
                             workspaceGlobal_[offsetWorkspace], singleCoreShape, Get<MNK_K>(singleCoreCoord),
                             bs.CheckIsSkScene(tmpTileIdx));

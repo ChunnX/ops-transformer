@@ -29,15 +29,14 @@ public:
     __aicore__ inline MhcPreSinkhornPremixMKSplitCorePart1Gradout() {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcFn, GM_ADDR workspace,
-                                const MhcPreSinkhornPremixRegbaseTilingData *tilingDataPtr, TPipe *pipePtr)
+                                const MhcPreSinkhornPremixRegbaseTilingData* tilingDataPtr, TPipe* pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
-        xGm.SetGlobalBuffer((__gm__ T *)x);
-        hcFnGm.SetGlobalBuffer((__gm__ float *)hcFn);
-        mmGm.SetGlobalBuffer((__gm__ float *)workspace);
-        rmsGm.SetGlobalBuffer((__gm__ float *)workspace +
-                              tilingData->kBlockFactor * tilingData->bs * tilingData->hcMix);
+        xGm.SetGlobalBuffer((__gm__ T*)x);
+        hcFnGm.SetGlobalBuffer((__gm__ float*)hcFn);
+        mmGm.SetGlobalBuffer((__gm__ float*)workspace);
+        rmsGm.SetGlobalBuffer((__gm__ float*)workspace + tilingData->kBlockFactor * tilingData->bs * tilingData->hcMix);
 
         TBuf<TPosition::A1> l1Buffer;
         pipe->InitBuffer(l1Buffer, L1_ALLOC_SIZE);
@@ -246,8 +245,8 @@ public:
     }
 
 private:
-    TPipe *pipe;
-    const MhcPreSinkhornPremixRegbaseTilingData *tilingData;
+    TPipe* pipe;
+    const MhcPreSinkhornPremixRegbaseTilingData* tilingData;
     // (M, K) * (N, K)
 
     GlobalTensor<T> xGm;
@@ -286,30 +285,29 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR premix, GM_ADDR y, GM_ADDR post,
                                 GM_ADDR combFrag, GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms, GM_ADDR sumOut,
                                 GM_ADDR normOut, GM_ADDR workspace,
-                                const MhcPreSinkhornPremixRegbaseTilingData *tilingDataPtr, TPipe *pipePtr)
+                                const MhcPreSinkhornPremixRegbaseTilingData* tilingDataPtr, TPipe* pipePtr)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
         hasPremix_ = (tilingData->hasPremix != 0);
 
         if (hasPremix_) {
-            preMixGm.SetGlobalBuffer((__gm__ float *)premix);
+            preMixGm.SetGlobalBuffer((__gm__ float*)premix);
         }
-        xGm.SetGlobalBuffer((__gm__ T *)x);
-        hcScaleGm.SetGlobalBuffer((__gm__ float *)hcScale);
-        hcBaseGm.SetGlobalBuffer((__gm__ float *)hcBase);
-        yGm.SetGlobalBuffer((__gm__ T *)y);
-        postGm.SetGlobalBuffer((__gm__ float *)post);
-        combFragGm.SetGlobalBuffer((__gm__ float *)combFrag);
-        mmGm.SetGlobalBuffer((__gm__ float *)workspace);
-        rmsGm.SetGlobalBuffer((__gm__ float *)workspace +
-                              tilingData->kBlockFactor * tilingData->bs * tilingData->hcMix);
+        xGm.SetGlobalBuffer((__gm__ T*)x);
+        hcScaleGm.SetGlobalBuffer((__gm__ float*)hcScale);
+        hcBaseGm.SetGlobalBuffer((__gm__ float*)hcBase);
+        yGm.SetGlobalBuffer((__gm__ T*)y);
+        postGm.SetGlobalBuffer((__gm__ float*)post);
+        combFragGm.SetGlobalBuffer((__gm__ float*)combFrag);
+        mmGm.SetGlobalBuffer((__gm__ float*)workspace);
+        rmsGm.SetGlobalBuffer((__gm__ float*)workspace + tilingData->kBlockFactor * tilingData->bs * tilingData->hcMix);
         // 新增反向输出
-        hPreGm.SetGlobalBuffer((__gm__ float *)hPre);
-        hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)hcBeforeNorm);
-        invRmsGm.SetGlobalBuffer((__gm__ float *)invRms);
-        sumOutGm.SetGlobalBuffer((__gm__ float *)sumOut);
-        normOutGm.SetGlobalBuffer((__gm__ float *)normOut);
+        hPreGm.SetGlobalBuffer((__gm__ float*)hPre);
+        hcBeforeNormGm.SetGlobalBuffer((__gm__ float*)hcBeforeNorm);
+        invRmsGm.SetGlobalBuffer((__gm__ float*)invRms);
+        sumOutGm.SetGlobalBuffer((__gm__ float*)sumOut);
+        normOutGm.SetGlobalBuffer((__gm__ float*)normOut);
 
         // InQue
         pipe->InitBuffer(
@@ -442,7 +440,7 @@ public:
                     preMixQue.EnQue(preMixLocal);
                     preMixLocal = preMixQue.template DeQue<float>();
                 }
-                const LocalTensor<float> &yMixLocal = hasPremix_ ? preMixLocal : mixesLocal;
+                const LocalTensor<float>& yMixLocal = hasPremix_ ? preMixLocal : mixesLocal;
                 for (int64_t dLoopIdx = 0; dLoopIdx < tilingData->dLoop; dLoopIdx++) {
                     int64_t curDFactor =
                         (dLoopIdx == tilingData->dLoop - 1) ? tilingData->tailDFactor : tilingData->dFactor;
@@ -523,8 +521,8 @@ public:
     }
 
 private:
-    TPipe *pipe;
-    const MhcPreSinkhornPremixRegbaseTilingData *tilingData;
+    TPipe* pipe;
+    const MhcPreSinkhornPremixRegbaseTilingData* tilingData;
     GlobalTensor<float> hcScaleGm;
     GlobalTensor<float> hcBaseGm;
     GlobalTensor<T> xGm;

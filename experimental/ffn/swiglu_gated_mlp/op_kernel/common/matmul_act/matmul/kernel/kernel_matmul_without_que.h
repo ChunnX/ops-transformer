@@ -46,13 +46,12 @@ template <class ProblemShape, class BlockMmadBuilder, class BlockEpilogue, class
 class KernelMatmulWithoutQue;
 
 template <class ProblemShape_, class BlockMmadBuilder_, class BlockEpilogue_, class BlockScheduler_>
-class KernelMatmulWithoutQue<ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
+class KernelMatmulWithoutQue<
+    ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockEpilogue_, Block::BlockEpilogueEmpty>>> {
 public:
-    __aicore__ inline KernelMatmulWithoutQue()
-    {}
-    __aicore__ inline ~KernelMatmulWithoutQue()
-    {}
+    __aicore__ inline KernelMatmulWithoutQue() {}
+    __aicore__ inline ~KernelMatmulWithoutQue() {}
 
     using BlockMmadBuilder = BlockMmadBuilder_;
     using ProblemShape = ProblemShape_;
@@ -64,7 +63,8 @@ public:
     // schedulerOp
     using BlockSchedulerOp =
         typename Block::BlockSchedulerSelector<ProblemShape, typename BlockMmadBuilder::L1TileShape,
-            typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA, transB>::SchedulerOp;
+                                               typename BlockMmadBuilder::L0TileShape, BlockScheduler, transA,
+                                               transB>::SchedulerOp;
     // mmadOp
     using BlockMmadOp = typename BlockMmadBuilder::BlockMmadOp;
     using BlockMmadArguments = typename BlockMmadBuilder::Arguments;
@@ -109,12 +109,12 @@ public:
         Params() = default;
     };
 
-    __aicore__ inline static TupleShape ToShapeTuple(ProblemShape const &shape)
+    __aicore__ inline static TupleShape ToShapeTuple(ProblemShape const& shape)
     {
         return {shape.m, shape.n, shape.k, shape.b};
     }
 
-    __aicore__ inline void Init(Params const &params)
+    __aicore__ inline void Init(Params const& params)
     {
         problemShape_ = ToShapeTuple(params.problemShape);
         BlockMmadParams blockMmadParams_ = params.mmadParams;
@@ -122,12 +122,12 @@ public:
         int64_t n = Get<MNK_N>(problemShape_);
         int64_t k = Get<MNK_K>(problemShape_);
         // Init GlobalTensor
-        aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ AType *>(blockMmadParams_.aGmAddr));
-        bGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BType *>(blockMmadParams_.bGmAddr));
-        cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ CType *>(blockMmadParams_.cGmAddr));
+        aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ AType*>(blockMmadParams_.aGmAddr));
+        bGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BType*>(blockMmadParams_.bGmAddr));
+        cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ CType*>(blockMmadParams_.cGmAddr));
         if (blockMmadParams_.biasGmAddr != nullptr) {
             isBias_ = true;
-            biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BiasType *>(blockMmadParams_.biasGmAddr));
+            biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BiasType*>(blockMmadParams_.biasGmAddr));
         }
     }
 
@@ -138,7 +138,7 @@ public:
         }
     }
 
-    __host_aicore__ static Status CheckShape(ProblemShape const &shape)
+    __host_aicore__ static Status CheckShape(ProblemShape const& shape)
     {
         int64_t m = shape.m;
         int64_t n = shape.n;
@@ -152,24 +152,24 @@ public:
             return Status::mnkErrorExceedsLimit;
         }
         // Check matrix size exceeds limit
-        if (!transA && k > MATRIX_INNER_DIM_LIMIT_SIZE) {  // mk matrix k limit
+        if (!transA && k > MATRIX_INNER_DIM_LIMIT_SIZE) { // mk matrix k limit
             return Status::mkErrorMatrixExceedsLimit;
         }
 
-        if (transA && m > MATRIX_INNER_DIM_LIMIT_SIZE) {  // km matrix m limit
+        if (transA && m > MATRIX_INNER_DIM_LIMIT_SIZE) { // km matrix m limit
             return Status::kmErrorMatrixExceedsLimit;
         }
-        if (!transB && n > MATRIX_INNER_DIM_LIMIT_SIZE) {  // kn matrix n limit
+        if (!transB && n > MATRIX_INNER_DIM_LIMIT_SIZE) { // kn matrix n limit
             return Status::knErrorMatrixExceedsLimit;
         }
 
-        if (transB && k > MATRIX_INNER_DIM_LIMIT_SIZE) {  // nk matrix k limit
+        if (transB && k > MATRIX_INNER_DIM_LIMIT_SIZE) { // nk matrix k limit
             return Status::nkErrorMatrixExceedsLimit;
         }
         return Status::success;
     }
 
-    __host_aicore__ static Status CanImplement(Arguments const &args)
+    __host_aicore__ static Status CanImplement(Arguments const& args)
     {
         // Check shape in kernel
         CHECK_AND_RETURN(CheckShape(args.problemShape));
@@ -188,7 +188,7 @@ public:
         return workSpaceSize;
     }
 
-    __host_aicore__ static Params InitParams(Arguments const &args, GM_ADDR workspace)
+    __host_aicore__ static Params InitParams(Arguments const& args, GM_ADDR workspace)
     {
         BlockMmadParams mmadParams = BlockMmadBuilder::InitParams(args.mmadArgs);
         // mmad params with epiligue takes workspaceGm as output
@@ -196,7 +196,7 @@ public:
         return params;
     }
 
-    __aicore__ inline void operator()(Params const &params)
+    __aicore__ inline void operator()(Params const& params)
     {
         if ASCEND_IS_AIV {
             return;
@@ -248,16 +248,9 @@ public:
                     TupleL1L0Shape blockShape = bs.GetBlockShape(tileIdx, mOffset, nOffset);
                     auto blockCoord = bs.GetBlockCoord(tileIdx);
                     // cal offset between blocks
-                    auto blockOffset = GetOffsetWithoutLayout(blockCoord,
-                        problemShape_,
-                        aGlobal_,
-                        bGlobal_,
-                        cGlobal_,
-                        transA,
-                        transB,
-                        isBias_,
-                        bs.GetSliceParams(),
-                        Get<MNK_M>(blockShape));
+                    auto blockOffset =
+                        GetOffsetWithoutLayout(blockCoord, problemShape_, aGlobal_, bGlobal_, cGlobal_, transA, transB,
+                                               isBias_, bs.GetSliceParams(), Get<MNK_M>(blockShape));
                     if (Get<0>(blockShape) <= 0 || Get<1>(blockShape) <= 0) {
                         UnsetHf32(isHf32);
                         return;
@@ -267,14 +260,8 @@ public:
                     int64_t offsetC = Get<2>(blockOffset);
                     int64_t offsetBias = Get<3>(blockOffset);
                     offsetC += mOffset * n + nOffset;
-                    blockMmadOp(cGlobal_[offsetC],
-                        aGlobal_[offsetA],
-                        bGlobal_[offsetB],
-                        biasGlobal_[offsetBias],
-                        blockShape,
-                        mOffset,
-                        nOffset,
-                        tileIdx == curBlockIdx);
+                    blockMmadOp(cGlobal_[offsetC], aGlobal_[offsetA], bGlobal_[offsetB], biasGlobal_[offsetBias],
+                                blockShape, mOffset, nOffset, tileIdx == curBlockIdx);
                 }
             }
         }
@@ -282,7 +269,7 @@ public:
     }
 };
 
-}  // namespace Kernel
-}  // namespace Gemm
-}  // namespace Act
+} // namespace Kernel
+} // namespace Gemm
+} // namespace Act
 #endif

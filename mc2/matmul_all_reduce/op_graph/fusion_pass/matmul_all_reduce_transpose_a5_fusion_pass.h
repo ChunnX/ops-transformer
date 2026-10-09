@@ -21,9 +21,9 @@ class __attribute__((visibility("default"))) MatmulAllReduceTransposeA5FusionPas
 protected:
     std::vector<ge::fusion::PatternUniqPtr> Patterns() override;
 
-    bool MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult> &matchResult) override;
+    bool MeetRequirements(const std::unique_ptr<ge::fusion::MatchResult>& matchResult) override;
 
-    ge::fusion::GraphUniqPtr Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult) override;
+    ge::fusion::GraphUniqPtr Replacement(const std::unique_ptr<ge::fusion::MatchResult>& matchResult) override;
 };
 } // namespace ops
 #endif // GRAPH_FUSION_SUPPORT_VERSION

@@ -20,7 +20,6 @@
 #include "fused_infer_attention_score_tiling_compile_info.h"
 #include "fused_infer_attention_score_tiling_index.h"
 
-
 #ifdef ASCENDC_OP_TEST
 #define FIA_EXTERN_C extern "C"
 #else
@@ -102,16 +101,21 @@ REGISTER_TILING_DATA_CLASS(FusedInferAttentionOuterSplitParamsOp, FusedInferAtte
 BEGIN_TILING_DATA_DEF(FusedInferAttentionFlashDecodeParams)
 TILING_DATA_FIELD_DEF(uint32_t, numOfFdHead)
 TILING_DATA_FIELD_DEF(uint32_t, reserved)
-TILING_DATA_FIELD_DEF(uint32_t, gS1BaseSizeOfFd)                                    // FD负载均衡中，每个FD任务按gS1切分的基本size
-TILING_DATA_FIELD_DEF(uint32_t, usedVecNumOfFd)                                     // FD负载均衡中，用到的vector数
+TILING_DATA_FIELD_DEF(uint32_t, gS1BaseSizeOfFd) // FD负载均衡中，每个FD任务按gS1切分的基本size
+TILING_DATA_FIELD_DEF(uint32_t, usedVecNumOfFd)  // FD负载均衡中，用到的vector数
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, bN2IdxOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1IdxOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, s2SplitNumOfFdHead)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, s2SplitStartIdxOfCore)
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1SplitNumOfFdHead)          // FD负载均衡中，每个FD任务按gS1基本size切分后的份数
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM, gS1LastPartSizeOfFdHead)      // FD负载均衡中，每个FD任务按gS1基本size切分后，最后一份的gS1大小，即尾块大小
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHead)        // FD负载均衡中，每个vector核处理的最后一个FD任务的序号
-TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHeadSplit)   // FD负载均衡中，每个vector核处理的最后一个FD任务的子划分的序号
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM,
+                          gS1SplitNumOfFdHead) // FD负载均衡中，每个FD任务按gS1基本size切分后的份数
+TILING_DATA_FIELD_DEF_ARR(
+    uint32_t, FIA_MAX_AIC_CORE_NUM,
+    gS1LastPartSizeOfFdHead) // FD负载均衡中，每个FD任务按gS1基本size切分后，最后一份的gS1大小，即尾块大小
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2,
+                          gS1IdxEndOfFdHead) // FD负载均衡中，每个vector核处理的最后一个FD任务的序号
+TILING_DATA_FIELD_DEF_ARR(uint32_t, FIA_MAX_AIC_CORE_NUM * 2,
+                          gS1IdxEndOfFdHeadSplit) // FD负载均衡中，每个vector核处理的最后一个FD任务的子划分的序号
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionFlashDecodeParamsOp, FusedInferAttentionFlashDecodeParams)
 
@@ -144,7 +148,7 @@ TILING_DATA_FIELD_DEF(uint32_t, isOutQuantTypeBf16)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionPostQuantParamsOp, FusedInferAttentionPostQuantParams)
 
-//MLA非量化模板TilingData
+// MLA非量化模板TilingData
 BEGIN_TILING_DATA_DEF(FusedInferAttentionScoreTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionBaseParams, baseParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPageAttentionParams, pageAttenParams);
@@ -195,10 +199,10 @@ END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionAntiqParamsOp, FusedInferAttentionAntiqParams)
 
 extern "C" {
-ge::graphStatus DeviceDoOpTilingIncreFlashAttention(gert::TilingContext *context);
-ge::graphStatus DeviceDoOpTilingFusedInferAttentionScore(gert::TilingContext *context);
+ge::graphStatus DeviceDoOpTilingIncreFlashAttention(gert::TilingContext* context);
+ge::graphStatus DeviceDoOpTilingFusedInferAttentionScore(gert::TilingContext* context);
 }
-ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context);
-FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingContext *context);
+ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext* context);
+FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingContext* context);
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_FUSEDINFERATTENTIONSCORE_H_

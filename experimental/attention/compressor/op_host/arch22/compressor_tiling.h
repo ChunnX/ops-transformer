@@ -108,36 +108,34 @@ static const std::string CMP_KV_NAME = "cmp_kv";
 static std::string DataTypeToSerialString(ge::DataType type);
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {X_NAME,                  {ge::DT_BF16, ge::DT_FLOAT16}},
-    {WKV_NAME,                {ge::DT_BF16, ge::DT_FLOAT16}},
-    {WGATE_NAME,              {ge::DT_BF16, ge::DT_FLOAT16}},
-    {STATE_CACHE_NAME,        {ge::DT_FLOAT}},
-    {APE_NAME,                {ge::DT_FLOAT}},
-    {NORM_WEIGHT_NAME,        {ge::DT_FLOAT}},
-    {ROPE_SIN_NAME,           {ge::DT_FLOAT}},
-    {ROPE_COS_NAME,           {ge::DT_FLOAT}},
-    {STATE_BLOCK_TABLE_NAME,  {ge::DT_INT32}},
-    {CU_SEQLENS_NAME,         {ge::DT_INT32}},
-    {SEQUSED_NAME,            {ge::DT_INT32}},
-    {START_POS_NAME,          {ge::DT_INT32}},
-    {CMP_KV_NAME,             {ge::DT_BF16, ge::DT_FLOAT16}}
-};
+    {X_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {WKV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {WGATE_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {STATE_CACHE_NAME, {ge::DT_FLOAT}},
+    {APE_NAME, {ge::DT_FLOAT}},
+    {NORM_WEIGHT_NAME, {ge::DT_FLOAT}},
+    {ROPE_SIN_NAME, {ge::DT_FLOAT}},
+    {ROPE_COS_NAME, {ge::DT_FLOAT}},
+    {STATE_BLOCK_TABLE_NAME, {ge::DT_INT32}},
+    {CU_SEQLENS_NAME, {ge::DT_INT32}},
+    {SEQUSED_NAME, {ge::DT_INT32}},
+    {START_POS_NAME, {ge::DT_INT32}},
+    {CMP_KV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}}};
 
 const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
-    {X_NAME,                  {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
-    {WKV_NAME,                {COMPRESSOR_DIM_NUM_2}},
-    {WGATE_NAME,              {COMPRESSOR_DIM_NUM_2}},
-    {STATE_CACHE_NAME,        {COMPRESSOR_DIM_NUM_3}},
-    {APE_NAME,                {COMPRESSOR_DIM_NUM_2}},
-    {NORM_WEIGHT_NAME,        {COMPRESSOR_DIM_NUM_1}},
-    {ROPE_SIN_NAME,           {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
-    {ROPE_COS_NAME,           {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
-    {STATE_BLOCK_TABLE_NAME,  {COMPRESSOR_DIM_NUM_2}},
-    {CU_SEQLENS_NAME,         {COMPRESSOR_DIM_NUM_1}},
-    {SEQUSED_NAME,            {COMPRESSOR_DIM_NUM_1}},
-    {START_POS_NAME,          {COMPRESSOR_DIM_NUM_1}},
-    {CMP_KV_NAME,             {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}}
-};
+    {X_NAME, {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
+    {WKV_NAME, {COMPRESSOR_DIM_NUM_2}},
+    {WGATE_NAME, {COMPRESSOR_DIM_NUM_2}},
+    {STATE_CACHE_NAME, {COMPRESSOR_DIM_NUM_3}},
+    {APE_NAME, {COMPRESSOR_DIM_NUM_2}},
+    {NORM_WEIGHT_NAME, {COMPRESSOR_DIM_NUM_1}},
+    {ROPE_SIN_NAME, {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
+    {ROPE_COS_NAME, {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
+    {STATE_BLOCK_TABLE_NAME, {COMPRESSOR_DIM_NUM_2}},
+    {CU_SEQLENS_NAME, {COMPRESSOR_DIM_NUM_1}},
+    {SEQUSED_NAME, {COMPRESSOR_DIM_NUM_1}},
+    {START_POS_NAME, {COMPRESSOR_DIM_NUM_1}},
+    {CMP_KV_NAME, {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}}};
 
 static const std::map<std::string, uint32_t> LAYOUT_DIM_MAP = {
     {"BSH", COMPRESSOR_DIM_NUM_3},
@@ -185,14 +183,14 @@ struct CompressorCompileInfo {
 };
 
 struct RequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct OptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
+    const gert::Tensor* tensor;
 };
 
 enum class LayoutType {
@@ -200,54 +198,54 @@ enum class LayoutType {
     LAYOUT_TH
 };
 
-enum class TemplateId:uint8_t {
+enum class TemplateId : uint8_t {
     NORMAL = 0,
     EMPTY_X = 1,
     FULL_LOAD = 2
 };
 
-CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context);
+CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext* context);
 struct CompressorBaseShapeInfo {
-    uint32_t bSize = 0; // B
-    uint32_t sSize = 0; // S
-    uint32_t hSize = 0; // Hidden size
-    uint32_t tSize = 0; // T
-    uint32_t nSize = 0; // N
-    uint32_t dSize = 0; // D
+    uint32_t bSize = 0;    // B
+    uint32_t sSize = 0;    // S
+    uint32_t hSize = 0;    // Hidden size
+    uint32_t tSize = 0;    // T
+    uint32_t nSize = 0;    // N
+    uint32_t dSize = 0;    // D
     uint32_t coffSize = 0; // Coff: 1 or 2
-    uint32_t csSize = 0; // Compress sequence len
-    uint32_t rSize = 0; // Compress ratio
-    uint32_t cgSize = 0; // Compress group size
-    uint32_t drSize = 0; // Dr
+    uint32_t csSize = 0;   // Compress sequence len
+    uint32_t rSize = 0;    // Compress ratio
+    uint32_t cgSize = 0;   // Compress group size
+    uint32_t drSize = 0;   // Dr
 };
 
-const std::vector<int> ROPE_HEAD_DIM {64};
-const std::vector<int> COFF {1, 2};
+const std::vector<int> ROPE_HEAD_DIM{64};
+const std::vector<int> COFF{1, 2};
 #ifdef DAY0_SCOPE
-const std::vector<int> CMP_RATIO {4, 128};
-const std::vector<int> ROTARY_MODE {2};
+const std::vector<int> CMP_RATIO{4, 128};
+const std::vector<int> ROTARY_MODE{2};
 #else
-const std::vector<int> CMP_RATIO {2, 4, 8, 16, 32, 64, 128};
-const std::vector<int> ROTARY_MODE {1, 2};
+const std::vector<int> CMP_RATIO{2, 4, 8, 16, 32, 64, 128};
+const std::vector<int> ROTARY_MODE{1, 2};
 #endif
-const std::vector<uint32_t> HEAD_DIM {128, 512};
-const std::vector<int> CACHE_MODE {1};
+const std::vector<uint32_t> HEAD_DIM{128, 512};
+const std::vector<int> CACHE_MODE{1};
 
-enum class ROTARY_MODE:uint8_t {
+enum class ROTARY_MODE : uint8_t {
     HALF = 1,
     INTERLEAVE = 2
 };
 
-enum class CACHE_MODE:uint8_t {
+enum class CACHE_MODE : uint8_t {
     CONTINUOUS = 1,
     CYCLE = 2
 };
 
 struct CompressorContext {
-    const char *opName;
-    const char *opType;
-    fe::PlatFormInfos *platformInfo;
-    
+    const char* opName;
+    const char* opType;
+    fe::PlatFormInfos* platformInfo;
+
     RequiredParaInfo x;
     RequiredParaInfo wkv;
     RequiredParaInfo wgate;
@@ -262,35 +260,37 @@ struct CompressorContext {
     OptionalParaInfo startPos;
     RequiredParaInfo cmpKv;
 
-    const int *ropeHeadDim;
-    const int *coff;
-    const int *cmpRatio;
-    const float *normEps;
-    const int *rotaryMode;
-    const int *cacheMode;
-    const int *stateCacheStrideDim0;
+    const int* ropeHeadDim;
+    const int* coff;
+    const int* cmpRatio;
+    const float* normEps;
+    const int* rotaryMode;
+    const int* cacheMode;
+    const int* stateCacheStrideDim0;
     TemplateId templateId;
 
-    ge::DataType dtype = ge::DT_BF16; 
-    LayoutType layout = LayoutType::LAYOUT_BSH; 
+    ge::DataType dtype = ge::DT_BF16;
+    LayoutType layout = LayoutType::LAYOUT_BSH;
 
-    size_t *workSpaces;
+    size_t* workSpaces;
     uint64_t tilingKey;
     uint32_t blockDim;
 };
 
 class CompressorTiling {
 public:
-    explicit CompressorTiling(CompressorContext *context) : context_(context) {}
+    explicit CompressorTiling(CompressorContext* context)
+        : context_(context)
+    {}
     ~CompressorTiling() = default;
 
-    static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorContext &compressorContext);
+    static ge::graphStatus ConvertContext(gert::TilingContext& context, CompressorContext& compressorContext);
     ge::graphStatus RunBigKernelTiling(CompressorTilingData* tilingData);
 
 private:
-    static void ConvertRequiredParams(gert::TilingContext &context, CompressorContext &compressorContext);
+    static void ConvertRequiredParams(gert::TilingContext& context, CompressorContext& compressorContext);
 
-    static void ConvertOptionalParams(gert::TilingContext &context, CompressorContext &compressorContext);
+    static void ConvertOptionalParams(gert::TilingContext& context, CompressorContext& compressorContext);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
     ge::graphStatus SetPageAttentionInfo();
@@ -302,23 +302,23 @@ private:
     ge::graphStatus CheckSinglePara() const;
     ge::graphStatus GenTilingKey() const;
     template <typename T>
-    ge::graphStatus CheckFeatureValueSupport(const T *featureValue, const std::vector<T> &expectFeatureValList,
-                                             const std::string &name) const;
+    ge::graphStatus CheckFeatureValueSupport(const T* featureValue, const std::vector<T>& expectFeatureValList,
+                                             const std::string& name) const;
     template <typename T>
-    ge::graphStatus CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
-                                          const std::string &name) const;
+    ge::graphStatus CheckAttrValueSupport(const T* attrValue, const std::vector<T>& expectAttrValList,
+                                          const std::string& name) const;
     template <typename T>
-    void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
+    void LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue, const std::string& name,
                                const std::string subName) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const std::string &layout, const gert::StorageShape *shape,
-                                               const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
-    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
-                              const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::string &name) const;
-    ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
-                                             const uint32_t &dimNum, const std::string &subName,
-                                             const uint32_t &expectNum) const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const std::string& layout, const gert::StorageShape* shape,
+                                               const std::string& name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc, const std::string& name) const;
+    void LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList, const ge::DataType& actualDtype,
+                              const std::string& name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape* shape, const std::string& name) const;
+    ge::graphStatus LogErrorShapeConsistency(const std::string& name, const gert::StorageShape* shape,
+                                             const uint32_t& dimNum, const std::string& subName,
+                                             const uint32_t& expectNum) const;
     ge::graphStatus CheckSingleParaX() const;
     ge::graphStatus CheckSingleParaWkv() const;
     ge::graphStatus CheckSingleParaWgate() const;
@@ -344,7 +344,7 @@ private:
     ge::graphStatus CheckFeature() const;
     ge::graphStatus CheckShapeConsistency() const;
     ge::graphStatus CheckShapeConsistencyRope() const;
-    ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc* desc, const std::string& name) const;
     ge::graphStatus CheckDtypeConsistency() const;
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDimNumConsistency() const;
@@ -368,13 +368,13 @@ private:
     uint32_t dbaseSize = 0;
 
     CompressorBaseShapeInfo baseShapeInfo_;
-    CompressorContext *context_ = nullptr;
-    CompressorBaseParams *baseParams_ = nullptr;
-    CompressorPageAttentionParams *pageAttentionParams_ = nullptr;
-    CompressorInnerSplitParams *innerSplitParams_ = nullptr;
-    CompressorWorkspaceParams *workspaceParams_ = nullptr;
+    CompressorContext* context_ = nullptr;
+    CompressorBaseParams* baseParams_ = nullptr;
+    CompressorPageAttentionParams* pageAttentionParams_ = nullptr;
+    CompressorInnerSplitParams* innerSplitParams_ = nullptr;
+    CompressorWorkspaceParams* workspaceParams_ = nullptr;
 };
 
-} // optiling
+} // namespace optiling
 
 #endif

@@ -73,54 +73,140 @@ for params in ENABLED_PARAMS_FROM_FILE:
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
-def test_sparse_attn_sharedkv(param_combinations):   # 初始化参数和tensor
-    layout_q = param_combinations['layout_q']
-    layout_kv = param_combinations['layout_kv']
-    q_type = torch.bfloat16 if param_combinations['q_type'] == "torch.bfloat16" else torch.float16
-    ori_kv_type = torch.bfloat16 if param_combinations['ori_kv_type'] == "torch.bfloat16" else torch.float16
-    cmp_kv_type = torch.bfloat16 if param_combinations['cmp_kv_type'] == "torch.bfloat16" else torch.float16
-    B = int(param_combinations['B'])
-    S1 = int(param_combinations['S1'])
-    S2 = None if param_combinations['S2'] is None else int(param_combinations['S2'])
-    T1 = None if param_combinations['T1'] is None else int(param_combinations['T1'])
-    N1 = int(param_combinations['N1'])
-    N2 = int(param_combinations['N2'])
-    D = int(param_combinations['D'])
-    K = None if param_combinations['K'] is None else int(param_combinations['K'])
-    block_num1 = param_combinations['block_num1']
-    block_num2 = None if param_combinations['block_num2'] is None else int(param_combinations['block_num2'])
-    block_size1 = param_combinations['block_size1']
-    block_size2 = None if param_combinations['block_size2'] is None else int(param_combinations['block_size2'])
-    cu_seqlens_q = None if param_combinations['cu_seqlens_q'] is None else ast.literal_eval(param_combinations['cu_seqlens_q'])
-    cu_seqlens_ori_kv = None if param_combinations['cu_seqlens_ori_kv'] is None else ast.literal_eval(param_combinations['cu_seqlens_ori_kv'])
-    cu_seqlens_cmp_kv = None if param_combinations['cu_seqlens_cmp_kv'] is None else ast.literal_eval(param_combinations['cu_seqlens_cmp_kv'])
-    seqused_q = None if param_combinations['seqused_q'] is None else ast.literal_eval(param_combinations['seqused_q'])
-    seqused_kv = ast.literal_eval(param_combinations['seqused_kv'])
-    softmax_scale = param_combinations['softmax_scale']
-    cmp_ratio = None if param_combinations['cmp_ratio'] is None else int(param_combinations['cmp_ratio'])
-    ori_mask_mode = int(param_combinations['ori_mask_mode'])
-    cmp_mask_mode = None if param_combinations['cmp_mask_mode'] is None else int(param_combinations['cmp_mask_mode'])
-    ori_win_left = param_combinations['ori_win_left']
-    ori_win_right = param_combinations['ori_win_right']
-    testcase_name = param_combinations['testcase_name']
-    q_datarange = ast.literal_eval(param_combinations['q_datarange']) if param_combinations['q_datarange'] is not None else [-10,10]
-    ori_kv_datarange = ast.literal_eval(param_combinations['ori_kv_datarange']) if param_combinations['ori_kv_datarange'] is not None else [-10,10]
-    cmp_kv_datarange = ast.literal_eval(param_combinations['cmp_kv_datarange']) if param_combinations['cmp_kv_datarange'] is not None else [-10,10]
+def test_sparse_attn_sharedkv(param_combinations):  # 初始化参数和tensor
+    layout_q = param_combinations["layout_q"]
+    layout_kv = param_combinations["layout_kv"]
+    q_type = (
+        torch.bfloat16
+        if param_combinations["q_type"] == "torch.bfloat16"
+        else torch.float16
+    )
+    ori_kv_type = (
+        torch.bfloat16
+        if param_combinations["ori_kv_type"] == "torch.bfloat16"
+        else torch.float16
+    )
+    cmp_kv_type = (
+        torch.bfloat16
+        if param_combinations["cmp_kv_type"] == "torch.bfloat16"
+        else torch.float16
+    )
+    B = int(param_combinations["B"])
+    S1 = int(param_combinations["S1"])
+    S2 = None if param_combinations["S2"] is None else int(param_combinations["S2"])
+    T1 = None if param_combinations["T1"] is None else int(param_combinations["T1"])
+    N1 = int(param_combinations["N1"])
+    N2 = int(param_combinations["N2"])
+    D = int(param_combinations["D"])
+    K = None if param_combinations["K"] is None else int(param_combinations["K"])
+    block_num1 = param_combinations["block_num1"]
+    block_num2 = (
+        None
+        if param_combinations["block_num2"] is None
+        else int(param_combinations["block_num2"])
+    )
+    block_size1 = param_combinations["block_size1"]
+    block_size2 = (
+        None
+        if param_combinations["block_size2"] is None
+        else int(param_combinations["block_size2"])
+    )
+    cu_seqlens_q = (
+        None
+        if param_combinations["cu_seqlens_q"] is None
+        else ast.literal_eval(param_combinations["cu_seqlens_q"])
+    )
+    cu_seqlens_ori_kv = (
+        None
+        if param_combinations["cu_seqlens_ori_kv"] is None
+        else ast.literal_eval(param_combinations["cu_seqlens_ori_kv"])
+    )
+    cu_seqlens_cmp_kv = (
+        None
+        if param_combinations["cu_seqlens_cmp_kv"] is None
+        else ast.literal_eval(param_combinations["cu_seqlens_cmp_kv"])
+    )
+    seqused_q = (
+        None
+        if param_combinations["seqused_q"] is None
+        else ast.literal_eval(param_combinations["seqused_q"])
+    )
+    seqused_kv = ast.literal_eval(param_combinations["seqused_kv"])
+    softmax_scale = param_combinations["softmax_scale"]
+    cmp_ratio = (
+        None
+        if param_combinations["cmp_ratio"] is None
+        else int(param_combinations["cmp_ratio"])
+    )
+    ori_mask_mode = int(param_combinations["ori_mask_mode"])
+    cmp_mask_mode = (
+        None
+        if param_combinations["cmp_mask_mode"] is None
+        else int(param_combinations["cmp_mask_mode"])
+    )
+    ori_win_left = param_combinations["ori_win_left"]
+    ori_win_right = param_combinations["ori_win_right"]
+    testcase_name = param_combinations["testcase_name"]
+    q_datarange = (
+        ast.literal_eval(param_combinations["q_datarange"])
+        if param_combinations["q_datarange"] is not None
+        else [-10, 10]
+    )
+    ori_kv_datarange = (
+        ast.literal_eval(param_combinations["ori_kv_datarange"])
+        if param_combinations["ori_kv_datarange"] is not None
+        else [-10, 10]
+    )
+    cmp_kv_datarange = (
+        ast.literal_eval(param_combinations["cmp_kv_datarange"])
+        if param_combinations["cmp_kv_datarange"] is not None
+        else [-10, 10]
+    )
 
     # maxSeqLen / block_size向上取整
     ori_block_num_per_batch = []
     ori_block_num_sum = 0
     cmp_block_num_per_batch = []
     cmp_block_num_sum = 0
-    
-    test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-                block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, \
-                ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, \
-                ori_kv_datarange, cmp_kv_datarange, seqused_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv
+
+    test_data = (
+        layout_q,
+        layout_kv,
+        q_type,
+        ori_kv_type,
+        cmp_kv_type,
+        B,
+        S1,
+        T1,
+        N1,
+        N2,
+        D,
+        K,
+        block_num1,
+        block_num2,
+        block_size1,
+        block_size2,
+        cu_seqlens_q,
+        seqused_kv,
+        softmax_scale,
+        cmp_ratio,
+        ori_mask_mode,
+        cmp_mask_mode,
+        ori_win_left,
+        ori_win_right,
+        testcase_name,
+        S2,
+        q_datarange,
+        ori_kv_datarange,
+        cmp_kv_datarange,
+        seqused_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+    )
 
     print("data parsed.", test_data)
     print("strat to generate data")
     # 生成测试数据
-    input_data = sparse_attn_sharedkv_golden.gen_data(test_data)    
+    input_data = sparse_attn_sharedkv_golden.gen_data(test_data)
     print("strat to save data")
     sparse_attn_sharedkv_golden.save_test_case(input_data, save_path)

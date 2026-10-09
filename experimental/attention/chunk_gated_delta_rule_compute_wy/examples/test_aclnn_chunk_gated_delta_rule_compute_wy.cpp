@@ -25,7 +25,7 @@
 
 namespace {
 
-int64_t Numel(const std::vector<int64_t> &shape)
+int64_t Numel(const std::vector<int64_t>& shape)
 {
     int64_t size = 1;
     for (const int64_t dim : shape) {
@@ -35,8 +35,8 @@ int64_t Numel(const std::vector<int64_t> &shape)
 }
 
 template <typename T>
-int CreateTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, aclDataType dtype,
-                 void **deviceAddr, aclTensor **tensor)
+int CreateTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, aclDataType dtype,
+                 void** deviceAddr, aclTensor** tensor)
 {
     const size_t bytes = hostData.size() * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -48,7 +48,7 @@ int CreateTensor(const std::vector<T> &hostData, const std::vector<int64_t> &sha
     return *tensor == nullptr ? ACL_ERROR_INVALID_PARAM : ACL_SUCCESS;
 }
 
-int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtContext* context, aclrtStream* stream)
 {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -99,8 +99,8 @@ int main()
     std::vector<aclFloat16> uKernelData(Numel(uKernelShape), aclFloatToFloat16(0.0f));
     std::vector<float> gKernelData(Numel(gKernelShape), 0.0f);
 
-    std::vector<void *> deviceAddrs(10, nullptr);
-    std::vector<aclTensor *> tensors(10, nullptr);
+    std::vector<void*> deviceAddrs(10, nullptr);
+    std::vector<aclTensor*> tensors(10, nullptr);
     ret = CreateTensor(qData, qShape, ACL_FLOAT16, &deviceAddrs[0], &tensors[0]);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateTensor(kData, qShape, ACL_FLOAT16, &deviceAddrs[1], &tensors[1]);
@@ -123,13 +123,13 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     ret = aclnnChunkGatedDeltaRuleComputeWyGetWorkspaceSize(tensors[0], tensors[1], tensors[2], tensors[3], tensors[4],
                                                             chunkSize, tensors[5], tensors[6], tensors[7], tensors[8],
                                                             tensors[9], &workspaceSize, &executor);
     CHECK_RET(ret == ACLNN_SUCCESS, std::cerr << "GetWorkspaceSize failed: " << ret << std::endl; return ret);
 
-    void *workspace = nullptr;
+    void* workspace = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -149,10 +149,10 @@ int main()
     if (workspace != nullptr) {
         aclrtFree(workspace);
     }
-    for (aclTensor *tensor : tensors) {
+    for (aclTensor* tensor : tensors) {
         aclDestroyTensor(tensor);
     }
-    for (void *addr : deviceAddrs) {
+    for (void* addr : deviceAddrs) {
         aclrtFree(addr);
     }
     aclrtDestroyStream(stream);

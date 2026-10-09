@@ -43,8 +43,8 @@ constexpr int64_t MRG_BLOCK_3 = 3;
 constexpr int64_t MRG_BLOCK_4 = 4;
 
 template <typename T>
-__aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, LocalTensor<T> &weightsUb, GlobalTensor<float> &mMoutGm,
-                              GlobalTensor<T> &weightScaleGm, int64_t MMout_gmoffset, int64_t weights_gmoffset,
+__aicore__ inline void CopyIn(LocalTensor<float>& mmOutUb, LocalTensor<T>& weightsUb, GlobalTensor<float>& mMoutGm,
+                              GlobalTensor<T>& weightScaleGm, int64_t MMout_gmoffset, int64_t weights_gmoffset,
                               int64_t groupInner, int64_t s2Inner, int64_t mmUbStride)
 {
     // 将MMout_gmoffset copy到UB上
@@ -69,7 +69,7 @@ __aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, LocalTensor<T> &weigh
 }
 
 template <typename T>
-__aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T> &srcUb, int64_t copyCount)
+__aicore__ inline void CopyOut(const GlobalTensor<T>& dstGm, const LocalTensor<T>& srcUb, int64_t copyCount)
 {
     AscendC::DataCopyParams dataCopyOutyParams;
     dataCopyOutyParams.blockCount = 1;
@@ -79,8 +79,8 @@ __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T
     AscendC::DataCopyPad(dstGm, srcUb, dataCopyOutyParams);
 }
 
-__aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTensor<float> &mmOutUb,
-                               LocalTensor<float> &weightsUb, LocalTensor<float> &tmpBuff, int64_t groupInner,
+__aicore__ inline void DoScale(const LocalTensor<float>& reduceCacheBuf, LocalTensor<float>& mmOutUb,
+                               LocalTensor<float>& weightsUb, LocalTensor<float>& tmpBuff, int64_t groupInner,
                                int64_t s2Inner, int32_t outerGidx)
 {
     // weight broadcast: [groupInner, 1] -> [groupInner, 8]
@@ -119,7 +119,7 @@ __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
 }
 
 // dstTensor 需要初始化0
-__aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor<float> &dstTensor, int32_t rNum,
+__aicore__ inline void DoReduce(const LocalTensor<float>& srcTensor, LocalTensor<float>& dstTensor, int32_t rNum,
                                 int32_t aNum)
 {
     if (rNum == 1) {
@@ -148,7 +148,7 @@ __aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor
   src: 传入的初始化空间
   eleNum: 需要初始化的元素个数需为64整数倍，元素将被初始化为交错排布的-inf，-1
  */
-__aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t eleNum)
+__aicore__ inline void InitSortOutBuf(const LocalTensor<float>& src, int64_t eleNum)
 {
     uint64_t mask1[2] = {0x5555555555555555, 0};
     uint64_t mask0[2] = {0xaaaaaaaaaaaaaaaa, 0};
@@ -174,7 +174,7 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
   初始化 globalTopkUb_ 为分离格式: [scores(-inf) × slotSize | indices(0) × slotSize] per token
   slotSize = virTopK + QS_OVF, tokenStride = slotSize * 2
  */
-__aicore__ inline void InitSortOutBufSeparated(const LocalTensor<float> &src, int32_t numTokens, int32_t tokenStride,
+__aicore__ inline void InitSortOutBufSeparated(const LocalTensor<float>& src, int32_t numTokens, int32_t tokenStride,
                                                int32_t slotSize)
 {
     for (int t = 0; t < numTokens; t++) {
@@ -192,7 +192,7 @@ __aicore__ inline void InitSortOutBufSeparated(const LocalTensor<float> &src, in
   tmp: 计算使用到的临时空间，大小与src一致
   logitsNum: 排序的元素个数, 暂只支持[128,256,384,512,1024,2048]
  */
-__aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp, int64_t logitsNum)
+__aicore__ inline void SortAll(LocalTensor<float>& src, LocalTensor<float>& tmp, int64_t logitsNum)
 {
     int64_t sort32Repeats = logitsNum / BLOCK_BYTES;
     AscendC::Sort32(tmp, src, src[logitsNum].ReinterpretCast<uint32_t>(), sort32Repeats);
@@ -260,8 +260,8 @@ __aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp,
   tmp: 计算使用到的临时空间，大小为srcValue+srcIndex
   logitsNum: 排序的元素个数
  */
-__aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcValue, LocalTensor<uint32_t> &srcIndex,
-                               LocalTensor<float> &tmpTensor, int64_t logitsNum)
+__aicore__ inline void SortAll(LocalTensor<float>& dst, LocalTensor<float>& srcValue, LocalTensor<uint32_t>& srcIndex,
+                               LocalTensor<float>& tmpTensor, int64_t logitsNum)
 {
     int64_t sort32Repeats = logitsNum / BLOCK_BYTES;
     AscendC::Sort<float, true>(dst, srcValue, srcIndex, tmpTensor, sort32Repeats);
@@ -273,8 +273,8 @@ __aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcV
   mrgSrc: 待合并的Tensor
   tmpTensor：空间为mrgDst+mrgSrc
  */
-__aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDstNum, LocalTensor<float> &mrgSrc,
-                                 int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
+__aicore__ inline void MergeSort(const LocalTensor<float>& mrgDst, int32_t mrgDstNum, LocalTensor<float>& mrgSrc,
+                                 int32_t mrgSrcNum, LocalTensor<float>& tmpTensor)
 {
     if (mrgDstNum <= 3072) {
         AscendC::MrgSort4Info params;
@@ -335,7 +335,7 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
  * @param basicBlockSize 基础块的大小
  * @return 无
  */
-__aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalTensor<float> &src, int64_t blockNum,
+__aicore__ inline void MrgBasicBlock(const LocalTensor<float>& dst, const LocalTensor<float>& src, int64_t blockNum,
                                      int64_t basicBlockSize)
 {
     // 初始化合并排序参数
@@ -376,8 +376,8 @@ __aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalT
  * @return 无
  */
 template <bool needMrg = true>
-__aicore__ inline void SparseTopK(const LocalTensor<float> &dst, const LocalTensor<float> &needsMerging,
-                                  const LocalTensor<float> &tmp, int64_t topk, int64_t mergSize)
+__aicore__ inline void SparseTopK(const LocalTensor<float>& dst, const LocalTensor<float>& needsMerging,
+                                  const LocalTensor<float>& tmp, int64_t topk, int64_t mergSize)
 {
     // 如果不需要合并，则直接复制数据
     if (!needMrg) {
@@ -400,7 +400,7 @@ __aicore__ inline void SparseTopK(const LocalTensor<float> &dst, const LocalTens
     AscendC::DataCopy(dst, tmp, topk * VALUE_AND_INDEX_NUM);
 }
 
-__aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, const LocalTensor<uint32_t> &sortLocal,
+__aicore__ inline void ExtractIndex(const LocalTensor<uint32_t>& idxULocal, const LocalTensor<uint32_t>& sortLocal,
                                     int64_t extractNum)
 {
     AscendC::GatherMaskParams gatherMaskParams;
@@ -461,8 +461,8 @@ struct QSParams {
  * @param auxBuf   辅助工作区: [dstIndices(cap) | cmpMask] (放在 tmpSortBuf 中)
  * @return above 总数 (>=target 表示收敛), 0 = 未收敛
  */
-__aicore__ inline int32_t QuickSelectPartition(LocalTensor<float> &tmpBuf, LocalTensor<float> &auxBuf,
-                                               const QSParams &params, float &outThreshold, float &outCarryMax)
+__aicore__ inline int32_t QuickSelectPartition(LocalTensor<float>& tmpBuf, LocalTensor<float>& auxBuf,
+                                               const QSParams& params, float& outThreshold, float& outCarryMax)
 {
     int32_t cap = params.cap();
     int32_t workingN = params.workingNAlign();
@@ -488,7 +488,7 @@ __aicore__ inline int32_t QuickSelectPartition(LocalTensor<float> &tmpBuf, Local
         curMin = dstScores.GetValue(0);
         SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
 
-        const float SENTINEL_BOUND = *((const float *)&SECOND_MAX_LOGITS_BITS);
+        const float SENTINEL_BOUND = *((const float*)&SECOND_MAX_LOGITS_BITS);
         LocalTensor<float> selBuf = dstIndices.template ReinterpretCast<float>();
         CompareScalar(cmpMask, srcScores, SENTINEL_BOUND, CMPMODE::LT, target);
         PipeBarrier<PIPE_V>();

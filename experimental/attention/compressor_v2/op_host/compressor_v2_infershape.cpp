@@ -60,7 +60,7 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
-ge::graphStatus GetCompressorV2ShapeDim(const gert::InferShapeContext *context, CompressorV2ProtoShapeParam &shapeParam)
+ge::graphStatus GetCompressorV2ShapeDim(const gert::InferShapeContext* context, CompressorV2ProtoShapeParam& shapeParam)
 {
     auto xShape = context->GetRequiredInputShape(TOKEN_X_INPUT_INDEX); // (B, S, H) | (T, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
@@ -81,7 +81,7 @@ ge::graphStatus GetCompressorV2ShapeDim(const gert::InferShapeContext *context, 
 
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
-    const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
+    const int64_t* cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
     int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
     // V2 coff 固定为 1（COFF::DISABLE）
     constexpr int64_t coff = COFF_VALUE;
@@ -107,14 +107,14 @@ ge::graphStatus GetCompressorV2ShapeDim(const gert::InferShapeContext *context, 
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus SetCompressorV2ShapeDim(const CompressorV2ProtoShapeParam &shapeParam, gert::InferShapeContext *context)
+ge::graphStatus SetCompressorV2ShapeDim(const CompressorV2ProtoShapeParam& shapeParam, gert::InferShapeContext* context)
 {
     // query: (B, Sr, D) | (Sr, D)
     auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cmpKvShape);
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
-    const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
+    const int64_t* cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
     int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
     // V2 coff 固定为 1，extraDim = coff * cmpRatio = cmpRatio
     int64_t extraDim = cmpRatio;
@@ -136,7 +136,7 @@ ge::graphStatus SetCompressorV2ShapeDim(const CompressorV2ProtoShapeParam &shape
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeCompressorV2(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeCompressorV2(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorV2", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -149,7 +149,7 @@ ge::graphStatus InferDataTypeCompressorV2(gert::InferDataTypeContext *context)
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferShapeCompressorV2(gert::InferShapeContext *context)
+ge::graphStatus InferShapeCompressorV2(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorV2", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);

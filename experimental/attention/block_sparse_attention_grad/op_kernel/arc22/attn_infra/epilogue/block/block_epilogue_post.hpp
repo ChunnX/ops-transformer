@@ -114,11 +114,11 @@ public:
     uint64_t s2 = 0;
     uint64_t d = 0;
 
-    __aicore__ inline BlockPost(Params const &params)
+    __aicore__ inline BlockPost(Params const& params)
     {
         cBlockIdx = GetBlockIdx();
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tilingData);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tilingData);
         // KERNEL_TYPE_MIX_AIC_1_2 exposes two contiguous AIV block ids for
         // every AIC.  Give every AIV a disjoint output range so scale/cast is
         // parallelized without duplicate GM reads and writes.
@@ -166,18 +166,18 @@ public:
                                                    kvPostBlockEeachCore; // 当前核需要计算的dkv的行数
         dkvOffset = ((uint64_t)cBlockIdx) * kvPostBlockNumEeachCore;     // 当前核dkv的偏移元素个数
 
-        dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)params.dqWrk + dqOffset);
-        dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)params.dkWrk + dkvOffset);
-        dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)params.dvWrk + dkvOffset);
+        dqWorkSpaceGm.SetGlobalBuffer((__gm__ float*)params.dqWrk + dqOffset);
+        dkWorkSpaceGm.SetGlobalBuffer((__gm__ float*)params.dkWrk + dkvOffset);
+        dvWorkSpaceGm.SetGlobalBuffer((__gm__ float*)params.dvWrk + dkvOffset);
 
         if constexpr (INPUT_LAYOUT == TND) {
-            dqGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dq + dqOffset);
-            dkGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dk + dkvOffset);
-            dvGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dv + dkvOffset);
+            dqGm.SetGlobalBuffer((__gm__ OutputDtype_*)params.dq + dqOffset);
+            dkGm.SetGlobalBuffer((__gm__ OutputDtype_*)params.dk + dkvOffset);
+            dvGm.SetGlobalBuffer((__gm__ OutputDtype_*)params.dv + dkvOffset);
         } else if constexpr (INPUT_LAYOUT == BNSD) {
-            dqGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dq);
-            dkGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dk);
-            dvGm.SetGlobalBuffer((__gm__ OutputDtype_ *)params.dv);
+            dqGm.SetGlobalBuffer((__gm__ OutputDtype_*)params.dq);
+            dkGm.SetGlobalBuffer((__gm__ OutputDtype_*)params.dk);
+            dvGm.SetGlobalBuffer((__gm__ OutputDtype_*)params.dv);
         }
 
         ubBasePreBufferSize = ubBaseSize / BUFFER_NUM / BASE_BLOCK_BYTE * BASE_BLOCK_BYTE; // double buffer
@@ -200,13 +200,13 @@ public:
 
     // Decode an element offset into batch/head/sequence indices.
     // seqS contains per-batch lengths, not cumulative offsets; curS receives the selected length.
-    __aicore__ inline void InitIndex(uint64_t startIdx, uint64_t &curS, GM_ADDR seqS, uint64_t &bIdx, uint64_t &nIdx,
-                                     uint64_t &sIdx, struct ShapeBnsd shape)
+    __aicore__ inline void InitIndex(uint64_t startIdx, uint64_t& curS, GM_ADDR seqS, uint64_t& bIdx, uint64_t& nIdx,
+                                     uint64_t& sIdx, struct ShapeBnsd shape)
     {
         if constexpr (INPUT_LAYOUT == TND) {
             uint64_t prefixSum = 0;
             for (uint64_t bDimIdx = 0; bDimIdx < shape.b; bDimIdx++) {
-                uint64_t curBatchLen = ((__gm__ int64_t *)seqS)[bDimIdx];
+                uint64_t curBatchLen = ((__gm__ int64_t*)seqS)[bDimIdx];
                 uint64_t curBatchElements = curBatchLen * shape.n * shape.d;
 
                 if (startIdx < prefixSum + curBatchElements) {

@@ -31,8 +31,8 @@ const aclTensor* KvQuantSparseAttnSharedkvMetadata(
     const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
     int64_t oriTopK, int64_t cmpTopK, int64_t kvQuantMode, int64_t tileSize, int64_t ropeHeadDim, int64_t cmpRatio,
-    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, char *layoutQOptional,
-    char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const char *socVersion, int64_t aicCoreNum,
+    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, char* layoutQOptional,
+    char* layoutKvOptional, bool hasOriKv, bool hasCmpKv, const char* socVersion, int64_t aicCoreNum,
     int64_t aivCoreNum, const aclTensor* metadata, aclOpExecutor* executor)
 {
     L0_DFX(KvQuantSparseAttnSharedkvMetadata, cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional,
@@ -45,15 +45,16 @@ const aclTensor* KvQuantSparseAttnSharedkvMetadata(
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         KvQuantSparseAttnSharedkvMetadata,
-        OP_ATTR_NAMES({"num_heads_q", "num_heads_kv", "head_dim", "batch_size", "max_seqlen_q", "max_seqlen_kv",
-                    "ori_topk", "cmp_topk", "kv_quant_mode", "tile_size", "rope_head_dim", "cmp_ratio", "ori_mask_mode",
-                    "cmp_mask_mode", "ori_win_left", "ori_win_right", "layout_q", "layout_kv", "has_ori_kv",
-                    "has_cmp_kv", "soc_version", "aic_core_num", "aiv_core_num"}),
+        OP_ATTR_NAMES({"num_heads_q",   "num_heads_kv", "head_dim",      "batch_size",    "max_seqlen_q",
+                       "max_seqlen_kv", "ori_topk",     "cmp_topk",      "kv_quant_mode", "tile_size",
+                       "rope_head_dim", "cmp_ratio",    "ori_mask_mode", "cmp_mask_mode", "ori_win_left",
+                       "ori_win_right", "layout_q",     "layout_kv",     "has_ori_kv",    "has_cmp_kv",
+                       "soc_version",   "aic_core_num", "aiv_core_num"}),
         OP_INPUT(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
                  sequsedKvOptional),
         OP_OUTPUT(metadata),
         OP_ATTR(numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenKv, oriTopK, cmpTopK, kvQuantMode,
-                tileSize, ropeHeadDim, cmpRatio, oriMaskMode,  cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional,
+                tileSize, ropeHeadDim, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQOptional,
                 layoutKvOptional, hasOriKv, hasCmpKv, socVersion, aicCoreNum, aivCoreNum));
     OP_CHECK(ret == ACL_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "KvQuantSparseAttnSharedkvMetadata ADD_TO_LAUNCHER_LIST_AICPU failed."),
@@ -61,4 +62,4 @@ const aclTensor* KvQuantSparseAttnSharedkvMetadata(
     return metadata;
 }
 
-}  // namespace l0op
+} // namespace l0op

@@ -52,7 +52,7 @@ def mhc_post_einsum(branch_output, h_post):
     batch, seq_len, dim = branch_output.shape
     num_streams = len(h_post)
 
-    tmp = np.einsum('bsd,n->bsnd', branch_output, h_post)
+    tmp = np.einsum("bsd,n->bsnd", branch_output, h_post)
     output = tmp.transpose(0, 2, 1, 3).reshape(batch * num_streams, seq_len, dim)
 
     return output
@@ -60,10 +60,10 @@ def mhc_post_einsum(branch_output, h_post):
 
 def run_npu_kernel(branch_output, h_post, batch, seq_len, dim, num_streams):
     """NPU kernel调用包装"""
-    branch_output.astype(np.float32).tofile('/tmp/mhc_input.bin')
-    h_post.astype(np.float32).tofile('/tmp/mhc_hpost.bin')
+    branch_output.astype(np.float32).tofile("/tmp/mhc_input.bin")
+    h_post.astype(np.float32).tofile("/tmp/mhc_hpost.bin")
 
-    cpp_code = f'''
+    cpp_code = f"""
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -107,40 +107,52 @@ int main() {{
     aclrtDestroyStream(stream); aclrtResetDevice(0); aclFinalize();
     return 0;
 }}
-'''
+"""
 
-    with open('/tmp/test_mhc_run.cpp', 'w') as f:
+    with open("/tmp/test_mhc_run.cpp", "w") as f:
         f.write(cpp_code)
 
     compile_cmd = [
-        'g++', '-o', '/tmp/test_mhc_run', '/tmp/test_mhc_run.cpp',
-        '-I/usr/local/Ascend/ascend-toolkit/latest/include',
-        '-L/usr/local/Ascend/ascend-toolkit/latest/lib64',
-        '-L/root/tst/mhc_post/build/lib',
-        '-lmhc_post_kernel', '-lascendcl', '-lruntime',
+        "g++",
+        "-o",
+        "/tmp/test_mhc_run",
+        "/tmp/test_mhc_run.cpp",
+        "-I/usr/local/Ascend/ascend-toolkit/latest/include",
+        "-L/usr/local/Ascend/ascend-toolkit/latest/lib64",
+        "-L/root/tst/mhc_post/build/lib",
+        "-lmhc_post_kernel",
+        "-lascendcl",
+        "-lruntime",
     ]
-    result = subprocess.run(compile_cmd, capture_output=True, text=True,
-                            cwd='/root/tst/mhc_post/build')
+    result = subprocess.run(
+        compile_cmd, capture_output=True, text=True, cwd="/root/tst/mhc_post/build"
+    )
     if result.returncode != 0:
         logger.error("Compile error: %s", result.stderr)
         return None
 
-    run_cmd = ['/tmp/test_mhc_run']
+    run_cmd = ["/tmp/test_mhc_run"]
     result = subprocess.run(run_cmd, capture_output=True, text=True)
     if result.returncode != 0:
         logger.error("Run error: %s", result.stderr)
         return None
 
-    output = np.fromfile('/tmp/mhc_output.bin', dtype=np.float32)
+    output = np.fromfile("/tmp/mhc_output.bin", dtype=np.float32)
     return output.reshape(batch * num_streams, seq_len, dim)
 
 
 def test_case(name, batch, seq_len, dim, num_streams):
     """单个测试用例"""
-    logger.info("\n%s", '=' * 60)
+    logger.info("\n%s", "=" * 60)
     logger.info("测试: %s", name)
-    logger.info("  batch=%d, seq_len=%d, dim=%d, num_streams=%d", batch, seq_len, dim, num_streams)
-    logger.info("%s", '=' * 60)
+    logger.info(
+        "  batch=%d, seq_len=%d, dim=%d, num_streams=%d",
+        batch,
+        seq_len,
+        dim,
+        num_streams,
+    )
+    logger.info("%s", "=" * 60)
 
     np.random.seed(42)
     branch_output = np.random.randn(batch, seq_len, dim).astype(np.float32)
@@ -154,7 +166,11 @@ def test_case(name, batch, seq_len, dim, num_streams):
     ref_einsum = mhc_post_einsum(branch_output, h_post)
 
     diff_ref = np.max(np.abs(ref_loop - ref_einsum))
-    logger.info("\n参考实现一致性检查: max_diff=%.2e %s", diff_ref, '✓' if diff_ref < 1e-6 else '✗')
+    logger.info(
+        "\n参考实现一致性检查: max_diff=%.2e %s",
+        diff_ref,
+        "✓" if diff_ref < 1e-6 else "✗",
+    )
 
     npu_output = run_npu_kernel(branch_output, h_post, batch, seq_len, dim, num_streams)
 
@@ -174,20 +190,22 @@ def test_case(name, batch, seq_len, dim, num_streams):
 
     logger.info("\n抽样对比 (前4个输出batch):")
     for s in range(min(4, num_streams)):
-        logger.info("  stream %d: ref=%s, npu=%s", s, ref_loop[s, 0, :4], npu_output[s, 0, :4])
+        logger.info(
+            "  stream %d: ref=%s, npu=%s", s, ref_loop[s, 0, :4], npu_output[s, 0, :4]
+        )
 
     passed = max_abs_err < 1e-4 and max_rel_err < 1e-3
-    logger.info("\n测试结果: %s", '✓ PASSED' if passed else '✗ FAILED')
+    logger.info("\n测试结果: %s", "✓ PASSED" if passed else "✗ FAILED")
 
     return passed
 
 
 def main():
-    logger.info("\n%s", '#' * 60)
+    logger.info("\n%s", "#" * 60)
     logger.info("# mhc_post 算子综合验证")
     logger.info("# 论文: mHC: Manifold-Constrained Hyper-Connections")
     logger.info("# 公式: output[b*s+i] = branch_output[b] * h_post[i]")
-    logger.info("%s", '#' * 60)
+    logger.info("%s", "#" * 60)
 
     results = []
 
@@ -205,9 +223,9 @@ def main():
         passed = test_case(name, batch, seq_len, dim, num_streams)
         results.append((name, passed))
 
-    logger.info("\n%s", '#' * 60)
+    logger.info("\n%s", "#" * 60)
     logger.info("# 测试汇总")
-    logger.info("%s", '#' * 60)
+    logger.info("%s", "#" * 60)
 
     all_passed = True
     for name, passed in results:
@@ -216,11 +234,11 @@ def main():
         if not passed:
             all_passed = False
 
-    logger.info("\n总体结果: %s", '✓ ALL PASSED' if all_passed else '✗ SOME FAILED')
+    logger.info("\n总体结果: %s", "✓ ALL PASSED" if all_passed else "✗ SOME FAILED")
 
     return 0 if all_passed else 1
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(message)s')
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     exit(main())

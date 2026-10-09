@@ -34,8 +34,8 @@ float Silu(float x)
 // 参考实现 A: 融合式, 按 (row, col) 直接累加 gate/up 两路点积。
 // 对应 kernel 的"按输出块逐列计算 gate/up"思路。
 std::vector<float> SwigluGolden(const std::vector<float>& x, const std::vector<float>& weight,
-                                const std::vector<float>& bias, int64_t m, int64_t k, int64_t n,
-                                bool transposeWeight, bool hasBias)
+                                const std::vector<float>& bias, int64_t m, int64_t k, int64_t n, bool transposeWeight,
+                                bool hasBias)
 {
     std::vector<float> y(static_cast<size_t>(m * n), 0.0f);
     for (int64_t row = 0; row < m; ++row) {
@@ -44,10 +44,10 @@ std::vector<float> SwigluGolden(const std::vector<float>& x, const std::vector<f
             float up = 0.0f;
             for (int64_t kk = 0; kk < k; ++kk) {
                 const float xVal = x[static_cast<size_t>(row * k + kk)];
-                if (transposeWeight) {  // weight [2N, K]
+                if (transposeWeight) { // weight [2N, K]
                     gate += xVal * weight[static_cast<size_t>(col * k + kk)];
                     up += xVal * weight[static_cast<size_t>((n + col) * k + kk)];
-                } else {                // weight [K, 2N]
+                } else { // weight [K, 2N]
                     gate += xVal * weight[static_cast<size_t>(kk * 2 * n + col)];
                     up += xVal * weight[static_cast<size_t>(kk * 2 * n + n + col)];
                 }
@@ -65,8 +65,8 @@ std::vector<float> SwigluGolden(const std::vector<float>& x, const std::vector<f
 // 参考实现 B: 朴素整块, 先算完整 [M, 2N] = x @ weight (+bias), 再切分 gate/up。
 // 结构与 A 不同(先整块乘再切分), 作为交叉校验, 避免"自己证明自己"。
 std::vector<float> SwigluRefFull(const std::vector<float>& x, const std::vector<float>& weight,
-                                 const std::vector<float>& bias, int64_t m, int64_t k, int64_t n,
-                                 bool transposeWeight, bool hasBias)
+                                 const std::vector<float>& bias, int64_t m, int64_t k, int64_t n, bool transposeWeight,
+                                 bool hasBias)
 {
     const int64_t twoN = 2 * n;
     std::vector<float> mm(static_cast<size_t>(m * twoN), 0.0f);
@@ -75,9 +75,9 @@ std::vector<float> SwigluRefFull(const std::vector<float>& x, const std::vector<
             float acc = 0.0f;
             for (int64_t kk = 0; kk < k; ++kk) {
                 const float xVal = x[static_cast<size_t>(row * k + kk)];
-                const float wVal = transposeWeight
-                                       ? weight[static_cast<size_t>(c2 * k + kk)]   // [2N, K]
-                                       : weight[static_cast<size_t>(kk * twoN + c2)]; // [K, 2N]
+                const float wVal = transposeWeight ? weight[static_cast<size_t>(c2 * k + kk)] // [2N, K]
+                                                     :
+                                                     weight[static_cast<size_t>(kk * twoN + c2)]; // [K, 2N]
                 acc += xVal * wVal;
             }
             if (hasBias) {
@@ -98,8 +98,8 @@ std::vector<float> SwigluRefFull(const std::vector<float>& x, const std::vector<
 }
 
 // 生成随机数据并填好 weight(按 transpose 与否布局)/bias。
-void GenData(int64_t m, int64_t k, int64_t n, bool transposeWeight, bool hasBias, uint32_t seed,
-             std::vector<float>& x, std::vector<float>& weight, std::vector<float>& bias)
+void GenData(int64_t m, int64_t k, int64_t n, bool transposeWeight, bool hasBias, uint32_t seed, std::vector<float>& x,
+             std::vector<float>& weight, std::vector<float>& bias)
 {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
@@ -107,7 +107,7 @@ void GenData(int64_t m, int64_t k, int64_t n, bool transposeWeight, bool hasBias
     for (auto& v : x) {
         v = dist(rng);
     }
-    weight.resize(static_cast<size_t>(k * 2 * n));  // 元素总数与布局无关, 均为 K*2N
+    weight.resize(static_cast<size_t>(k * 2 * n)); // 元素总数与布局无关, 均为 K*2N
     for (auto& v : weight) {
         v = dist(rng);
     }
@@ -132,7 +132,7 @@ void CrossCheck(int64_t m, int64_t k, int64_t n, bool transposeWeight, bool hasB
         EXPECT_NEAR(ya[i], yb[i], 1e-4f) << "ref mismatch at " << i;
     }
 }
-}  // namespace
+} // namespace
 
 // ---- 精确小用例: 与手算结果比对 (packed weight) ----
 TEST(MatmulSwigluKernelGolden, packed_weight_reference)
@@ -142,8 +142,7 @@ TEST(MatmulSwigluKernelGolden, packed_weight_reference)
     const int64_t n = 2;
     const std::vector<float> x = {1.0f, 2.0f};
     const std::vector<float> weight = {
-        1.0f, 0.0f, 2.0f, 1.0f,
-        0.0f, 1.0f, 3.0f, -1.0f,
+        1.0f, 0.0f, 2.0f, 1.0f, 0.0f, 1.0f, 3.0f, -1.0f,
     };
 
     const auto y = SwigluGolden(x, weight, {}, m, k, n, false, false);
@@ -161,10 +160,7 @@ TEST(MatmulSwigluKernelGolden, transposed_weight_reference)
     const int64_t n = 2;
     const std::vector<float> x = {1.0f, 2.0f};
     const std::vector<float> weight = {
-        1.0f, 0.0f,
-        0.0f, 1.0f,
-        2.0f, 3.0f,
-        1.0f, -1.0f,
+        1.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 1.0f, -1.0f,
     };
 
     const auto y = SwigluGolden(x, weight, {}, m, k, n, true, false);
@@ -183,10 +179,10 @@ TEST(MatmulSwigluKernelGolden, packed_weight_with_bias)
     const std::vector<float> x = {1.0f, 2.0f};
     // weight [K, 2N] = [2, 2]: 列0=gate, 列1=up
     const std::vector<float> weight = {
-        1.0f, 2.0f,   // k=0
-        3.0f, 1.0f,   // k=1
+        1.0f, 2.0f, // k=0
+        3.0f, 1.0f, // k=1
     };
-    const std::vector<float> bias = {0.5f, -1.0f};  // [gate_bias, up_bias]
+    const std::vector<float> bias = {0.5f, -1.0f}; // [gate_bias, up_bias]
 
     // gate = 1*1 + 2*3 + 0.5 = 7.5 ; up = 1*2 + 2*1 - 1.0 = 3.0
     const auto y = SwigluGolden(x, weight, bias, m, k, n, false, true);
@@ -199,7 +195,7 @@ TEST(MatmulSwigluKernelGolden, cross_check_packed_no_bias)
 {
     CrossCheck(8, 16, 8, /*transpose=*/false, /*bias=*/false, 1u);
     CrossCheck(32, 64, 16, false, false, 2u);
-    CrossCheck(5, 7, 3, false, false, 3u);  // 非对齐 shape
+    CrossCheck(5, 7, 3, false, false, 3u); // 非对齐 shape
 }
 
 TEST(MatmulSwigluKernelGolden, cross_check_packed_with_bias)
@@ -218,7 +214,7 @@ TEST(MatmulSwigluKernelGolden, cross_check_transposed)
 TEST(MatmulSwigluKernelGolden, silu_semantics)
 {
     EXPECT_NEAR(Silu(0.0f), 0.0f, 1e-6f);
-    EXPECT_NEAR(Silu(20.0f), 20.0f, 1e-3f);     // 大正数趋近 x
-    EXPECT_NEAR(Silu(-20.0f), 0.0f, 1e-3f);     // 大负数趋近 0
-    EXPECT_LT(Silu(-1.0f), 0.0f);               // SiLU 在负区可为负
+    EXPECT_NEAR(Silu(20.0f), 20.0f, 1e-3f); // 大正数趋近 x
+    EXPECT_NEAR(Silu(-20.0f), 0.0f, 1e-3f); // 大负数趋近 0
+    EXPECT_LT(Silu(-1.0f), 0.0f);           // SiLU 在负区可为负
 }

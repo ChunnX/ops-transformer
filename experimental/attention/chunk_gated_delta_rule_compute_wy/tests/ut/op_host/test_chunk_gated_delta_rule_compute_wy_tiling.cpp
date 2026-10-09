@@ -53,7 +53,7 @@ const std::string SOC_INFO_310P = R"({"hardware_info": {"BT_SIZE": 0, "load3d_co
                                   R"("CORE_NUM": 8, "socVersion":"Ascend310P"} })";
 
 gert::TilingContextPara MakeContext(int64_t b, int64_t t, int64_t hk, int64_t hv, int64_t kDim, int64_t vDim,
-                                    int64_t chunkSize, ChunkGatedDeltaRuleComputeWyCompileInfo *compileInfo)
+                                    int64_t chunkSize, ChunkGatedDeltaRuleComputeWyCompileInfo* compileInfo)
 {
     gert::StorageShape qShape = {{b, t, hk, kDim}, {b, t, hk, kDim}};
     gert::StorageShape vShape = {{b, t, hv, vDim}, {b, t, hv, vDim}};

@@ -25,27 +25,28 @@ namespace optiling {
 
 class PSEChecker : public BaseChecker {
 public:
-    PSEChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    PSEChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~PSEChecker() override = default;
 
-    ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckParaExistence(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckCrossFeature(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo) override;
+    ge::graphStatus CheckSinglePara(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckParaExistence(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckCrossFeature(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo& fiaInfo) override;
 
 private:
     // singlepara
-    ge::graphStatus CheckPseType(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckPseShiftDataType(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckPseShiftShape(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckPseType(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckPseShiftDataType(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckPseShiftShape(const FiaTilingInfo& fiaInfo);
     // existence
-    ge::graphStatus CheckPseShiftExistence(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckPseShiftExistence(const FiaTilingInfo& fiaInfo);
     // feature
-    ge::graphStatus CheckFeaturePA(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeaturePA(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckerFeatureCrossover(const FiaTilingInfo& fiaInfo);
     // multipara
-    ge::graphStatus CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckAlibiStartIdx(const FiaTilingInfo& fiaInfo);
 
 private:
 };

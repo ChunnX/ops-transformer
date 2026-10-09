@@ -47,7 +47,7 @@ std::vector<TensorDesc> BaseOutputs()
 }
 
 // 属性基线取 host 侧唯一合法值，负向用例在此基础上单点改写。
-std::vector<OpAttr> BaseAttrs(const std::string &layoutQuery = "TND", bool returnSoftmaxLse = false)
+std::vector<OpAttr> BaseAttrs(const std::string& layoutQuery = "TND", bool returnSoftmaxLse = false)
 {
     return {{"scale_value", AnyValue::CreateFrom<float>(0.044194173f)},
             {"key_quant_mode", AnyValue::CreateFrom<int64_t>(3)},
@@ -68,9 +68,15 @@ std::vector<OpAttr> BaseAttrs(const std::string &layoutQuery = "TND", bool retur
 
 class TurboQuantSparseFlashAttentionProto : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "TurboQuantSparseFlashAttentionProto SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionProto SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "TurboQuantSparseFlashAttentionProto TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionProto TearDown" << std::endl;
+    }
 };
 
 // attention_out 最后一维 = query 最后一维 - rope_head_dim = 576 - 64 = 512。

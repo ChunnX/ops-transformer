@@ -62,7 +62,7 @@ uint32_t gcd(uint32_t a, uint32_t b)
 
 } // namespace
 
-ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
+ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext* context)
 {
     // 1. 获取基础上下文与平台信息
     if (context == nullptr) {
@@ -81,11 +81,11 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
     isAscend310P = (socVersion == platform_ascendc::SocVersion::ASCEND310P);
 
     // 3. 解析输入 Shape 信息
-    auto *shapeA = context->GetInputShape(INPUT_INDEX_A);
+    auto* shapeA = context->GetInputShape(INPUT_INDEX_A);
     if (shapeA == nullptr || shapeA->GetStorageShape().GetDimNum() < 2) {
         return ge::GRAPH_FAILED;
     }
-    const auto &storageShape = shapeA->GetStorageShape();
+    const auto& storageShape = shapeA->GetStorageShape();
     int64_t numBatches = storageShape.GetDim(0);
     int64_t numHeads = storageShape.GetDim(1);
     if (numBatches <= 0 || numHeads <= 0) {
@@ -95,20 +95,20 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
     // 4. 解析公共属性参数
     float beta = 1.0f;
     float threshold = 20.0f;
-    auto *attrs = context->GetAttrs();
+    auto* attrs = context->GetAttrs();
     if (attrs != nullptr) {
-        const float *betaAttr = attrs->GetAttrPointer<float>(0);
+        const float* betaAttr = attrs->GetAttrPointer<float>(0);
         if (betaAttr != nullptr) {
             beta = *betaAttr;
         }
-        const float *thresholdAttr = attrs->GetAttrPointer<float>(1);
+        const float* thresholdAttr = attrs->GetAttrPointer<float>(1);
         if (thresholdAttr != nullptr) {
             threshold = *thresholdAttr;
         }
     }
 
     // 5. 获取统一的 Tiling 数据结构（host/kernel 共享同一份 plain struct，布局天然一致）
-    auto *td = context->GetTilingData<FusedGdnGating::FusedGdnGatingTilingData>();
+    auto* td = context->GetTilingData<FusedGdnGating::FusedGdnGatingTilingData>();
     if (td == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -189,9 +189,9 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
         }
 
         // 数据类型解析与 Tiling Key 生成
-        auto *aDesc = context->GetInputDesc(INPUT_INDEX_A);
-        auto *aLogDesc = context->GetInputDesc(INPUT_INDEX_A_LOG);
-        auto *dtBiasDesc = context->GetInputDesc(INPUT_INDEX_DT_BIAS);
+        auto* aDesc = context->GetInputDesc(INPUT_INDEX_A);
+        auto* aLogDesc = context->GetInputDesc(INPUT_INDEX_A_LOG);
+        auto* dtBiasDesc = context->GetInputDesc(INPUT_INDEX_DT_BIAS);
         if (aDesc == nullptr || aLogDesc == nullptr || dtBiasDesc == nullptr) {
             return ge::GRAPH_FAILED;
         }
@@ -258,7 +258,7 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
     context->SetTilingKey(tilingKey);
 
     // 清空 Workspace 请求
-    size_t *workspaces = context->GetWorkspaceSizes(1);
+    size_t* workspaces = context->GetWorkspaceSizes(1);
     if (workspaces != nullptr) {
         workspaces[0] = 0;
     }
@@ -267,7 +267,7 @@ ge::graphStatus optiling::FusedGdnGatingTilingFunc(gert::TilingContext *context)
 }
 
 // 7. 编译期解析配置入口
-ge::graphStatus optiling::TilingPrepareForFusedGdnGating(gert::TilingParseContext *context)
+ge::graphStatus optiling::TilingPrepareForFusedGdnGating(gert::TilingParseContext* context)
 {
     // 获取底层系统平台信息
     auto platformInfo = context->GetPlatformInfo();

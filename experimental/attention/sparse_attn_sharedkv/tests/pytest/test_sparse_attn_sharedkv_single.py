@@ -27,6 +27,7 @@ from batch import sparse_attn_sharedkv_process
 save_pt = False
 pt_save_path = "data"
 
+
 def fill_random_cu_len(T, SMax, B, qk_equal_len=False):
     cu_seqlens = [0]
     S = min(SMax, T // B)
@@ -37,6 +38,7 @@ def fill_random_cu_len(T, SMax, B, qk_equal_len=False):
     cu_seqlens[-1] = T
     return cu_seqlens
 
+
 def fill_random_used_len(SMax, B, qk_equal_len=False):
     used_lens = []
     S_eq = SMax
@@ -45,9 +47,10 @@ def fill_random_used_len(SMax, B, qk_equal_len=False):
         used_lens.append(length)
     return used_lens
 
+
 # 处理所有参数组合
 param_combinations = []
-result_path = os.getenv("SAS_RESULT_SAVE_PATH", './result/sas_result.xlsx')
+result_path = os.getenv("SAS_RESULT_SAVE_PATH", "./result/sas_result.xlsx")
 
 for params in ENABLED_PARAMS:
     # 确保所有参数都存在，缺失的用默认值填充
@@ -92,38 +95,39 @@ for params in ENABLED_PARAMS:
         combination = dict(zip(param_names, combo))
         param_combinations.append(combination)
 
+
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
 def test_example(param_combinations):
-    layout_q = param_combinations['layout_q']
-    layout_kv = param_combinations['layout_kv']
-    q_type = param_combinations['q_type']
-    ori_kv_type = param_combinations['ori_kv_type']
-    cmp_kv_type = param_combinations['cmp_kv_type']
-    B = param_combinations['B']
-    S1 = param_combinations['S1']
-    S2 = param_combinations['S2']
-    T1 = param_combinations['T1']
-    T2 = param_combinations['T2']
-    N1 = param_combinations['N1']
-    N2 = param_combinations['N2']
-    D = param_combinations['D']
-    K = param_combinations['K']
-    block_num1 = param_combinations['block_num1']
-    block_num2 = param_combinations['block_num2']
-    block_size1 = param_combinations['block_size1']
-    block_size2 = param_combinations['block_size2']
-    cu_seqlens_q = param_combinations['cu_seqlens_q']
-    seqused_q = param_combinations['seqused_q']
-    seqused_kv = param_combinations['seqused_kv']
-    softmax_scale = param_combinations['softmax_scale']
-    cmp_ratio = param_combinations['cmp_ratio']
-    ori_mask_mode = param_combinations['ori_mask_mode']
-    cmp_mask_mode = param_combinations['cmp_mask_mode']
-    ori_win_left = param_combinations['ori_win_left']
-    ori_win_right = param_combinations['ori_win_right']
-    cu_seqlens_ori_kv = param_combinations['cu_seqlens_ori_kv']
-    cu_seqlens_cmp_kv = param_combinations['cu_seqlens_cmp_kv']
+    layout_q = param_combinations["layout_q"]
+    layout_kv = param_combinations["layout_kv"]
+    q_type = param_combinations["q_type"]
+    ori_kv_type = param_combinations["ori_kv_type"]
+    cmp_kv_type = param_combinations["cmp_kv_type"]
+    B = param_combinations["B"]
+    S1 = param_combinations["S1"]
+    S2 = param_combinations["S2"]
+    T1 = param_combinations["T1"]
+    T2 = param_combinations["T2"]
+    N1 = param_combinations["N1"]
+    N2 = param_combinations["N2"]
+    D = param_combinations["D"]
+    K = param_combinations["K"]
+    block_num1 = param_combinations["block_num1"]
+    block_num2 = param_combinations["block_num2"]
+    block_size1 = param_combinations["block_size1"]
+    block_size2 = param_combinations["block_size2"]
+    cu_seqlens_q = param_combinations["cu_seqlens_q"]
+    seqused_q = param_combinations["seqused_q"]
+    seqused_kv = param_combinations["seqused_kv"]
+    softmax_scale = param_combinations["softmax_scale"]
+    cmp_ratio = param_combinations["cmp_ratio"]
+    ori_mask_mode = param_combinations["ori_mask_mode"]
+    cmp_mask_mode = param_combinations["cmp_mask_mode"]
+    ori_win_left = param_combinations["ori_win_left"]
+    ori_win_right = param_combinations["ori_win_right"]
+    cu_seqlens_ori_kv = param_combinations["cu_seqlens_ori_kv"]
+    cu_seqlens_cmp_kv = param_combinations["cu_seqlens_cmp_kv"]
     q_datarange = [-10, 10]
     ori_kv_datarange = [-10, 10]
     cmp_kv_datarange = [-10, 10]
@@ -162,10 +166,41 @@ def test_example(param_combinations):
     block_num1 = ori_block_num_sum
     block_num2 = cmp_block_num_sum
     # 增加参数请在最后增加，保证结果统计
-    test_data = layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K, block_num1, \
-                block_num2, block_size1, block_size2, cu_seqlens_q, seqused_kv, softmax_scale, cmp_ratio, \
-                ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, testcase_name, S2, q_datarange, \
-                ori_kv_datarange, cmp_kv_datarange, seqused_q, cu_seqlens_ori_kv, cu_seqlens_cmp_kv, T2
+    test_data = (
+        layout_q,
+        layout_kv,
+        q_type,
+        ori_kv_type,
+        cmp_kv_type,
+        B,
+        S1,
+        T1,
+        N1,
+        N2,
+        D,
+        K,
+        block_num1,
+        block_num2,
+        block_size1,
+        block_size2,
+        cu_seqlens_q,
+        seqused_kv,
+        softmax_scale,
+        cmp_ratio,
+        ori_mask_mode,
+        cmp_mask_mode,
+        ori_win_left,
+        ori_win_right,
+        testcase_name,
+        S2,
+        q_datarange,
+        ori_kv_datarange,
+        cmp_kv_datarange,
+        seqused_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        T2,
+    )
     print("test_data:", test_data)
     # 获得cpu结果(真值)和算子结果（测试值）
     input_data = sparse_attn_sharedkv_golden.gen_data(test_data)
@@ -175,6 +210,8 @@ def test_example(param_combinations):
     print("npu_result.size():", npu_result.size())
 
     # 结果精度对比
-    result, fulfill_percent = result_compare_method.check_result(input_data['cpu_output'], npu_result)
+    result, fulfill_percent = result_compare_method.check_result(
+        input_data["cpu_output"], npu_result
+    )
     # 记录结果
     utils.save_result(result, fulfill_percent, test_data, result_path)

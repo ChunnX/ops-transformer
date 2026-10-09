@@ -34,14 +34,14 @@
 extern "C" {
 #endif
 
-aclnnStatus aclnnStemIndexerMetadataGetWorkspaceSize(
-    const aclTensor *qSeqLens, const aclTensor *kvSeqLens,
-    int64_t qHeads, int64_t kvHeads, bool causal, int64_t stemBlockSize, int64_t dimQkflat, int64_t windowSize,
-    const aclTensor *metadata, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnStemIndexerMetadataGetWorkspaceSize(const aclTensor* qSeqLens, const aclTensor* kvSeqLens,
+                                                     int64_t qHeads, int64_t kvHeads, bool causal,
+                                                     int64_t stemBlockSize, int64_t dimQkflat, int64_t windowSize,
+                                                     const aclTensor* metadata, uint64_t* workspaceSize,
+                                                     aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnStemIndexerMetadata,
-                   DFX_IN(qSeqLens, kvSeqLens,
-                          qHeads, kvHeads, causal, stemBlockSize, dimQkflat, windowSize),
+                   DFX_IN(qSeqLens, kvSeqLens, qHeads, kvHeads, causal, stemBlockSize, dimQkflat, windowSize),
                    DFX_OUT(metadata));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -50,14 +50,14 @@ aclnnStatus aclnnStemIndexerMetadataGetWorkspaceSize(
     auto ret = ParamsCheck(qSeqLens, kvSeqLens, qHeads, kvHeads, stemBlockSize, dimQkflat, windowSize, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
+    const op::PlatformInfo& npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
-    const char *socVersion = npuInfo.GetSocLongVersion().c_str();
+    const char* socVersion = npuInfo.GetSocLongVersion().c_str();
 
-    auto output = l0op::StemIndexerMetadata(qSeqLens, kvSeqLens,
-                                            qHeads, kvHeads, causal, stemBlockSize, dimQkflat, windowSize,
-                                            socVersion, aicCoreNum, aivCoreNum, metadata, uniqueExecutor.get());
+    auto output =
+        l0op::StemIndexerMetadata(qSeqLens, kvSeqLens, qHeads, kvHeads, causal, stemBlockSize, dimQkflat, windowSize,
+                                  socVersion, aicCoreNum, aivCoreNum, metadata, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -65,10 +65,8 @@ aclnnStatus aclnnStemIndexerMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default")))
-aclnnStatus
-aclnnStemIndexerMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                         aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnStemIndexerMetadata(void* workspace, uint64_t workspaceSize,
+                                                                            aclOpExecutor* executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnStemIndexerMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

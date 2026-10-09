@@ -35,25 +35,25 @@ constexpr uint32_t OUTPUT_INDEX_0 = 0;
 constexpr uint32_t OUTPUT_INDEX_1 = 1;
 constexpr uint32_t OUTPUT_INDEX_2 = 2;
 
-ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
+ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashAttention", "InferShapeContext is nullptr"),
                return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED);
-    const gert::Shape *keyShape = context->GetInputShape(KEY_INPUT_INDEX);
+    const gert::Shape* keyShape = context->GetInputShape(KEY_INPUT_INDEX);
     OPS_LOG_E_IF_NULL(context, keyShape, return ge::GRAPH_FAILED);
 
-    gert::Shape *attentionOutShape = context->GetOutputShape(0);
+    gert::Shape* attentionOutShape = context->GetOutputShape(0);
     OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED);
     *attentionOutShape = *queryShape;
-    gert::Shape *softmaxMaxShape = context->GetOutputShape(1);
+    gert::Shape* softmaxMaxShape = context->GetOutputShape(1);
     OPS_LOG_E_IF_NULL(context, softmaxMaxShape, return ge::GRAPH_FAILED);
-    gert::Shape *softmaxSumShape = context->GetOutputShape(2);
+    gert::Shape* softmaxSumShape = context->GetOutputShape(2);
     OPS_LOG_E_IF_NULL(context, softmaxSumShape, return ge::GRAPH_FAILED);
 
     auto attrs = context->GetAttrs();
-    const bool *lseFlag = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
+    const bool* lseFlag = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
     OPS_LOG_E_IF_NULL(context, lseFlag, return ge::GRAPH_FAILED);
     bool returnSoftmaxLse = (lseFlag != nullptr) ? *lseFlag : false;
     if (returnSoftmaxLse) {
@@ -87,11 +87,11 @@ ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeSparseFlashAttention(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeSparseFlashAttention(gert::InferDataTypeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashAttention", "InferDataTypeContext is nullptr"),
                return ge::GRAPH_FAILED);
-    const bool *floatOutputFlag = context->GetAttrs()->GetAttrPointer<bool>(RETURN_FLOAT_RESULT_INDEX);
+    const bool* floatOutputFlag = context->GetAttrs()->GetAttrPointer<bool>(RETURN_FLOAT_RESULT_INDEX);
     bool ifOutFloat = (floatOutputFlag != nullptr) ? *floatOutputFlag : false;
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     if (ifOutFloat) {

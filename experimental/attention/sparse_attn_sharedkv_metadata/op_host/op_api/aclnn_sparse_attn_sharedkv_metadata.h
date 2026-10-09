@@ -17,17 +17,18 @@
 extern "C" {
 #endif
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnSparseAttnSharedkvMetadataGetWorkspaceSize(
+__attribute__((visibility("default"))) aclnnStatus aclnnSparseAttnSharedkvMetadataGetWorkspaceSize(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional,
     const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional,
     int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
     int64_t oriTopK, int64_t cmpTopK, int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft,
-    int64_t oriWinRight, char *layoutQOptional, char *layoutKvOptional, bool hasOriKv, bool hasCmpKv,
+    int64_t oriWinRight, char* layoutQOptional, char* layoutKvOptional, bool hasOriKv, bool hasCmpKv,
     const aclTensor* metadata, uint64_t* workspaceSize, aclOpExecutor** executor);
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnSparseAttnSharedkvMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnSparseAttnSharedkvMetadata(void* workspace,
+                                                                                   uint64_t workspaceSize,
+                                                                                   aclOpExecutor* executor,
+                                                                                   aclrtStream stream);
 
 #ifdef __cplusplus
 }

@@ -16,7 +16,7 @@
 
 namespace op_api {
 namespace {
-std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor &q, bool returnSoftmaxLse)
+std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor& q, bool returnSoftmaxLse)
 {
     for (const auto size : q.sizes()) {
         TORCH_CHECK(size > 0, "All values within query's shape should be greater than 0");
@@ -35,13 +35,13 @@ std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor &q, bool re
 } // namespace
 
 std::tuple<at::Tensor, at::Tensor> TurboQuantSparseAttnSharedkv(
-    const at::Tensor &q, const c10::optional<at::Tensor> &oriKv, const c10::optional<at::Tensor> &cmpKv,
-    const c10::optional<at::Tensor> &oriSparseIndices, const c10::optional<at::Tensor> &cmpSparseIndices,
-    const c10::optional<at::Tensor> &oriBlockTable, const c10::optional<at::Tensor> &cmpBlockTable,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensOriKv,
-    const c10::optional<at::Tensor> &cuSeqlensCmpKv, const c10::optional<at::Tensor> &sequsedQ,
-    const c10::optional<at::Tensor> &sequsedKv, const c10::optional<at::Tensor> &sinks,
-    const c10::optional<at::Tensor> &metadata, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
+    const at::Tensor& q, const c10::optional<at::Tensor>& oriKv, const c10::optional<at::Tensor>& cmpKv,
+    const c10::optional<at::Tensor>& oriSparseIndices, const c10::optional<at::Tensor>& cmpSparseIndices,
+    const c10::optional<at::Tensor>& oriBlockTable, const c10::optional<at::Tensor>& cmpBlockTable,
+    const c10::optional<at::Tensor>& cuSeqlensQ, const c10::optional<at::Tensor>& cuSeqlensOriKv,
+    const c10::optional<at::Tensor>& cuSeqlensCmpKv, const c10::optional<at::Tensor>& sequsedQ,
+    const c10::optional<at::Tensor>& sequsedKv, const c10::optional<at::Tensor>& sinks,
+    const c10::optional<at::Tensor>& metadata, double softmaxScale, int64_t cmpRatio, int64_t oriMaskMode,
     int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ, c10::string_view layoutKv,
     bool returnSoftmaxLse, int64_t kvQuantMode)
 {
@@ -52,8 +52,8 @@ std::tuple<at::Tensor, at::Tensor> TurboQuantSparseAttnSharedkv(
     at::Tensor softmaxLse = std::get<1>(outputs);
     int64_t oriKvStride = oriKv.has_value() ? oriKv.value().stride(0) : 0;
     int64_t cmpKvStride = cmpKv.has_value() ? cmpKv.value().stride(0) : 0;
-    char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
-    char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
+    char* layoutQPtr = const_cast<char*>(layoutQStr.c_str());
+    char* layoutKvPtr = const_cast<char*>(layoutKvStr.c_str());
 
     ACLNN_CMD(aclnnTurboQuantSparseAttnSharedkv, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,
               cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedKv, sinks, metadata,

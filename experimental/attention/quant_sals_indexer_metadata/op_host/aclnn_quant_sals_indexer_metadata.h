@@ -29,20 +29,10 @@ extern "C" {
  * workspaceSize : size of workspace(output).
  * executor : executor context(output).
  */
-__attribute__((visibility("default"))) aclnnStatus
-aclnnQuantSalsIndexerMetadataGetWorkspaceSize(
-    const aclTensor* actualSeqLengthsKvOptional,
-    int64_t batchSize,
-    int64_t keySeqSize,
-    int64_t keyHeadNum,
-    int64_t headDim,
-    int64_t sparseBlockSize,
-    double sparseRatio,
-    int64_t fixedTailCount,
-    char* layoutKeyOptional,
-    const aclTensor* metaData,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantSalsIndexerMetadataGetWorkspaceSize(
+    const aclTensor* actualSeqLengthsKvOptional, int64_t batchSize, int64_t keySeqSize, int64_t keyHeadNum,
+    int64_t headDim, int64_t sparseBlockSize, double sparseRatio, int64_t fixedTailCount, char* layoutKeyOptional,
+    const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /* funtion: aclnnQuantSalsIndexerMetadata
  * parameters :
@@ -51,14 +41,13 @@ aclnnQuantSalsIndexerMetadataGetWorkspaceSize(
  * executor : executor context(input).
  * stream : acl stream.
  */
-__attribute__((visibility("default"))) aclnnStatus
-aclnnQuantSalsIndexerMetadata(void* workspace,
-                              uint64_t workspaceSize,
-                              aclOpExecutor* executor,
-                              aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantSalsIndexerMetadata(void* workspace,
+                                                                                 uint64_t workspaceSize,
+                                                                                 aclOpExecutor* executor,
+                                                                                 aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // ACLNN_QUANT_SALS_INDEXER_METADATA_AICPU_H
+#endif // ACLNN_QUANT_SALS_INDEXER_METADATA_AICPU_H

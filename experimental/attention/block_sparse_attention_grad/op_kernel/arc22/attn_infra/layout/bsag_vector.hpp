@@ -50,20 +50,20 @@ public:
     {}
 
     template <class Element>
-    HOST_DEVICE static VectorLayout MakeLayoutInUb(TensorCoord const &tileShape)
+    HOST_DEVICE static VectorLayout MakeLayoutInUb(TensorCoord const& tileShape)
     {
         return VectorLayout{RoundUp<BYTE_PER_BLK / sizeof(Element)>(tileShape[0])};
     }
 
     HOST_DEVICE
-    LongIndex GetOffset(TensorCoord const &coord) const
+    LongIndex GetOffset(TensorCoord const& coord) const
     {
         return stride_[0] * coord[0];
     }
 
     /// Returns the layout of a tile_common.
     HOST_DEVICE
-    VectorLayout GetTileLayout(TensorCoord const &tileShape) const
+    VectorLayout GetTileLayout(TensorCoord const& tileShape) const
     {
         return VectorLayout(tileShape, stride());
     }
@@ -75,7 +75,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -87,7 +87,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -99,7 +99,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -111,7 +111,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }

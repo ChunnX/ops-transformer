@@ -27,13 +27,13 @@
 namespace optiling {
 // ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct TilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 enum class DataLayout : uint32_t {
@@ -116,25 +116,25 @@ struct LiParaInfo {
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
     TilingRequiredParaInfo valuesOut = {nullptr, nullptr};
 
-    const char *layOut = nullptr;
-    const char *layOutKey = nullptr;
-    const int32_t *blockSize = nullptr;
-    const int32_t *sparseMode = nullptr;
-    const int32_t *sparseCount = nullptr;
-    const int32_t *blockLen = nullptr;
-    const int32_t *qBlockLen = nullptr;
-    const int32_t *initNum = nullptr;
-    const int32_t *localNum = nullptr;
-    const int64_t *preTokens = nullptr;
-    const int64_t *nextTokens = nullptr;
-    const bool *returnValue = nullptr;
+    const char* layOut = nullptr;
+    const char* layOutKey = nullptr;
+    const int32_t* blockSize = nullptr;
+    const int32_t* sparseMode = nullptr;
+    const int32_t* sparseCount = nullptr;
+    const int32_t* blockLen = nullptr;
+    const int32_t* qBlockLen = nullptr;
+    const int32_t* initNum = nullptr;
+    const int32_t* localNum = nullptr;
+    const int64_t* preTokens = nullptr;
+    const int64_t* nextTokens = nullptr;
+    const bool* returnValue = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
 class LITilingInfo {
 public:
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     LiParaInfo opParamInfo;
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
@@ -172,7 +172,7 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class LIInfoParser {
 public:
-    explicit LIInfoParser(gert::TilingContext *context)
+    explicit LIInfoParser(gert::TilingContext* context)
         : context_(context)
     {}
     ~LIInfoParser() = default;
@@ -180,7 +180,7 @@ public:
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetCurSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const std::string &curSeqLenName);
+    ge::graphStatus GetCurSeqLenSize(uint32_t& size, const gert::Tensor* tensor, const std::string& curSeqLenName);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
@@ -204,13 +204,13 @@ public:
     ge::graphStatus GetAndCheckN2Size();
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();
-    void GenerateInfo(LITilingInfo &liInfo);
-    ge::graphStatus ParseAndCheck(LITilingInfo &liInfo);
+    void GenerateInfo(LITilingInfo& liInfo);
+    ge::graphStatus ParseAndCheck(LITilingInfo& liInfo);
 
 public:
-    gert::TilingContext *context_ = nullptr;
-    const char *opName_;
-    fe::PlatFormInfos *platformInfo_;
+    gert::TilingContext* context_ = nullptr;
+    const char* opName_;
+    fe::PlatFormInfos* platformInfo_;
     LiParaInfo opParamInfo_;
 
     // BaseParams
@@ -240,12 +240,12 @@ public:
 // ---------------算子Tiling类---------------
 class LightningIndexerTiling {
 public:
-    explicit LightningIndexerTiling(gert::TilingContext *context)
+    explicit LightningIndexerTiling(gert::TilingContext* context)
         : context_(context) {};
-    ge::graphStatus DoTiling(LITilingInfo *tilingInfo);
+    ge::graphStatus DoTiling(LITilingInfo* tilingInfo);
 
 private:
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     LITilingData tilingData_;
 };
 

@@ -63,14 +63,14 @@ public:
 
     __aicore__ inline GsaRegularKernelArch22() {}
 
-    __aicore__ inline void operator()(GsaKernelParamsArch22 const &params)
+    __aicore__ inline void operator()(GsaKernelParamsArch22 const& params)
     {
-        __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData =
-            reinterpret_cast<__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *>(params.tiling);
+        __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData* tilingData =
+            reinterpret_cast<__gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData*>(params.tiling);
         FetchTilingData(tilingData, params.metaData);
         InitAntiquant(params);
-        __gm__ const GsaMetadata::Metadata *meta =
-            reinterpret_cast<__gm__ const GsaMetadata::Metadata *>(params.metaData);
+        __gm__ const GsaMetadata::Metadata* meta =
+            reinterpret_cast<__gm__ const GsaMetadata::Metadata*>(params.metaData);
         const uint32_t physicalAicNum = AscendC::GetBlockNum();
         if (!GsaFd::ValidateMetadata(meta, tilingData, physicalAicNum)) {
             return;
@@ -87,64 +87,64 @@ public:
         }
 
         AscendC::GlobalTensor<ElementQ> gQ;
-        gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
+        gQ.SetGlobalBuffer((__gm__ ElementQ*)params.q);
         AscendC::GlobalTensor<ElementK> gK;
-        gK.SetGlobalBuffer((__gm__ ElementK *)params.k);
+        gK.SetGlobalBuffer((__gm__ ElementK*)params.k);
         AscendC::GlobalTensor<ElementV> gV;
-        gV.SetGlobalBuffer((__gm__ ElementV *)params.v);
+        gV.SetGlobalBuffer((__gm__ ElementV*)params.v);
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx;
-        gSparseBlockIdx.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockIdx);
+        gSparseBlockIdx.SetGlobalBuffer((__gm__ int32_t*)params.sparseBlockIdx);
         AscendC::GlobalTensor<int32_t> gBlockTable;
-        gBlockTable.SetGlobalBuffer((__gm__ int32_t *)params.blockTable);
+        gBlockTable.SetGlobalBuffer((__gm__ int32_t*)params.blockTable);
         AscendC::GlobalTensor<int32_t> gSparseBlockCount;
-        gSparseBlockCount.SetGlobalBuffer((__gm__ int32_t *)params.sparseBlockCount);
+        gSparseBlockCount.SetGlobalBuffer((__gm__ int32_t*)params.sparseBlockCount);
         AscendC::GlobalTensor<int64_t> gCuSeqLengths;
         if (params.cuSeqLengths != nullptr) {
-            gCuSeqLengths.SetGlobalBuffer((__gm__ int64_t *)params.cuSeqLengths);
+            gCuSeqLengths.SetGlobalBuffer((__gm__ int64_t*)params.cuSeqLengths);
         }
         AscendC::GlobalTensor<int64_t> gCuSeqLengthsKv;
         if (params.cuSeqLengthsKv != nullptr) {
-            gCuSeqLengthsKv.SetGlobalBuffer((__gm__ int64_t *)params.cuSeqLengthsKv);
+            gCuSeqLengthsKv.SetGlobalBuffer((__gm__ int64_t*)params.cuSeqLengthsKv);
         }
         AscendC::GlobalTensor<int32_t> gSequsedQ;
         const bool hasSequsedQ = (params.sequsedQ != nullptr);
         if (hasSequsedQ) {
-            gSequsedQ.SetGlobalBuffer((__gm__ int32_t *)params.sequsedQ);
+            gSequsedQ.SetGlobalBuffer((__gm__ int32_t*)params.sequsedQ);
         }
         AscendC::GlobalTensor<int32_t> gSequsedKv;
         const bool hasSequsedKv = (params.sequsedKv != nullptr);
         if (hasSequsedKv) {
-            gSequsedKv.SetGlobalBuffer((__gm__ int32_t *)params.sequsedKv);
+            gSequsedKv.SetGlobalBuffer((__gm__ int32_t*)params.sequsedKv);
         }
         AscendC::GlobalTensor<ElementO> gO;
-        gO.SetGlobalBuffer((__gm__ ElementO *)params.o);
+        gO.SetGlobalBuffer((__gm__ ElementO*)params.o);
         AscendC::GlobalTensor<float> gLse;
-        gLse.SetGlobalBuffer((__gm__ float *)params.softmaxLse);
+        gLse.SetGlobalBuffer((__gm__ float*)params.softmaxLse);
         AscendC::GlobalTensor<float> gPartialLse;
-        gPartialLse.SetGlobalBuffer((__gm__ float *)(params.workSpace + tilingData->fdPartialLseOffset));
+        gPartialLse.SetGlobalBuffer((__gm__ float*)(params.workSpace + tilingData->fdPartialLseOffset));
         AscendC::GlobalTensor<float> gPartialO;
-        gPartialO.SetGlobalBuffer((__gm__ float *)(params.workSpace + tilingData->fdPartialOOffset));
+        gPartialO.SetGlobalBuffer((__gm__ float*)(params.workSpace + tilingData->fdPartialOOffset));
 
         // Workspace: [queryPreProcessResGm(antiquant only)][S][P][OTmp][OUpdate][identity][amaxQ][amaxP].
         // Identity must not precede gS — Fixpipe into GM immediately after identity was flaky on arch22.
         uint64_t antiqQueryOffset = 0;
         if constexpr (ANTIQUANT) {
             antiqQueryOffset = queryPreProcessSize_;
-            queryPreProcessResGm.SetGlobalBuffer((__gm__ int8_t *)params.workSpace);
+            queryPreProcessResGm.SetGlobalBuffer((__gm__ int8_t*)params.workSpace);
         }
         AscendC::GlobalTensor<ElementS> gS;
-        gS.SetGlobalBuffer((__gm__ ElementS *)(params.workSpace + antiqQueryOffset));
+        gS.SetGlobalBuffer((__gm__ ElementS*)(params.workSpace + antiqQueryOffset));
         AscendC::GlobalTensor<ElementP> gP;
-        gP.SetGlobalBuffer((__gm__ ElementP *)(params.workSpace + antiqQueryOffset + mm1OutSize_));
+        gP.SetGlobalBuffer((__gm__ ElementP*)(params.workSpace + antiqQueryOffset + mm1OutSize_));
         AscendC::GlobalTensor<ElementOTmp> gOTmp;
         gOTmp.SetGlobalBuffer(
-            (__gm__ ElementOTmp *)(params.workSpace + antiqQueryOffset + mm1OutSize_ + smOnlineOutSize_));
+            (__gm__ ElementOTmp*)(params.workSpace + antiqQueryOffset + mm1OutSize_ + smOnlineOutSize_));
         AscendC::GlobalTensor<ElementOTmp> gOUpdate;
         gOUpdate.SetGlobalBuffer(
-            (__gm__ ElementOTmp *)(params.workSpace + antiqQueryOffset + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_));
+            (__gm__ ElementOTmp*)(params.workSpace + antiqQueryOffset + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_));
         AscendC::GlobalTensor<int32_t> gIdentityIdx;
-        gIdentityIdx.SetGlobalBuffer((__gm__ int32_t *)(params.workSpace + antiqQueryOffset + mm1OutSize_ +
-                                                        smOnlineOutSize_ + mm2OutSize_ + updateSize_));
+        gIdentityIdx.SetGlobalBuffer((__gm__ int32_t*)(params.workSpace + antiqQueryOffset + mm1OutSize_ +
+                                                       smOnlineOutSize_ + mm2OutSize_ + updateSize_));
         // amaxQOffset: base of Amax_Q region (per-core offset applied later in VEC section)
         uint64_t amaxQOffset = antiqQueryOffset + mm1OutSize_ + smOnlineOutSize_ + mm2OutSize_ + updateSize_ +
                                static_cast<uint64_t>(topK_) * sizeof(int32_t);
@@ -214,12 +214,12 @@ public:
             // amaxQ per-core size: groupSize * 8 * sizeof(float)
             uint64_t amaxQPerCoreSize = static_cast<uint64_t>(groupSize_) * 8 * sizeof(float);
             gAmaxQ.SetGlobalBuffer(
-                (__gm__ float *)(params.workSpace + amaxQOffset + static_cast<uint64_t>(coreIdx) * amaxQPerCoreSize));
+                (__gm__ float*)(params.workSpace + amaxQOffset + static_cast<uint64_t>(coreIdx) * amaxQPerCoreSize));
             // amaxP per-core size: groupSize * 8 * sizeof(float) * MAX_CROSS_CORE_BUF_STAGES (3 stages)
             uint64_t amaxPPerCoreSize =
                 static_cast<uint64_t>(groupSize_) * 8 * sizeof(float) * MAX_CROSS_CORE_BUF_STAGES;
             gAmaxP.SetGlobalBuffer(
-                (__gm__ float *)(params.workSpace + amaxPOffset + static_cast<uint64_t>(coreIdx) * amaxPPerCoreSize));
+                (__gm__ float*)(params.workSpace + amaxPOffset + static_cast<uint64_t>(coreIdx) * amaxPPerCoreSize));
             epilogueOnlineSoftmax.SetAntiquantParams(msdIterNum_, pMsdIterNum, groupSize_);
             epilogueOnlineSoftmax.SetAntiquantScaleGm(keyAntiqScaleGm, valueAntiqScaleGm, gAmaxQ, gAmaxP);
             epilogueRescaleO.SetAntiquantParams(pMsdIterNum, groupSize_);
@@ -376,7 +376,7 @@ public:
             taskLoopEnd = totalTaskNum_;
             taskLoopStep = 1U;
             if (coreIdx < static_cast<uint32_t>(meta->fdActiveCoreNum)) {
-                const __gm__ GsaMetadata::DecodeSchedule &schedule = meta->decodeSchedules[coreIdx];
+                const __gm__ GsaMetadata::DecodeSchedule& schedule = meta->decodeSchedules[coreIdx];
                 taskLoopStart = static_cast<uint32_t>(schedule.baseTaskStart);
                 taskLoopEnd = static_cast<uint32_t>(schedule.baseTaskEnd);
                 scheduleFirstBlock = static_cast<uint32_t>(schedule.firstBlockStart);
@@ -942,7 +942,7 @@ public:
 
 private:
     __aicore__ inline void FetchTilingData(
-        __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData *tilingData, GM_ADDR metaData)
+        __gm__ GenericBlockSparseAttn::GenericBlockSparseAttentionTilingData* tilingData, GM_ADDR metaData)
     {
         batch_ = tilingData->batch;
         qHeads_ = tilingData->numHeads;
@@ -955,7 +955,7 @@ private:
         topK_ = tilingData->topK;
         maxBlocksPerBatch_ = tilingData->maxBlocksPerBatch;
         // Full AICPU metadata protocol overlay (no tiling fallback for task schedule).
-        __gm__ GsaMetadata::Metadata *meta = reinterpret_cast<__gm__ GsaMetadata::Metadata *>(metaData);
+        __gm__ GsaMetadata::Metadata* meta = reinterpret_cast<__gm__ GsaMetadata::Metadata*>(metaData);
         headSplitFactor_ = tilingData->headSplitFactor == 0U ? 1U : tilingData->headSplitFactor;
         totalTaskNum_ = static_cast<uint32_t>(meta->saTotalTaskNum) * headSplitFactor_;
         scaleValue_ = tilingData->scaleValue;
@@ -976,11 +976,11 @@ private:
         amaxPSize_ = tilingData->amaxPSize;
     }
 
-    __aicore__ inline void InitAntiquant(GsaKernelParamsArch22 const &params)
+    __aicore__ inline void InitAntiquant(GsaKernelParamsArch22 const& params)
     {
         if constexpr (ANTIQUANT) {
             // Set up original Query GlobalTensor (half/bf16)
-            gQOrig.SetGlobalBuffer((__gm__ ElementO *)params.q);
+            gQOrig.SetGlobalBuffer((__gm__ ElementO*)params.q);
 
             // per-token scale: shape is [batch, seq_kv]
             // In paged attention, total KV tokens = batch * maxBlocksPerBatch * blockSize
@@ -988,12 +988,12 @@ private:
 
             if (params.kDequantScale != nullptr) {
                 // Independent K/V scale mode
-                keyAntiqScaleGm.SetGlobalBuffer((__gm__ float *)params.kDequantScale);
-                valueAntiqScaleGm.SetGlobalBuffer((__gm__ float *)params.vDequantScale);
+                keyAntiqScaleGm.SetGlobalBuffer((__gm__ float*)params.kDequantScale);
+                valueAntiqScaleGm.SetGlobalBuffer((__gm__ float*)params.vDequantScale);
             } else {
                 // Combined mode: qDequantScale contains K scale (first half) and V scale (second half)
-                keyAntiqScaleGm.SetGlobalBuffer((__gm__ float *)params.qDequantScale);
-                valueAntiqScaleGm.SetGlobalBuffer((__gm__ float *)params.qDequantScale + antiValueOffset);
+                keyAntiqScaleGm.SetGlobalBuffer((__gm__ float*)params.qDequantScale);
+                valueAntiqScaleGm.SetGlobalBuffer((__gm__ float*)params.qDequantScale + antiValueOffset);
             }
         }
     }

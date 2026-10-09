@@ -122,7 +122,7 @@ __aicore__ inline AscendC::GlobalTensor<CTensorTrait_> GetWorkSpaceGlobal(BlockS
     int64_t blockShapeM = Get<0>(blockShape);
     int64_t blockShapeN = Get<1>(blockShape);
     Layout_ cLayout = AscendC::MakeLayout(AscendC::MakeShape(blockShapeM, blockShapeN),
-                        AscendC::MakeStride(blockShapeN, static_cast<int64_t>(1)));
+                                          AscendC::MakeStride(blockShapeN, static_cast<int64_t>(1)));
     CTensorTrait_ cTensorTrait = AscendC::MakeTensorTrait<CType_, AscendC::TPosition::GM>(cLayout);
     AscendC::GlobalTensor<CTensorTrait_> workspaceGlobal;
     workspaceGlobal.SetTensorTrait(cTensorTrait);
@@ -144,20 +144,20 @@ __aicore__ inline __gm__ T* GetTensorAddr(uint64_t index, GM_ADDR tensorPtr)
 }
 
 template <class T, AscendC::TPosition Pos, class Layout, class Coord, class Shape>
-__aicore__ inline constexpr auto GetTile(AscendC::GlobalTensor<AscendC::TensorTrait<T, Pos, Layout>> const &tensor,
-                                         Coord const &coord, Shape const &shape)
+__aicore__ inline constexpr auto GetTile(AscendC::GlobalTensor<AscendC::TensorTrait<T, Pos, Layout>> const& tensor,
+                                         Coord const& coord, Shape const& shape)
 {
     auto layout = tensor.GetTensorTrait().GetLayout();
     auto offset = layout(coord);
     typename AscendC::Std::remove_cvref_t<decltype(tensor)> newTensor;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3101 || __NPU_ARCH__ == 3102)
     if constexpr (AscendC::IsSameTypeV<T, fp4x2_e2m1_t> || AscendC::IsSameTypeV<T, fp4x2_e1m2_t>) {
-        newTensor.address_ = (__gm__ T *)((__gm__ uint8_t *)tensor.address_ + (offset >> 1));
+        newTensor.address_ = (__gm__ T*)((__gm__ uint8_t*)tensor.address_ + (offset >> 1));
     } else {
-        newTensor.address_ = (__gm__ T *)((__gm__ uint8_t *)tensor.address_ + offset * sizeof(T));
+        newTensor.address_ = (__gm__ T*)((__gm__ uint8_t*)tensor.address_ + offset * sizeof(T));
     }
 #else
-    newTensor.address_ = (__gm__ T *)((__gm__ uint8_t *)tensor.address_ + offset * sizeof(T));
+    newTensor.address_ = (__gm__ T*)((__gm__ uint8_t*)tensor.address_ + offset * sizeof(T));
 #endif
     newTensor.SetTensorTrait(
         AscendC::MakeTensorTrait<T, Pos>(AscendC::MakeLayout(shape, tensor.GetTensorTrait().GetLayout().GetStride())));
@@ -165,7 +165,7 @@ __aicore__ inline constexpr auto GetTile(AscendC::GlobalTensor<AscendC::TensorTr
 }
 
 template <class T, class Layout, AscendC::TPosition Pos = AscendC::TPosition::GM>
-__aicore__ inline constexpr auto MakeTensor(__gm__ T *addr, Layout const &layout)
+__aicore__ inline constexpr auto MakeTensor(__gm__ T* addr, Layout const& layout)
 {
     using TensorTraitType = AscendC::TensorTrait<T, Pos, Layout>;
     using TensorType =

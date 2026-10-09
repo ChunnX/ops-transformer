@@ -24,7 +24,7 @@ __aicore__ inline bool KsplitIsFullCausalSelection(int64_t visibleKeys, int32_t 
 // IndexTensor supplies GetValue(offset), as AscendC::GlobalTensor<int32_t> does.
 // The valid/padding predicate must be monotone; valid indices need not be consecutive.
 template <typename IndexTensor>
-__aicore__ inline int32_t KsplitValidPrefixCount(IndexTensor &indices, int64_t base, int32_t upper)
+__aicore__ inline int32_t KsplitValidPrefixCount(IndexTensor& indices, int64_t base, int32_t upper)
 {
     if (upper <= 0 || indices.GetValue(base) == -1) {
         return 0;

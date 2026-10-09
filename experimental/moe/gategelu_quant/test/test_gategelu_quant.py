@@ -24,7 +24,7 @@ GBW = 64
 BLOCKDIM = 4
 dtype = torch.float16  # NPU kernel expects float16 input
 
-logging.info(f"Testing gategelu_quant kernel")
+logging.info("Testing gategelu_quant kernel")
 logging.info(f"Configuration: GBH={GBH}, GBW={GBW}, BLOCKDIM={BLOCKDIM}, dtype={dtype}")
 
 
@@ -37,14 +37,21 @@ def gategelu_quant_cpu(input_tesnor, scale, clamp=True, clamp_val=128.0):
     - output: (GBH, GBW/2) int8
     """
     output = torch.empty(GBH, GBW // 2, dtype=torch.int8)
-    in_one = input_tesnor[:, 0:GBW // 2]  # First half
-    in_two = input_tesnor[:, GBW // 2:]   # Second half
+    in_one = input_tesnor[:, 0 : GBW // 2]  # First half
+    in_two = input_tesnor[:, GBW // 2 :]  # Second half
 
     for h in range(GBH):
         for w in range(GBW // 2):
             # GeLU activation: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
             x = in_one[h, w].item()
-            gelu = 0.5 * x * (1.0 + math.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x * x * x)))
+            gelu = (
+                0.5
+                * x
+                * (
+                    1.0
+                    + math.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x * x * x))
+                )
+            )
 
             # Multiply with in_two (gate)
             gated = gelu * in_two[h, w].item()
@@ -75,14 +82,18 @@ input_npu = input1.npu()
 scale_npu = scale1.npu()
 out_npu = torch.empty(GBH, GBW // 2, dtype=torch.int8).npu()
 
-torch.ops.ascend_ops.gategelu_quant(BLOCKDIM, input_npu, scale_npu, out_npu, False, 128.0)
+torch.ops.ascend_ops.gategelu_quant(
+    BLOCKDIM, input_npu, scale_npu, out_npu, False, 128.0
+)
 
 torch.npu.empty_cache()
 
 # CPU result
 out_cpu = gategelu_quant_cpu(input1, scale1, clamp=False, clamp_val=128.0)
 
-logging.info(f"---------------------------Result Comparison--------------------------------")
+logging.info(
+    "---------------------------Result Comparison--------------------------------"
+)
 logging.info(f"out_npu shape: {out_npu.cpu().shape}")
 logging.info(f"out_cpu shape: {out_cpu.shape}")
 logging.info(f"out_npu has non-zero values: {(out_npu.cpu() != 0).any().item()}")
@@ -97,18 +108,22 @@ logging.info(f"All values match: {match}")
 
 # Calculate absolute error (int8 quantization difference)
 abs_error = (out_npu_cpu.float() - out_cpu.float()).abs()
-logging.info(f"---------------------------------Absolute Error--------------------------------------")
+logging.info(
+    "---------------------------------Absolute Error--------------------------------------"
+)
 logging.info(f"Max absolute error: {abs_error.max().item()}")
 logging.info(f"Mean absolute error: {abs_error.mean().item()}")
 
 # Calculate relative error based on floating point values before quantization
 # We recompute the floating point values from CPU using float32 to match NPU precision
-in_one1 = input1[:, 0:GBW // 2].float()  # First half, convert to float32
-in_two1 = input1[:, GBW // 2:].float()   # Second half, convert to float32
+in_one1 = input1[:, 0 : GBW // 2].float()  # First half, convert to float32
+in_two1 = input1[:, GBW // 2 :].float()  # Second half, convert to float32
 scale_f = scale1.float()  # float32
 
 x1 = in_one1
-gelu1 = 0.5 * x1 * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x1 + 0.044715 * x1 ** 3)))
+gelu1 = (
+    0.5 * x1 * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x1 + 0.044715 * x1**3)))
+)
 gated1 = gelu1 * in_two1
 scaled1 = gated1 * scale_f
 
@@ -124,12 +139,18 @@ valid_mask = out_cpu_float.abs() > 1e-6
 rel_error = torch.zeros_like(abs_error)
 rel_error[valid_mask] = abs_error[valid_mask] / (out_cpu_float[valid_mask].abs() + 1e-8)
 
-logging.info(f"--------------------------------Relative Error (Float)----------------------------------")
+logging.info(
+    "--------------------------------Relative Error (Float)----------------------------------"
+)
 logging.info(f"Max relative error: {rel_error.max().item():.8f}")
 logging.info(f"Mean relative error: {rel_error[valid_mask].mean().item():.8f}")
-logging.info(f"Valid samples for relative error: {valid_mask.sum().item()} / {valid_mask.numel()}")
+logging.info(
+    f"Valid samples for relative error: {valid_mask.sum().item()} / {valid_mask.numel()}"
+)
 
-logging.info(f"------------------------------------Test Result-------------------------------------")
+logging.info(
+    "------------------------------------Test Result-------------------------------------"
+)
 # Quantization operator precision standards:
 # - Max absolute error <= 1 (int8 quantization error)
 # - Max relative error <= 0.01 (1%) for non-zero values
@@ -141,8 +162,12 @@ logging.info(f"Relative error check (max <= 0.01): {rel_passed}")
 logging.info(f"CPU comparison test PASSED: {test_passed}")
 if not test_passed:
     if not abs_passed:
-        logging.info(f"ERROR: Max absolute error {abs_error.max().item()} exceeds tolerance")
+        logging.info(
+            f"ERROR: Max absolute error {abs_error.max().item()} exceeds tolerance"
+        )
     if not rel_passed:
-        logging.info(f"ERROR: Max relative error {rel_error.max().item():.8f} exceeds 0.01")
+        logging.info(
+            f"ERROR: Max relative error {rel_error.max().item():.8f} exceeds 0.01"
+        )
 else:
-    logging.info(f"NOTE: All checks passed (quantization error within tolerance)")
+    logging.info("NOTE: All checks passed (quantization error within tolerance)")

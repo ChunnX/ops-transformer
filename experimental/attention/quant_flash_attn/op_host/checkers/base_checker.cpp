@@ -26,16 +26,16 @@ namespace quant_flash_attn {
 using std::map;
 using std::string;
 
-ge::graphStatus QfaBaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-                                                  const std::string &name) const
+ge::graphStatus QfaBaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc,
+                                                  const std::string& name) const
 {
     if (desc != nullptr) {
-        const auto &it = DTYPE_SUPPORT_MAP.find(name);
+        const auto& it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(
             it == DTYPE_SUPPORT_MAP.end(),
             OP_LOGE("QuantFlashAttn", "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
             return ge::GRAPH_FAILED);
-        auto &expectDtypeList = it->second;
+        auto& expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
             std::string dtypeStr = DataTypeToSerialStr(desc->GetDataType());
             std::string expectedDtypes;
@@ -52,8 +52,8 @@ ge::graphStatus QfaBaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorD
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaBaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDesc *desc,
-                                                   const std::string &name) const
+ge::graphStatus QfaBaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDesc* desc,
+                                                   const std::string& name) const
 {
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();

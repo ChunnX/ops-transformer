@@ -45,7 +45,7 @@ public:
     __aicore__ inline KernelFusedGdnGating() {}
 
     __aicore__ inline void Init(GM_ADDR aLogGm, GM_ADDR aGm, GM_ADDR bGm, GM_ADDR dtBiasGm, GM_ADDR gGm,
-                                GM_ADDR betaOutputGm, const FusedGdnGatingTilingData *tiling, TPipe *pipe)
+                                GM_ADDR betaOutputGm, const FusedGdnGatingTilingData* tiling, TPipe* pipe)
     {
         pipe_ = pipe;
         numHeads_ = tiling->numHeads;
@@ -61,12 +61,12 @@ public:
         constexpr uint32_t paramAlignElems = BYTES_PER_BLOCK / sizeof(ParamDtype);
         alignedHeadsParam_ = AlignUp<uint32_t>(numHeads_, paramAlignElems);
 
-        aLogGm_.SetGlobalBuffer(reinterpret_cast<__gm__ ParamDtype *>(aLogGm), numHeads_);
-        dtBiasGm_.SetGlobalBuffer(reinterpret_cast<__gm__ ParamDtype *>(dtBiasGm), numHeads_);
-        aGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(aGm), static_cast<uint64_t>(numBatches_) * numHeads_);
-        bGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(bGm), static_cast<uint64_t>(numBatches_) * numHeads_);
-        gGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(gGm), static_cast<uint64_t>(numBatches_) * numHeads_);
-        betaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype *>(betaOutputGm),
+        aLogGm_.SetGlobalBuffer(reinterpret_cast<__gm__ ParamDtype*>(aLogGm), numHeads_);
+        dtBiasGm_.SetGlobalBuffer(reinterpret_cast<__gm__ ParamDtype*>(dtBiasGm), numHeads_);
+        aGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype*>(aGm), static_cast<uint64_t>(numBatches_) * numHeads_);
+        bGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype*>(bGm), static_cast<uint64_t>(numBatches_) * numHeads_);
+        gGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(gGm), static_cast<uint64_t>(numBatches_) * numHeads_);
+        betaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InDtype*>(betaOutputGm),
                                 static_cast<uint64_t>(numBatches_) * numHeads_);
 
         pipe_->InitBuffer(aInQue_, 1, rowsPerIter_ * alignedHeadsHalf_ * sizeof(InDtype));
@@ -318,7 +318,7 @@ private:
     }
 
 private:
-    TPipe *pipe_{nullptr};
+    TPipe* pipe_{nullptr};
 
     GlobalTensor<ParamDtype> aLogGm_;
     GlobalTensor<ParamDtype> dtBiasGm_;

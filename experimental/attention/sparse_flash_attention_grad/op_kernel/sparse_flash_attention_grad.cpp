@@ -24,9 +24,9 @@ constexpr static uint32_t TND = 3;
 // 切 K 确定性路径（2000 系列，仅 TND）
 #define INVOKE_SELECTED_ATTENTION_KSPLIT_DET_IMPL(INPUT_TYPE, ATTEN_ENABLE, HAS_ROPE) \
     do { \
-        __gm__ uint8_t *user = GetUserWorkspace(workspace); \
+        __gm__ uint8_t* user = GetUserWorkspace(workspace); \
         GET_TILING_DATA_WITH_STRUCT(SparseFlashAttentionGradBasicTilingData, tiling_data_in, tiling_data); \
-        const SparseFlashAttentionGradBasicTilingData *__restrict tilingData = &tiling_data_in; \
+        const SparseFlashAttentionGradBasicTilingData* __restrict tilingData = &tiling_data_in; \
         SFAG_BASIC::SelectedAttentionGradKsplitDet<SFAG_BASIC::SFAG_TYPE< \
             SparseFlashAttentionGradBasicTilingData, INPUT_TYPE, TND, ATTEN_ENABLE, HAS_ROPE, false>> \
             op; \
@@ -35,11 +35,11 @@ constexpr static uint32_t TND = 3;
     } while (0)
 
 extern "C" __global__ __aicore__ void sparse_flash_attention_grad(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparse_indices,
-    __gm__ uint8_t *d_out, __gm__ uint8_t *out, __gm__ uint8_t *softmax_max, __gm__ uint8_t *softmax_sum,
-    __gm__ uint8_t *cur_seq_qlen, __gm__ uint8_t *cur_seq_kvlen, __gm__ uint8_t *query_rope, __gm__ uint8_t *key_rope,
-    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dq_rope, __gm__ uint8_t *dk_rope,
-    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling_data)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* sparse_indices,
+    __gm__ uint8_t* d_out, __gm__ uint8_t* out, __gm__ uint8_t* softmax_max, __gm__ uint8_t* softmax_sum,
+    __gm__ uint8_t* cur_seq_qlen, __gm__ uint8_t* cur_seq_kvlen, __gm__ uint8_t* query_rope, __gm__ uint8_t* key_rope,
+    __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* dq_rope, __gm__ uint8_t* dk_rope,
+    __gm__ uint8_t* workspace, __gm__ uint8_t* tiling_data)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16)

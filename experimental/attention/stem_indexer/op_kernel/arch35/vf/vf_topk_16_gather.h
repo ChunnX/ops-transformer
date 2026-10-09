@@ -23,7 +23,7 @@ constexpr uint16_t VF_B16_ELEMS = 128U;
 constexpr uint16_t VF_B32_ELEMS = 64U;
 
 template <typename T>
-__simd_callee__ inline void HistogramsHighProcessRow(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint16_t *inputBuf,
+__simd_callee__ inline void HistogramsHighProcessRow(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf,
                                                      uint16_t vfLoop, uint32_t offset, uint32_t rowSlot,
                                                      uint32_t realRowIdx)
 {
@@ -49,8 +49,8 @@ __simd_callee__ inline void HistogramsHighProcessRow(__ubuf__ uint32_t *histogra
     static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
                                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
-    __ubuf__ uint16_t *roundInputBuf = inputBuf + realRowIdx * offset;
-    __ubuf__ uint32_t *roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
+    __ubuf__ uint16_t* roundInputBuf = inputBuf + realRowIdx * offset;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
     Reg::Duplicate(cout0, 0);
     Reg::Duplicate(cout1, 0);
     for (uint16_t i = 0; i < vfLoop; ++i) {
@@ -58,9 +58,9 @@ __simd_callee__ inline void HistogramsHighProcessRow(__ubuf__ uint32_t *histogra
                                                                 roundInputBuf + i * VF_INPUT_CHUNK_ELEMS);
 
         Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(
-            cout0, (Reg::RegTensor<uint8_t> &)vregHigh, pregB8);
+            cout0, (Reg::RegTensor<uint8_t>&)vregHigh, pregB8);
         Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::ACCUMULATE>(
-            cout1, (Reg::RegTensor<uint8_t> &)vregHigh, pregB8);
+            cout1, (Reg::RegTensor<uint8_t>&)vregHigh, pregB8);
     }
 
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout0U32Even, cout0, pregB16);
@@ -74,7 +74,7 @@ __simd_callee__ inline void HistogramsHighProcessRow(__ubuf__ uint32_t *histogra
 }
 
 template <typename T>
-__simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint16_t *inputBuf, uint16_t vfLoop,
+__simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf, uint16_t vfLoop,
                                       uint32_t offset, uint32_t rowIdx0, uint32_t rowIdx1, uint32_t rowIdx2,
                                       uint32_t rowIdx3)
 {
@@ -84,13 +84,13 @@ __simd_vf__ void HistogramsHighVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__
     HistogramsHighProcessRow<T>(histogramsBuf, inputBuf, vfLoop, offset, 3, rowIdx3);
 }
 
-__simd_callee__ inline void FindHighTargetBinStoreRow(__ubuf__ uint32_t *idxHighBuf, __ubuf__ uint32_t *histogramsBuf,
+__simd_callee__ inline void FindHighTargetBinStoreRow(__ubuf__ uint32_t* idxHighBuf, __ubuf__ uint32_t* histogramsBuf,
                                                       uint32_t topK, uint32_t validLen, uint32_t rowSlot)
 {
     Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
 
-    __ubuf__ uint32_t *roundIdxHighBuf = idxHighBuf + rowSlot * HISTOGRAM_BIN_COUNT;
-    __ubuf__ uint32_t *roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
+    __ubuf__ uint32_t* roundIdxHighBuf = idxHighBuf + rowSlot * HISTOGRAM_BIN_COUNT;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
 
     Reg::MaskReg pregGE;
 
@@ -116,21 +116,21 @@ __simd_callee__ inline void FindHighTargetBinStoreRow(__ubuf__ uint32_t *idxHigh
 
         Reg::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK, pregB32);
 
-        Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxHigh, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
+        Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxHigh, (Reg::RegTensor<uint32_t>&)idxC, pregGE);
         Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundIdxHighBuf, sqzIdxHigh, alignIdxHigh);
     }
     Reg::StoreUnAlignPost(roundIdxHighBuf, alignIdxHigh);
 }
 
-__simd_callee__ inline void FindHighTargetBinFinishRow(__ubuf__ uint32_t *idxHighBuf, __ubuf__ uint32_t *nkValueBuf,
-                                                       __ubuf__ uint32_t *histogramsBuf, uint32_t topK,
+__simd_callee__ inline void FindHighTargetBinFinishRow(__ubuf__ uint32_t* idxHighBuf, __ubuf__ uint32_t* nkValueBuf,
+                                                       __ubuf__ uint32_t* histogramsBuf, uint32_t topK,
                                                        uint32_t validLen, uint32_t rowSlot)
 {
     Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
 
-    __ubuf__ uint32_t *roundIdxHighBuf = idxHighBuf + rowSlot * HISTOGRAM_BIN_COUNT;
-    __ubuf__ uint32_t *roundNkValueBuf = nkValueBuf + rowSlot * VF_B32_ELEMS;
-    __ubuf__ uint32_t *roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
+    __ubuf__ uint32_t* roundIdxHighBuf = idxHighBuf + rowSlot * HISTOGRAM_BIN_COUNT;
+    __ubuf__ uint32_t* roundNkValueBuf = nkValueBuf + rowSlot * VF_B32_ELEMS;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
 
     Reg::RegTensor<uint32_t> topKReg;
     Reg::Duplicate(topKReg, topK);
@@ -152,7 +152,7 @@ __simd_callee__ inline void FindHighTargetBinFinishRow(__ubuf__ uint32_t *idxHig
 
     Reg::MaskReg preg0 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
     Reg::Compare<uint32_t, CMPMODE::EQ>(preg0, idxHigh, zeroAll, pregB32);
-    Reg::Sub(idxPrev0, idxHigh, (Reg::RegTensor<uint32_t> &)idxAll1, pregB32);
+    Reg::Sub(idxPrev0, idxHigh, (Reg::RegTensor<uint32_t>&)idxAll1, pregB32);
     Reg::ShiftRights(idxPrev0, idxPrev0, (int16_t)24, pregB32);
 
     Reg::Gather(prevBinValue, roundHistBuf, idxPrev0, pregB32);
@@ -163,8 +163,8 @@ __simd_callee__ inline void FindHighTargetBinFinishRow(__ubuf__ uint32_t *idxHig
     Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(roundNkValueBuf, nextK, pregB32);
 }
 
-__simd_vf__ void FindHighTargetBinVFImpl(__ubuf__ uint32_t *idxHighBuf, __ubuf__ uint32_t *nkValueBuf,
-                                         __ubuf__ uint32_t *histogramsBuf, uint32_t validLen, uint32_t topK0,
+__simd_vf__ void FindHighTargetBinVFImpl(__ubuf__ uint32_t* idxHighBuf, __ubuf__ uint32_t* nkValueBuf,
+                                         __ubuf__ uint32_t* histogramsBuf, uint32_t validLen, uint32_t topK0,
                                          uint32_t topK1, uint32_t topK2, uint32_t topK3)
 {
     FindHighTargetBinStoreRow(idxHighBuf, histogramsBuf, topK0, validLen, 0);
@@ -181,8 +181,8 @@ __simd_vf__ void FindHighTargetBinVFImpl(__ubuf__ uint32_t *idxHighBuf, __ubuf__
 }
 
 template <typename T>
-__simd_callee__ inline void HistogramsLowProcessRow(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint16_t *inputBuf,
-                                                    __ubuf__ uint32_t *idxHighBuf, uint16_t vfLoop, uint32_t offset,
+__simd_callee__ inline void HistogramsLowProcessRow(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf,
+                                                    __ubuf__ uint32_t* idxHighBuf, uint16_t vfLoop, uint32_t offset,
                                                     uint32_t rowSlot, uint32_t realRowIdx)
 {
     Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
@@ -211,9 +211,9 @@ __simd_callee__ inline void HistogramsLowProcessRow(__ubuf__ uint32_t *histogram
     static constexpr Reg::CastTrait CAST_TRAIT_UINT16_TOUINT32_ODD = {Reg::RegLayout::ONE, Reg::SatMode::UNKNOWN,
                                                                       Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 
-    __ubuf__ uint16_t *roundInputBuf = inputBuf + realRowIdx * offset;
-    __ubuf__ uint32_t *roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
-    __ubuf__ uint32_t *roundIdxHighBuf = idxHighBuf + rowSlot * HISTOGRAM_BIN_COUNT;
+    __ubuf__ uint16_t* roundInputBuf = inputBuf + realRowIdx * offset;
+    __ubuf__ uint32_t* roundHistBuf = histogramsBuf + rowSlot * HISTOGRAM_BIN_COUNT;
+    __ubuf__ uint32_t* roundIdxHighBuf = idxHighBuf + rowSlot * HISTOGRAM_BIN_COUNT;
     Reg::Duplicate(cout0, 0);
     Reg::Duplicate(cout1, 0);
     Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B8>(idxHigh, roundIdxHighBuf);
@@ -222,13 +222,13 @@ __simd_callee__ inline void HistogramsLowProcessRow(__ubuf__ uint32_t *histogram
         Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_DINTLV_B8>(vregLow, vregHigh,
                                                                 roundInputBuf + i * VF_INPUT_CHUNK_ELEMS);
 
-        Reg::Compare<uint8_t, CMPMODE::EQ>(pregEQ, (Reg::RegTensor<uint8_t> &)vregHigh,
-                                           (Reg::RegTensor<uint8_t> &)idxHigh, pregB8);
+        Reg::Compare<uint8_t, CMPMODE::EQ>(pregEQ, (Reg::RegTensor<uint8_t>&)vregHigh,
+                                           (Reg::RegTensor<uint8_t>&)idxHigh, pregB8);
 
         Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN0, Reg::HistogramsType::ACCUMULATE>(
-            cout0, (Reg::RegTensor<uint8_t> &)vregLow, pregEQ);
+            cout0, (Reg::RegTensor<uint8_t>&)vregLow, pregEQ);
         Reg::Histograms<uint8_t, uint16_t, Reg::HistogramsBinType::BIN1, Reg::HistogramsType::ACCUMULATE>(
-            cout1, (Reg::RegTensor<uint8_t> &)vregLow, pregEQ);
+            cout1, (Reg::RegTensor<uint8_t>&)vregLow, pregEQ);
     }
 
     Reg::Cast<uint32_t, uint16_t, CAST_TRAIT_UINT16_TOUINT32_EVEN>(cout0U32Even, cout0, pregB16);
@@ -242,8 +242,8 @@ __simd_callee__ inline void HistogramsLowProcessRow(__ubuf__ uint32_t *histogram
 }
 
 template <typename T>
-__simd_vf__ void HistogramsLowVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ uint16_t *inputBuf,
-                                     __ubuf__ uint32_t *idxHighBuf, uint16_t vfLoop, uint32_t offset, uint32_t rowIdx0,
+__simd_vf__ void HistogramsLowVFImpl(__ubuf__ uint32_t* histogramsBuf, __ubuf__ uint16_t* inputBuf,
+                                     __ubuf__ uint32_t* idxHighBuf, uint16_t vfLoop, uint32_t offset, uint32_t rowIdx0,
                                      uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3)
 {
     HistogramsLowProcessRow<T>(histogramsBuf, inputBuf, idxHighBuf, vfLoop, offset, 0, rowIdx0);
@@ -252,16 +252,16 @@ __simd_vf__ void HistogramsLowVFImpl(__ubuf__ uint32_t *histogramsBuf, __ubuf__ 
     HistogramsLowProcessRow<T>(histogramsBuf, inputBuf, idxHighBuf, vfLoop, offset, 3, rowIdx3);
 }
 
-__simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *histogramsBuf,
-                               __ubuf__ uint32_t *idxHighBuf, __ubuf__ uint32_t *idxLowBuf, uint16_t loopM)
+__simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t* kValue, __ubuf__ uint32_t* histogramsBuf,
+                               __ubuf__ uint32_t* idxHighBuf, __ubuf__ uint32_t* idxLowBuf, uint16_t loopM)
 {
     Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
     Reg::MaskReg pregB16 = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
 
     for (uint16_t m = 0; m < loopM; ++m) {
-        __ubuf__ uint32_t *roundKValue = kValue + m * VF_B32_ELEMS;
-        __ubuf__ uint32_t *roundHistBuf = histogramsBuf + m * HISTOGRAM_BIN_COUNT;
-        __ubuf__ uint32_t *roundIdxLowBuf = idxLowBuf + m * HISTOGRAM_BIN_COUNT;
+        __ubuf__ uint32_t* roundKValue = kValue + m * VF_B32_ELEMS;
+        __ubuf__ uint32_t* roundHistBuf = histogramsBuf + m * HISTOGRAM_BIN_COUNT;
+        __ubuf__ uint32_t* roundIdxLowBuf = idxLowBuf + m * HISTOGRAM_BIN_COUNT;
 
         Reg::MaskReg pregGE;
 
@@ -283,7 +283,7 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
 
             Reg::Compare<uint32_t, CMPMODE::GE>(pregGE, cout, btmK, pregB32);
 
-            Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxLow, (Reg::RegTensor<uint32_t> &)idxC, pregGE);
+            Reg::Squeeze<uint32_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxLow, (Reg::RegTensor<uint32_t>&)idxC, pregGE);
             Reg::StoreUnAlign<uint32_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundIdxLowBuf, sqzIdxLow, alignIdxLow);
         }
         Reg::StoreUnAlignPost(roundIdxLowBuf, alignIdxLow);
@@ -295,16 +295,16 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
     Reg::Duplicate(idxTmp, 0xff00);
 
     for (uint16_t m = 0; m < loopM; ++m) {
-        __ubuf__ uint32_t *roundKValue = kValue + m * VF_B32_ELEMS;
-        __ubuf__ uint32_t *roundIdxHighBuf = idxHighBuf + m * HISTOGRAM_BIN_COUNT;
-        __ubuf__ uint32_t *roundIdxLowBuf = idxLowBuf + m * HISTOGRAM_BIN_COUNT;
+        __ubuf__ uint32_t* roundKValue = kValue + m * VF_B32_ELEMS;
+        __ubuf__ uint32_t* roundIdxHighBuf = idxHighBuf + m * HISTOGRAM_BIN_COUNT;
+        __ubuf__ uint32_t* roundIdxLowBuf = idxLowBuf + m * HISTOGRAM_BIN_COUNT;
 
         Reg::RegTensor<uint32_t> idxHigh;
         Reg::RegTensor<uint32_t> idxLow;
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B8>(idxHigh, roundIdxHighBuf);
         Reg::LoadAlign<uint32_t, Reg::LoadDist::DIST_BRC_B16>(idxLow, roundIdxLowBuf);
 
-        Reg::And(idxHigh, idxHigh, (Reg::RegTensor<uint32_t> &)idxTmp, pregB32);
+        Reg::And(idxHigh, idxHigh, (Reg::RegTensor<uint32_t>&)idxTmp, pregB32);
 
         Reg::RegTensor<uint32_t> idxK;
         Reg::Add(idxK, idxHigh, idxLow, pregB16);
@@ -313,15 +313,15 @@ __simd_vf__ void FindKthVFImpl(__ubuf__ uint32_t *kValue, __ubuf__ uint32_t *his
     }
 }
 
-__simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint16_t *outputIdxBuf, __ubuf__ uint16_t *inputValueBuf,
-                                                    __ubuf__ uint32_t *kValue, uint16_t vfLoop, uint32_t offset,
+__simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint16_t* outputIdxBuf, __ubuf__ uint16_t* inputValueBuf,
+                                                    __ubuf__ uint32_t* kValue, uint16_t vfLoop, uint32_t offset,
                                                     uint32_t tmpIdxOffset, uint32_t rowSlot, uint32_t realRowIdx)
 {
     Reg::MaskReg pregB16 = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
 
-    __ubuf__ uint16_t *roundOutputIdxBuf = outputIdxBuf + rowSlot * tmpIdxOffset;
-    __ubuf__ uint16_t *roundInputBuf = inputValueBuf + realRowIdx * offset;
-    __ubuf__ uint32_t *roundKValue = kValue + rowSlot * VF_B32_ELEMS;
+    __ubuf__ uint16_t* roundOutputIdxBuf = outputIdxBuf + rowSlot * tmpIdxOffset;
+    __ubuf__ uint16_t* roundInputBuf = inputValueBuf + realRowIdx * offset;
+    __ubuf__ uint32_t* roundKValue = kValue + rowSlot * VF_B32_ELEMS;
 
     Reg::MaskReg poutGT;
 
@@ -341,9 +341,9 @@ __simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint16_t *outputIdx
 
         Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_NORM>(vregInput, roundInputBuf + i * VF_B16_ELEMS);
 
-        Reg::Compare<uint16_t, CMPMODE::GT>(poutGT, vregInput, (Reg::RegTensor<uint16_t> &)kthValue, pregB16);
+        Reg::Compare<uint16_t, CMPMODE::GT>(poutGT, vregInput, (Reg::RegTensor<uint16_t>&)kthValue, pregB16);
 
-        Reg::Squeeze<uint16_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut, (Reg::RegTensor<uint16_t> &)idxC, poutGT);
+        Reg::Squeeze<uint16_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut, (Reg::RegTensor<uint16_t>&)idxC, poutGT);
         Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut, alignIdx);
     }
 
@@ -353,16 +353,16 @@ __simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint16_t *outputIdx
         Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_NORM>(vregInput, roundInputBuf + i * VF_B16_ELEMS);
 
         Reg::MaskReg poutEQ;
-        Reg::Compare<uint16_t, CMPMODE::EQ>(poutEQ, vregInput, (Reg::RegTensor<uint16_t> &)kthValue, pregB16);
+        Reg::Compare<uint16_t, CMPMODE::EQ>(poutEQ, vregInput, (Reg::RegTensor<uint16_t>&)kthValue, pregB16);
 
-        Reg::Squeeze<uint16_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut, (Reg::RegTensor<uint16_t> &)idxC, poutEQ);
+        Reg::Squeeze<uint16_t, Reg::GatherMaskMode::STORE_REG>(sqzIdxOut, (Reg::RegTensor<uint16_t>&)idxC, poutEQ);
         Reg::StoreUnAlign<uint16_t, Reg::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut, alignIdx);
     }
     Reg::StoreUnAlignPost(roundOutputIdxBuf, alignIdx);
 }
 
-__simd_vf__ void FindIdxOutputVFImpl(__ubuf__ uint16_t *outputIdxBuf, __ubuf__ uint16_t *inputValueBuf,
-                                     __ubuf__ uint32_t *kValue, uint16_t vfLoop, uint32_t offset, uint32_t tmpIdxOffset,
+__simd_vf__ void FindIdxOutputVFImpl(__ubuf__ uint16_t* outputIdxBuf, __ubuf__ uint16_t* inputValueBuf,
+                                     __ubuf__ uint32_t* kValue, uint16_t vfLoop, uint32_t offset, uint32_t tmpIdxOffset,
                                      uint32_t rowIdx0, uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3)
 {
     FindIdxOutputProcessRow(outputIdxBuf, inputValueBuf, kValue, vfLoop, offset, tmpIdxOffset, 0, rowIdx0);
@@ -374,16 +374,16 @@ __simd_vf__ void FindIdxOutputVFImpl(__ubuf__ uint16_t *outputIdxBuf, __ubuf__ u
 /**
     输出最终的Value
  */
-__simd_callee__ inline void FindValueOutputProcessRow(__ubuf__ uint16_t *outputValueBuf,
-                                                      __ubuf__ uint16_t *inputValueBuf, __ubuf__ uint16_t *tmpIdxBuf,
+__simd_callee__ inline void FindValueOutputProcessRow(__ubuf__ uint16_t* outputValueBuf,
+                                                      __ubuf__ uint16_t* inputValueBuf, __ubuf__ uint16_t* tmpIdxBuf,
                                                       uint16_t vfLoop, uint32_t inputOffset, uint32_t tmpIdxOffset,
                                                       uint32_t outputValueOffset, uint32_t rowSlot, uint32_t realRowIdx)
 {
     Reg::MaskReg pregB16 = Reg::CreateMask<uint16_t, Reg::MaskPattern::ALL>();
 
-    __ubuf__ uint16_t *roundOutputValueBuf = outputValueBuf + rowSlot * outputValueOffset;
-    __ubuf__ uint16_t *roundInputValueBuf = inputValueBuf + realRowIdx * inputOffset;
-    __ubuf__ uint16_t *roundTmpIdxBuf = tmpIdxBuf + rowSlot * tmpIdxOffset;
+    __ubuf__ uint16_t* roundOutputValueBuf = outputValueBuf + rowSlot * outputValueOffset;
+    __ubuf__ uint16_t* roundInputValueBuf = inputValueBuf + realRowIdx * inputOffset;
+    __ubuf__ uint16_t* roundTmpIdxBuf = tmpIdxBuf + rowSlot * tmpIdxOffset;
 
     Reg::RegTensor<uint16_t> tmpIdx;
     Reg::RegTensor<uint16_t> outputValue;
@@ -398,8 +398,8 @@ __simd_callee__ inline void FindValueOutputProcessRow(__ubuf__ uint16_t *outputV
     }
 }
 
-__simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint16_t *outputValueBuf, __ubuf__ uint16_t *inputValueBuf,
-                                       __ubuf__ uint16_t *tmpIdxBuf, uint16_t vfLoop, uint32_t inputOffset,
+__simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint16_t* outputValueBuf, __ubuf__ uint16_t* inputValueBuf,
+                                       __ubuf__ uint16_t* tmpIdxBuf, uint16_t vfLoop, uint32_t inputOffset,
                                        uint32_t tmpIdxOffset, uint32_t outputValueOffset, uint32_t rowIdx0,
                                        uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3)
 {
@@ -416,8 +416,8 @@ __simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint16_t *outputValueBuf, __ubuf
 /**
     输出最终的Idx
  */
-__simd_callee__ inline void FindRealIndexProcessRow(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ uint16_t *tmpIdxBuf,
-                                                    __ubuf__ uint32_t *hisIdxBuf, uint32_t topK, uint32_t loopIndex,
+__simd_callee__ inline void FindRealIndexProcessRow(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint16_t* tmpIdxBuf,
+                                                    __ubuf__ uint32_t* hisIdxBuf, uint32_t topK, uint32_t loopIndex,
                                                     uint16_t vfLoop)
 {
     Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
@@ -432,11 +432,11 @@ __simd_callee__ inline void FindRealIndexProcessRow(__ubuf__ uint32_t *outputIdx
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * VF_B32_ELEMS);
 
-        Reg::Compares<uint32_t, CMPMODE::GT>(pregNow, (Reg::RegTensor<uint32_t> &)tmpIdx, topK - 1, pregB32);
+        Reg::Compares<uint32_t, CMPMODE::GT>(pregNow, (Reg::RegTensor<uint32_t>&)tmpIdx, topK - 1, pregB32);
         Reg::Xor(pregHis, pregNow, pregB32, pregB32);
 
-        Reg::Gather(outputGatherIdx, hisIdxBuf, (Reg::RegTensor<uint32_t> &)tmpIdx, pregHis);
-        Reg::Adds(outputAddsIdx, (Reg::RegTensor<uint32_t> &)tmpIdx, loopIndex, pregNow);
+        Reg::Gather(outputGatherIdx, hisIdxBuf, (Reg::RegTensor<uint32_t>&)tmpIdx, pregHis);
+        Reg::Adds(outputAddsIdx, (Reg::RegTensor<uint32_t>&)tmpIdx, loopIndex, pregNow);
 
         Reg::Add(outputGatherIdx, outputGatherIdx, outputAddsIdx, pregB32);
 
@@ -444,8 +444,8 @@ __simd_callee__ inline void FindRealIndexProcessRow(__ubuf__ uint32_t *outputIdx
     }
 }
 
-__simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ uint16_t *tmpIdxBuf,
-                                     __ubuf__ uint32_t *hisIdxBuf, uint32_t outputIdxStride, uint32_t tmpIdxStride,
+__simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint16_t* tmpIdxBuf,
+                                     __ubuf__ uint32_t* hisIdxBuf, uint32_t outputIdxStride, uint32_t tmpIdxStride,
                                      uint32_t hisIdxStride, uint32_t rowIdx0, uint32_t rowIdx1, uint32_t rowIdx2,
                                      uint32_t rowIdx3, uint32_t topK0, uint32_t topK1, uint32_t topK2, uint32_t topK3,
                                      uint32_t loopIndex, uint16_t vfLoop)
@@ -477,21 +477,21 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ u
  * @param outputValueStride outputValueLocal 每行之间的偏移(元素个数)
  */
 template <bool ISOUTVALUE> // 是否输出VALUE
-__aicore__ inline void SiTopKVF(const LocalTensor<uint16_t> &tmpIdxLocal, const LocalTensor<uint16_t> &outputValueLocal,
-                                const LocalTensor<uint16_t> &inputValueLocal,
-                                const LocalTensor<uint32_t> &histogramsLocal, const LocalTensor<uint32_t> &idxHighLocal,
-                                const LocalTensor<uint32_t> &idxLowLocal, const LocalTensor<uint32_t> &nkValueLocal,
+__aicore__ inline void SiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal, const LocalTensor<uint16_t>& outputValueLocal,
+                                const LocalTensor<uint16_t>& inputValueLocal,
+                                const LocalTensor<uint32_t>& histogramsLocal, const LocalTensor<uint32_t>& idxHighLocal,
+                                const LocalTensor<uint32_t>& idxLowLocal, const LocalTensor<uint32_t>& nkValueLocal,
                                 uint32_t validLen, uint32_t loopM, uint32_t offset, uint32_t rowIdx0, uint32_t rowIdx1,
                                 uint32_t rowIdx2, uint32_t rowIdx3, uint32_t topkNum0, uint32_t topkNum1,
                                 uint32_t topkNum2, uint32_t topkNum3, uint32_t tmpIdxStride, uint32_t outputValueStride)
 {
-    __ubuf__ uint16_t *tmpIdxBuf = (__ubuf__ uint16_t *)tmpIdxLocal.GetPhyAddr();
-    __ubuf__ uint16_t *outputValueBuf = (__ubuf__ uint16_t *)outputValueLocal.GetPhyAddr();
-    __ubuf__ uint16_t *inputValueBuf = (__ubuf__ uint16_t *)inputValueLocal.GetPhyAddr();
-    __ubuf__ uint32_t *histogramsBuf = (__ubuf__ uint32_t *)histogramsLocal.GetPhyAddr();
-    __ubuf__ uint32_t *idxHighBuf = (__ubuf__ uint32_t *)idxHighLocal.GetPhyAddr();
-    __ubuf__ uint32_t *idxLowBuf = (__ubuf__ uint32_t *)idxLowLocal.GetPhyAddr();
-    __ubuf__ uint32_t *nkValueBuf = (__ubuf__ uint32_t *)nkValueLocal.GetPhyAddr();
+    __ubuf__ uint16_t* tmpIdxBuf = (__ubuf__ uint16_t*)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint16_t* outputValueBuf = (__ubuf__ uint16_t*)outputValueLocal.GetPhyAddr();
+    __ubuf__ uint16_t* inputValueBuf = (__ubuf__ uint16_t*)inputValueLocal.GetPhyAddr();
+    __ubuf__ uint32_t* histogramsBuf = (__ubuf__ uint32_t*)histogramsLocal.GetPhyAddr();
+    __ubuf__ uint32_t* idxHighBuf = (__ubuf__ uint32_t*)idxHighLocal.GetPhyAddr();
+    __ubuf__ uint32_t* idxLowBuf = (__ubuf__ uint32_t*)idxLowLocal.GetPhyAddr();
+    __ubuf__ uint32_t* nkValueBuf = (__ubuf__ uint32_t*)nkValueLocal.GetPhyAddr();
 
     uint16_t histogramsLoopNum = (validLen + VF_INPUT_CHUNK_ELEMS - 1U) / VF_INPUT_CHUNK_ELEMS;
     uint16_t inputLoopNum = (validLen + VF_B16_ELEMS - 1U) / VF_B16_ELEMS;
@@ -536,8 +536,8 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint16_t> &tmpIdxLocal, const 
 /**
     LD:输出最终的Idx
 */
-__simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__ uint16_t *tmpIdxBuf,
-                                       __ubuf__ uint32_t *hisIdxBuf, uint16_t vfLoop)
+__simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint16_t* tmpIdxBuf,
+                                       __ubuf__ uint32_t* hisIdxBuf, uint16_t vfLoop)
 {
     Reg::MaskReg pregB32 = Reg::CreateMask<uint32_t, Reg::MaskPattern::ALL>();
 
@@ -547,7 +547,7 @@ __simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         Reg::LoadAlign<uint16_t, Reg::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * VF_B32_ELEMS);
 
-        Reg::Gather(outputIdx, hisIdxBuf, (Reg::RegTensor<uint32_t> &)tmpIdx, pregB32);
+        Reg::Gather(outputIdx, hisIdxBuf, (Reg::RegTensor<uint32_t>&)tmpIdx, pregB32);
 
         Reg::StoreAlign<uint32_t, Reg::StoreDist::DIST_NORM>(outputIdxBuf + i * VF_B32_ELEMS, outputIdx, pregB32);
     }
@@ -563,16 +563,16 @@ __simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t *outputIdxBuf, __ubuf__
  * @param topK0-topK3 每个compact行的topK元素个数
  * @param loopBasicIdx 当前循环需要加上的基准Index
  */
-__aicore__ inline void SiTopKGatherVF(const LocalTensor<uint32_t> &outputIdxLocal,
-                                      const LocalTensor<uint16_t> &tmpIdxLocal,
-                                      const LocalTensor<uint32_t> &hisIdxLocal, uint32_t outputIdxStride,
+__aicore__ inline void SiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLocal,
+                                      const LocalTensor<uint16_t>& tmpIdxLocal,
+                                      const LocalTensor<uint32_t>& hisIdxLocal, uint32_t outputIdxStride,
                                       uint32_t tmpIdxStride, uint32_t hisIdxStride, uint32_t rowIdx0, uint32_t rowIdx1,
                                       uint32_t rowIdx2, uint32_t rowIdx3, uint32_t topK0, uint32_t topK1,
                                       uint32_t topK2, uint32_t topK3, uint32_t loopBasicIdx)
 {
-    __ubuf__ uint32_t *outputIdxBuf = (__ubuf__ uint32_t *)outputIdxLocal.GetPhyAddr();
-    __ubuf__ uint16_t *tmpIdxBuf = (__ubuf__ uint16_t *)tmpIdxLocal.GetPhyAddr();
-    __ubuf__ uint32_t *hisIdxBuf = (__ubuf__ uint32_t *)hisIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
+    __ubuf__ uint16_t* tmpIdxBuf = (__ubuf__ uint16_t*)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* hisIdxBuf = (__ubuf__ uint32_t*)hisIdxLocal.GetPhyAddr();
 
     uint32_t maxTopK = topK0;
     maxTopK = topK1 > maxTopK ? topK1 : maxTopK;
@@ -587,14 +587,14 @@ __aicore__ inline void SiTopKGatherVF(const LocalTensor<uint32_t> &outputIdxLoca
 /**
     LD:gather最终的Idx
 */
-__aicore__ inline void SiTopKLDGatherVF(const LocalTensor<uint32_t> &outputIdxLocal, // 输出Idx topK * 2B
-                                        const LocalTensor<uint16_t> &tmpIdxLocal,    // 本轮tmpIdx输入 validLen * 2B
-                                        const LocalTensor<uint32_t> &hisIdxLocal,    // 上一轮Idx输入 topK * 4B
+__aicore__ inline void SiTopKLDGatherVF(const LocalTensor<uint32_t>& outputIdxLocal, // 输出Idx topK * 2B
+                                        const LocalTensor<uint16_t>& tmpIdxLocal,    // 本轮tmpIdx输入 validLen * 2B
+                                        const LocalTensor<uint32_t>& hisIdxLocal,    // 上一轮Idx输入 topK * 4B
                                         uint32_t topK)                               // topK元素个数
 {
-    __ubuf__ uint32_t *outputIdxBuf = (__ubuf__ uint32_t *)outputIdxLocal.GetPhyAddr();
-    __ubuf__ uint16_t *tmpIdxBuf = (__ubuf__ uint16_t *)tmpIdxLocal.GetPhyAddr();
-    __ubuf__ uint32_t *hisIdxBuf = (__ubuf__ uint32_t *)hisIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
+    __ubuf__ uint16_t* tmpIdxBuf = (__ubuf__ uint16_t*)tmpIdxLocal.GetPhyAddr();
+    __ubuf__ uint32_t* hisIdxBuf = (__ubuf__ uint32_t*)hisIdxLocal.GetPhyAddr();
 
     uint16_t topkLoopNum16 = (topK + VF_B16_ELEMS - 1U) / VF_B16_ELEMS;
     uint16_t topkLoopNum32 = (topK + VF_B32_ELEMS - 1U) / VF_B32_ELEMS;

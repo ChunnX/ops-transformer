@@ -23,7 +23,7 @@ using namespace AscendC;
 // dwarfs the ~65ns of arithmetic at these sizes.
 class WyMicroMm {
 public:
-    __aicore__ inline void Init(TPipe *pipe)
+    __aicore__ inline void Init(TPipe* pipe)
     {
         // A-side is 64x128 so MmNz2 can hold a hi+lo operand pair ([0:4096) hi,
         // [4096:8192) lo); the single-matrix calls keep using the first half.

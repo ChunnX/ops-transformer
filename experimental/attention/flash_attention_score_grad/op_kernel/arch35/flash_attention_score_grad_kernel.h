@@ -39,16 +39,16 @@ public:
                                        commondef::IS_DETER_NEW(DETER_SPARSE_TYPE) && SPLIT_AXIS == commondef::BN2S2>;
     __aicore__ inline void Process();
     __aicore__ inline void ProcessPreloadTwoTimes();
-    __aicore__ inline void ComputeDqkvBn2gs1s2(FagRunInfo &prevRunInfo, bool &needSyncDkMM, int64_t taskId);
-    __aicore__ inline void ComputeDqkvBn2s2(FagRunInfo &prevRunInfo, bool &needSyncDkMM, bool &needSyncDkDvFixUb,
+    __aicore__ inline void ComputeDqkvBn2gs1s2(FagRunInfo& prevRunInfo, bool& needSyncDkMM, int64_t taskId);
+    __aicore__ inline void ComputeDqkvBn2s2(FagRunInfo& prevRunInfo, bool& needSyncDkMM, bool& needSyncDkDvFixUb,
                                             int64_t taskId);
-    __aicore__ inline void ComputeDqkvBn2(FagRunInfo &prevRunInfo, bool &needSyncDkMM, int64_t taskId);
-    __aicore__ inline void ProcessBn2gs1s2LastVec(FagRunInfo &prevRunInfo, bool &needSyncDkMM);
+    __aicore__ inline void ComputeDqkvBn2(FagRunInfo& prevRunInfo, bool& needSyncDkMM, int64_t taskId);
+    __aicore__ inline void ProcessBn2gs1s2LastVec(FagRunInfo& prevRunInfo, bool& needSyncDkMM);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessBn2gs1s2LastVec(
-    FagRunInfo &prevRunInfo, bool &needSyncDkMM)
+    FagRunInfo& prevRunInfo, bool& needSyncDkMM)
 {
     LocalTensor<CALC_TYPE> mm1ResTensor =
         this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -164,7 +164,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ComputeDqkvBn2gs1s2(
-    FagRunInfo &prevRunInfo, bool &needSyncDkMM, int64_t taskId)
+    FagRunInfo& prevRunInfo, bool& needSyncDkMM, int64_t taskId)
 {
     LocalTensor<CALC_TYPE> mm2ResTensor =
         this->mm2ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -182,7 +182,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ComputeDqkvBn2s2(
-    FagRunInfo &prevRunInfo, bool &needSyncDkMM, bool &needSyncDkDvFixUb, int64_t taskId)
+    FagRunInfo& prevRunInfo, bool& needSyncDkMM, bool& needSyncDkDvFixUb, int64_t taskId)
 {
     LocalTensor<CALC_TYPE> mm1ResTensor =
         this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -314,7 +314,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ComputeDqkvBn2(
-    FagRunInfo &prevRunInfo, bool &needSyncDkMM, int64_t taskId)
+    FagRunInfo& prevRunInfo, bool& needSyncDkMM, int64_t taskId)
 {
     LocalTensor<CALC_TYPE> mm1ResTensor =
         this->mm1ResBuf[prevRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
@@ -671,7 +671,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
         }
         if (taskId > 0 && lastTwoLoopCount <= 1) {
             if ASCEND_IS_AIV {
-                FagRunInfo &vecRunInfo = runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES];
+                FagRunInfo& vecRunInfo = runInfos[(taskId + NUM_TWO) % PRELOAD_TIMES];
                 LocalTensor<CALC_TYPE> mm1ResTensor =
                     this->mm1ResBuf[vecRunInfo.commonRunInfo.taskIdMod2].template Get<CALC_TYPE>();
                 LocalTensor<CALC_TYPE> mm2ResTensor =

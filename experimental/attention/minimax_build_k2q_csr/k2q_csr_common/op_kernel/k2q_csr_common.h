@@ -33,8 +33,8 @@ __aicore__ inline int64_t Align32(int64_t bytes)
     return (bytes + 31) / 32 * 32;
 }
 
-__aicore__ inline void CopyInInt32NoBarrier(const AscendC::LocalTensor<int32_t> &dst,
-                                            const AscendC::GlobalTensor<int32_t> &src, int64_t nElems)
+__aicore__ inline void CopyInInt32NoBarrier(const AscendC::LocalTensor<int32_t>& dst,
+                                            const AscendC::GlobalTensor<int32_t>& src, int64_t nElems)
 {
     if (nElems <= 0) {
         return;
@@ -44,7 +44,7 @@ __aicore__ inline void CopyInInt32NoBarrier(const AscendC::LocalTensor<int32_t> 
     AscendC::DataCopyPad(dst, src, params, pad);
 }
 
-__aicore__ inline void CopyInInt32(const AscendC::LocalTensor<int32_t> &dst, const AscendC::GlobalTensor<int32_t> &src,
+__aicore__ inline void CopyInInt32(const AscendC::LocalTensor<int32_t>& dst, const AscendC::GlobalTensor<int32_t>& src,
                                    int64_t nElems)
 {
     CopyInInt32NoBarrier(dst, src, nElems);
@@ -53,7 +53,7 @@ __aicore__ inline void CopyInInt32(const AscendC::LocalTensor<int32_t> &dst, con
     }
 }
 
-__aicore__ inline void CopyOutInt32(const AscendC::GlobalTensor<int32_t> &dst, const AscendC::LocalTensor<int32_t> &src,
+__aicore__ inline void CopyOutInt32(const AscendC::GlobalTensor<int32_t>& dst, const AscendC::LocalTensor<int32_t>& src,
                                     int64_t nElems)
 {
     if (nElems <= 0) {
@@ -65,8 +65,8 @@ __aicore__ inline void CopyOutInt32(const AscendC::GlobalTensor<int32_t> &dst, c
 }
 
 /** 整段 AtomicAdd 写 GM（对齐 CUDA Hist→row_counts） */
-__aicore__ inline void AtomicAddOutInt32(const AscendC::GlobalTensor<int32_t> &dst,
-                                         const AscendC::LocalTensor<int32_t> &src, int64_t nElems)
+__aicore__ inline void AtomicAddOutInt32(const AscendC::GlobalTensor<int32_t>& dst,
+                                         const AscendC::LocalTensor<int32_t>& src, int64_t nElems)
 {
     if (nElems <= 0) {
         return;
@@ -78,15 +78,15 @@ __aicore__ inline void AtomicAddOutInt32(const AscendC::GlobalTensor<int32_t> &d
     AscendC::PipeBarrier<PIPE_ALL>();
 }
 
-__aicore__ inline void FlushGmInt32(const AscendC::GlobalTensor<int32_t> &gm)
+__aicore__ inline void FlushGmInt32(const AscendC::GlobalTensor<int32_t>& gm)
 {
     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::ENTIRE_DATA_CACHE, AscendC::DcciDst::CACHELINE_OUT>(
         gm);
 }
 
 /** 单点写 GM（MTE3），多核并发安全；避免 GlobalTensor.SetValue 写回丢失 */
-__aicore__ inline void StoreScalarInt32(const AscendC::GlobalTensor<int32_t> &dst, int64_t index, int32_t value,
-                                        const AscendC::LocalTensor<int32_t> &tmp)
+__aicore__ inline void StoreScalarInt32(const AscendC::GlobalTensor<int32_t>& dst, int64_t index, int32_t value,
+                                        const AscendC::LocalTensor<int32_t>& tmp)
 {
     tmp.SetValue(0, value);
     AscendC::PipeBarrier<PIPE_ALL>();
@@ -98,10 +98,10 @@ __aicore__ inline void StoreScalarInt32(const AscendC::GlobalTensor<int32_t> &ds
  * 同 pos 写 q_ind + slot：一次 barrier + 两次 4B MTE3。
  * tmpQ/tmpS 须各自 32B 对齐（不可用 tmp[1] 作源）。
  */
-__aicore__ inline void StorePairInt32(const AscendC::GlobalTensor<int32_t> &qInd,
-                                      const AscendC::GlobalTensor<int32_t> &slotGm, int64_t index, int32_t qVal,
-                                      int32_t slotVal, const AscendC::LocalTensor<int32_t> &tmpQ,
-                                      const AscendC::LocalTensor<int32_t> &tmpS)
+__aicore__ inline void StorePairInt32(const AscendC::GlobalTensor<int32_t>& qInd,
+                                      const AscendC::GlobalTensor<int32_t>& slotGm, int64_t index, int32_t qVal,
+                                      int32_t slotVal, const AscendC::LocalTensor<int32_t>& tmpQ,
+                                      const AscendC::LocalTensor<int32_t>& tmpS)
 {
     tmpQ.SetValue(0, qVal);
     tmpS.SetValue(0, slotVal);
@@ -117,11 +117,11 @@ __aicore__ inline void StorePairInt32(const AscendC::GlobalTensor<int32_t> &qInd
  */
 constexpr int32_t STORE_SLOT_ALIGN_INTS = 8; // 32B / sizeof(int32)
 
-__aicore__ inline void FlushStoreBatch(const AscendC::GlobalTensor<int32_t> &qInd,
-                                       const AscendC::GlobalTensor<int32_t> &slotGm, int64_t base,
-                                       const AscendC::LocalTensor<int32_t> &posBuf,
-                                       const AscendC::LocalTensor<int32_t> &qValBuf,
-                                       const AscendC::LocalTensor<int32_t> &sBuf, int32_t n)
+__aicore__ inline void FlushStoreBatch(const AscendC::GlobalTensor<int32_t>& qInd,
+                                       const AscendC::GlobalTensor<int32_t>& slotGm, int64_t base,
+                                       const AscendC::LocalTensor<int32_t>& posBuf,
+                                       const AscendC::LocalTensor<int32_t>& qValBuf,
+                                       const AscendC::LocalTensor<int32_t>& sBuf, int32_t n)
 {
     if (n <= 0) {
         return;

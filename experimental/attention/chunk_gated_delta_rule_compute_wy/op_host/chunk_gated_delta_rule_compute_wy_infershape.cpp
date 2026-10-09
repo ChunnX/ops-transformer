@@ -34,7 +34,7 @@ constexpr size_t DIM_D = 3;
 constexpr size_t QKV_DIM_NUM = 4;
 
 // [B, T, H, D] -> [B, H, T, D]
-void SetBhtd(gert::Shape *out, int64_t b, int64_t h, int64_t t, int64_t d)
+void SetBhtd(gert::Shape* out, int64_t b, int64_t h, int64_t t, int64_t d)
 {
     out->SetDimNum(QKV_DIM_NUM);
     out->SetDim(DIM_B, b);
@@ -44,7 +44,7 @@ void SetBhtd(gert::Shape *out, int64_t b, int64_t h, int64_t t, int64_t d)
 }
 } // namespace
 
-static ge::graphStatus InferShapeChunkGatedDeltaRuleComputeWy(InferShapeContext *context)
+static ge::graphStatus InferShapeChunkGatedDeltaRuleComputeWy(InferShapeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -92,7 +92,7 @@ static ge::graphStatus InferShapeChunkGatedDeltaRuleComputeWy(InferShapeContext 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeChunkGatedDeltaRuleComputeWy(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeChunkGatedDeltaRuleComputeWy(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

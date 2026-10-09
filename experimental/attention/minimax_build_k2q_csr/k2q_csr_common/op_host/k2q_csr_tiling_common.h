@@ -44,10 +44,10 @@ enum class Stage : int32_t {
     Scatter = 4,
 };
 
-inline ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &ubSize, int64_t &aivNum,
-                                       NpuArch &npuArch)
+inline ge::graphStatus GetPlatformInfo(gert::TilingContext* context, uint64_t& ubSize, int64_t& aivNum,
+                                       NpuArch& npuArch)
 {
-    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfoPtr);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     npuArch = ascendcPlatform.GetCurNpuArch();
@@ -58,26 +58,26 @@ inline ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &u
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus ReadRequiredAttr(gert::TilingContext *context, size_t idx, int64_t &out)
+inline ge::graphStatus ReadRequiredAttr(gert::TilingContext* context, size_t idx, int64_t& out)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *p = attrs->GetAttrPointer<int64_t>(idx);
+    const int64_t* p = attrs->GetAttrPointer<int64_t>(idx);
     OP_CHECK_NULL_WITH_CONTEXT(context, p);
     out = *p;
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus CheckNonNeg(gert::TilingContext *context, const char *name, int64_t v)
+inline ge::graphStatus CheckNonNeg(gert::TilingContext* context, const char* name, int64_t v)
 {
     OP_CHECK_IF(v < 0, OP_LOGE(context, "%s must be >= 0, got %ld", name, v), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 /** Meta: in0=cu_q, in1=cu_b；attrs: order,total_rows,max_kv,H,T,topk */
-inline ge::graphStatus GetShapeAttrsMeta(gert::TilingContext *context, int64_t &H, int64_t &T, int64_t &topk,
-                                         int64_t &B, int64_t &totalRows, int64_t &maxKv, int64_t &rowMapElems,
-                                         int32_t &orderMethod)
+inline ge::graphStatus GetShapeAttrsMeta(gert::TilingContext* context, int64_t& H, int64_t& T, int64_t& topk,
+                                         int64_t& B, int64_t& totalRows, int64_t& maxKv, int64_t& rowMapElems,
+                                         int32_t& orderMethod)
 {
     auto cuBShape = context->GetInputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, cuBShape);
@@ -109,9 +109,9 @@ inline ge::graphStatus GetShapeAttrsMeta(gert::TilingContext *context, int64_t &
 }
 
 /** Hist: in0=q2k；attrs: total_rows,max_kv,use_simt,batch */
-inline ge::graphStatus GetShapeAttrsHist(gert::TilingContext *context, int64_t &H, int64_t &T, int64_t &topk,
-                                         int64_t &B, int64_t &totalRows, int64_t &maxKv, int64_t &rowMapElems,
-                                         int32_t &orderMethod)
+inline ge::graphStatus GetShapeAttrsHist(gert::TilingContext* context, int64_t& H, int64_t& T, int64_t& topk,
+                                         int64_t& B, int64_t& totalRows, int64_t& maxKv, int64_t& rowMapElems,
+                                         int32_t& orderMethod)
 {
     (void)orderMethod;
     auto q2kShape = context->GetInputShape(0);
@@ -138,9 +138,9 @@ inline ge::graphStatus GetShapeAttrsHist(gert::TilingContext *context, int64_t &
 }
 
 /** RowPrefix/TilePrefix: attrs: total_rows,max_kv,use_simt,H,T,topk,B */
-inline ge::graphStatus GetShapeAttrsPrefix(gert::TilingContext *context, int64_t &H, int64_t &T, int64_t &topk,
-                                           int64_t &B, int64_t &totalRows, int64_t &maxKv, int64_t &rowMapElems,
-                                           int32_t &orderMethod)
+inline ge::graphStatus GetShapeAttrsPrefix(gert::TilingContext* context, int64_t& H, int64_t& T, int64_t& topk,
+                                           int64_t& B, int64_t& totalRows, int64_t& maxKv, int64_t& rowMapElems,
+                                           int32_t& orderMethod)
 {
     OP_CHECK_IF(ReadRequiredAttr(context, 0, totalRows) != ge::GRAPH_SUCCESS, OP_LOGE(context, "total_rows"),
                 return ge::GRAPH_FAILED);
@@ -164,9 +164,9 @@ inline ge::graphStatus GetShapeAttrsPrefix(gert::TilingContext *context, int64_t
 }
 
 /** Scatter: in0=q2k, in1=cu_q；attrs: total_rows,max_kv,use_simt,q_global_offset */
-inline ge::graphStatus GetShapeAttrsScatter(gert::TilingContext *context, int64_t &H, int64_t &T, int64_t &topk,
-                                            int64_t &B, int64_t &totalRows, int64_t &maxKv, int64_t &rowMapElems,
-                                            int32_t &orderMethod)
+inline ge::graphStatus GetShapeAttrsScatter(gert::TilingContext* context, int64_t& H, int64_t& T, int64_t& topk,
+                                            int64_t& B, int64_t& totalRows, int64_t& maxKv, int64_t& rowMapElems,
+                                            int32_t& orderMethod)
 {
     auto q2kShape = context->GetInputShape(0);
     auto cuQShape = context->GetInputShape(1);
@@ -195,9 +195,9 @@ inline ge::graphStatus GetShapeAttrsScatter(gert::TilingContext *context, int64_
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus GetShapeAttrsInfo(gert::TilingContext *context, Stage stage, int64_t &H, int64_t &T,
-                                         int64_t &topk, int64_t &B, int64_t &totalRows, int64_t &maxKv,
-                                         int64_t &rowMapElems, int32_t &orderMethod)
+inline ge::graphStatus GetShapeAttrsInfo(gert::TilingContext* context, Stage stage, int64_t& H, int64_t& T,
+                                         int64_t& topk, int64_t& B, int64_t& totalRows, int64_t& maxKv,
+                                         int64_t& rowMapElems, int32_t& orderMethod)
 {
     switch (stage) {
         case Stage::Meta:
@@ -229,9 +229,9 @@ inline int64_t CalcTileEdges(uint64_t ubSize, int64_t rowMapElems, int32_t useGa
     return tile > 0 ? tile : 256;
 }
 
-inline ge::graphStatus GetWorkspaceSize(gert::TilingContext *context, int64_t T, int64_t B, int64_t maxKv)
+inline ge::graphStatus GetWorkspaceSize(gert::TilingContext* context, int64_t T, int64_t B, int64_t maxKv)
 {
-    size_t *ws = context->GetWorkspaceSizes(1);
+    size_t* ws = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, ws);
     int64_t meta = k2q_csr_arch35::MetaWorkspaceBytes(B, maxKv, T);
     ws[0] = WS_SYS_SIZE + static_cast<size_t>(meta);
@@ -239,7 +239,7 @@ inline ge::graphStatus GetWorkspaceSize(gert::TilingContext *context, int64_t T,
 }
 
 /** use_simt：Hist attr2；Prefix attr2；Scatter attr2；Meta 无此 attr → 0 */
-inline int32_t ReadUseSimt(gert::TilingContext *context, Stage stage, bool isArch35)
+inline int32_t ReadUseSimt(gert::TilingContext* context, Stage stage, bool isArch35)
 {
     if (stage == Stage::Meta || !isArch35) {
         return 0;
@@ -248,12 +248,12 @@ inline int32_t ReadUseSimt(gert::TilingContext *context, Stage stage, bool isArc
     if (attrs == nullptr) {
         return 0;
     }
-    const int64_t *useSimtPtr = attrs->GetAttrPointer<int64_t>(2);
+    const int64_t* useSimtPtr = attrs->GetAttrPointer<int64_t>(2);
     return (useSimtPtr != nullptr && *useSimtPtr != 0) ? 1 : 0;
 }
 
 /** q_global_offset：仅 Scatter attr3；其余阶段固定 0 */
-inline int32_t ReadQGlobalOffset(gert::TilingContext *context, Stage stage)
+inline int32_t ReadQGlobalOffset(gert::TilingContext* context, Stage stage)
 {
     if (stage != Stage::Scatter) {
         return 0;
@@ -262,7 +262,7 @@ inline int32_t ReadQGlobalOffset(gert::TilingContext *context, Stage stage)
     if (attrs == nullptr) {
         return 0;
     }
-    const int64_t *ptr = attrs->GetAttrPointer<int64_t>(3);
+    const int64_t* ptr = attrs->GetAttrPointer<int64_t>(3);
     return (ptr != nullptr && *ptr != 0) ? 1 : 0;
 }
 
@@ -293,7 +293,7 @@ inline int64_t UsedCoresForStage(Stage stage, int64_t numGroups, int64_t aivNum,
     }
 }
 
-inline ge::graphStatus FillTiling(gert::TilingContext *context, Stage stage)
+inline ge::graphStatus FillTiling(gert::TilingContext* context, Stage stage)
 {
     uint64_t ubSize = 0;
     int64_t aivNum = 0;
@@ -332,7 +332,7 @@ inline ge::graphStatus FillTiling(gert::TilingContext *context, Stage stage)
     OP_CHECK_IF(GetWorkspaceSize(context, T, B, maxKv) != ge::GRAPH_SUCCESS, OP_LOGE(context, "GetWorkspaceSize error"),
                 return ge::GRAPH_FAILED);
 
-    K2qCsrTilingData *tiling = context->GetTilingData<K2qCsrTilingData>();
+    K2qCsrTilingData* tiling = context->GetTilingData<K2qCsrTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, tiling);
     OP_CHECK_IF(memset_s(tiling, sizeof(K2qCsrTilingData), 0, sizeof(K2qCsrTilingData)) != EOK,
                 OP_LOGE(context, "memset tiling failed"), return ge::GRAPH_FAILED);

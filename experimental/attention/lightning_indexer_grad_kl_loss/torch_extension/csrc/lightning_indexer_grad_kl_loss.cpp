@@ -25,7 +25,7 @@ const int DIMENSION_4D = 4;
 const int LAYOUT_MAX_LENGTH = 20;
 
 namespace {
-at::Tensor format_trans(const at::Tensor &at_tensor)
+at::Tensor format_trans(const at::Tensor& at_tensor)
 {
     if (at_tensor.defined()) {
         TORCH_CHECK(torch_npu::utils::is_npu(at_tensor),
@@ -39,12 +39,12 @@ at::Tensor format_trans(const at::Tensor &at_tensor)
 } // namespace
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> lightning_indexer_grad_kl_loss(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &query_index, const at::Tensor &key_index,
-    const at::Tensor &weights, const at::Tensor &sparse_indices, const at::Tensor &softmax_max,
-    const at::Tensor &softmax_sum, const c10::optional<at::Tensor> &query_rope,
-    const c10::optional<at::Tensor> &key_rope, const c10::optional<std::vector<int64_t>> &cur_seq_lengths_query,
-    const c10::optional<std::vector<int64_t>> &cur_seq_lengths_key, double scale_value,
-    const c10::optional<std::string> &layout, c10::optional<int64_t> sparse_mode, c10::optional<int64_t> pre_tokens,
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& query_index, const at::Tensor& key_index,
+    const at::Tensor& weights, const at::Tensor& sparse_indices, const at::Tensor& softmax_max,
+    const at::Tensor& softmax_sum, const c10::optional<at::Tensor>& query_rope,
+    const c10::optional<at::Tensor>& key_rope, const c10::optional<std::vector<int64_t>>& cur_seq_lengths_query,
+    const c10::optional<std::vector<int64_t>>& cur_seq_lengths_key, double scale_value,
+    const c10::optional<std::string>& layout, c10::optional<int64_t> sparse_mode, c10::optional<int64_t> pre_tokens,
     c10::optional<int64_t> next_tokens, int64_t block_size, c10::optional<bool> deterministic)
 {
     TORCH_CHECK(query.is_contiguous(), "query should be contiguous.");
@@ -54,15 +54,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> lightning_indexer_gra
     TORCH_CHECK(sparse_indices.is_contiguous(), "sparse_indices should be contiguous.");
     TORCH_CHECK(softmax_max.is_contiguous(), "softmax_max should be contiguous.");
     TORCH_CHECK(softmax_sum.is_contiguous(), "softmax_sum should be contiguous.");
-    const at::Tensor &query_rope_const = query_rope.value_or(at::Tensor());
-    const at::Tensor &key_rope_const = key_rope.value_or(at::Tensor());
-    const at::Tensor &mask_const = at::Tensor();
+    const at::Tensor& query_rope_const = query_rope.value_or(at::Tensor());
+    const at::Tensor& key_rope_const = key_rope.value_or(at::Tensor());
+    const at::Tensor& mask_const = at::Tensor();
     at::IntArrayRef cur_seq_lengths_query_const =
         cur_seq_lengths_query.has_value() ? at::IntArrayRef(*cur_seq_lengths_query) : at::IntArrayRef{};
     at::IntArrayRef cur_seq_lengths_key_const =
         cur_seq_lengths_key.has_value() ? at::IntArrayRef(*cur_seq_lengths_key) : at::IntArrayRef{};
     std::string layout_str = layout.value_or("BSND");
-    char *layout_ptr = const_cast<char *>(layout_str.data());
+    char* layout_ptr = const_cast<char*>(layout_str.data());
     int64_t sparse_mode_const = sparse_mode.value_or(3);
     int64_t pre_tokens_const = pre_tokens.value_or(2147483647);
     int64_t next_tokens_const = next_tokens.value_or(2147483647);
@@ -108,13 +108,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> lightning_indexer_gra
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> lightning_indexer_grad_kl_loss_skip_padding(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &query_index, const at::Tensor &key_index,
-    const at::Tensor &weights, const at::Tensor &sparse_indices, const at::Tensor &softmax_max,
-    const at::Tensor &softmax_sum, const c10::optional<at::Tensor> &query_rope,
-    const c10::optional<at::Tensor> &key_rope, const c10::optional<at::Tensor> &mask,
-    const c10::optional<std::vector<int64_t>> &cur_seq_lengths_query,
-    const c10::optional<std::vector<int64_t>> &cur_seq_lengths_key, double scale_value,
-    const c10::optional<std::string> &layout, c10::optional<int64_t> sparse_mode, c10::optional<int64_t> pre_tokens,
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& query_index, const at::Tensor& key_index,
+    const at::Tensor& weights, const at::Tensor& sparse_indices, const at::Tensor& softmax_max,
+    const at::Tensor& softmax_sum, const c10::optional<at::Tensor>& query_rope,
+    const c10::optional<at::Tensor>& key_rope, const c10::optional<at::Tensor>& mask,
+    const c10::optional<std::vector<int64_t>>& cur_seq_lengths_query,
+    const c10::optional<std::vector<int64_t>>& cur_seq_lengths_key, double scale_value,
+    const c10::optional<std::string>& layout, c10::optional<int64_t> sparse_mode, c10::optional<int64_t> pre_tokens,
     c10::optional<int64_t> next_tokens, int64_t block_size, c10::optional<bool> deterministic,
     c10::optional<int64_t> valid_token_num)
 {
@@ -125,16 +125,16 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> lightning_indexer_gra
     TORCH_CHECK(sparse_indices.is_contiguous(), "sparse_indices should be contiguous.");
     TORCH_CHECK(softmax_max.is_contiguous(), "softmax_max should be contiguous.");
     TORCH_CHECK(softmax_sum.is_contiguous(), "softmax_sum should be contiguous.");
-    const at::Tensor &query_rope_const = query_rope.value_or(at::Tensor());
-    const at::Tensor &key_rope_const = key_rope.value_or(at::Tensor());
-    const at::Tensor &mask_const = mask.value_or(at::Tensor());
+    const at::Tensor& query_rope_const = query_rope.value_or(at::Tensor());
+    const at::Tensor& key_rope_const = key_rope.value_or(at::Tensor());
+    const at::Tensor& mask_const = mask.value_or(at::Tensor());
     at::IntArrayRef cur_seq_lengths_query_const =
         cur_seq_lengths_query.has_value() ? at::IntArrayRef(*cur_seq_lengths_query) : at::IntArrayRef{};
     at::IntArrayRef cur_seq_lengths_key_const =
         cur_seq_lengths_key.has_value() ? at::IntArrayRef(*cur_seq_lengths_key) : at::IntArrayRef{};
     int64_t valid_token_num_const = valid_token_num.value_or(-1);
     std::string layout_str = layout.value_or("BSND");
-    char *layout_ptr = const_cast<char *>(layout_str.data());
+    char* layout_ptr = const_cast<char*>(layout_str.data());
     int64_t sparse_mode_const = sparse_mode.value_or(3);
     int64_t pre_tokens_const = pre_tokens.value_or(2147483647);
     int64_t next_tokens_const = next_tokens.value_or(2147483647);

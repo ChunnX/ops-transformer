@@ -104,7 +104,7 @@ __aicore__ inline uint32_t GetBlockNum(uint32_t size)
 }
 // L1->L0A + 切k/切M/全载
 template <typename T>
-__aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTensor<T> &aL1Tensor, const MMParam &mmParam,
+__aicore__ inline void LoadDataToL0A(LocalTensor<T>& aL0Tensor, const LocalTensor<T>& aL1Tensor, const MMParam& mmParam,
                                      uint64_t L1Aoffset, uint32_t kSplitSize, uint32_t mSplitSize)
 {
     LoadData2DParamsV2 loadData2DParamsA; // 基础API LoadData的参数结构体
@@ -175,8 +175,8 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTenso
 
 // L1->L0A + 切k/切M/全载
 template <typename T, typename U = T, uint32_t TRANSPOSE_SRC_K = 256U>
-__aicore__ inline void LoadDataToL0AMx(LocalTensor<U> &aL0Tensor, const LocalTensor<T> &aL1Tensor,
-                                       const LocalTensor<fp8_e8m0_t> &aScaleL1Tensor, const MMParam &mmParam,
+__aicore__ inline void LoadDataToL0AMx(LocalTensor<U>& aL0Tensor, const LocalTensor<T>& aL1Tensor,
+                                       const LocalTensor<fp8_e8m0_t>& aScaleL1Tensor, const MMParam& mmParam,
                                        uint64_t L1Aoffset, uint32_t kSplitSize, uint32_t mSplitSize)
 {
     LoadData2DParamsV2 loadData2DParamsA; // 基础API LoadData的参数结构体
@@ -255,7 +255,7 @@ __aicore__ inline void LoadDataToL0AMx(LocalTensor<U> &aL0Tensor, const LocalTen
 
 // L1->L0B + 切k/切M/全载
 template <typename T>
-__aicore__ inline void LoadDataToL0B(LocalTensor<T> &bL0Tensor, const LocalTensor<T> &bL1Tensor, const MMParam &mmParam,
+__aicore__ inline void LoadDataToL0B(LocalTensor<T>& bL0Tensor, const LocalTensor<T>& bL1Tensor, const MMParam& mmParam,
                                      uint64_t L1Boffset, uint32_t kSplitSize, uint32_t nSplitSize, int nLoops = 1)
 {
     LoadData2DParamsV2 loadData2DParamsB; // 基础API LoadData的参数结构体
@@ -327,8 +327,8 @@ __aicore__ inline void LoadDataToL0B(LocalTensor<T> &bL0Tensor, const LocalTenso
 }
 
 template <typename T, typename U = T, typename Scale_T>
-__aicore__ inline void LoadDataToL0BMx(LocalTensor<U> &bL0Tensor, const LocalTensor<T> &bL1Tensor,
-                                       const LocalTensor<Scale_T> &bScaleL1Tensor, const MMParam &mmParam,
+__aicore__ inline void LoadDataToL0BMx(LocalTensor<U>& bL0Tensor, const LocalTensor<T>& bL1Tensor,
+                                       const LocalTensor<Scale_T>& bScaleL1Tensor, const MMParam& mmParam,
                                        uint64_t L1Boffset, uint32_t kSplitSize, uint32_t nSplitSize, int nLoops = 1)
 {
     LoadData2DParamsV2 loadData2DParamsB; // 基础API LoadData的参数结构体
@@ -472,7 +472,7 @@ __aicore__ inline void LoadDataToL0BMx(LocalTensor<U> &bL0Tensor, const LocalTen
 #else
 static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
 template <typename T, ABLayout AL>
-__aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTensor<T> &aL1Tensor, const MMParam &mmParam,
+__aicore__ inline void LoadDataToL0A(LocalTensor<T>& aL0Tensor, const LocalTensor<T>& aL1Tensor, const MMParam& mmParam,
                                      uint64_t L1Aoffset, uint32_t kSplitSize, uint32_t mSplitSize)
 {
     if constexpr (AL == ABLayout::MK) {
@@ -516,7 +516,7 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTenso
 
 // L1→L0B + 切K/切N/全载
 template <typename T, ABLayout BL>
-__aicore__ inline void LoadDataToL0B(LocalTensor<T> &bL0Tensor, const LocalTensor<T> &bL1Tensor, const MMParam &mmParam,
+__aicore__ inline void LoadDataToL0B(LocalTensor<T>& bL0Tensor, const LocalTensor<T>& bL1Tensor, const MMParam& mmParam,
                                      uint64_t L1Boffset, uint32_t kSplitSize, uint32_t nSplitSize)
 {
     if constexpr (BL == ABLayout::KN) {
@@ -565,10 +565,10 @@ __aicore__ inline void LoadDataToL0B(LocalTensor<T> &bL0Tensor, const LocalTenso
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
           typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
           typename L0ADType = A, typename L0BDType = B, uint32_t TRANSPOSE_SRC_K = 256U>
-__aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
-                                  L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, struct MMParam &param,
-                                  const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                                  const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+__aicore__ inline void MatmulFull(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor, L0AType& aL0BuffsDb,
+                                  L0BType& bL0BuffsDb, const LocalTensor<C>& cL0Tensor, struct MMParam& param,
+                                  const LocalTensor<AScaleType>& aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                  const LocalTensor<BScaleType>& bScaleL1Tensor = LocalTensor<AScaleType>())
 {
     Buffer<BufferType::L0A> l0aBuffer = aL0BuffsDb.Get();
     l0aBuffer.Wait<HardEvent::M_MTE1>();
@@ -623,11 +623,11 @@ __aicore__ inline void MatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTe
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
           typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
           typename L0ADType = A, typename L0BDType = B>
-__aicore__ inline void MxMatmulFull(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
-                                    L0AType &aL0BuffsDb, L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor,
-                                    MMParam &param,
-                                    const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                                    const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
+__aicore__ inline void MxMatmulFull(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor,
+                                    L0AType& aL0BuffsDb, L0BType& bL0BuffsDb, const LocalTensor<C>& cL0Tensor,
+                                    MMParam& param,
+                                    const LocalTensor<AScaleType>& aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                    const LocalTensor<BScaleType>& bScaleL1Tensor = LocalTensor<BScaleType>())
 {
     // 对现有 MatmulFull 模板的 MX 包装。它与普通 fp8 matmul 的关键差异是：
     // A/B scale tensor 会被透传，同时 L0ADType/L0BDType 可指定为 mx_fp8_e4m3_t，
@@ -643,11 +643,11 @@ template <bool LOAD_B, bool RELEASE_B, typename A, typename B, typename C, uint3
           uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType,
           typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t, typename L0ADType = A,
           typename L0BDType = B>
-__aicore__ inline void MxMatmulFullReuseB(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor,
-                                          L0AType &aL0BuffsDb, L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor,
-                                          MMParam &param,
-                                          const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                                          const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<BScaleType>())
+__aicore__ inline void MxMatmulFullReuseB(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor,
+                                          L0AType& aL0BuffsDb, L0BType& bL0BuffsDb, const LocalTensor<C>& cL0Tensor,
+                                          MMParam& param,
+                                          const LocalTensor<AScaleType>& aScaleL1Tensor = LocalTensor<AScaleType>(),
+                                          const LocalTensor<BScaleType>& bScaleL1Tensor = LocalTensor<BScaleType>())
 {
     static_assert(LOAD_B || RELEASE_B, "a reused MX L0B tile must be loaded or released");
 
@@ -710,10 +710,10 @@ __aicore__ inline void MxMatmulFullReuseB(const LocalTensor<A> &aL1Tensor, const
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
           typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
           typename L0ADType = A, typename L0BDType = B>
-__aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
-                               L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, const MMParam &param,
-                               const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+__aicore__ inline void MatmulK(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor, L0AType& aL0BuffsDb,
+                               L0BType& bL0BuffsDb, const LocalTensor<C>& cL0Tensor, const MMParam& param,
+                               const LocalTensor<AScaleType>& aScaleL1Tensor = LocalTensor<AScaleType>(),
+                               const LocalTensor<BScaleType>& bScaleL1Tensor = LocalTensor<AScaleType>())
 {
     uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
     uint32_t tailSize = param.singleK % baseK;
@@ -792,10 +792,10 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor, const LocalTenso
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
           typename L0AType, typename L0BType, typename AScaleType = fp8_e8m0_t, typename BScaleType = fp8_e8m0_t,
           typename L0ADType = A, typename L0BDType = B>
-__aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
-                               L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, const MMParam &param,
-                               const LocalTensor<AScaleType> &aScaleL1Tensor = LocalTensor<AScaleType>(),
-                               const LocalTensor<BScaleType> &bScaleL1Tensor = LocalTensor<AScaleType>())
+__aicore__ inline void MatmulN(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor, L0AType& aL0BuffsDb,
+                               L0BType& bL0BuffsDb, const LocalTensor<C>& cL0Tensor, const MMParam& param,
+                               const LocalTensor<AScaleType>& aScaleL1Tensor = LocalTensor<AScaleType>(),
+                               const LocalTensor<BScaleType>& bScaleL1Tensor = LocalTensor<AScaleType>())
 {
     uint32_t nLoops = (param.singleN + baseN - 1) / baseN; // 尾块处理
     uint32_t tailSize = param.singleN % baseN;
@@ -866,8 +866,8 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor, const LocalTenso
 
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL,
           typename L0AType, typename L0BType>
-__aicore__ inline void MatmulBase(const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, L0AType &aL0BuffsDb,
-                                  L0BType &bL0BuffsDb, const LocalTensor<C> &cL0Tensor, struct MMParam &param)
+__aicore__ inline void MatmulBase(const LocalTensor<A>& aL1Tensor, const LocalTensor<B>& bL1Tensor, L0AType& aL0BuffsDb,
+                                  L0BType& bL0BuffsDb, const LocalTensor<C>& cL0Tensor, struct MMParam& param)
 {
     if ((param.singleK + baseK - 1) / baseK > 1) {
         MatmulK<A, B, C, baseM, baseN, baseK, AL, BL>(aL1Tensor, bL1Tensor, aL0BuffsDb, bL0BuffsDb, cL0Tensor, param);
@@ -880,7 +880,7 @@ __aicore__ inline void MatmulBase(const LocalTensor<A> &aL1Tensor, const LocalTe
 }
 
 template <typename T, ABLayout AL>
-__aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTensor<T> &aL1Tensor, uint32_t rowSize,
+__aicore__ inline void LoadDataToL0A(LocalTensor<T>& aL0Tensor, const LocalTensor<T>& aL1Tensor, uint32_t rowSize,
                                      uint32_t kSplitSize, uint32_t mSplitSize)
 {
     uint32_t blockElementCnt = ONE_FRACTAL_W_BYTE / sizeof(T);
@@ -925,7 +925,7 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTenso
 }
 
 template <typename T, ABLayout BL>
-__aicore__ inline void LoadDataToL0B(LocalTensor<T> &bL0Tensor, const LocalTensor<T> &bL1Tensor, uint32_t rowSize,
+__aicore__ inline void LoadDataToL0B(LocalTensor<T>& bL0Tensor, const LocalTensor<T>& bL1Tensor, uint32_t rowSize,
                                      uint32_t kSplitSize, uint32_t nSplitSize)
 {
     uint32_t blockElementCnt = ONE_FRACTAL_W_BYTE / sizeof(T);

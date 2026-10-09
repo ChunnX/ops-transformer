@@ -49,8 +49,7 @@ protected:
 namespace {
 
 constexpr int64_t WG_MLP_STAGE_ATTR_FP16_MM1 = optiling::WG_MLP_STAGE_MM1;
-constexpr int64_t WG_MLP_STAGE_ATTR_FP32_SWIGLU =
-    optiling::WG_MLP_STAGE_DTYPE_STRIDE + optiling::WG_MLP_STAGE_SWIGLU;
+constexpr int64_t WG_MLP_STAGE_ATTR_FP32_SWIGLU = optiling::WG_MLP_STAGE_DTYPE_STRIDE + optiling::WG_MLP_STAGE_SWIGLU;
 
 void InitPlatform(fe::PlatFormInfos& platformInfo)
 {
@@ -76,7 +75,7 @@ void InitPlatform(fe::PlatFormInfos& platformInfo)
     platformInfo.SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);
 }
 
-}  // namespace
+} // namespace
 
 TEST_F(SwigluGatedMlpTiling, mm1_stage_tiling)
 {
@@ -98,23 +97,23 @@ TEST_F(SwigluGatedMlpTiling, mm1_stage_tiling)
     auto workspace = reinterpret_cast<gert::ContinuousVector*>(workspaceHolder.get());
     ASSERT_NE(tilingData, nullptr);
 
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("SwigluGatedMlp")
-                      .NodeIoNum(3, 1)
-                      .IrInstanceNum({1, 1, 1})
-                      .InputShapes({&xShape, &gateUpWeightShape, &downWeightShape})
-                      .OutputShapes({&yShape})
-                      .CompileInfo(&compileInfo)
-                      .PlatformInfo(reinterpret_cast<char*>(&platformInfo))
-                      .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeAttrs({{"cube_math_type", Ops::NN::AnyValue::CreateFrom<int64_t>(
-                                                       WG_MLP_STAGE_ATTR_FP16_MM1)}})
-                      .TilingData(tilingData.get())
-                      .Workspace(workspace)
-                      .Build();
+    auto holder =
+        gert::TilingContextFaker()
+            .SetOpType("SwigluGatedMlp")
+            .NodeIoNum(3, 1)
+            .IrInstanceNum({1, 1, 1})
+            .InputShapes({&xShape, &gateUpWeightShape, &downWeightShape})
+            .OutputShapes({&yShape})
+            .CompileInfo(&compileInfo)
+            .PlatformInfo(reinterpret_cast<char*>(&platformInfo))
+            .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(1, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(2, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeAttrs({{"cube_math_type", Ops::NN::AnyValue::CreateFrom<int64_t>(WG_MLP_STAGE_ATTR_FP16_MM1)}})
+            .TilingData(tilingData.get())
+            .Workspace(workspace)
+            .Build();
 
     auto context = holder.GetContext<gert::TilingContext>();
     ASSERT_NE(context, nullptr);
@@ -142,24 +141,24 @@ TEST_F(SwigluGatedMlpTiling, swiglu_stage_tiling)
     auto workspace = reinterpret_cast<gert::ContinuousVector*>(workspaceHolder.get());
     ASSERT_NE(tilingData, nullptr);
 
-    auto holder = gert::TilingContextFaker()
-                      .SetOpType("SwigluGatedMlp")
-                      .NodeIoNum(3, 1)
-                      .IrInstanceNum({1, 1, 1})
-                      .InputShapes({&gateUpShape, &gateUpWeightShape, &downWeightShape})
-                      .OutputShapes({&hiddenShape})
-                      .CompileInfo(&compileInfo)
-                      .PlatformInfo(reinterpret_cast<char*>(&platformInfo))
-                      .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(1, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeInputTd(2, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-                      // The stage attr encodes dtype offset plus stage id; 1000 + 102 means FP32 SWIGLU.
-                      .NodeAttrs({{"cube_math_type", Ops::NN::AnyValue::CreateFrom<int64_t>(
-                                                       WG_MLP_STAGE_ATTR_FP32_SWIGLU)}})
-                      .TilingData(tilingData.get())
-                      .Workspace(workspace)
-                      .Build();
+    auto holder =
+        gert::TilingContextFaker()
+            .SetOpType("SwigluGatedMlp")
+            .NodeIoNum(3, 1)
+            .IrInstanceNum({1, 1, 1})
+            .InputShapes({&gateUpShape, &gateUpWeightShape, &downWeightShape})
+            .OutputShapes({&hiddenShape})
+            .CompileInfo(&compileInfo)
+            .PlatformInfo(reinterpret_cast<char*>(&platformInfo))
+            .NodeInputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(1, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(2, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(0, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+            // The stage attr encodes dtype offset plus stage id; 1000 + 102 means FP32 SWIGLU.
+            .NodeAttrs({{"cube_math_type", Ops::NN::AnyValue::CreateFrom<int64_t>(WG_MLP_STAGE_ATTR_FP32_SWIGLU)}})
+            .TilingData(tilingData.get())
+            .Workspace(workspace)
+            .Build();
 
     auto context = holder.GetContext<gert::TilingContext>();
     ASSERT_NE(context, nullptr);

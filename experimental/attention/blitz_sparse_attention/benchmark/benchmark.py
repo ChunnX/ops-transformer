@@ -3,7 +3,7 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 """
@@ -31,14 +31,26 @@ import torch
 import torch_npu
 import torch_bsa
 
-FrameWidths = namedtuple('FrameWidths', ['left_cols', 'right_cols', 'top_rows', 'bottom_rows'])
+FrameWidths = namedtuple(
+    "FrameWidths", ["left_cols", "right_cols", "top_rows", "bottom_rows"]
+)
 
 # Bundle of inputs for `create_attention_mask` — keeps the helper under the
 # 5-arg cap (G.FNM.03). Combines the shape dims, block-tile sizes, target
 # sparsity, and frame border into one named value.
 MaskSpec = namedtuple(
     "MaskSpec",
-    ["b", "h", "s_q", "s_kv", "d", "block_size_q", "block_size_kv", "sparsity", "frame"],
+    [
+        "b",
+        "h",
+        "s_q",
+        "s_kv",
+        "d",
+        "block_size_q",
+        "block_size_kv",
+        "sparsity",
+        "frame",
+    ],
 )
 
 # Bundle of outputs from `create_attention_mask`. `bsa_atten_mask` is always
@@ -46,7 +58,15 @@ MaskSpec = namedtuple(
 # field is kept for symmetry with the launcher signature.
 AttentionMask = namedtuple(
     "AttentionMask",
-    ["pfa_atten_mask", "bsa_atten_mask", "sabi", "sparse_mode", "scale", "pre_tokens", "next_tokens"],
+    [
+        "pfa_atten_mask",
+        "bsa_atten_mask",
+        "sabi",
+        "sparse_mode",
+        "scale",
+        "pre_tokens",
+        "next_tokens",
+    ],
 )
 
 # Configure logging — write to stdout (not the default stderr) so the result
@@ -56,15 +76,14 @@ AttentionMask = namedtuple(
 #   python benchmark.py | tee bench.log /dev/tty | python plot.py
 #       → produce the figure, also save the table to `bench.log`, AND keep
 #         printing it to the terminal (/dev/tty is an extra tee output).
-logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stdout)
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 # Global Definitions
-DEVICE = 'npu'
+DEVICE = "npu"
 N_REPEATS = 10
 N_WARMUP = 2
 BLOCK_MASK_SEED = 1234
-
 
 
 # ===== Begin of Parameter Sweep Definitions =====
@@ -74,7 +93,7 @@ INPUT_LAYOUT = "BNSD"  # [batch_size, num_heads, seq_len, head_dim]
 B_VALS = [1]
 H_VALS = [3]
 S_VALS = [118_806]  # S_q = S_kv
-D_VALS = [128]   # head dimension
+D_VALS = [128]  # head dimension
 
 # Fraction of attention blocks zeroed out per row. 0.0 = dense, 0.9 = ~10 % kept.
 SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
@@ -85,9 +104,9 @@ SPARSITY_VALS = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 # op-attr. The single-value BLOCK_SIZE_Q / BLOCK_SIZE_KV constants are kept as
 # informational defaults; the real driver of the sabi-stride choice is the
 # per-pair value passed to torch_bsa.blitz_sparse_attention via block_shape.
-BLOCK_SHAPES = [(bsq, bskv)
-                for bsq in (128, 256, 512, 1024)
-                for bskv in (128, 256, 512, 1024)]
+BLOCK_SHAPES = [
+    (bsq, bskv) for bsq in (128, 256, 512, 1024) for bskv in (128, 256, 512, 1024)
+]
 
 # When True, each sabi row is generated with kept block indices sorted ascending
 # (followed by pad_value). When False, the kept indices are shuffled within the row
@@ -143,7 +162,7 @@ PRINT_HEIGHT = 128
 PRINT_WIDTH = 8
 
 # True <--> enables accuracy (correctness) comparison
-RUN_REFERENCE = False  
+RUN_REFERENCE = False
 
 # Which reference kernel to compare/benchmark against. One of:
 #  "custom"                          - our pythonic ref_blitz_sparse_attention_fp32
@@ -154,17 +173,15 @@ TORCH_REFERENCE = "npu_fusion_attention"
 # ===== End of Parameter Sweep Definitions =====
 
 torch.set_printoptions(
-    threshold=100_000_000,
-    linewidth=400,
-    edgeitems=3,
-    precision=4,
-    sci_mode=False
+    threshold=100_000_000, linewidth=400, edgeitems=3, precision=4, sci_mode=False
 )
 
 
 def ref_blitz_sparse_attention_launcher(
     torch_reference: str,
-    pfa_inputs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, float, torch.Tensor, str],
+    pfa_inputs: Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, int, float, torch.Tensor, str
+    ],
     force_dense_sm: bool,
     return_lse: bool = False,
 ):
@@ -186,17 +203,29 @@ def ref_blitz_sparse_attention_launcher(
     q, k, v, head_num, scale, atten_mask, input_layout = pfa_inputs
     if torch_reference == "custom":
         if return_lse:
-            raise ValueError("return_lse=True is not supported by the 'custom' reference "
-                             "(ref_blitz_sparse_attention_fp32 does not compute softmax_lse).")
+            raise ValueError(
+                "return_lse=True is not supported by the 'custom' reference "
+                "(ref_blitz_sparse_attention_fp32 does not compute softmax_lse)."
+            )
         return ref_blitz_sparse_attention_fp32(q, k, v, scale, atten_mask=atten_mask)
     if torch_reference == "npu_fusion_attention":
         if return_lse:
-            raise ValueError("return_lse=True is not supported by 'npu_fusion_attention'; "
-                             "use 'npu_fused_infer_attention_score' instead.")
-        return torch_npu.npu_fusion_attention(q, k, v, head_num=head_num, input_layout=input_layout,
-                                              scale=scale, pre_tockens=0, next_tockens=0,
-                                              atten_mask=atten_mask,
-                                              sparse_mode=0 if force_dense_sm else 1)[0]
+            raise ValueError(
+                "return_lse=True is not supported by 'npu_fusion_attention'; "
+                "use 'npu_fused_infer_attention_score' instead."
+            )
+        return torch_npu.npu_fusion_attention(
+            q,
+            k,
+            v,
+            head_num=head_num,
+            input_layout=input_layout,
+            scale=scale,
+            pre_tockens=0,
+            next_tockens=0,
+            atten_mask=atten_mask,
+            sparse_mode=0 if force_dense_sm else 1,
+        )[0]
     if torch_reference == "npu_fused_infer_attention_score":
         # FIAS is only supported by this launcher in dense mode (sparse_mode=0).
         # Reason: FIAS does not accept our atten_mask layout — its sparse_mode=1
@@ -219,14 +248,21 @@ def ref_blitz_sparse_attention_launcher(
         elif input_layout in ("BSND", "BSH"):
             batch, s_q, s_kv = q.shape[0], q.shape[1], k.shape[1]
         else:
-            raise ValueError(f"Unsupported input_layout for FIAS reference: {input_layout!r}")
+            raise ValueError(
+                f"Unsupported input_layout for FIAS reference: {input_layout!r}"
+            )
         actual_seq_q = [s_q] * batch
         actual_seq_kv = [s_kv] * batch
         out, lse = torch_npu.npu_fused_infer_attention_score(
-            q, k, v,
-            num_heads=head_num, scale=scale,
-            input_layout=input_layout, num_key_value_heads=head_num,
-            actual_seq_lengths=actual_seq_q, actual_seq_lengths_kv=actual_seq_kv,
+            q,
+            k,
+            v,
+            num_heads=head_num,
+            scale=scale,
+            input_layout=input_layout,
+            num_key_value_heads=head_num,
+            actual_seq_lengths=actual_seq_q,
+            actual_seq_lengths_kv=actual_seq_kv,
             softmax_lse_flag=return_lse,
         )
         if return_lse:
@@ -262,7 +298,9 @@ def _compute_frame_sets(frame, n_block_rows, n_block_cols):
         )
     # Forced column indices by the frame (left and right borders) for EVERY sparse row:
     sparse_forced_left = set(range(min(frame.left_cols, n_block_cols)))
-    sparse_forced_right = set(range(max(n_block_cols - frame.right_cols, 0), n_block_cols))
+    sparse_forced_right = set(
+        range(max(n_block_cols - frame.right_cols, 0), n_block_cols)
+    )
     sparse_forced_col_ids = sparse_forced_left | sparse_forced_right
     sparse_candidate_col_ids = sorted(set(range(n_block_cols)) - sparse_forced_col_ids)
     # Row indices forced fully dense by the frame (top and bottom borders):
@@ -321,14 +359,18 @@ def generate_sparse_blocks_by_row(
     n_block_cols = math.ceil(s_kv / block_size_kv)
     n_total_blocks = n_block_rows * n_block_cols
     if n_block_rows == 0 or n_block_cols == 0:
-        raise ValueError(f"Invalid block configuration: {s_q=}, {s_kv=}, {block_size_q=}, {block_size_kv=}")
+        raise ValueError(
+            f"Invalid block configuration: {s_q=}, {s_kv=}, {block_size_q=}, {block_size_kv=}"
+        )
 
     frame_sets = _compute_frame_sets(frame, n_block_rows, n_block_cols)
     sparse_forced_col_ids, _, dense_row_ids = frame_sets
 
     n_dense_rows = len(dense_row_ids)
     n_sparse_rows = max(n_block_rows - n_dense_rows, 0)
-    n_frame_forced_blocks = len(sparse_forced_col_ids) * n_sparse_rows + n_block_cols * n_dense_rows
+    n_frame_forced_blocks = (
+        len(sparse_forced_col_ids) * n_sparse_rows + n_block_cols * n_dense_rows
+    )
     if n_frame_forced_blocks / n_total_blocks > (1.0 - sparsity):
         raise ValueError(
             f"Target sparsity violation: frame forces {n_frame_forced_blocks} blocks out of "
@@ -341,7 +383,9 @@ def generate_sparse_blocks_by_row(
     n_max_kept_blocks = int(math.floor(n_total_blocks * (1.0 - sparsity)))
     n_max_kept_blocks_excluding_frame = n_max_kept_blocks - n_frame_forced_blocks
     n_kept_row_blocks_per_row = (
-        math.ceil(n_max_kept_blocks_excluding_frame / n_sparse_rows) if n_sparse_rows > 0 else 0
+        math.ceil(n_max_kept_blocks_excluding_frame / n_sparse_rows)
+        if n_sparse_rows > 0
+        else 0
     )
 
     rng = random.Random(seed)
@@ -350,7 +394,9 @@ def generate_sparse_blocks_by_row(
         if r in dense_row_ids:
             cols = list(range(n_block_cols))
         else:
-            cols = _build_sparse_row(rng, frame_sets, n_kept_row_blocks_per_row, n_block_cols, pad_value)
+            cols = _build_sparse_row(
+                rng, frame_sets, n_kept_row_blocks_per_row, n_block_cols, pad_value
+            )
         if not sort_within_row:
             cols = _shuffle_row(rng, cols, pad_value)
         rows.append(cols)
@@ -362,8 +408,11 @@ BlockGrid = namedtuple("BlockGrid", ["s_q", "s_kv", "block_size_q", "block_size_
 
 
 def is_block_sparse_pattern_feasible(
-    grid: BlockGrid, frame, sparsity: float,
-    *, require_nonempty_per_row: bool = True,
+    grid: BlockGrid,
+    frame,
+    sparsity: float,
+    *,
+    require_nonempty_per_row: bool = True,
 ) -> bool:
     """Return True iff `generate_sparse_blocks_by_row` is satisfiable for the given grid.
 
@@ -403,10 +452,14 @@ def is_block_sparse_pattern_feasible(
         if _frame_exceeds_dims(frame, n_block_rows, n_block_cols):
             return False
         sparse_forced_left = set(range(min(frame.left_cols, n_block_cols)))
-        sparse_forced_right = set(range(max(n_block_cols - frame.right_cols, 0), n_block_cols))
+        sparse_forced_right = set(
+            range(max(n_block_cols - frame.right_cols, 0), n_block_cols)
+        )
         n_forced_cols = len(sparse_forced_left | sparse_forced_right)
         dense_top = set(range(min(frame.top_rows, n_block_rows)))
-        dense_bottom = set(range(max(n_block_rows - frame.bottom_rows, 0), n_block_rows))
+        dense_bottom = set(
+            range(max(n_block_rows - frame.bottom_rows, 0), n_block_rows)
+        )
         n_dense_rows = len(dense_top | dense_bottom)
         n_sparse_rows = max(n_block_rows - n_dense_rows, 0)
         n_forced = n_forced_cols * n_sparse_rows + n_block_cols * n_dense_rows
@@ -511,7 +564,9 @@ def make_block_mask_per_head(
             block_size_kv=block_size_kv,
             sparse_blocks_by_row=sparse_blocks_by_row,
             device=device,
-        ).squeeze(0).squeeze(0)  # [s_q, s_kv]
+        )
+        .squeeze(0)
+        .squeeze(0)  # [s_q, s_kv]
         for sparse_blocks_by_row in sparse_blocks_by_row_per_head
     ]
 
@@ -538,9 +593,13 @@ def block_allclose_map(
     Blocks at the edges can be smaller if dim2 or dim3 is not divisible by block sizes.
     """
     if out.shape != ref.shape:
-        raise ValueError(f"Shape mismatch: out {tuple(out.shape)} vs ref {tuple(ref.shape)}")
+        raise ValueError(
+            f"Shape mismatch: out {tuple(out.shape)} vs ref {tuple(ref.shape)}"
+        )
     if out.ndim != 4:
-        raise ValueError(f"Expected 4D tensors [dim0, dim1, dim2, dim3], got out.ndim={out.ndim}")
+        raise ValueError(
+            f"Expected 4D tensors [dim0, dim1, dim2, dim3], got out.ndim={out.ndim}"
+        )
 
     if block_h <= 0 or block_w <= 0:
         raise ValueError("block_h and block_w must be positive integers")
@@ -555,7 +614,9 @@ def block_allclose_map(
     # Blockwise result: [dim0, dim1, nby, nbx]
     block_ok = close.new_empty((dim0, dim1, nby, nbx), dtype=torch.bool)
 
-    for b, h, by, bx in itertools.product(range(dim0), range(dim1), range(nby), range(nbx)):
+    for b, h, by, bx in itertools.product(
+        range(dim0), range(dim1), range(nby), range(nbx)
+    ):
         y0, x0 = by * block_h, bx * block_w
         y1, x1 = min(y0 + block_h, dim2), min(x0 + block_w, dim3)
         block_ok[b, h, by, bx] = close[b, h, y0:y1, x0:x1].all()
@@ -613,7 +674,7 @@ def ref_blitz_sparse_attention_fp32(
     # Softmax in fp32
     attn_probs = torch.softmax(attn_scores, dim=-1)
 
-    #    [batch_size, num_heads, s_q, s_kv] x [batch_size, num_heads, s_kv, head_dim] 
+    #    [batch_size, num_heads, s_q, s_kv] x [batch_size, num_heads, s_kv, head_dim]
     # -> [batch_size, num_heads, s_q, head_dim]
     out = torch.matmul(attn_probs, v_f)
 
@@ -622,8 +683,13 @@ def ref_blitz_sparse_attention_fp32(
 
 
 def gen_pfa_inputs(
-    batch_size: int, num_heads: int, s_q: int, s_kv: int, head_dim: int,
-    device: str = "npu:0", dtype: torch.dtype = DTYPE
+    batch_size: int,
+    num_heads: int,
+    s_q: int,
+    s_kv: int,
+    head_dim: int,
+    device: str = "npu:0",
+    dtype: torch.dtype = DTYPE,
 ):
     """
     Generate common inputs for blitz_sparse_attention or prompt_flash_attention.
@@ -639,7 +705,9 @@ def gen_pfa_inputs(
     return q, k, v, actseqlen, actseqlenkv
 
 
-def create_attention_mask(spec: MaskSpec, device: str, emit_atten_mask: bool = True) -> AttentionMask:
+def create_attention_mask(
+    spec: MaskSpec, device: str, emit_atten_mask: bool = True
+) -> AttentionMask:
     """
     Build the block-sparse `sabi` tensor (and the matching token-level
     `pfa_atten_mask` if `emit_atten_mask`) for the batched block-sparse pattern
@@ -654,8 +722,14 @@ def create_attention_mask(spec: MaskSpec, device: str, emit_atten_mask: bool = T
 
     per_batch_head_block_indices = [
         generate_sparse_blocks_by_row_per_head(
-            spec.s_q, spec.s_kv, spec.block_size_q, spec.block_size_kv,
-            spec.sparsity, spec.h, spec.frame, BLOCK_MASK_SEED + bidx,
+            spec.s_q,
+            spec.s_kv,
+            spec.block_size_q,
+            spec.block_size_kv,
+            spec.sparsity,
+            spec.h,
+            spec.frame,
+            BLOCK_MASK_SEED + bidx,
             sort_within_row=SABI_SORTED,
         )
         for bidx in range(spec.b)
@@ -663,23 +737,35 @@ def create_attention_mask(spec: MaskSpec, device: str, emit_atten_mask: bool = T
     sabi = torch.tensor(per_batch_head_block_indices, dtype=torch.uint16, device=device)
     pfa_atten_mask = None
     if emit_atten_mask and spec.sparsity > 0:
-        pfa_atten_mask = torch.cat([
-            make_block_mask_per_head(
-                spec.s_q, spec.s_kv, spec.block_size_q, spec.block_size_kv,
-                bi, device=device,
-            )
-            for bi in per_batch_head_block_indices
-        ], dim=0)
+        pfa_atten_mask = torch.cat(
+            [
+                make_block_mask_per_head(
+                    spec.s_q,
+                    spec.s_kv,
+                    spec.block_size_q,
+                    spec.block_size_kv,
+                    bi,
+                    device=device,
+                )
+                for bi in per_batch_head_block_indices
+            ],
+            dim=0,
+        )
 
     return AttentionMask(
-        pfa_atten_mask=pfa_atten_mask, bsa_atten_mask=bsa_atten_mask, sabi=sabi,
-        sparse_mode=sm, scale=scale, pre_tokens=pre_tok, next_tokens=post_tok,
+        pfa_atten_mask=pfa_atten_mask,
+        bsa_atten_mask=bsa_atten_mask,
+        sabi=sabi,
+        sparse_mode=sm,
+        scale=scale,
+        pre_tokens=pre_tok,
+        next_tokens=post_tok,
     )
 
 
 def _run_timed(kernel_fn: Callable, input_sets: List, n_warmup: int, n_repeat: int):
     """
-    Utility function to run a kernel multiple times on the provided inputs 
+    Utility function to run a kernel multiple times on the provided inputs
     and report the average latency in microseconds. Warmup is appplied first (not timed).
     """
     for args in input_sets[:n_warmup]:
@@ -697,8 +783,16 @@ def _run_timed(kernel_fn: Callable, input_sets: List, n_warmup: int, n_repeat: i
     return start.elapsed_time(end) / n_repeat * 1000.0  # ms -> μs
 
 
-def _check_correctness(our_fn: Callable, ref_fn: Callable, b: int, h: int, s_q: int, s_kv: int, d: int, device: str
-    ) -> str:
+def _check_correctness(
+    our_fn: Callable,
+    ref_fn: Callable,
+    b: int,
+    h: int,
+    s_q: int,
+    s_kv: int,
+    d: int,
+    device: str,
+) -> str:
     """Run both implementations on shared inputs and return 'yes'/'no'."""
     q, k, v, seq, seqkv = gen_pfa_inputs(b, h, s_q, s_kv, d, device=device, dtype=DTYPE)
     out_our = our_fn(q, k, v, seq, seqkv).cpu()
@@ -712,9 +806,15 @@ def _check_correctness(our_fn: Callable, ref_fn: Callable, b: int, h: int, s_q: 
 
     equal = torch.allclose(out_our, out_ref, rtol=0.01, atol=0.001)
     if not equal and PRINT_BLOCK_EQUALITY:
-        block_allclose_map(out_our, out_ref,
-                           block_h=PRINT_HEIGHT, block_w=PRINT_WIDTH,
-                           rtol=0.01, atol=0.001, print_map=True)
+        block_allclose_map(
+            out_our,
+            out_ref,
+            block_h=PRINT_HEIGHT,
+            block_w=PRINT_WIDTH,
+            rtol=0.01,
+            atol=0.001,
+            print_map=True,
+        )
     return "yes" if equal else "no"
 
 
@@ -729,32 +829,52 @@ def _make_our_fn(mask: AttentionMask, h, block_shape):
     def fn(q, k, v, seq, seqkv):
         # Returns (attention_out, softmax_lse); benchmark only needs attention_out
         out, _ = torch_bsa.blitz_sparse_attention(
-            q, k, v,
-            sabi=mask.sabi, actual_seq_lengths=seq,
-            actual_seq_lengths_kv=seqkv, num_heads=h, num_key_value_heads=h,
-            input_layout=INPUT_LAYOUT, scale_value=mask.scale,
-            atten_mask=mask.bsa_atten_mask, sparse_mode=mask.sparse_mode,
-            pre_tokens=mask.pre_tokens, next_tokens=mask.next_tokens,
-            softmax_lse_flag=False, # False = don't comppute the 2nd LSE output
+            q,
+            k,
+            v,
+            sabi=mask.sabi,
+            actual_seq_lengths=seq,
+            actual_seq_lengths_kv=seqkv,
+            num_heads=h,
+            num_key_value_heads=h,
+            input_layout=INPUT_LAYOUT,
+            scale_value=mask.scale,
+            atten_mask=mask.bsa_atten_mask,
+            sparse_mode=mask.sparse_mode,
+            pre_tokens=mask.pre_tokens,
+            next_tokens=mask.next_tokens,
+            softmax_lse_flag=False,  # False = don't comppute the 2nd LSE output
             block_shape=list(block_shape),
         )
         return out
+
     return fn
 
 
 def _make_ref_fn(h, scale, atten_mask, run_ref_sparsity_0):
     def fn(q, k, v, seq, seqkv):
         return ref_blitz_sparse_attention_launcher(
-                torch_reference=TORCH_REFERENCE, 
-                pfa_inputs=(q, k, v, h, scale, atten_mask, INPUT_LAYOUT),
-                force_dense_sm=run_ref_sparsity_0,
-            )
+            torch_reference=TORCH_REFERENCE,
+            pfa_inputs=(q, k, v, h, scale, atten_mask, INPUT_LAYOUT),
+            force_dense_sm=run_ref_sparsity_0,
+        )
+
     return fn
 
 
 _BenchCell = namedtuple(
     "_BenchCell",
-    ["bs_label", "block_shape", "frame_for_shape", "b", "h", "s_q", "s_kv", "d", "sparsity"],
+    [
+        "bs_label",
+        "block_shape",
+        "frame_for_shape",
+        "b",
+        "h",
+        "s_q",
+        "s_kv",
+        "d",
+        "sparsity",
+    ],
 )
 _BenchCfg = namedtuple("_BenchCfg", ["run_our", "run_ref", "n_warmup", "n_repeat"])
 
@@ -763,17 +883,27 @@ def _format_frame_str(frame, sparsity):
     """Compact "(L,R,T,B)" or "-" when frame is unset or sparsity is dense."""
     if frame is None or sparsity == 0:
         return "-"
-    return (f"({frame.left_cols},{frame.right_cols},"
-            f"{frame.top_rows},{frame.bottom_rows})")
+    return (
+        f"({frame.left_cols},{frame.right_cols},{frame.top_rows},{frame.bottom_rows})"
+    )
 
 
 def _run_one_benchmark_cell(cell: _BenchCell, cfg: _BenchCfg):
     """Build the mask, time our/ref kernels, and emit one results row."""
     mask = create_attention_mask(
-        MaskSpec(b=cell.b, h=cell.h, s_q=cell.s_q, s_kv=cell.s_kv, d=cell.d,
-                 block_size_q=cell.block_shape[0], block_size_kv=cell.block_shape[1],
-                 sparsity=cell.sparsity, frame=cell.frame_for_shape),
-        device=DEVICE, emit_atten_mask=cfg.run_ref,
+        MaskSpec(
+            b=cell.b,
+            h=cell.h,
+            s_q=cell.s_q,
+            s_kv=cell.s_kv,
+            d=cell.d,
+            block_size_q=cell.block_shape[0],
+            block_size_kv=cell.block_shape[1],
+            sparsity=cell.sparsity,
+            frame=cell.frame_for_shape,
+        ),
+        device=DEVICE,
+        emit_atten_mask=cfg.run_ref,
     )
     if PRINT_MASK and mask.pfa_atten_mask is not None:
         logger.info(mask.pfa_atten_mask.int())
@@ -787,14 +917,30 @@ def _run_one_benchmark_cell(cell: _BenchCell, cfg: _BenchCfg):
     are_equal_ref = "N/A"
     if cfg.run_our and cfg.run_ref or run_ref_sparsity_0:
         are_equal_ref = _check_correctness(
-            our_fn, ref_fn, cell.b, cell.h, cell.s_q, cell.s_kv, cell.d, device=DEVICE,
+            our_fn,
+            ref_fn,
+            cell.b,
+            cell.h,
+            cell.s_q,
+            cell.s_kv,
+            cell.d,
+            device=DEVICE,
         )
 
-    inputs = [gen_pfa_inputs(cell.b, cell.h, cell.s_q, cell.s_kv, cell.d, device=DEVICE, dtype=DTYPE)
-              for _ in range(cfg.n_warmup + cfg.n_repeat)]
-    our_duration = _run_timed(our_fn, inputs, cfg.n_warmup, cfg.n_repeat) if cfg.run_our else None
-    ref_duration = (_run_timed(ref_fn, inputs, cfg.n_warmup, cfg.n_repeat)
-                    if cfg.run_ref or run_ref_sparsity_0 else None)
+    inputs = [
+        gen_pfa_inputs(
+            cell.b, cell.h, cell.s_q, cell.s_kv, cell.d, device=DEVICE, dtype=DTYPE
+        )
+        for _ in range(cfg.n_warmup + cfg.n_repeat)
+    ]
+    our_duration = (
+        _run_timed(our_fn, inputs, cfg.n_warmup, cfg.n_repeat) if cfg.run_our else None
+    )
+    ref_duration = (
+        _run_timed(ref_fn, inputs, cfg.n_warmup, cfg.n_repeat)
+        if cfg.run_ref or run_ref_sparsity_0
+        else None
+    )
 
     frame_str = _format_frame_str(cell.frame_for_shape, cell.sparsity)
     logger.info(
@@ -805,8 +951,9 @@ def _run_one_benchmark_cell(cell: _BenchCell, cfg: _BenchCfg):
 
 
 def benchmark_blitz_sparse_attention():
-    cfg = _BenchCfg(run_our=True, run_ref=RUN_REFERENCE,
-                    n_warmup=N_WARMUP, n_repeat=N_REPEATS)
+    cfg = _BenchCfg(
+        run_our=True, run_ref=RUN_REFERENCE, n_warmup=N_WARMUP, n_repeat=N_REPEATS
+    )
     if not cfg.run_our and not cfg.run_ref:
         logger.info("Nothing to run, must set run_our=True or run_ref=True")
         return
@@ -826,11 +973,21 @@ def benchmark_blitz_sparse_attention():
         # Scale the frame per (BLOCK_SIZE_Q, BLOCK_SIZE_KV) so the forced-token
         # footprint stays comparable across block shapes.
         frame_for_shape = FRAMES_BY_BLOCK_SHAPE.get(block_shape, None)
-        for b, h, s_kv, d, sparsity in itertools.product(B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS):
+        for b, h, s_kv, d, sparsity in itertools.product(
+            B_VALS, H_VALS, S_VALS, D_VALS, SPARSITY_VALS
+        ):
             _run_one_benchmark_cell(
-                _BenchCell(bs_label=f"{bs_q}x{bs_kv}", block_shape=block_shape,
-                           frame_for_shape=frame_for_shape,
-                           b=b, h=h, s_q=s_kv, s_kv=s_kv, d=d, sparsity=sparsity),
+                _BenchCell(
+                    bs_label=f"{bs_q}x{bs_kv}",
+                    block_shape=block_shape,
+                    frame_for_shape=frame_for_shape,
+                    b=b,
+                    h=h,
+                    s_q=s_kv,
+                    s_kv=s_kv,
+                    d=d,
+                    sparsity=sparsity,
+                ),
                 cfg,
             )
 

@@ -56,7 +56,7 @@ public:
     {}
 
     template <class Element>
-    HOST_DEVICE static RowMajor MakeLayoutInUb(MatrixCoord const &shape)
+    HOST_DEVICE static RowMajor MakeLayoutInUb(MatrixCoord const& shape)
     {
         return RowMajor(shape.row(), shape.column(), RoundUp<BYTE_PER_C0 / sizeof(Element)>(shape.column()));
     }
@@ -64,14 +64,14 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const &coord) const
+    LongIndex GetOffset(MatrixCoord const& coord) const
     {
         return LongIndex(coord.row()) * stride_[0] + LongIndex(coord.column());
     }
 
     /// Returns the layout of a tile_common.
     HOST_DEVICE
-    RowMajor GetTileLayout(MatrixCoord const &tileShape) const
+    RowMajor GetTileLayout(MatrixCoord const& tileShape) const
     {
         return RowMajor(tileShape, stride());
     }
@@ -83,7 +83,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -95,7 +95,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -107,7 +107,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -119,7 +119,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }
@@ -170,14 +170,14 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const &coord) const
+    LongIndex GetOffset(MatrixCoord const& coord) const
     {
         return LongIndex(coord.row()) + LongIndex(coord.column()) * stride_[1];
     }
 
     /// Returns the layout of a tile_common.
     HOST_DEVICE
-    ColumnMajor GetTileLayout(MatrixCoord const &tileShape) const
+    ColumnMajor GetTileLayout(MatrixCoord const& tileShape) const
     {
         return ColumnMajor(tileShape, stride());
     }
@@ -189,7 +189,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -201,7 +201,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -213,7 +213,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -225,7 +225,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }
@@ -298,7 +298,7 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const &coord) const
+    LongIndex GetOffset(MatrixCoord const& coord) const
     {
         return LongIndex(coord.row()) / shape_[0] * stride_[1] + LongIndex(coord.column()) / shape_[2] * stride_[3] +
                (LongIndex(coord.row()) % shape_[0]) * stride_[0] + (LongIndex(coord.column()) % shape_[2]) * stride_[2];
@@ -306,7 +306,7 @@ public:
 
     /// Returns the layout of a tile_common.
     HOST_DEVICE
-    nZ GetTileLayout(MatrixCoord const &tileOriShape) const
+    nZ GetTileLayout(MatrixCoord const& tileOriShape) const
     {
         auto tileShape = MakeCoord(shape(0), CeilDiv(tileOriShape.row(), shape(0)), shape(2),
                                    CeilDiv(tileOriShape.column(), shape(2)));
@@ -322,7 +322,7 @@ public:
 
     /// Returns the origin shape of the layout
     HOST_DEVICE
-    typename OrgShape::Index &orgShape(int idx)
+    typename OrgShape::Index& orgShape(int idx)
     {
         return orgShape_[idx];
     }
@@ -334,7 +334,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -346,7 +346,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -358,7 +358,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -370,7 +370,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }
@@ -444,7 +444,7 @@ public:
     }
 
     HOST_DEVICE
-    static zN MakeLayoutInL0C(MatrixCoord const &shape)
+    static zN MakeLayoutInL0C(MatrixCoord const& shape)
     {
         return zN(shape.row(), shape.column(), C0_NUM_PER_FRACTAL, CeilDiv<C0_NUM_PER_FRACTAL>(shape.row()),
                   C0_NUM_PER_FRACTAL, CeilDiv<C0_NUM_PER_FRACTAL>(shape.column()), C0_NUM_PER_FRACTAL,
@@ -455,7 +455,7 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const &coord) const
+    LongIndex GetOffset(MatrixCoord const& coord) const
     {
         return LongIndex(coord.row()) / shape_[0] * stride_[1] + LongIndex(coord.column()) / shape_[2] * stride_[3] +
                (LongIndex(coord.row()) % shape_[0]) * stride_[0] + (LongIndex(coord.column()) % shape_[2]) * stride_[2];
@@ -463,7 +463,7 @@ public:
 
     /// Returns the layout of a tile_common.
     HOST_DEVICE
-    zN GetTileLayout(MatrixCoord const &tileOriShape) const
+    zN GetTileLayout(MatrixCoord const& tileOriShape) const
     {
         auto tileShape = MakeCoord(shape(0), CeilDiv(tileOriShape.row(), shape(0)), shape(2),
                                    CeilDiv(tileOriShape.column(), shape(2)));
@@ -479,7 +479,7 @@ public:
 
     /// Returns the origin shape of the layout
     HOST_DEVICE
-    typename OrgShape::Index &orgShape(int idx)
+    typename OrgShape::Index& orgShape(int idx)
     {
         return orgShape_[idx];
     }
@@ -491,7 +491,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -503,7 +503,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -515,7 +515,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -527,7 +527,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }
@@ -603,7 +603,7 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const &coord) const
+    LongIndex GetOffset(MatrixCoord const& coord) const
     {
         return LongIndex(coord.row()) / shape_[0] * stride_[1] + LongIndex(coord.column()) / shape_[2] * stride_[3];
     }
@@ -617,7 +617,7 @@ public:
 
     /// Returns the origin shape of the layout
     HOST_DEVICE
-    typename OrgShape::Index &orgShape(int idx)
+    typename OrgShape::Index& orgShape(int idx)
     {
         return orgShape_[idx];
     }
@@ -629,7 +629,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -641,7 +641,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -653,7 +653,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -665,7 +665,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }
@@ -717,7 +717,7 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const &coord) const
+    LongIndex GetOffset(MatrixCoord const& coord) const
     {
         LongIndex blockRows = (LongIndex)shape_[0];
         LongIndex blockCols = (LongIndex)shape_[2];
@@ -726,7 +726,7 @@ public:
     }
 
     HOST_DEVICE
-    PaddingRowMajor GetTileLayout(MatrixCoord const &tileShape) const
+    PaddingRowMajor GetTileLayout(MatrixCoord const& tileShape) const
     {
         return PaddingRowMajor(tileShape.row(), tileShape.column(), shape_[0], shape_[2]);
     }
@@ -740,7 +740,7 @@ public:
 
     /// Returns the origin shape of the layout
     HOST_DEVICE
-    typename OrgShape::Index &orgShape(int idx)
+    typename OrgShape::Index& orgShape(int idx)
     {
         return orgShape_[idx];
     }
@@ -752,7 +752,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -764,7 +764,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -776,7 +776,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -788,7 +788,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }
@@ -840,7 +840,7 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const &coord) const
+    LongIndex GetOffset(MatrixCoord const& coord) const
     {
         LongIndex blockRows = (LongIndex)shape_[0];
         LongIndex blockCols = (LongIndex)shape_[2];
@@ -849,7 +849,7 @@ public:
     }
 
     HOST_DEVICE
-    PaddingColumnMajor GetTileLayout(MatrixCoord const &tileShape) const
+    PaddingColumnMajor GetTileLayout(MatrixCoord const& tileShape) const
     {
         return PaddingColumnMajor(tileShape.row(), tileShape.column(), shape_[0], shape_[2]);
     }
@@ -863,7 +863,7 @@ public:
 
     /// Returns the origin shape of the layout
     HOST_DEVICE
-    typename OrgShape::Index &orgShape(int idx)
+    typename OrgShape::Index& orgShape(int idx)
     {
         return orgShape_[idx];
     }
@@ -875,7 +875,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -887,7 +887,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -899,7 +899,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -911,7 +911,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }
@@ -993,7 +993,7 @@ public:
     /// Returns the offset of a coordinate in linear memory.
     /// Assumes coordinate has convention (row, column)
     HOST_DEVICE
-    LongIndex GetOffset(MatrixCoord const &coord) const
+    LongIndex GetOffset(MatrixCoord const& coord) const
     {
         return LongIndex(coord.row()) / shape_[0] * stride_[1] + LongIndex(coord.column()) / shape_[2] * stride_[3];
     }
@@ -1007,7 +1007,7 @@ public:
 
     /// Returns the origin shape of the layout
     HOST_DEVICE
-    typename OrgShape::Index &orgShape(int idx)
+    typename OrgShape::Index& orgShape(int idx)
     {
         return orgShape_[idx];
     }
@@ -1019,7 +1019,7 @@ public:
     }
 
     HOST_DEVICE
-    Shape &shape()
+    Shape& shape()
     {
         return shape_;
     }
@@ -1031,7 +1031,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Shape::Index &shape(int idx)
+    typename Shape::Index& shape(int idx)
     {
         return shape_[idx];
     }
@@ -1043,7 +1043,7 @@ public:
     }
 
     HOST_DEVICE
-    Stride &stride()
+    Stride& stride()
     {
         return stride_;
     }
@@ -1055,7 +1055,7 @@ public:
     }
 
     HOST_DEVICE
-    typename Stride::Index &stride(int idx)
+    typename Stride::Index& stride(int idx)
     {
         return stride_[idx];
     }

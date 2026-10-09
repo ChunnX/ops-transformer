@@ -28,7 +28,7 @@ namespace NsMatmulSwiglu {
 using namespace AscendC;
 using namespace matmul;
 
-constexpr int32_t NUM_BUFFER = 2;  // 输入/输出队列双缓冲深度
+constexpr int32_t NUM_BUFFER = 2; // 输入/输出队列双缓冲深度
 
 // xType: 输入/输出数据类型; cType: matmul 累加与中间数据类型(固定 fp32);
 // TransposeW: weight 是否转置(编译期常量, 由 TilingKey 选择, 避免运行时判断)
@@ -40,7 +40,7 @@ public:
     using CTypeMm = MatmulType<TPosition::GM, CubeFormat::ND, cType>;
     using BiasType = MatmulType<TPosition::GM, CubeFormat::ND, cType>;
 
-    Matmul<AType, BType, CTypeMm, BiasType> mm;  // 单 matmul: x[M,K] @ weight[K,2N] -> [M,2N]
+    Matmul<AType, BType, CTypeMm, BiasType> mm; // 单 matmul: x[M,K] @ weight[K,2N] -> [M,2N]
     TPipe pipe;
 
     __aicore__ inline MatmulSwigluImpl() {}
@@ -53,9 +53,9 @@ public:
         m_ = static_cast<uint64_t>(tilingData->mmTiling.M);
         k_ = static_cast<uint64_t>(tilingData->mmTiling.Ka);
         twoN_ = static_cast<uint64_t>(tilingData->mmTiling.N);
-        n_ = twoN_ / 2;  // 单边宽度 = 2N / 2
+        n_ = twoN_ / 2; // 单边宽度 = 2N / 2
         hasBias_ = (tilingData->hasBias == 1U);
-        tileN_ = tilingData->tileN;  // 行内分块列数, 保证单块 UB 不溢出
+        tileN_ = tilingData->tileN; // 行内分块列数, 保证单块 UB 不溢出
 
         xGm_.SetGlobalBuffer((__gm__ xType*)x, m_ * k_);
         wGm_.SetGlobalBuffer((__gm__ xType*)weight, k_ * twoN_);
@@ -63,7 +63,7 @@ public:
             biasGm_.SetGlobalBuffer((__gm__ cType*)bias, twoN_);
         }
         yGm_.SetGlobalBuffer((__gm__ xType*)y, m_ * n_);
-        cGm_.SetGlobalBuffer((__gm__ cType*)userWs, m_ * twoN_);  // [M, 2N] fp32 中间
+        cGm_.SetGlobalBuffer((__gm__ cType*)userWs, m_ * twoN_); // [M, 2N] fp32 中间
 
         // 向量阶段每次处理一块 tileN 列(而非整行), 避免大 N 时 UB 溢出:
         // gate/up/sig(fp32) + y(xType), 缓冲按 tileN 开。
@@ -84,7 +84,7 @@ public:
         mm.IterateAll(cGm_);
         mm.End();
 
-        SyncAll();  // 跨核屏障: 确保 matmul(Cube)写完 cGm, 向量核再读
+        SyncAll(); // 跨核屏障: 确保 matmul(Cube)写完 cGm, 向量核再读
 
         // ---- Phase 2: 向量 SwiGLU, 按行切分到各核 ----
         const int64_t coreNum = GetBlockNum();
@@ -132,9 +132,9 @@ private:
         const int32_t n = static_cast<int32_t>(len);
         Sigmoid(sig, gate, n);
         PipeBarrier<PIPE_V>();
-        Mul(gate, gate, sig, n);   // SiLU(gate) = gate * sigmoid(gate)
+        Mul(gate, gate, sig, n); // SiLU(gate) = gate * sigmoid(gate)
         PipeBarrier<PIPE_V>();
-        Mul(gate, gate, up, n);    // * up
+        Mul(gate, gate, up, n); // * up
         PipeBarrier<PIPE_V>();
 
         LocalTensor<xType> yUb = outQueY_.AllocTensor<xType>();
@@ -176,5 +176,5 @@ private:
     bool hasBias_ = false;
 };
 
-}  // namespace NsMatmulSwiglu
-#endif  // MATMUL_SWIGLU_IMPL_HPP
+} // namespace NsMatmulSwiglu
+#endif // MATMUL_SWIGLU_IMPL_HPP

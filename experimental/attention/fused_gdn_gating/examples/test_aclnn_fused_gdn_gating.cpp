@@ -32,7 +32,7 @@
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -41,7 +41,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
+void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<float> resultData(size, 0);
@@ -53,7 +53,7 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
     }
 }
 
-void PrintOutHalfResult(std::vector<int64_t> &shape, void **deviceAddr)
+void PrintOutHalfResult(std::vector<int64_t>& shape, void** deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<uint16_t> resultData(size, 0);
@@ -65,7 +65,7 @@ void PrintOutHalfResult(std::vector<int64_t> &shape, void **deviceAddr)
     }
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
@@ -77,8 +77,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -127,19 +127,19 @@ int main()
     std::vector<int64_t> gShape = {1, batch, numHeads};
     std::vector<int64_t> betaOutputShape = {1, batch, numHeads};
 
-    void *aLogDeviceAddr = nullptr;
-    void *aDeviceAddr = nullptr;
-    void *bDeviceAddr = nullptr;
-    void *dtBiasDeviceAddr = nullptr;
-    void *gDeviceAddr = nullptr;
-    void *betaOutputDeviceAddr = nullptr;
+    void* aLogDeviceAddr = nullptr;
+    void* aDeviceAddr = nullptr;
+    void* bDeviceAddr = nullptr;
+    void* dtBiasDeviceAddr = nullptr;
+    void* gDeviceAddr = nullptr;
+    void* betaOutputDeviceAddr = nullptr;
 
-    aclTensor *aLog = nullptr;
-    aclTensor *a = nullptr;
-    aclTensor *b = nullptr;
-    aclTensor *dtBias = nullptr;
-    aclTensor *g = nullptr;
-    aclTensor *betaOutput = nullptr;
+    aclTensor* aLog = nullptr;
+    aclTensor* a = nullptr;
+    aclTensor* b = nullptr;
+    aclTensor* dtBias = nullptr;
+    aclTensor* g = nullptr;
+    aclTensor* betaOutput = nullptr;
 
     std::vector<uint16_t> aLogHostData(numHeads, FloatToHalf(0.5f));
     std::vector<uint16_t> aHostData(batch * numHeads, FloatToHalf(0.3f));
@@ -164,14 +164,14 @@ int main()
 
     // 3. Call aclnnFusedGdnGatingGetWorkspaceSize
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor;
+    aclOpExecutor* executor;
     ret =
         aclnnFusedGdnGatingGetWorkspaceSize(aLog, a, b, dtBias, 1.0f, 20.0f, g, betaOutput, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFusedGdnGatingGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     // 4. Allocate workspace
-    void *workspaceAddr = nullptr;
+    void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);

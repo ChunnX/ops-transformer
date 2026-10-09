@@ -39,16 +39,10 @@ extern "C" {
 
 namespace {
 
-static const std::initializer_list<DataType> ASCEND_910_DTYPE_SUPPORT_LIST = {
-    DataType::DT_FLOAT16,
-    DataType::DT_FLOAT
-};
+static const std::initializer_list<DataType> ASCEND_910_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT16, DataType::DT_FLOAT};
 
-static const std::initializer_list<DataType> ASCEND_910B_DTYPE_SUPPORT_LIST = {
-    DataType::DT_FLOAT16,
-    DataType::DT_FLOAT,
-    DataType::DT_BF16
-};
+static const std::initializer_list<DataType> ASCEND_910B_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT16, DataType::DT_FLOAT,
+                                                                               DataType::DT_BF16};
 
 static const std::initializer_list<DataType>& GetDtypeSupportList()
 {
@@ -59,11 +53,8 @@ static const std::initializer_list<DataType>& GetDtypeSupportList()
     return ASCEND_910_DTYPE_SUPPORT_LIST;
 }
 
-static bool CheckNotNull(
-    const aclTensor* x,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    const aclTensor* y)
+static bool CheckNotNull(const aclTensor* x, const aclTensor* gateUpWeight, const aclTensor* downWeight,
+                         const aclTensor* y)
 {
     OP_CHECK_NULL(x, return false);
     OP_CHECK_NULL(gateUpWeight, return false);
@@ -72,11 +63,8 @@ static bool CheckNotNull(
     return true;
 }
 
-static bool CheckDtypeValid(
-    const aclTensor* x,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    const aclTensor* y)
+static bool CheckDtypeValid(const aclTensor* x, const aclTensor* gateUpWeight, const aclTensor* downWeight,
+                            const aclTensor* y)
 {
     auto supportList = GetDtypeSupportList();
 
@@ -93,7 +81,7 @@ static bool CheckDtypeValid(
 }
 
 static bool CheckShapeRank(const aclTensor* x, const aclTensor* gateUpWeight, const aclTensor* downWeight,
-    const aclTensor* y)
+                           const aclTensor* y)
 {
     OP_CHECK_MAX_DIM(x, MAX_SUPPORT_DIMS_NUMS, return false);
     OP_CHECK_MAX_DIM(gateUpWeight, MAX_SUPPORT_DIMS_NUMS, return false);
@@ -113,14 +101,12 @@ static bool CheckShapeRank(const aclTensor* x, const aclTensor* gateUpWeight, co
     }
 
     if (gateUpShape.GetDimNum() != 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gate_up_weight must be 2D, but got dim num %zu.",
-                gateUpShape.GetDimNum());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gate_up_weight must be 2D, but got dim num %zu.", gateUpShape.GetDimNum());
         return false;
     }
 
     if (downShape.GetDimNum() != 2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "down_weight must be 2D, but got dim num %zu.",
-                downShape.GetDimNum());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "down_weight must be 2D, but got dim num %zu.", downShape.GetDimNum());
         return false;
     }
 
@@ -165,21 +151,20 @@ static bool CheckWeightShapeRelation(const aclTensor* x, const aclTensor* gateUp
     const int64_t downIn = downShape.GetDim(0);
 
     if (gateUpIn != hiddenSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "hidden mismatch, x hidden:%ld gate_up_weight dim0:%ld.", hiddenSize, gateUpIn);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "hidden mismatch, x hidden:%ld gate_up_weight dim0:%ld.", hiddenSize,
+                gateUpIn);
         return false;
     }
 
     if (gateUpSize % 2 != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "gate_up_weight dim1 must be divisible by 2, but got %ld.", gateUpSize);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gate_up_weight dim1 must be divisible by 2, but got %ld.", gateUpSize);
         return false;
     }
 
     const int64_t intermediateSize = gateUpSize / 2;
     if (downIn != intermediateSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "down_weight dim0:%ld must equal intermediate size:%ld.", downIn, intermediateSize);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "down_weight dim0:%ld must equal intermediate size:%ld.", downIn,
+                intermediateSize);
         return false;
     }
     return true;
@@ -196,17 +181,15 @@ static bool CheckOutputShape(const aclTensor* x, const aclTensor* downWeight, co
 
     for (int64_t i = 0; i + 1 < xDimNum; ++i) {
         if (yShape.GetDim(i) != xShape.GetDim(i)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "y dim[%ld]=%ld must equal x dim[%ld]=%ld.",
-                    i, yShape.GetDim(i), i, xShape.GetDim(i));
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "y dim[%ld]=%ld must equal x dim[%ld]=%ld.", i, yShape.GetDim(i), i,
+                    xShape.GetDim(i));
             return false;
         }
     }
 
     if (yShape.GetDim(yDimNum - 1) != outSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "y last dim:%ld must equal down_weight dim1:%ld.",
-                yShape.GetDim(yDimNum - 1), outSize);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "y last dim:%ld must equal down_weight dim1:%ld.", yShape.GetDim(yDimNum - 1),
+                outSize);
         return false;
     }
 
@@ -214,12 +197,10 @@ static bool CheckOutputShape(const aclTensor* x, const aclTensor* downWeight, co
 }
 
 static bool CheckShape(const aclTensor* x, const aclTensor* gateUpWeight, const aclTensor* downWeight,
-    const aclTensor* y)
+                       const aclTensor* y)
 {
-    return CheckShapeRank(x, gateUpWeight, downWeight, y) &&
-        CheckPositiveDims(x, gateUpWeight, downWeight) &&
-        CheckWeightShapeRelation(x, gateUpWeight, downWeight) &&
-        CheckOutputShape(x, downWeight, y);
+    return CheckShapeRank(x, gateUpWeight, downWeight, y) && CheckPositiveDims(x, gateUpWeight, downWeight) &&
+           CheckWeightShapeRelation(x, gateUpWeight, downWeight) && CheckOutputShape(x, downWeight, y);
 }
 
 static bool CheckCubeMathType(int64_t cubeMathType)
@@ -231,12 +212,8 @@ static bool CheckCubeMathType(int64_t cubeMathType)
     return true;
 }
 
-static aclnnStatus CheckParams(
-    const aclTensor* x,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    int64_t cubeMathType,
-    const aclTensor* y)
+static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* gateUpWeight, const aclTensor* downWeight,
+                               int64_t cubeMathType, const aclTensor* y)
 {
     CHECK_RET(CheckNotNull(x, gateUpWeight, downWeight, y), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValid(x, gateUpWeight, downWeight, y), ACLNN_ERR_PARAM_INVALID);
@@ -252,16 +229,11 @@ static const aclTensor* MaybeContiguous(const aclTensor* input, aclOpExecutor* e
     return contiguousInput;
 }
 
-}  // namespace
+} // namespace
 
-aclnnStatus aclnnSwigluGatedMlpGetWorkspaceSize(
-    const aclTensor* x,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    int64_t cubeMathType,
-    aclTensor* y,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+aclnnStatus aclnnSwigluGatedMlpGetWorkspaceSize(const aclTensor* x, const aclTensor* gateUpWeight,
+                                                const aclTensor* downWeight, int64_t cubeMathType, aclTensor* y,
+                                                uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnSwigluGatedMlp, DFX_IN(x, gateUpWeight, downWeight, cubeMathType), DFX_OUT(y));
 
@@ -288,8 +260,7 @@ aclnnStatus aclnnSwigluGatedMlpGetWorkspaceSize(
     const aclTensor* downExec = MaybeContiguous(downWeight, uniqueExecutor.get());
     CHECK_RET(downExec != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-    const aclTensor* nativeOut =
-        l0op::SwigluGatedMlp(xExec, gateUpExec, downExec, cubeMathType, uniqueExecutor.get());
+    const aclTensor* nativeOut = l0op::SwigluGatedMlp(xExec, gateUpExec, downExec, cubeMathType, uniqueExecutor.get());
     CHECK_RET(nativeOut != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto shapedOut = uniqueExecutor->CreateView(nativeOut, y->GetViewShape(), nativeOut->GetViewOffset());
@@ -303,11 +274,7 @@ aclnnStatus aclnnSwigluGatedMlpGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnSwigluGatedMlp(
-    void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream stream)
+aclnnStatus aclnnSwigluGatedMlp(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnSwigluGatedMlp);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

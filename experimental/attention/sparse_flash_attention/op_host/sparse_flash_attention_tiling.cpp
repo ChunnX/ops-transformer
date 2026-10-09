@@ -121,7 +121,7 @@ static std::string SFADataTypeToSerialString(ge::DataType type)
         return "UNDEFINED";
     }
 }
-string SFATensorDesc2String(const gert::StorageShape *shape, const gert::CompileTimeTensorDesc *tensor)
+string SFATensorDesc2String(const gert::StorageShape* shape, const gert::CompileTimeTensorDesc* tensor)
 {
     if (shape == nullptr || tensor == nullptr) {
         return "nil ";
@@ -138,7 +138,7 @@ string SFATensorDesc2String(const gert::StorageShape *shape, const gert::Compile
     oss << "(ori_format: " << ge::TypeUtils::FormatToAscendString(tensor->GetOriginFormat()).GetString() << ") ";
     return oss.str();
 }
-string SFADebugTilingContext(const gert::TilingContext *context)
+string SFADebugTilingContext(const gert::TilingContext* context)
 {
     std::ostringstream oss;
     for (size_t i = 0; i < context->GetComputeNodeInfo()->GetInputsNum(); ++i) {
@@ -180,11 +180,11 @@ ge::graphStatus SFAMlaTiling::SetWorkspaceSize(uint64_t workspaceSize) const
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "workSpaceSize got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFAMlaTiling::SetTilingData(TilingDef &tilingData) const
+ge::graphStatus SFAMlaTiling::SetTilingData(TilingDef& tilingData) const
 {
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "RawTilingData got from GE context is nullptr."),
@@ -396,7 +396,7 @@ void SFAMlaTiling::CalcBlockDim()
     blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     OP_LOGI(sfaInfo_->opName, "SFA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
 }
-ge::graphStatus SFAMlaTiling::DoOpTiling(SFATilingInfo *sfaInfo)
+ge::graphStatus SFAMlaTiling::DoOpTiling(SFATilingInfo* sfaInfo)
 {
     sfaInfo_ = sfaInfo;
     if (GetPlatformInfo() != ge::GRAPH_SUCCESS) {
@@ -414,7 +414,7 @@ ge::graphStatus SFAMlaTiling::DoOpTiling(SFATilingInfo *sfaInfo)
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus TilingSparseFlashAttention(gert::TilingContext *context)
+ge::graphStatus TilingSparseFlashAttention(gert::TilingContext* context)
 {
     SFATilingInfo sfaInfo;
     SFAInfoParser sfaInfoParser(context);
@@ -428,13 +428,13 @@ ge::graphStatus TilingSparseFlashAttention(gert::TilingContext *context)
     SFAMlaTiling tiling(context);
     return tiling.DoOpTiling(&sfaInfo);
 }
-ge::graphStatus TilingPrepareForSparseFlashAttention(gert::TilingParseContext *const context)
+ge::graphStatus TilingPrepareForSparseFlashAttention(gert::TilingParseContext* const context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::GetExpectedShape(gert::Shape &shapeExpected, const SFATilingShapeCompareParam &param,
-                                                 const SFALayout &layout) const
+ge::graphStatus SFATilingCheck::GetExpectedShape(gert::Shape& shapeExpected, const SFATilingShapeCompareParam& param,
+                                                 const SFALayout& layout) const
 {
     if (layout == SFALayout::BSND) {
         shapeExpected = gert::Shape({param.B, param.S, param.N, param.D});
@@ -448,8 +448,8 @@ ge::graphStatus SFATilingCheck::GetExpectedShape(gert::Shape &shapeExpected, con
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CompareShape(SFATilingShapeCompareParam &param, const gert::Shape &shape,
-                                             const SFALayout &layout, const std::string &name) const
+ge::graphStatus SFATilingCheck::CompareShape(SFATilingShapeCompareParam& param, const gert::Shape& shape,
+                                             const SFALayout& layout, const std::string& name) const
 {
     gert::Shape shapeExpected;
     if (GetExpectedShape(shapeExpected, param, layout) != ge::GRAPH_SUCCESS) {
@@ -470,8 +470,8 @@ ge::graphStatus SFATilingCheck::CompareShape(SFATilingShapeCompareParam &param, 
     }
     return ge::GRAPH_SUCCESS;
 }
-void SFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-                                          const ge::DataType &actualDtype, const std::string &name) const
+void SFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList,
+                                          const ge::DataType& actualDtype, const std::string& name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -483,15 +483,15 @@ void SFATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expec
     OP_LOGE(opName_, "Tensor %s only supports dtype %s, but got %s", name.c_str(), oss.str().c_str(),
             SFADataTypeToSerialString(actualDtype).c_str());
 }
-ge::graphStatus SFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-                                                  const std::string &name) const
+ge::graphStatus SFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc,
+                                                  const std::string& name) const
 {
     if (desc != nullptr) {
-        const auto &it = DTYPE_SUPPORT_MAP.find(name);
+        const auto& it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
                     OP_LOGE(opName_, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
                     return ge::GRAPH_FAILED);
-        auto &expectDtypeList = it->second;
+        auto& expectDtypeList = it->second;
         OP_CHECK_IF(
             std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end(),
             LogErrorDtypeSupport(expectDtypeList, desc->GetDataType(), name), return ge::GRAPH_FAILED);
@@ -499,8 +499,8 @@ ge::graphStatus SFATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorD
     return ge::GRAPH_SUCCESS;
 }
 template <typename T>
-void SFATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                           const std::string &name, const std::string subName) const
+void SFATilingCheck::LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                           const std::string& name, const std::string subName) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
@@ -513,15 +513,15 @@ void SFATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberLis
             std::to_string(actualValue).c_str());
 }
 template <typename T>
-void SFATilingCheck::LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                           const std::string &name) const
+void SFATilingCheck::LogErrorDimNumSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                           const std::string& name) const
 {
     LogErrorNumberSupport(expectNumberList, actualValue, name, "dimension");
 }
-ge::graphStatus SFATilingCheck::CheckDimNumInLayoutSupport(const SFALayout &layout, const gert::StorageShape *shape,
-                                                           const std::string &name) const
+ge::graphStatus SFATilingCheck::CheckDimNumInLayoutSupport(const SFALayout& layout, const gert::StorageShape* shape,
+                                                           const std::string& name) const
 {
-    const auto &dimIt = SFA_LAYOUT_DIM_MAP.find(layout);
+    const auto& dimIt = SFA_LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
                 OP_LOGE(opName_, "When layout is %s, %s dimension should be %zu, but it's %zu",
                         SFALayoutToSerialString(layout).c_str(), name.c_str(), dimIt->second,
@@ -529,9 +529,9 @@ ge::graphStatus SFATilingCheck::CheckDimNumInLayoutSupport(const SFALayout &layo
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CheckDimNumSupport(const gert::StorageShape *shape,
-                                                   const std::vector<size_t> &expectDimNumList,
-                                                   const std::string &name) const
+ge::graphStatus SFATilingCheck::CheckDimNumSupport(const gert::StorageShape* shape,
+                                                   const std::vector<size_t>& expectDimNumList,
+                                                   const std::string& name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -543,8 +543,8 @@ ge::graphStatus SFATilingCheck::CheckDimNumSupport(const gert::StorageShape *sha
     }
     return ge::GRAPH_SUCCESS;
 }
-void SFATilingCheck::LogErrorLayoutSupport(const std::vector<SFALayout> &expectLayoutList,
-                                           const SFALayout &actualLayout, const std::string &name) const
+void SFATilingCheck::LogErrorLayoutSupport(const std::vector<SFALayout>& expectLayoutList,
+                                           const SFALayout& actualLayout, const std::string& name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectLayoutList.size(); ++i) {
@@ -556,13 +556,13 @@ void SFATilingCheck::LogErrorLayoutSupport(const std::vector<SFALayout> &expectL
     OP_LOGE(opName_, "Tensor %s only supports layout %s, but got %s", name.c_str(), oss.str().c_str(),
             SFALayoutToSerialString(actualLayout).c_str());
 }
-ge::graphStatus SFATilingCheck::CheckLayoutSupport(const SFALayout &actualLayout, const std::string &name) const
+ge::graphStatus SFATilingCheck::CheckLayoutSupport(const SFALayout& actualLayout, const std::string& name) const
 {
-    const auto &it = LAYOUT_SUPPORT_MAP.find(name);
+    const auto& it = LAYOUT_SUPPORT_MAP.find(name);
     OP_CHECK_IF(it == LAYOUT_SUPPORT_MAP.end(),
                 OP_LOGE(opName_, "%s layout support list should be specify in LAYOUT_SUPPORT_MAP", name.c_str()),
                 return ge::GRAPH_FAILED);
-    auto &expectLayoutList = it->second;
+    auto& expectLayoutList = it->second;
     OP_CHECK_IF(std::find(expectLayoutList.begin(), expectLayoutList.end(), actualLayout) == expectLayoutList.end(),
                 LogErrorLayoutSupport(expectLayoutList, actualLayout, name), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -644,36 +644,36 @@ ge::graphStatus SFATilingCheck::CheckRopeExistence()
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CheckExists(const void *pointer, const std::string &name) const
+ge::graphStatus SFATilingCheck::CheckExists(const void* pointer, const std::string& name) const
 {
     OP_CHECK_IF(pointer == nullptr, OP_LOGE(opName_, "%s should not be null", name.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CheckNotExists(const void *pointer, const std::string &name) const
+ge::graphStatus SFATilingCheck::CheckNotExists(const void* pointer, const std::string& name) const
 {
     OP_CHECK_IF(pointer != nullptr, OP_LOGE(opName_, "%s should be null", name.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CheckExistsByMap(const std::map<std::string, const void *> &paramMap) const
+ge::graphStatus SFATilingCheck::CheckExistsByMap(const std::map<std::string, const void*>& paramMap) const
 {
-    for (const auto &kv : paramMap) {
+    for (const auto& kv : paramMap) {
         if (CheckExists(kv.second, kv.first) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CheckNotExistsByMap(const std::map<std::string, const void *> &paramMap) const
+ge::graphStatus SFATilingCheck::CheckNotExistsByMap(const std::map<std::string, const void*>& paramMap) const
 {
-    for (const auto &kv : paramMap) {
+    for (const auto& kv : paramMap) {
         if (CheckNotExists(kv.second, kv.first) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CheckExistenceByMap(std::map<std::string, const void *> &existMap,
-                                                    std::map<std::string, const void *> &notExistMap) const
+ge::graphStatus SFATilingCheck::CheckExistenceByMap(std::map<std::string, const void*>& existMap,
+                                                    std::map<std::string, const void*>& notExistMap) const
 {
     if (CheckExistsByMap(existMap) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -684,11 +684,11 @@ ge::graphStatus SFATilingCheck::CheckExistenceByMap(std::map<std::string, const 
     return ge::GRAPH_SUCCESS;
 }
 template <typename T>
-ge::graphStatus SFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::pair<const T *, T>> &attrMap) const
+ge::graphStatus SFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::pair<const T*, T>>& attrMap) const
 {
-    for (auto const &kv : attrMap) {
-        const std::string &name = kv.first;
-        const std::pair<const T *, T> &pointerValuePair = kv.second;
+    for (auto const& kv : attrMap) {
+        const std::string& name = kv.first;
+        const std::pair<const T*, T>& pointerValuePair = kv.second;
         if (pointerValuePair.first == nullptr) {
             OP_LOGE(opName_, "Attr %s should not be nullptr", name.c_str());
             return ge::GRAPH_FAILED;
@@ -710,11 +710,11 @@ ge::graphStatus SFATilingCheck::CheckParaExistenceMlaNoquant() const
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         return ge::GRAPH_SUCCESS;
     }
-    std::map<std::string, const void *> mlaNoquantParamExistMap = {
+    std::map<std::string, const void*> mlaNoquantParamExistMap = {
         {"actualSeqLengths", opParamInfo_.actualSeqLengths.tensor},
         {"blockTable", opParamInfo_.blockTable.tensor},
     };
-    std::map<std::string, const void *> mlaNoquantParamNotExistMap = {};
+    std::map<std::string, const void*> mlaNoquantParamNotExistMap = {};
     if (CheckExistenceByMap(mlaNoquantParamExistMap, mlaNoquantParamNotExistMap) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -731,8 +731,8 @@ ge::graphStatus SFATilingCheck::CheckParaExistence()
     }
     return CheckParaExistenceMla();
 }
-ge::graphStatus SFATilingCheck::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const SFALayout &layout,
-                                                    const std::string &name) const
+ge::graphStatus SFATilingCheck::GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor, const SFALayout& layout,
+                                                    const std::string& name) const
 {
     if (tensor == nullptr) {
         OP_LOGE(opName_, "when layout of query is %s, %s must be provided.", SFALayoutToSerialString(layout).c_str(),
@@ -779,8 +779,8 @@ ge::graphStatus SFATilingCheck::CheckBlockTable() const
 
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
-                                                      const std::string &name) const
+ge::graphStatus SFATilingCheck::CheckDTypeConsistency(const ge::DataType& actualDtype, const ge::DataType& expectDtype,
+                                                      const std::string& name) const
 {
     if (actualDtype != expectDtype) {
         OP_LOGE(opName_, "%s dtype should be %s, but it's %s.", name.c_str(),
@@ -789,10 +789,10 @@ ge::graphStatus SFATilingCheck::CheckDTypeConsistency(const ge::DataType &actual
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFATilingCheck::CheckDTypeConsistencyOut(const ge::DataType &actualDtype,
-                                                         const ge::DataType &expectDtype,
-                                                         const ge::DataType &expectDtype2,
-                                                         const std::string &name) const
+ge::graphStatus SFATilingCheck::CheckDTypeConsistencyOut(const ge::DataType& actualDtype,
+                                                         const ge::DataType& expectDtype,
+                                                         const ge::DataType& expectDtype2,
+                                                         const std::string& name) const
 {
     if ((actualDtype != expectDtype) && (actualDtype != expectDtype2)) {
         OP_LOGE(opName_, "%s dtype should be %s or %s, but it's %s.", name.c_str(),
@@ -1162,30 +1162,30 @@ ge::graphStatus SFATilingCheck::Process()
     }
     return ge::GRAPH_SUCCESS;
 }
-bool SFAInfoParser::HasAxis(const SFAAxis &axis, const SFALayout &layout, const gert::Shape &shape) const
+bool SFAInfoParser::HasAxis(const SFAAxis& axis, const SFALayout& layout, const gert::Shape& shape) const
 {
-    const auto &layoutIt = SFA_LAYOUT_AXIS_MAP.find(layout);
+    const auto& layoutIt = SFA_LAYOUT_AXIS_MAP.find(layout);
     if (layoutIt == SFA_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
-    const std::vector<SFAAxis> &axes = layoutIt->second;
-    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<SFAAxis>& axes = layoutIt->second;
+    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
     if (axisIt == axes.end()) {
         return false;
     }
-    const auto &dimIt = SFA_LAYOUT_DIM_MAP.find(layout);
+    const auto& dimIt = SFA_LAYOUT_DIM_MAP.find(layout);
     if (dimIt == SFA_LAYOUT_DIM_MAP.end() || dimIt->second != shape.GetDimNum()) {
         return false;
     }
     return true;
 }
-size_t SFAInfoParser::GetAxisIdx(const SFAAxis &axis, const SFALayout &layout) const
+size_t SFAInfoParser::GetAxisIdx(const SFAAxis& axis, const SFALayout& layout) const
 {
-    const std::vector<SFAAxis> &axes = SFA_LAYOUT_AXIS_MAP.find(layout)->second;
-    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<SFAAxis>& axes = SFA_LAYOUT_AXIS_MAP.find(layout)->second;
+    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
     return std::distance(axes.begin(), axisIt);
 }
-uint32_t SFAInfoParser::GetAxisNum(const gert::Shape &shape, const SFAAxis &axis, const SFALayout &layout) const
+uint32_t SFAInfoParser::GetAxisNum(const gert::Shape& shape, const SFAAxis& axis, const SFALayout& layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
@@ -1238,8 +1238,8 @@ ge::graphStatus SFAInfoParser::CheckRequiredParaExistence() const
     }
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, SFALayout &layout,
-                                                   const std::string &name) const
+ge::graphStatus SFAInfoParser::GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor, SFALayout& layout,
+                                                   const std::string& name) const
 {
     if ((tensor == nullptr)) {
         OP_LOGE(opName_, "when layout of query is %s, %s must be provided.", SFALayoutToSerialString(layout).c_str(),
@@ -1254,7 +1254,7 @@ ge::graphStatus SFAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::T
     size = static_cast<uint32_t>(shapeSize);
     return ge::GRAPH_SUCCESS;
 }
-ge::graphStatus SFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus SFAInfoParser::GetActualSeqLenQSize(uint32_t& size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.actualSeqLengthsQ.tensor, qLayout_, "actualSeqLengthsQ");
 }
@@ -1575,7 +1575,7 @@ ge::graphStatus SFAInfoParser::GetActualseqInfo()
     }
     return ge::GRAPH_SUCCESS;
 }
-void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
+void SFAInfoParser::GenerateInfo(SFATilingInfo& sfaInfo)
 {
     sfaInfo.opName = opName_;
     sfaInfo.platformInfo = platformInfo_;
@@ -1623,7 +1623,7 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.kvLayout = kvLayout_;
     sfaInfo.outLayout = outLayout_;
 }
-ge::graphStatus SFAInfoParser::Parse(SFATilingInfo &sfaInfo)
+ge::graphStatus SFAInfoParser::Parse(SFATilingInfo& sfaInfo)
 {
     if (context_ == nullptr) {
         OP_LOGE("SparseFlashAttention", "tiling context is nullptr!");

@@ -23,20 +23,20 @@ namespace ops {
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 constexpr uint32_t RETURN_SOFTMAX_INDEX = 10;
 
-ge::graphStatus InferShapeTurboQuantSparseAttnSharedkv(gert::InferShapeContext *context)
+ge::graphStatus InferShapeTurboQuantSparseAttnSharedkv(gert::InferShapeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("TurboQuantSparseAttnSharedkv", "InferShapeContext is nullptr"),
                return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED)
-    gert::Shape *attentionOutShape = context->GetOutputShape(0);
+    gert::Shape* attentionOutShape = context->GetOutputShape(0);
     OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
     *attentionOutShape = *queryShape;
 
-    gert::Shape *softmaxLseShape = context->GetOutputShape(1);
+    gert::Shape* softmaxLseShape = context->GetOutputShape(1);
     OPS_LOG_E_IF_NULL(context, softmaxLseShape, return ge::GRAPH_FAILED)
     auto attr = context->GetAttrs();
-    const bool *returnSoftmaxLsePtr = attr == nullptr ? nullptr : attr->GetAttrPointer<bool>(RETURN_SOFTMAX_INDEX);
+    const bool* returnSoftmaxLsePtr = attr == nullptr ? nullptr : attr->GetAttrPointer<bool>(RETURN_SOFTMAX_INDEX);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
     if (returnSoftmaxLse) {
         *softmaxLseShape = *queryShape;
@@ -49,7 +49,7 @@ ge::graphStatus InferShapeTurboQuantSparseAttnSharedkv(gert::InferShapeContext *
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeTurboQuantSparseAttnSharedkv(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeTurboQuantSparseAttnSharedkv(gert::InferDataTypeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("TurboQuantSparseAttnSharedkv", "InferShapeContext is nullptr"),
                return ge::GRAPH_FAILED);

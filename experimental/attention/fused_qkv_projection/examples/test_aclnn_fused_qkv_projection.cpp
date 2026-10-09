@@ -22,7 +22,7 @@
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -31,7 +31,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n %s", ret, aclGetRecentErrMsg()); return ret);
@@ -45,8 +45,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -66,7 +66,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 template <typename DeviceT, aclDataType aclDType>
 int RunTest(int64_t batchSize, int64_t seqLen, int64_t hiddenSize, int64_t qDim, int64_t kDim, int64_t vDim,
-            bool useBias, int testIdx, const char *typeStr, aclrtStream stream)
+            bool useBias, int testIdx, const char* typeStr, aclrtStream stream)
 {
     int64_t fusedDim = qDim + kDim + vDim;
     int64_t m = batchSize * seqLen;
@@ -129,18 +129,18 @@ int RunTest(int64_t batchSize, int64_t seqLen, int64_t hiddenSize, int64_t qDim,
         LOG_PRINT("%.4f ", (float)hsData[i]);
     LOG_PRINT("\n");
 
-    aclTensor *hs = nullptr;
-    void *hsDev = nullptr;
+    aclTensor* hs = nullptr;
+    void* hsDev = nullptr;
     ret = CreateAclTensor(hsData, hsShape, &hsDev, aclDType, &hs);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    aclTensor *wt = nullptr;
-    void *wtDev = nullptr;
+    aclTensor* wt = nullptr;
+    void* wtDev = nullptr;
     ret = CreateAclTensor(wtData, wtShape, &wtDev, aclDType, &wt);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    aclTensor *bias = nullptr;
-    void *biasDev = nullptr;
+    aclTensor* bias = nullptr;
+    void* biasDev = nullptr;
     if (useBias) {
         ret = CreateAclTensor(biasData, biasShape, &biasDev, aclDType, &bias);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -159,12 +159,12 @@ int RunTest(int64_t batchSize, int64_t seqLen, int64_t hiddenSize, int64_t qDim,
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     uint64_t wsSize = 0;
-    aclOpExecutor *exec = nullptr;
+    aclOpExecutor* exec = nullptr;
     ret = aclnnFusedQkvProjectionGetWorkspaceSize(hs, wt, bias, qDim, kDim, vDim, q, k, v, &wsSize, &exec);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[Test %d %s] GetWorkspaceSize failed. %d\n", testIdx, typeStr, ret);
               return ret);
 
-    void *ws = nullptr;
+    void* ws = nullptr;
     if (wsSize > 0) {
         aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
     }
@@ -237,7 +237,7 @@ int main()
     struct Case {
         int64_t b, s, h, q, k, v;
         bool bias;
-        const char *desc;
+        const char* desc;
     };
     Case tests[] = {
         {2, 8, 16, 16, 8, 8, true, "M=16 最小Cube"},          {1, 32, 16, 16, 8, 8, true, "M=32"},

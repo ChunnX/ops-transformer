@@ -33,10 +33,10 @@ class SingleBlock {
      *        跳过稀疏 mask 标记为无效的 base 块，逐个产出有效 base 块的 (起始idx, 长度)。
      */
 public:
-    __aicore__ inline void Reset(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask,
-                                 __gm__ int32_t *per_block_size_mask, const int32_t b_idx, const int32_t n1_idx,
+    __aicore__ inline void Reset(const ConstInfo& const_info, __gm__ uint8_t* block_sparse_mask,
+                                 __gm__ int32_t* per_block_size_mask, const int32_t b_idx, const int32_t n1_idx,
                                  const int32_t s1_idx, const int32_t s2_idx, const int32_t s1_len,
-                                 int32_t &base_s1_start_idx, int32_t &base_s1_len)
+                                 int32_t& base_s1_start_idx, int32_t& base_s1_len)
     /*
      * 参数：
      *   const_info           - 常量上下文（head 数、block 尺寸等）
@@ -66,7 +66,7 @@ public:
         this->Update(const_info, block_sparse_mask, b_idx, n1_idx, s2_idx, base_s1_start_idx, base_s1_len);
     }
 
-    __aicore__ inline void RecordRunTimeInfo(const RunTimeInfo &runTimeInfo)
+    __aicore__ inline void RecordRunTimeInfo(const RunTimeInfo& runTimeInfo)
     /*
      * 把外部传入的 runTimeInfo 整体快照到 runTimeInfoBak_，
      * 后续 UpdateRunTimeInfo 在同一 SingleBlock 内续推时复用这份上下文。
@@ -89,8 +89,8 @@ public:
     }
 
     template <uint32_t INPUT_LAYOUT>
-    __aicore__ inline void UpdateRunTimeInfo(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask,
-                                             RunTimeInfo &runTimeInfo)
+    __aicore__ inline void UpdateRunTimeInfo(const ConstInfo& const_info, __gm__ uint8_t* block_sparse_mask,
+                                             RunTimeInfo& runTimeInfo)
     {
         // 在已记录的 SingleBlock 上下文基础上推进到下一个有效 base 块，
         // 并刷新所有 GM 偏移（Q/KV/Lse/Sftg）。供同一 SingleBlock 内多次取任务使用。
@@ -144,9 +144,9 @@ public:
     }
 
 private:
-    __aicore__ inline void Update(const ConstInfo &const_info, __gm__ uint8_t *block_sparse_mask, const int32_t b_idx,
-                                  const int32_t n1_idx, const int32_t s2Idx, int32_t &base_s1_start_idx,
-                                  int32_t &base_s1_len)
+    __aicore__ inline void Update(const ConstInfo& const_info, __gm__ uint8_t* block_sparse_mask, const int32_t b_idx,
+                                  const int32_t n1_idx, const int32_t s2Idx, int32_t& base_s1_start_idx,
+                                  int32_t& base_s1_len)
     /*
      * 参数：
      *   const_info        - 常量上下文（含 block_x/block_y 用于算 mask block 索引）
@@ -246,7 +246,7 @@ private:
     int32_t s1_base_size_{0};                      // base 块在 S1 方向的步长（= base_m）
     bool is_finish_{true};                         // 当前 SingleBlock 是否已遍历完
     RunTimeInfo runTimeInfoBak_;                   // 上一次 Reset 时的上下文，供 UpdateRunTimeInfo 续推
-    __gm__ int32_t *per_block_size_mask_{nullptr}; // PerBlockSizeMask GM 指针（maskType=1 时非空）
+    __gm__ int32_t* per_block_size_mask_{nullptr}; // PerBlockSizeMask GM 指针（maskType=1 时非空）
 };
 
 template <typename BSA_TYPE>
@@ -316,7 +316,7 @@ private:
     ConstInfo const_info_;     // 传递给 SingleBlock / IsValidBlock 的常量上下文
 
 public:
-    __aicore__ inline void Init(const TILING_CLASS *tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
+    __aicore__ inline void Init(const TILING_CLASS* tilingData, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
                                 GM_ADDR blockSparseMask, GM_ADDR perBlockSizeMask)
     /*
      * 初始化调度器：从 tilingData 拷贝形状/块大小参数，记录 GM 地址，
@@ -392,7 +392,7 @@ public:
         }
     }
 
-    __aicore__ inline void GetRunTimeInfo(RunTimeInfo &runTimeInfo)
+    __aicore__ inline void GetRunTimeInfo(RunTimeInfo& runTimeInfo)
     {
         /*
          * 调度入口：每次调用产出下一个需要本核处理的任务到 runTimeInfo。
@@ -439,7 +439,7 @@ public:
             // actualSizeY < block_y 时，[actualSizeY, block_y) 为 padding，不参与计算
             if (has_per_block_size_mask_) {
                 int32_t actual_size_y =
-                    GetPerBlockSizeMaskValue(const_info_, reinterpret_cast<__gm__ int32_t *>(perBlockSizeMask_), bIdx_,
+                    GetPerBlockSizeMaskValue(const_info_, reinterpret_cast<__gm__ int32_t*>(perBlockSizeMask_), bIdx_,
                                              n1Idx_, kv_block_idx_cur, 1);
                 s2_len = ClipLenByActualSize(s2Idx_, s2_len, block_y_, actual_size_y);
             }
@@ -461,7 +461,7 @@ public:
     }
 
 private:
-    __aicore__ inline bool IsValidSingleBlock(int32_t &vaild_s1_idx, int32_t &vaild_s1_len)
+    __aicore__ inline bool IsValidSingleBlock(int32_t& vaild_s1_idx, int32_t& vaild_s1_len)
     {
         /*
          * 功能：判断singleBlock内是否存在有效base块，并返回第一块有效base块的起始idx和长度
@@ -483,7 +483,7 @@ private:
                 // PerBlockSizeMask: actualSizeX=0 的 block 视为无效（无有效数据）
                 if (has_per_block_size_mask_) {
                     int32_t actual_size_x =
-                        GetPerBlockSizeMaskValue(const_info_, reinterpret_cast<__gm__ int32_t *>(perBlockSizeMask_),
+                        GetPerBlockSizeMaskValue(const_info_, reinterpret_cast<__gm__ int32_t*>(perBlockSizeMask_),
                                                  bIdx_, n1Idx_, block_x_idx, 0);
                     if (actual_size_x <= 0) {
                         continue; // actualSizeX=0，跳过此 block 继续扫描
@@ -586,7 +586,7 @@ private:
         return true; // 所有遍历完成
     }
 
-    __aicore__ inline void RunTimeInfoRecord(RunTimeInfo &runTimeInfo, int32_t vaild_s1_idx, int32_t vaild_s2_idx,
+    __aicore__ inline void RunTimeInfoRecord(RunTimeInfo& runTimeInfo, int32_t vaild_s1_idx, int32_t vaild_s2_idx,
                                              int32_t vaild_s1_len, int32_t vaild_s2_len)
     {
         /*
@@ -610,7 +610,7 @@ private:
         // 重置 SingleBlock 推进器，并立即取出第一个有效 base 块的信息
         int32_t base_s1_idx;
         int32_t base_s1_len;
-        single_block_.Reset(const_info_, blockSparseMask_, reinterpret_cast<__gm__ int32_t *>(perBlockSizeMask_), bIdx_,
+        single_block_.Reset(const_info_, blockSparseMask_, reinterpret_cast<__gm__ int32_t*>(perBlockSizeMask_), bIdx_,
                             n1Idx_, vaild_s1_idx, vaild_s2_idx, vaild_s1_len, base_s1_idx, base_s1_len);
         int32_t n2Idx = n1Idx_ / q_group_; // GQA: kv head = q head / group
 

@@ -29,7 +29,7 @@ public:
     SinksChecker() = default;
     ~SinksChecker() override = default;
 
-    ge::graphStatus CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo) override;
+    ge::graphStatus CheckSinglePara(const QuantFlashAttnTilingInfo& qfaInfo) override;
 };
 
 } // namespace quant_flash_attn

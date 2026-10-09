@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -48,10 +48,8 @@ namespace ops {
 
 // Infers the softmax_lse output shape as {B, N, q_len} for BNSD/BSND/BSH layouts.
 // TND is not supported; returns empty {0} for unsupported layouts.
-static ge::graphStatus InferBsaLseShape(const char *layoutPtr,
-                                        gert::Shape *lseShape,
-                                        const gert::Shape *queryShape,
-                                        const int64_t *numHeadsPtr)
+static ge::graphStatus InferBsaLseShape(const char* layoutPtr, gert::Shape* lseShape, const gert::Shape* queryShape,
+                                        const int64_t* numHeadsPtr)
 {
     int64_t b = 0;
     int64_t n = 0;
@@ -81,7 +79,7 @@ static ge::graphStatus InferBsaLseShape(const char *layoutPtr,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext* context)
 {
     if (context == nullptr) {
         OP_LOGE("BlitzSparseAttention", "Context for inferring shape is nullptr!");
@@ -89,19 +87,19 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
     }
     OP_LOGD(context->GetNodeName(), "Enter BlitzSparseAttention inferShape impl.");
     // query shape : (B, S, H)
-    const gert::Shape *queryShape = context->GetInputShape(PFA_QUERY_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(PFA_QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
 
     // value shape
-    const gert::Shape *valueShape = context->GetInputShape(PFA_VALUE_INDEX);
+    const gert::Shape* valueShape = context->GetInputShape(PFA_VALUE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, valueShape);
 
     // attentionOut: (B, S, H)
-    gert::Shape *attentionOutShape = context->GetOutputShape(PFA_ATTENTION_OUT_INDEX);
+    gert::Shape* attentionOutShape = context->GetOutputShape(PFA_ATTENTION_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
 
     // softmax_lse output shape
-    gert::Shape *softmaxLseShape = context->GetOutputShape(BSA_SOFTMAX_LSE_OUT_INDEX);
+    gert::Shape* softmaxLseShape = context->GetOutputShape(BSA_SOFTMAX_LSE_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
 
     *attentionOutShape = *queryShape;
@@ -119,11 +117,11 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
     // Get attr
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const char *inputLayoutPtr = attrs->GetAttrPointer<char>(PFA_ATTR_INPUT_LAYOUT_INDEX);
+    const char* inputLayoutPtr = attrs->GetAttrPointer<char>(PFA_ATTR_INPUT_LAYOUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutPtr);
-    const int64_t *numHeadsPtr = attrs->GetInt(PFA_ATTR_NUM_HEADS_INDEX);
+    const int64_t* numHeadsPtr = attrs->GetInt(PFA_ATTR_NUM_HEADS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numHeadsPtr);
-    const int64_t *numKeyValueHeadsPtr = attrs->GetInt(PFA_ATTR_NUM_KV_HEADS_INDEX);
+    const int64_t* numKeyValueHeadsPtr = attrs->GetInt(PFA_ATTR_NUM_KV_HEADS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, numKeyValueHeadsPtr);
 
     // KV_N除零保护, 当KV_N为零时KV_N = Q_N
@@ -147,8 +145,8 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
         (*attentionOutShape)[PFA_LAYOUT_DIM3] = outputD;
     } else if (strcmp(inputLayoutPtr, "TND") == 0) {
         if (queryShape->GetDimNum() != PFA_LAYOUT_TND_DIMS || valueShape->GetDimNum() != PFA_LAYOUT_TND_DIMS) {
-            OP_LOGE(context->GetNodeName(), "Layout %s, queryDims(%zu) valueDims(%zu) must be 3!",
-                inputLayoutPtr, queryShape->GetDimNum(), valueShape->GetDimNum());
+            OP_LOGE(context->GetNodeName(), "Layout %s, queryDims(%zu) valueDims(%zu) must be 3!", inputLayoutPtr,
+                    queryShape->GetDimNum(), valueShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
         int64_t outputD = (*valueShape)[PFA_LAYOUT_DIM2];
@@ -159,7 +157,7 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
     } else if (strcmp(inputLayoutPtr, "NTD_TND") == 0) {
         if (queryShape->GetDimNum() != PFA_LAYOUT_TND_DIMS || valueShape->GetDimNum() != PFA_LAYOUT_TND_DIMS) {
             OP_LOGE(context->GetNodeName(), "Layout NTD_TND, queryDims(%zu) valueDims(%zu) must be 3!",
-                queryShape->GetDimNum(), valueShape->GetDimNum());
+                    queryShape->GetDimNum(), valueShape->GetDimNum());
             return ge::GRAPH_FAILED;
         }
         (*attentionOutShape)[PFA_LAYOUT_DIM0] = (*queryShape)[PFA_LAYOUT_DIM1];
@@ -221,21 +219,19 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
         int64_t bsQ = blockShapeList->GetData()[0];
         int64_t bsKV = blockShapeList->GetData()[1];
         if (bsQ != 128 && bsQ != 256 && bsQ != 512 && bsQ != 1024) {
-            OP_LOGE(context->GetNodeName(),
-                "block_shape[0] (BLOCK_SIZE_Q) must be 128, 256, 512, or 1024 (got %ld).",
-                bsQ);
+            OP_LOGE(context->GetNodeName(), "block_shape[0] (BLOCK_SIZE_Q) must be 128, 256, 512, or 1024 (got %ld).",
+                    bsQ);
             return ge::GRAPH_FAILED;
         }
         if (bsKV != 128 && bsKV != 256 && bsKV != 512 && bsKV != 1024) {
-            OP_LOGE(context->GetNodeName(),
-                "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, 512, or 1024 (got %ld).",
-                bsKV);
+            OP_LOGE(context->GetNodeName(), "block_shape[1] (BLOCK_SIZE_KV) must be 128, 256, 512, or 1024 (got %ld).",
+                    bsKV);
             return ge::GRAPH_FAILED;
         }
     }
 
     // Infer softmax_lse output shape
-    const bool *softmaxLseFlagPtr = attrs->GetAttrPointer<bool>(BSA_ATTR_SOFTMAX_LSE_FLAG);
+    const bool* softmaxLseFlagPtr = attrs->GetAttrPointer<bool>(BSA_ATTR_SOFTMAX_LSE_FLAG);
     bool softmaxLseFlag = (softmaxLseFlagPtr != nullptr) ? *softmaxLseFlagPtr : false;
     if (softmaxLseFlag) {
         InferBsaLseShape(inputLayoutPtr, softmaxLseShape, queryShape, numHeadsPtr);
@@ -248,7 +244,7 @@ static ge::graphStatus InferShapeBlitzSparseAttention(gert::InferShapeContext *c
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeBlitzSparseAttention(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeBlitzSparseAttention(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         OP_LOGE("BlitzSparseAttention", "Context for inferring data type is nullptr!");

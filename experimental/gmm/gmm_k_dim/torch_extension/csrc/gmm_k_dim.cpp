@@ -15,8 +15,8 @@
 
 namespace op_api {
 
-at::Tensor gmm(const at::Tensor &a, const at::Tensor &b, const at::Tensor &batch_sizes, const bool trans_a,
-               const bool trans_b, const c10::optional<at::Tensor> &c, const int64_t aicore_num, bool type_promotion)
+at::Tensor gmm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& batch_sizes, const bool trans_a,
+               const bool trans_b, const c10::optional<at::Tensor>& c, const int64_t aicore_num, bool type_promotion)
 {
     TORCH_CHECK(a.device().type() == at::kPrivateUse1, "a must be on NPU");
     TORCH_CHECK(b.device() == a.device(), "a and b must be on the same device");

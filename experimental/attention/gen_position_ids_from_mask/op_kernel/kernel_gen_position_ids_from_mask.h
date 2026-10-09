@@ -25,7 +25,7 @@ public:
     __aicore__ inline KernelGenPositionIdsFromMask() {}
 
     __aicore__ inline void Init(GM_ADDR attentionMask, GM_ADDR positionIds,
-                                const GenPositionIdsFromMaskTilingData *tiling)
+                                const GenPositionIdsFromMaskTilingData* tiling)
     {
         b_ = tiling->b;
         s_ = tiling->s;
@@ -48,8 +48,8 @@ public:
             return;
         }
 
-        maskGm_.SetGlobalBuffer(reinterpret_cast<__gm__ TIn *>(attentionMask), b_ * s_);
-        posGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(positionIds), b_ * s_);
+        maskGm_.SetGlobalBuffer(reinterpret_cast<__gm__ TIn*>(attentionMask), b_ * s_);
+        posGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(positionIds), b_ * s_);
 
         // int64 输出按两个 int32 word 处理，相关缓冲区按 2 * TILE_SIZE 分配。
         pipe_.InitBuffer(inputQueue_, 1, TILE_SIZE * sizeof(TIn));
@@ -89,7 +89,7 @@ public:
     }
 
 private:
-    __aicore__ inline void ProcessRow(int64_t row, const LocalTensor<int64_t> &fillValueLocal)
+    __aicore__ inline void ProcessRow(int64_t row, const LocalTensor<int64_t>& fillValueLocal)
     {
         const int64_t rowOffset = row * s_;
         int32_t prefixCarry = 0;
@@ -147,7 +147,7 @@ private:
         return inputQueue_.DeQue<TIn>();
     }
 
-    __aicore__ inline void NormalizeMask(LocalTensor<int32_t> dst, const LocalTensor<TIn> &src, uint32_t validLen)
+    __aicore__ inline void NormalizeMask(LocalTensor<int32_t> dst, const LocalTensor<TIn>& src, uint32_t validLen)
     {
         if constexpr (std::is_same<TIn, int32_t>::value) {
             Adds(dst, src, static_cast<int32_t>(0), validLen);
@@ -168,7 +168,7 @@ private:
     }
 
     // 使用 Hillis-Steele 实现 int32 包含式前缀和。
-    __aicore__ inline LocalTensor<int32_t> InclusiveScan(const LocalTensor<int32_t> &mask32, uint32_t validLen)
+    __aicore__ inline LocalTensor<int32_t> InclusiveScan(const LocalTensor<int32_t>& mask32, uint32_t validLen)
     {
         LocalTensor<int32_t> scanA = scanABuf_.Get<int32_t>();
         LocalTensor<int32_t> scanB = scanBBuf_.Get<int32_t>();
@@ -221,9 +221,9 @@ private:
         return scanA;
     }
 
-    __aicore__ inline void BuildAndCopyOutput(const LocalTensor<int32_t> &inclusiveScan,
-                                              const LocalTensor<int32_t> &mask32,
-                                              const LocalTensor<int64_t> &fillValueLocal, uint64_t gmOffset,
+    __aicore__ inline void BuildAndCopyOutput(const LocalTensor<int32_t>& inclusiveScan,
+                                              const LocalTensor<int32_t>& mask32,
+                                              const LocalTensor<int64_t>& fillValueLocal, uint64_t gmOffset,
                                               uint32_t validLen)
     {
         LocalTensor<int32_t> position32 = scanBBuf_.Get<int32_t>();
@@ -274,8 +274,8 @@ private:
         outputQueue_.FreeTensor(outputReady);
     }
 
-    __aicore__ inline void SelectInt64Fill(LocalTensor<int64_t> output64, const LocalTensor<int32_t> &valid32,
-                                           const LocalTensor<int64_t> &fillValueLocal, uint32_t validLen)
+    __aicore__ inline void SelectInt64Fill(LocalTensor<int64_t> output64, const LocalTensor<int32_t>& valid32,
+                                           const LocalTensor<int64_t>& fillValueLocal, uint32_t validLen)
     {
         // A2 无所需的 int64 Select，按两个 int32 word 处理任意 int64 fill。
         const uint32_t wordCount = validLen * INT64_WORDS;

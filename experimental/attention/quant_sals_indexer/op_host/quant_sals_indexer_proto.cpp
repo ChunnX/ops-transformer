@@ -17,7 +17,6 @@
 #include <register/op_impl_registry.h>
 #include "error/ops_error.h"
 
-
 using namespace ge;
 
 namespace ops {
@@ -34,27 +33,27 @@ constexpr uint32_t ATTR_KEY_LAYOUT_INDEX = 4;
 constexpr uint32_t OUTPUT_IDX_SPARSE_INDICES = 0;
 constexpr uint32_t OUTPUT_IDX_SPARSE_SEQ_LENGTHS_KEY = 1;
 
-static ge::graphStatus InferShapeQuantSalsIndexer(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeQuantSalsIndexer(gert::InferShapeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("QuantSalsIndexer", "InferShapeContext is nullptr!"),
                return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INDEX);
     OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED);
-    const gert::Shape *keyShape = context->GetInputShape(KEY_INDEX);
+    const gert::Shape* keyShape = context->GetInputShape(KEY_INDEX);
     OPS_LOG_E_IF_NULL(context, keyShape, return ge::GRAPH_FAILED);
 
     auto attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL(context, attrs, return ge::GRAPH_FAILED);
-    const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
+    const char* inputLayoutKeyPtr = attrs->GetAttrPointer<char>(ATTR_KEY_LAYOUT_INDEX);
     OPS_LOG_E_IF_NULL(context, inputLayoutKeyPtr, return ge::GRAPH_FAILED);
 
-    const int64_t *maxSeqlenKey = attrs->GetInt(ATTR_MAX_SEQLEN_KEY_INDEX);
+    const int64_t* maxSeqlenKey = attrs->GetInt(ATTR_MAX_SEQLEN_KEY_INDEX);
     OPS_LOG_E_IF_NULL(context, maxSeqlenKey, return ge::GRAPH_FAILED);
-    const int64_t *sparseBlockSize = attrs->GetInt(ATTR_SPARSE_BLOCK_SIZE_INDEX);
+    const int64_t* sparseBlockSize = attrs->GetInt(ATTR_SPARSE_BLOCK_SIZE_INDEX);
     OPS_LOG_E_IF_NULL(context, sparseBlockSize, return ge::GRAPH_FAILED);
-    const int64_t *fixedTailCount = attrs->GetInt(ATTR_FIXED_TAIL_COUNT_INDEX);
+    const int64_t* fixedTailCount = attrs->GetInt(ATTR_FIXED_TAIL_COUNT_INDEX);
     OPS_LOG_E_IF_NULL(context, fixedTailCount, return ge::GRAPH_FAILED);
-    const float *sparse_ratio = attrs->GetFloat(ATTR_SPARSE_RATIO_INDEX);
+    const float* sparse_ratio = attrs->GetFloat(ATTR_SPARSE_RATIO_INDEX);
     OPS_LOG_E_IF_NULL(context, sparse_ratio, return ge::GRAPH_FAILED);
 
     int64_t totalNCount = ((*maxSeqlenKey) + ((*sparseBlockSize) - 1)) / (*sparseBlockSize);
@@ -64,31 +63,31 @@ static ge::graphStatus InferShapeQuantSalsIndexer(gert::InferShapeContext *conte
         sparseCount = totalNCount;
         selectCount = 0;
     } else {
-        selectCount = static_cast<int64_t>(std::ceil((static_cast<double>(totalNCount) - static_cast<double>(*fixedTailCount)) * (std::round((1.0 - *sparse_ratio)*100.0) / 100.0)));
+        selectCount =
+            static_cast<int64_t>(std::ceil((static_cast<double>(totalNCount) - static_cast<double>(*fixedTailCount)) *
+                                           (std::round((1.0 - *sparse_ratio) * 100.0) / 100.0)));
         if (selectCount > 2048) {
             selectCount = 2048;
         }
-        sparseCount =  selectCount + (*fixedTailCount);
+        sparseCount = selectCount + (*fixedTailCount);
     }
 
-    gert::Shape *sparseIndicesShape = context->GetOutputShape(OUTPUT_IDX_SPARSE_INDICES);
+    gert::Shape* sparseIndicesShape = context->GetOutputShape(OUTPUT_IDX_SPARSE_INDICES);
     OPS_LOG_E_IF_NULL(context, sparseIndicesShape, ge::GRAPH_FAILED);
 
     sparseIndicesShape->SetDimNum(queryShape->GetDimNum());
-    OPS_ERR_IF(
-        queryShape->GetDimNum() != 3,
-        OPS_LOG_E(context, "queryDims (%zu) must be 3!", queryShape->GetDimNum()),
-        return ge::GRAPH_FAILED);
+    OPS_ERR_IF(queryShape->GetDimNum() != 3, OPS_LOG_E(context, "queryDims (%zu) must be 3!", queryShape->GetDimNum()),
+               return ge::GRAPH_FAILED);
     sparseIndicesShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim B
     sparseIndicesShape->SetDim(1, queryShape->GetDim(1)); // 1:Dim N2
-    sparseIndicesShape->SetDim(2, sparseCount);   // 2:Dim K
+    sparseIndicesShape->SetDim(2, sparseCount);           // 2:Dim K
 
     OPS_LOG_D(context->GetNodeName(), "QuantSalsIndexer InferShape end.");
 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeQuantSalsIndexer(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeQuantSalsIndexer(gert::InferDataTypeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("QuantSalsIndexer", "InferDataTypeContext is nullptr!"),
                return ge::GRAPH_FAILED);

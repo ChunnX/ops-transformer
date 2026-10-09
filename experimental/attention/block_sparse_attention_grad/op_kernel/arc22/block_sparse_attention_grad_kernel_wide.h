@@ -72,7 +72,7 @@ struct WideMaskScanState {
     uint32_t maskWindowEnd;
 };
 
-__aicore__ inline void ResetWideMaskScanState(WideMaskScanState &state) const
+__aicore__ inline void ResetWideMaskScanState(WideMaskScanState& state) const
 {
     // maskWindows is initialized lazily and is read only when the
     // corresponding loaded bit is set.
@@ -97,12 +97,12 @@ __aicore__ inline uint32_t WideEdgeKv(uint32_t edgeCode) const
     return (edgeCode >> 8) & 0xffffU;
 }
 
-__aicore__ inline void BuildWidePacket(const Params &params, const TaskInfo &workInfo,
-                                       const __gm__ BlockSparseAttentionGradTilingData *tilingData,
-                                       const uint32_t *qLimits, const uint64_t *maskRowOffsets,
-                                       const MaskLayoutInfo &maskLayout, uint32_t qCount, uint32_t maxKvLimit,
+__aicore__ inline void BuildWidePacket(const Params& params, const TaskInfo& workInfo,
+                                       const __gm__ BlockSparseAttentionGradTilingData* tilingData,
+                                       const uint32_t* qLimits, const uint64_t* maskRowOffsets,
+                                       const MaskLayoutInfo& maskLayout, uint32_t qCount, uint32_t maxKvLimit,
                                        uint32_t kvStart, uint32_t qStart, uint64_t workspaceBase,
-                                       WideMaskScanState &maskState, WidePacketInfo &packet) const
+                                       WideMaskScanState& maskState, WidePacketInfo& packet) const
 {
     packet.edgeCount = 0;
     packet.uniqueKvCount = 0;
@@ -175,7 +175,7 @@ __aicore__ inline void BuildWidePacket(const Params &params, const TaskInfo &wor
         }
 
         if (packet.edgeCount != columnBegin) {
-            WideKvDesc &kv = packet.kv[packet.uniqueKvCount++];
+            WideKvDesc& kv = packet.kv[packet.uniqueKvCount++];
             kv.kvBasicIdx = kvBasicIdx;
             kv.edgeBegin = static_cast<uint16_t>(columnBegin);
             kv.edgeCount = static_cast<uint16_t>(packet.edgeCount - columnBegin);
@@ -218,7 +218,7 @@ __aicore__ inline void BuildWidePacket(const Params &params, const TaskInfo &wor
     for (uint32_t ordered = 0; ordered < packet.edgeCount; ++ordered) {
         const uint32_t qLocal = WideEdgeQ(packet.edgeCode[packet.qOrder[ordered]]);
         if (packet.activeQCount == 0 || packet.activeQ[packet.activeQCount - 1].qLocal != qLocal) {
-            WideQDesc &desc = packet.activeQ[packet.activeQCount++];
+            WideQDesc& desc = packet.activeQ[packet.activeQCount++];
             desc.qLocal = static_cast<uint8_t>(qLocal);
             desc.edgeBegin = static_cast<uint8_t>(ordered);
             desc.edgeCount = 1;
@@ -229,18 +229,18 @@ __aicore__ inline void BuildWidePacket(const Params &params, const TaskInfo &wor
     }
 }
 
-__aicore__ inline void RunWideCube1(const WidePacketInfo &packet, const TaskInfo &workInfo, const WideQInfo *qInfos,
-                                    const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+__aicore__ inline void RunWideCube1(const WidePacketInfo& packet, const TaskInfo& workInfo, const WideQInfo* qInfos,
+                                    const __gm__ BlockSparseAttentionGradTilingData* tilingData,
                                     AscendC::GlobalTensor<ElementInput> gQ, AscendC::GlobalTensor<ElementInput> gK,
                                     AscendC::GlobalTensor<ElementInput> gV, AscendC::GlobalTensor<ElementA1> gDout,
                                     AscendC::GlobalTensor<float> gS, AscendC::GlobalTensor<float> gDp,
-                                    BlockMmadBSAG1 &blockMmad1, uint32_t &wideCubeFlag, BlockMmadBSAG3 &blockMmad3)
+                                    BlockMmadBSAG1& blockMmad1, uint32_t& wideCubeFlag, BlockMmadBSAG3& blockMmad3)
 {
     const uint32_t headDim = tilingData->headDim;
     // Drain the previous phase before reusing Cube1's L1/L0 regions.
     AscendC::PipeBarrier<PIPE_ALL>();
     for (uint32_t kvLocal = 0; kvLocal < packet.uniqueKvCount; ++kvLocal) {
-        const WideKvDesc &kv = packet.kv[kvLocal];
+        const WideKvDesc& kv = packet.kv[kvLocal];
         TaskInfo firstTile = MakeWideTile(workInfo, qInfos, packet, kv.edgeBegin, tilingData);
         LayoutB1 layoutB(headDim, firstTile.curCalKVSize, headDim);
         GemmCoord preloadShape{firstTile.curCalQSize, firstTile.curCalKVSize, headDim};
@@ -291,10 +291,10 @@ __aicore__ inline void WaitWideFlag() const
 // qSeenMask spans all packets of the work item: the first non-empty
 // packet is a direct write (the Q task has a unique core owner), and
 // later packets atomically add their disjoint K-range contribution.
-__aicore__ inline void RunWideDq(const WidePacketInfo &packet, const TaskInfo &workInfo, const WideQInfo *qInfos,
-                                 uint32_t qCount, const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+__aicore__ inline void RunWideDq(const WidePacketInfo& packet, const TaskInfo& workInfo, const WideQInfo* qInfos,
+                                 uint32_t qCount, const __gm__ BlockSparseAttentionGradTilingData* tilingData,
                                  AscendC::GlobalTensor<ElementInput> gK, AscendC::GlobalTensor<ElementInput> gDs,
-                                 AscendC::GlobalTensor<float> gDq, BlockMmadBSAG2 &blockMmad2, WideQMask &qSeenMask)
+                                 AscendC::GlobalTensor<float> gDq, BlockMmadBSAG2& blockMmad2, WideQMask& qSeenMask)
 {
     const uint32_t headDim = tilingData->headDim;
 
@@ -312,7 +312,7 @@ __aicore__ inline void RunWideDq(const WidePacketInfo &packet, const TaskInfo &w
 
     for (uint32_t activeQ = 0; activeQ < packet.activeQCount; ++activeQ) {
         // Per-slot MTE/M/FIX events guard dQ operand and accumulator reuse.
-        const WideQDesc &qDesc = packet.activeQ[activeQ];
+        const WideQDesc& qDesc = packet.activeQ[activeQ];
         const uint32_t qLocal = qDesc.qLocal;
         const uint32_t qBegin = qDesc.edgeBegin;
         const uint32_t edgeCount = qDesc.edgeCount;
@@ -357,12 +357,12 @@ __aicore__ inline void RunWideDq(const WidePacketInfo &packet, const TaskInfo &w
 // slots as four (dO,Q) pairs.  P and dS stream through independent A
 // slots and L0C accumulators, retaining one atomic Fixpipe store per
 // KV column and matrix while halving cache fences and descriptor work.
-__aicore__ inline void RunWideDkvPair(const WidePacketInfo &packet, const TaskInfo &workInfo, const WideQInfo *qInfos,
-                                      const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+__aicore__ inline void RunWideDkvPair(const WidePacketInfo& packet, const TaskInfo& workInfo, const WideQInfo* qInfos,
+                                      const __gm__ BlockSparseAttentionGradTilingData* tilingData,
                                       AscendC::GlobalTensor<ElementInput> gQ, AscendC::GlobalTensor<ElementA1> gDout,
                                       AscendC::GlobalTensor<ElementInput> gP, AscendC::GlobalTensor<ElementInput> gDs,
                                       AscendC::GlobalTensor<float> gDk, AscendC::GlobalTensor<float> gDv,
-                                      BlockMmadBSAG2 &blockMmad2, BlockMmadBSAG3 &blockMmad3)
+                                      BlockMmadBSAG2& blockMmad2, BlockMmadBSAG3& blockMmad3)
 {
     const uint32_t headDim = tilingData->headDim;
     if (tilingData->wideQOperandCache != 0) {
@@ -376,7 +376,7 @@ __aicore__ inline void RunWideDkvPair(const WidePacketInfo &packet, const TaskIn
         AscendC::PipeBarrier<PIPE_ALL>();
     }
     for (uint32_t kvLocal = 0; kvLocal < packet.uniqueKvCount; ++kvLocal) {
-        const WideKvDesc &kv = packet.kv[kvLocal];
+        const WideKvDesc& kv = packet.kv[kvLocal];
         const uint32_t edgeEnd = kv.edgeBegin + kv.edgeCount;
         uint32_t issued = 0;
         uint32_t cursor = kv.edgeBegin;
@@ -447,13 +447,13 @@ __aicore__ inline void RunWideDkvPair(const WidePacketInfo &packet, const TaskIn
     }
 }
 
-__aicore__ inline void RunWideGrad(const WidePacketInfo &packet, const TaskInfo &workInfo, const WideQInfo *qInfos,
-                                   uint32_t qCount, const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+__aicore__ inline void RunWideGrad(const WidePacketInfo& packet, const TaskInfo& workInfo, const WideQInfo* qInfos,
+                                   uint32_t qCount, const __gm__ BlockSparseAttentionGradTilingData* tilingData,
                                    AscendC::GlobalTensor<ElementInput> gK, AscendC::GlobalTensor<ElementInput> gQ,
                                    AscendC::GlobalTensor<ElementA1> gDout, AscendC::GlobalTensor<ElementInput> gP,
                                    AscendC::GlobalTensor<ElementInput> gDs, AscendC::GlobalTensor<float> gDq,
                                    AscendC::GlobalTensor<float> gDk, AscendC::GlobalTensor<float> gDv,
-                                   BlockMmadBSAG2 &blockMmad2, BlockMmadBSAG3 &blockMmad3, WideQMask &qSeenMask)
+                                   BlockMmadBSAG2& blockMmad2, BlockMmadBSAG3& blockMmad3, WideQMask& qSeenMask)
 {
     // Cube1 and dQ alias the compact low-L1 region; the high eight-B
     // cache may still be feeding the preceding packet's dKV pair.
@@ -473,16 +473,16 @@ __aicore__ inline void RunWideGrad(const WidePacketInfo &packet, const TaskInfo 
 
 __aicore__ inline uint32_t BuildWideWorkItem(AscendC::GlobalTensor<int64_t> gActualQseqlen,
                                              AscendC::GlobalTensor<int64_t> gActualKvseqlen,
-                                             const __gm__ BlockSparseAttentionGradTilingData *tilingData,
-                                             uint32_t groupSize, const TaskInfo &current, WideQInfo *qInfos,
-                                             TaskInfo &nextWork, bool needNext)
+                                             const __gm__ BlockSparseAttentionGradTilingData* tilingData,
+                                             uint32_t groupSize, const TaskInfo& current, WideQInfo* qInfos,
+                                             TaskInfo& nextWork, bool needNext)
 {
     const uint32_t runtimeCapacity =
         tilingData->wideQTasksPerWorkItem < WIDE_MAX_Q_TASKS ? tilingData->wideQTasksPerWorkItem : WIDE_MAX_Q_TASKS;
     TaskInfo cursor = current;
     uint32_t qCount = 0;
     while (qCount < runtimeCapacity) {
-        WideQInfo &qInfo = qInfos[qCount++];
+        WideQInfo& qInfo = qInfos[qCount++];
         qInfo.qOffset = cursor.qOffset;
         qInfo.curQSeqIdx = cursor.curQSeqIdx;
         qInfo.curQBlockIdx = cursor.curQBlcokIdx;
@@ -531,7 +531,7 @@ __aicore__ inline uint32_t BuildWideWorkItem(AscendC::GlobalTensor<int64_t> gAct
     return qCount;
 }
 
-__aicore__ inline void ProcessWideAic(const Params &params, __gm__ BlockSparseAttentionGradTilingData *tilingData)
+__aicore__ inline void ProcessWideAic(const Params& params, __gm__ BlockSparseAttentionGradTilingData* tilingData)
 {
     const uint32_t coreIdx = AscendC::GetBlockIdx();
     const uint32_t groupSize = tilingData->numHeads / tilingData->kvHeads;
@@ -550,22 +550,22 @@ __aicore__ inline void ProcessWideAic(const Params &params, __gm__ BlockSparseAt
     AscendC::GlobalTensor<float> gDq;
     AscendC::GlobalTensor<float> gDk;
     AscendC::GlobalTensor<float> gDv;
-    gQ.SetGlobalBuffer((__gm__ ElementInput *)params.q);
-    gK.SetGlobalBuffer((__gm__ ElementInput *)params.k);
-    gV.SetGlobalBuffer((__gm__ ElementInput *)params.v);
-    gDout.SetGlobalBuffer((__gm__ ElementA1 *)params.dout);
-    gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
-    gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
-    gS.SetGlobalBuffer((__gm__ float *)params.workspace);
-    gP.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + tilingData->wideRawPlaneBytes));
-    gDp.SetGlobalBuffer((__gm__ float *)(params.workspace + tilingData->sOutSize));
+    gQ.SetGlobalBuffer((__gm__ ElementInput*)params.q);
+    gK.SetGlobalBuffer((__gm__ ElementInput*)params.k);
+    gV.SetGlobalBuffer((__gm__ ElementInput*)params.v);
+    gDout.SetGlobalBuffer((__gm__ ElementA1*)params.dout);
+    gActualQseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualQseqlen);
+    gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualKvseqlen);
+    gS.SetGlobalBuffer((__gm__ float*)params.workspace);
+    gP.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + tilingData->wideRawPlaneBytes));
+    gDp.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->sOutSize));
     gDs.SetGlobalBuffer(
-        (__gm__ ElementInput *)(params.workspace + tilingData->sOutSize + tilingData->wideRawPlaneBytes));
-    gDq.SetGlobalBuffer((__gm__ float *)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize));
+        (__gm__ ElementInput*)(params.workspace + tilingData->sOutSize + tilingData->wideRawPlaneBytes));
+    gDq.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize));
     gDk.SetGlobalBuffer(
-        (__gm__ float *)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize + tilingData->dQOutSize));
-    gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize +
-                                         tilingData->dQOutSize + tilingData->dKOutSize));
+        (__gm__ float*)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize + tilingData->dQOutSize));
+    gDv.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize +
+                                        tilingData->dQOutSize + tilingData->dKOutSize));
 
     TaskInfo current;
     initTaskInfo(gActualQseqlen, gActualKvseqlen, tilingData, tilingData->numHeads, tilingData->kvHeads, groupSize,
@@ -602,7 +602,7 @@ __aicore__ inline void ProcessWideAic(const Params &params, __gm__ BlockSparseAt
         if (tilingData->wideQOperandCache != 0) {
             blockMmad3.AcquireFullPreloadReuse();
             for (uint32_t qLocal = 0; qLocal < qCount; ++qLocal) {
-                const auto &q = qInfos[qLocal];
+                const auto& q = qInfos[qLocal];
                 if (q.curCalQSize == 0) {
                     continue;
                 }
@@ -636,7 +636,7 @@ __aicore__ inline void ProcessWideAic(const Params &params, __gm__ BlockSparseAt
         uint32_t kvStart = 0;
         uint32_t qStart = 0;
         while (kvStart < maxKvLimit) {
-            WidePacketInfo &packet = packets[stage];
+            WidePacketInfo& packet = packets[stage];
             const uint64_t workspaceBase = static_cast<uint64_t>(coreIdx) * tilingData->wideWorkspaceCoreElements +
                                            static_cast<uint64_t>(stage) * tilingData->wideWorkspaceStageElements;
             BuildWidePacket(params, current, tilingData, qLimits, maskRowOffsets, maskLayout, qCount, maxKvLimit,
@@ -691,8 +691,8 @@ __aicore__ inline void ProcessWideAic(const Params &params, __gm__ BlockSparseAt
     AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
 }
 
-__aicore__ inline void FillWideSfmParams(SfmParams &tileParams, const Params &params, const TaskInfo &tile,
-                                         const __gm__ BlockSparseAttentionGradTilingData *tilingData, GM_ADDR sftmgGm,
+__aicore__ inline void FillWideSfmParams(SfmParams& tileParams, const Params& params, const TaskInfo& tile,
+                                         const __gm__ BlockSparseAttentionGradTilingData* tilingData, GM_ADDR sftmgGm,
                                          uint32_t subBlockIdx, uint32_t metadataSlot) const
 {
     const uint64_t firstHalfRows = (tile.curCalQSize + 1) / 2;
@@ -712,7 +712,7 @@ __aicore__ inline void FillWideSfmParams(SfmParams &tileParams, const Params &pa
         tile.kvValidSize, tile.curCalQSize, subBlockIdx * firstHalfRows, true);
 }
 
-__aicore__ inline void ProcessWideAiv(const Params &params, __gm__ BlockSparseAttentionGradTilingData *tilingData)
+__aicore__ inline void ProcessWideAiv(const Params& params, __gm__ BlockSparseAttentionGradTilingData* tilingData)
 {
     const uint32_t vecCoreIdx = AscendC::GetBlockIdx();
     const uint32_t coreIdx = vecCoreIdx / 2;
@@ -722,8 +722,8 @@ __aicore__ inline void ProcessWideAiv(const Params &params, __gm__ BlockSparseAt
 
     AscendC::GlobalTensor<int64_t> gActualQseqlen;
     AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-    gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
-    gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
+    gActualQseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualQseqlen);
+    gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualKvseqlen);
     TaskInfo current;
     initTaskInfo(gActualQseqlen, gActualKvseqlen, tilingData, tilingData->numHeads, tilingData->kvHeads, groupSize,
                  tilingData->headDim, tilingData->maxQSeqlen, tilingData->maxKvSeqlen, tilingData->blockShapeX,
@@ -800,7 +800,7 @@ __aicore__ inline void ProcessWideAiv(const Params &params, __gm__ BlockSparseAt
             uint32_t validEdgeCount = 0;
             uint32_t activeQCount = 0;
             for (uint32_t activeQ = 0; activeQ < packet.activeQCount; ++activeQ) {
-                const WideQDesc &qDesc = packet.activeQ[activeQ];
+                const WideQDesc& qDesc = packet.activeQ[activeQ];
                 const uint32_t qLocal = qDesc.qLocal;
                 const uint32_t qBegin = qDesc.edgeBegin;
                 const uint32_t qEnd = qBegin + qDesc.edgeCount;

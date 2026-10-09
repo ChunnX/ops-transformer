@@ -21,31 +21,23 @@
 #include <vector>
 #include <algorithm>
 
-extern "C" void mhc_pre_do_fp32(
-    uint32_t blockDim, void* stream,
-    uint8_t* input, uint8_t* h_pre, uint8_t* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-);
+extern "C" void mhc_pre_do_fp32(uint32_t blockDim, void* stream, uint8_t* input, uint8_t* h_pre, uint8_t* output,
+                                int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-extern "C" void mhc_pre_do_fp16(
-    uint32_t blockDim, void* stream,
-    uint8_t* input, uint8_t* h_pre, uint8_t* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-);
+extern "C" void mhc_pre_do_fp16(uint32_t blockDim, void* stream, uint8_t* input, uint8_t* h_pre, uint8_t* output,
+                                int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-extern "C" void mhc_pre_do_bf16(
-    uint32_t blockDim, void* stream,
-    uint8_t* input, uint8_t* h_pre_fp32, uint8_t* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-);
+extern "C" void mhc_pre_do_bf16(uint32_t blockDim, void* stream, uint8_t* input, uint8_t* h_pre_fp32, uint8_t* output,
+                                int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-#define CHECK_ACL(x) do { \
-    aclError err = (x); \
-    if (err != ACL_SUCCESS) { \
-        printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
-        exit(1); \
-    } \
-} while(0)
+#define CHECK_ACL(x) \
+    do { \
+        aclError err = (x); \
+        if (err != ACL_SUCCESS) { \
+            printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
+            exit(1); \
+        } \
+    } while (0)
 
 struct BenchResult {
     double median_us;
@@ -54,8 +46,9 @@ struct BenchResult {
     double gbps;
 };
 
-BenchResult benchmark_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams,
-                           int warmup = 10, int iters = 100) {
+BenchResult benchmark_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams, int warmup = 10,
+                           int iters = 100)
+{
     int64_t input_size = batch * num_streams * seq_len * dim;
     int64_t weight_size = num_streams;
     int64_t output_size = batch * seq_len * dim;
@@ -69,8 +62,8 @@ BenchResult benchmark_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t 
     CHECK_ACL(aclrtCreateStream(&stream));
 
     for (int i = 0; i < warmup; ++i) {
-        mhc_pre_do_fp32(0, stream, (uint8_t*)d_input, (uint8_t*)d_weight,
-                        (uint8_t*)d_output, batch, seq_len, dim, num_streams);
+        mhc_pre_do_fp32(0, stream, (uint8_t*)d_input, (uint8_t*)d_weight, (uint8_t*)d_output, batch, seq_len, dim,
+                        num_streams);
     }
     CHECK_ACL(aclrtSynchronizeStream(stream));
 
@@ -80,8 +73,8 @@ BenchResult benchmark_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t 
         CHECK_ACL(aclrtCreateEvent(&start));
         CHECK_ACL(aclrtCreateEvent(&end));
         CHECK_ACL(aclrtRecordEvent(start, stream));
-        mhc_pre_do_fp32(0, stream, (uint8_t*)d_input, (uint8_t*)d_weight,
-                        (uint8_t*)d_output, batch, seq_len, dim, num_streams);
+        mhc_pre_do_fp32(0, stream, (uint8_t*)d_input, (uint8_t*)d_weight, (uint8_t*)d_output, batch, seq_len, dim,
+                        num_streams);
         CHECK_ACL(aclrtRecordEvent(end, stream));
         CHECK_ACL(aclrtSynchronizeStream(stream));
         float ms;
@@ -104,13 +97,15 @@ BenchResult benchmark_fp32(int64_t batch, int64_t seq_len, int64_t dim, int64_t 
     return {median, times[0], times[iters - 1], gbps};
 }
 
-void run_benchmark(const char* name, int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams) {
+void run_benchmark(const char* name, int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
+{
     auto r = benchmark_fp32(batch, seq_len, dim, num_streams);
-    printf("%-20s B=%2ld S=%4ld D=%4ld N=%ld  median=%.1f us  [%.1f-%.1f]  %.1f GB/s\n",
-           name, batch, seq_len, dim, num_streams, r.median_us, r.min_us, r.max_us, r.gbps);
+    printf("%-20s B=%2ld S=%4ld D=%4ld N=%ld  median=%.1f us  [%.1f-%.1f]  %.1f GB/s\n", name, batch, seq_len, dim,
+           num_streams, r.median_us, r.min_us, r.max_us, r.gbps);
 }
 
-int main() {
+int main()
+{
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(0));
 

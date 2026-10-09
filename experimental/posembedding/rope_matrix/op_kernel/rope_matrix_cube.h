@@ -20,7 +20,7 @@ using namespace matmul;
 __aicore__ inline uint32_t Ceiling(uint32_t a, uint32_t b)
 {
     if (b == 0) {
-            return 0;
+        return 0;
     }
     return (a + b - 1) / b;
 }
@@ -29,10 +29,10 @@ template <typename A_T, typename B_T, typename C_T>
 class MatmulBatchKernel {
 public:
     __aicore__ inline MatmulBatchKernel(){};
-    __aicore__ inline void Init(GM_ADDR a, GM_ADDR b, GM_ADDR c, GM_ADDR workspace,
-                                const TCubeTiling &tiling, AscendC::TPipe *pipe);
-    __aicore__ inline void Process(AscendC::TPipe *pipe, RopeMatrixTiling *ropeTiling);
-    
+    __aicore__ inline void Init(GM_ADDR a, GM_ADDR b, GM_ADDR c, GM_ADDR workspace, const TCubeTiling& tiling,
+                                AscendC::TPipe* pipe);
+    __aicore__ inline void Process(AscendC::TPipe* pipe, RopeMatrixTiling* ropeTiling);
+
     typedef MatmulType<AscendC::TPosition::GM, CubeFormat::ND, A_T> aType;
     typedef MatmulType<AscendC::TPosition::GM, CubeFormat::ND, B_T, false, LayoutMode::NONE, true> bType;
     typedef MatmulType<AscendC::TPosition::GM, CubeFormat::ND, C_T> cType;
@@ -45,24 +45,22 @@ public:
     TCubeTiling tiling;
 
 private:
-    __aicore__ inline void CalcGMOffset(int blockIdx, int &offsetA, int &offsetB, int &offsetC,
-                                        int &tailM, int &tailN, int B, int H, int M, int N,
-                                        int K, int Nindex);
+    __aicore__ inline void CalcGMOffset(int blockIdx, int& offsetA, int& offsetB, int& offsetC, int& tailM, int& tailN,
+                                        int B, int H, int M, int N, int K, int Nindex);
 };
 
 template <typename A_T, typename B_T, typename C_T>
-__aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::Init(GM_ADDR a, GM_ADDR b, GM_ADDR c,
-                                                                GM_ADDR workspace, const TCubeTiling &tiling,
-                                                                AscendC::TPipe *pipe)
+__aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::Init(GM_ADDR a, GM_ADDR b, GM_ADDR c, GM_ADDR workspace,
+                                                              const TCubeTiling& tiling, AscendC::TPipe* pipe)
 {
     this->tiling = tiling;
-    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(a), tiling.M * tiling.Ka);
-    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ B_T *>(b), tiling.Ka * tiling.N);
-    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(c), tiling.M * tiling.N);
+    aGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ A_T*>(a), tiling.M * tiling.Ka);
+    bGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ B_T*>(b), tiling.Ka * tiling.N);
+    cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ C_T*>(c), tiling.M * tiling.N);
 }
 
 template <typename A_T, typename B_T, typename C_T>
-__aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::Process(AscendC::TPipe *pipe, RopeMatrixTiling *ropeTiling)
+__aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::Process(AscendC::TPipe* pipe, RopeMatrixTiling* ropeTiling)
 {
     REGIST_MATMUL_OBJ(pipe, GetSysWorkSpacePtr(), matmulObj, &tiling);
 
@@ -78,8 +76,7 @@ __aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::Process(AscendC::TPipe 
         int tailM = 0, tailN = 0;
         bool isTransA = false, isTransB = false;
 
-        CalcGMOffset(AscendC::GetBlockIdx(), offsetA, offsetB, offsetC,
-                    tailM, tailN, B, H, M, N, K, Nindex);
+        CalcGMOffset(AscendC::GetBlockIdx(), offsetA, offsetB, offsetC, tailM, tailN, B, H, M, N, K, Nindex);
 
         matmulObj.SetTensorA(aGlobal[offsetA], isTransA);
         matmulObj.SetTensorB(bGlobal[offsetB], isTransB);
@@ -90,10 +87,9 @@ __aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::Process(AscendC::TPipe 
 }
 
 template <typename A_T, typename B_T, typename C_T>
-__aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::CalcGMOffset(int blockIdx,
-                                                                        int &offsetA, int &offsetB, int &offsetC,
-                                                                        int &tailM, int &tailN, int B, int H,
-                                                                        int M, int N, int K, int Nindex)
+__aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::CalcGMOffset(int blockIdx, int& offsetA, int& offsetB,
+                                                                      int& offsetC, int& tailM, int& tailN, int B,
+                                                                      int H, int M, int N, int K, int Nindex)
 {
     uint32_t aCoreInaS = tiling.singleCoreM;
     uint32_t aCoreMBlock = Ceiling(M, aCoreInaS);
@@ -112,4 +108,4 @@ __aicore__ inline void MatmulBatchKernel<A_T, B_T, C_T>::CalcGMOffset(int blockI
 }
 
 } // namespace RopeMatrix
-} //namespace npu_ops_transformer_ext
+} // namespace npu_ops_transformer_ext

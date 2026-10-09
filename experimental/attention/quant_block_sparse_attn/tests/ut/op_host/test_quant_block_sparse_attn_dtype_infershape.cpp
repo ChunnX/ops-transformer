@@ -23,9 +23,15 @@ static const std::string OP_NAME = "QuantBlockSparseAttn";
 
 class QuantBlockSparseAttnInferDataTypeTest : public testing::TestWithParam<QuantBlockSparseAttnInferDTypeUtParam> {
 protected:
-    static void SetUpTestCase() { std::cout << "QuantBlockSparseAttnInferDataTypeTest SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnInferDataTypeTest SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "QuantBlockSparseAttnInferDataTypeTest TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "QuantBlockSparseAttnInferDataTypeTest TearDown" << std::endl;
+    }
 };
 
 TEST_P(QuantBlockSparseAttnInferDataTypeTest, param)

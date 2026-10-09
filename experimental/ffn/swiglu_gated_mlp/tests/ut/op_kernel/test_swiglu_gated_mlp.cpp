@@ -40,23 +40,18 @@ uint32_t PlatformAscendC::GetLibApiWorkSpaceSize() const
     return 0;
 }
 
-PlatformAscendC *PlatformAscendCManager::platformInfo = nullptr;
+PlatformAscendC* PlatformAscendCManager::platformInfo = nullptr;
 std::mutex PlatformAscendCManager::platformInitMtx;
 
-PlatformAscendC *PlatformAscendCManager::PlatformAscendCManagerInit(const char *customSocVersion)
+PlatformAscendC* PlatformAscendCManager::PlatformAscendCManagerInit(const char* customSocVersion)
 {
     (void)customSocVersion;
     return nullptr;
 }
-}  // namespace platform_ascendc
+} // namespace platform_ascendc
 
-extern "C" __global__ __aicore__ void swiglu_gated_mlp(
-    GM_ADDR xGm,
-    GM_ADDR gateUpWeightGm,
-    GM_ADDR downWeightGm,
-    GM_ADDR yGm,
-    GM_ADDR workspace,
-    GM_ADDR tiling);
+extern "C" __global__ __aicore__ void swiglu_gated_mlp(GM_ADDR xGm, GM_ADDR gateUpWeightGm, GM_ADDR downWeightGm,
+                                                       GM_ADDR yGm, GM_ADDR workspace, GM_ADDR tiling);
 
 class swiglu_gated_mlp_test : public testing::Test {
 protected:
@@ -73,22 +68,22 @@ protected:
 
 template <typename T>
 struct DataTypeName {
-    static constexpr const char *value = "unknown";
+    static constexpr const char* value = "unknown";
 };
 
 template <>
 struct DataTypeName<half> {
-    static constexpr const char *value = "float16";
+    static constexpr const char* value = "float16";
 };
 
 template <>
 struct DataTypeName<float> {
-    static constexpr const char *value = "float32";
+    static constexpr const char* value = "float32";
 };
 
 template <>
 struct DataTypeName<bfloat16_t> {
-    static constexpr const char *value = "bfloat16_t";
+    static constexpr const char* value = "bfloat16_t";
 };
 
 template <typename T>
@@ -120,7 +115,7 @@ template <typename T>
 void RunSwigluGatedMlpKernelCase(uint64_t tilingKey)
 {
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    const char *dtypeStr = DataTypeName<T>::value;
+    const char* dtypeStr = DataTypeName<T>::value;
     cout << ">>> Current Test Type: " << dtypeStr << endl;
 
     constexpr uint64_t totalRows = 2;
@@ -135,11 +130,11 @@ void RunSwigluGatedMlpKernelCase(uint64_t tilingKey)
     size_t workspaceByteSize = 32;
     size_t tilingByteSize = sizeof(swiglu_gated_mlp_kernel::SwigluGatedMlpTilingData);
 
-    uint8_t *gateUp = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(gateUpByteSize));
-    uint8_t *hidden = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(hiddenByteSize));
-    uint8_t *downWeight = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(sizeof(T)));
-    uint8_t *workspace = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(workspaceByteSize));
-    uint8_t *tiling = reinterpret_cast<uint8_t *>(AscendC::GmAlloc(tilingByteSize));
+    uint8_t* gateUp = reinterpret_cast<uint8_t*>(AscendC::GmAlloc(gateUpByteSize));
+    uint8_t* hidden = reinterpret_cast<uint8_t*>(AscendC::GmAlloc(hiddenByteSize));
+    uint8_t* downWeight = reinterpret_cast<uint8_t*>(AscendC::GmAlloc(sizeof(T)));
+    uint8_t* workspace = reinterpret_cast<uint8_t*>(AscendC::GmAlloc(workspaceByteSize));
+    uint8_t* tiling = reinterpret_cast<uint8_t*>(AscendC::GmAlloc(tilingByteSize));
 
     memset(gateUp, 0, gateUpByteSize);
     memset(hidden, 0, hiddenByteSize);
@@ -147,8 +142,8 @@ void RunSwigluGatedMlpKernelCase(uint64_t tilingKey)
     memset(workspace, 0, workspaceByteSize);
     memset(tiling, 0, tilingByteSize);
 
-    T *gateUpData = reinterpret_cast<T *>(gateUp);
-    T *hiddenData = reinterpret_cast<T *>(hidden);
+    T* gateUpData = reinterpret_cast<T*>(gateUp);
+    T* hiddenData = reinterpret_cast<T*>(hidden);
     float golden[totalRows * intermediateSize] = {};
 
     for (uint64_t row = 0; row < totalRows; ++row) {
@@ -166,7 +161,7 @@ void RunSwigluGatedMlpKernelCase(uint64_t tilingKey)
         }
     }
 
-    auto *tilingData = reinterpret_cast<swiglu_gated_mlp_kernel::SwigluGatedMlpTilingData *>(tiling);
+    auto* tilingData = reinterpret_cast<swiglu_gated_mlp_kernel::SwigluGatedMlpTilingData*>(tiling);
     tilingData->dtypeTag = static_cast<uint32_t>(tilingKey);
     tilingData->stage = WG_MLP_STAGE_SWIGLU;
     tilingData->isDynamicShape = 0;
@@ -219,8 +214,7 @@ void RunSwigluGatedMlpKernelCase(uint64_t tilingKey)
     } else {
         cout << "Comparison failed for " << outputName << endl;
         for (uint64_t idx = firstMismatch; idx < totalRows * intermediateSize && idx < firstMismatch + 5U; ++idx) {
-            cout << "index:" << idx << ",output:" << ToFloat<T>(hiddenData[idx])
-                 << ", golden:" << golden[idx] << endl;
+            cout << "index:" << idx << ",output:" << ToFloat<T>(hiddenData[idx]) << ", golden:" << golden[idx] << endl;
         }
     }
     cout.unsetf(std::ios::floatfield);

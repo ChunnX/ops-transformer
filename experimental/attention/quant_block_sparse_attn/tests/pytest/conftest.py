@@ -21,7 +21,9 @@ import pytest
 def _prepend_env_path(env_name, paths):
     current = os.environ.get(env_name, "")
     current_parts = [part for part in current.split(":") if part]
-    new_parts = [str(path) for path in paths if path.exists() and str(path) not in current_parts]
+    new_parts = [
+        str(path) for path in paths if path.exists() and str(path) not in current_parts
+    ]
     if new_parts:
         os.environ[env_name] = ":".join(new_parts + current_parts)
 
@@ -29,7 +31,9 @@ def _prepend_env_path(env_name, paths):
 def _append_env_path(env_name, paths):
     current = os.environ.get(env_name, "")
     current_parts = [part for part in current.split(":") if part]
-    new_parts = [str(path) for path in paths if path.exists() and str(path) not in current_parts]
+    new_parts = [
+        str(path) for path in paths if path.exists() and str(path) not in current_parts
+    ]
     if new_parts:
         os.environ[env_name] = ":".join(current_parts + new_parts)
 
@@ -39,9 +43,11 @@ def _runtime_library_dirs():
     conda_prefix = os.environ.get("CONDA_PREFIX")
     if conda_prefix:
         candidates.append(Path(conda_prefix) / "lib")
-    candidates.extend([
-        Path(sys.executable).resolve().parents[1] / "lib",
-    ])
+    candidates.extend(
+        [
+            Path(sys.executable).resolve().parents[1] / "lib",
+        ]
+    )
     deduped = []
     seen = set()
     for path in candidates:
@@ -69,7 +75,8 @@ def _preload_runtime_libraries():
 def _custom_opp_roots():
     repo_root = Path(__file__).resolve().parents[5]
     build_candidates = [
-        repo_root / "build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-x86_64.run"
+        repo_root
+        / "build/_CPack_Packages/Linux/External/cann-ops-transformer-custom_linux-x86_64.run"
         / "packages/vendors/custom_transformer",
     ]
     build_roots = [path for path in build_candidates if path.exists()]
@@ -84,7 +91,9 @@ def _custom_opp_roots():
 def _configure_custom_opp_paths():
     custom_opp_roots = _custom_opp_roots()
     _prepend_env_path("ASCEND_CUSTOM_OPP_PATH", custom_opp_roots)
-    _prepend_env_path("LD_LIBRARY_PATH", [root / "op_api" / "lib" for root in custom_opp_roots])
+    _prepend_env_path(
+        "LD_LIBRARY_PATH", [root / "op_api" / "lib" for root in custom_opp_roots]
+    )
 
 
 _preload_runtime_libraries()

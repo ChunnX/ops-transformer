@@ -56,7 +56,6 @@ struct FDparams {
     uint32_t gS1BaseSizeOfFd;
 };
 
-
 #endif
 struct FDparamsX {
     uint32_t fdCoreEnable;
@@ -128,14 +127,14 @@ struct CommonConstInfo {
     uint64_t s2Size;             /* s2总大小 */
     uint64_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */
     uint64_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */
-    
+
     /* strides */
     StridesConstInfo keyStrides;
     StridesConstInfo valueStrides;
     StridesConstInfo kRopeStrides;
     StridesConstInfo kScaleStrides;
     StridesConstInfo vScaleStrides;
-    
+
     /* FA kernel meta */
     uint32_t bN2Start;
     uint32_t bN2End;
@@ -237,10 +236,7 @@ struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo,
                                               SysPrefixConstInfo {};
 
 template <>
-struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
-                                                PAConstInfo,
-                                                LseConstInfo,
-                                                TensorListConstInfo {};
+struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
 
 // struct FusedTransposeInfo {
 //     // 以下是FlashDecode分支区分的信息
@@ -292,7 +288,6 @@ struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo,
 //     sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
 //     return sInnerToken;
 // }
-
 
 } // namespace AttentionCommon
 

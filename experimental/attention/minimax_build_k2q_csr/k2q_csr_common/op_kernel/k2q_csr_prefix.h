@@ -35,7 +35,7 @@ public:
     __aicore__ inline K2qCsrRowPrefixKernel() {}
 
     __aicore__ inline void Init(GM_ADDR rowPtr, GM_ADDR qInd, GM_ADDR slot, GM_ADDR scratch,
-                                const K2qCsrTilingData *tiling, TPipe *pipe)
+                                const K2qCsrTilingData* tiling, TPipe* pipe)
     {
         (void)qInd;
         (void)slot;
@@ -49,8 +49,8 @@ public:
         if (rowCountElems < 1) {
             rowCountElems = 1;
         }
-        rowCountsGm_.SetGlobalBuffer((__gm__ int32_t *)K2qCsrScratch::RowCountsAddr(scratch, tiling), rowCountElems);
-        rowPtrGm_.SetGlobalBuffer((__gm__ int32_t *)rowPtr, H_ * bins_ > 0 ? H_ * bins_ : 1);
+        rowCountsGm_.SetGlobalBuffer((__gm__ int32_t*)K2qCsrScratch::RowCountsAddr(scratch, tiling), rowCountElems);
+        rowPtrGm_.SetGlobalBuffer((__gm__ int32_t*)rowPtr, H_ * bins_ > 0 ? H_ * bins_ : 1);
         pipe_->InitBuffer(cntBuf_, K2qCsrCommon::Align32((totalRows_ > 0 ? totalRows_ : 1) * sizeof(int32_t)));
         pipe_->InitBuffer(outBuf_, K2qCsrCommon::Align32((bins_ > 0 ? bins_ : 1) * sizeof(int32_t)));
     }
@@ -97,8 +97,8 @@ public:
     }
 
 private:
-    const K2qCsrTilingData *tiling_;
-    TPipe *pipe_;
+    const K2qCsrTilingData* tiling_;
+    TPipe* pipe_;
     GlobalTensor<int32_t> rowCountsGm_;
     GlobalTensor<int32_t> rowPtrGm_;
     int64_t H_, totalRows_, bins_, usedCores_;
@@ -111,7 +111,7 @@ class K2qCsrTilePrefixKernel {
 public:
     __aicore__ inline K2qCsrTilePrefixKernel() {}
 
-    __aicore__ inline void Init(GM_ADDR rowPtr, GM_ADDR scratch, const K2qCsrTilingData *tiling, TPipe *pipe)
+    __aicore__ inline void Init(GM_ADDR rowPtr, GM_ADDR scratch, const K2qCsrTilingData* tiling, TPipe* pipe)
     {
         tiling_ = tiling;
         pipe_ = pipe;
@@ -122,9 +122,9 @@ public:
         usedCores_ = tiling->usedCores > 0 ? tiling->usedCores : 1;
         int64_t tileElems = K2qCsrScratch::TileElems(tiling);
         int64_t tileBytes = tileElems * static_cast<int64_t>(sizeof(int32_t));
-        tileCountsGm_.SetGlobalBuffer((__gm__ int32_t *)scratch, tileElems);
-        absBaseGm_.SetGlobalBuffer((__gm__ int32_t *)(scratch + tileBytes), tileElems);
-        rowPtrGm_.SetGlobalBuffer((__gm__ int32_t *)rowPtr, H_ * bins_ > 0 ? H_ * bins_ : 1);
+        tileCountsGm_.SetGlobalBuffer((__gm__ int32_t*)scratch, tileElems);
+        absBaseGm_.SetGlobalBuffer((__gm__ int32_t*)(scratch + tileBytes), tileElems);
+        rowPtrGm_.SetGlobalBuffer((__gm__ int32_t*)rowPtr, H_ * bins_ > 0 ? H_ * bins_ : 1);
 
         int64_t rowsPer = 1;
         if (totalRows_ > 0 && usedCores_ > 0) {
@@ -202,8 +202,8 @@ public:
     }
 
 private:
-    const K2qCsrTilingData *tiling_;
-    TPipe *pipe_;
+    const K2qCsrTilingData* tiling_;
+    TPipe* pipe_;
     GlobalTensor<int32_t> tileCountsGm_;
     GlobalTensor<int32_t> absBaseGm_;
     GlobalTensor<int32_t> rowPtrGm_;

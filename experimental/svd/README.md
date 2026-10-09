@@ -44,7 +44,7 @@ stateDiagram-v2
 		MatMul: CUB
 		Vector: VEC
 	}
-	
+
 	class Active ActiveState
 	class MatMul1, MatMul2, MatMul3, MatMul4, MatMul CUBState
 	class Gauss, Jacobi, HouseholderQR, Vector VECState
@@ -61,7 +61,7 @@ R: SVD rank size (15 < R < D)
 
 **Input**
 
-| Tensor | Layout | dType | Description                                                                  | 
+| Tensor | Layout | dType | Description                                                                  |
 |--------|--------|-------|------------------------------------------------------------------------------|
 | A      | BSD    | FP32  | Tensor of shape (*, S, D) where * is zero or more batch dimensions and S > D |
 

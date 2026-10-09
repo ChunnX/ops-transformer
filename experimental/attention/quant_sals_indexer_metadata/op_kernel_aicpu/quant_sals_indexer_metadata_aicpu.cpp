@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file quant_sals_indexer_metadata_aicpu.cpp
  * \brief
@@ -19,76 +19,68 @@
 #include "../../quant_sals_indexer/op_kernel/quant_sals_indexer_metadata.h"
 #include "../../common/cpu_context_util.h"
 
-
 namespace aicpu {
-uint32_t QuantSalsIndexerMetaDataCpuKernel::Compute(CpuKernelContext &ctx) {
-  context_ = &ctx;
-  bool success = Prepare(ctx) && BalanceSchedule() && GenMetaData();
-  return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
+uint32_t QuantSalsIndexerMetaDataCpuKernel::Compute(CpuKernelContext& ctx)
+{
+    context_ = &ctx;
+    bool success = Prepare(ctx) && BalanceSchedule() && GenMetaData();
+    return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool QuantSalsIndexerMetaDataCpuKernel::Prepare(CpuKernelContext &ctx) {
-  // input
-  actSeqLenKV_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenKV));
-  // output
-  metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
+bool QuantSalsIndexerMetaDataCpuKernel::Prepare(CpuKernelContext& ctx)
+{
+    // input
+    actSeqLenKV_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenKV));
+    // output
+    metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
-  bool requiredAttrs =
-      GetAttrValue(ctx, "batch_size", batchSize_) &&
-      GetAttrValue(ctx, "key_seq_size", kvSeqSize_) &&
-      GetAttrValue(ctx, "key_head_num", kvHeadNum_) &&
-      GetAttrValue(ctx, "fixed_tail_count", fixedTailCount_) &&
-      GetAttrValue(ctx, "sparse_block_size", sparseBlockSize_) &&
-      GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
-      GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
-  if (!requiredAttrs) {
-    return false;
-  }
-  coreNum_ = aicCoreNum_;
-  return (ParamsCheck() && ParamsInit());
+    bool requiredAttrs =
+        GetAttrValue(ctx, "batch_size", batchSize_) && GetAttrValue(ctx, "key_seq_size", kvSeqSize_) &&
+        GetAttrValue(ctx, "key_head_num", kvHeadNum_) && GetAttrValue(ctx, "fixed_tail_count", fixedTailCount_) &&
+        GetAttrValue(ctx, "sparse_block_size", sparseBlockSize_) && GetAttrValue(ctx, "aic_core_num", aicCoreNum_) &&
+        GetAttrValue(ctx, "aiv_core_num", aivCoreNum_);
+    if (!requiredAttrs) {
+        return false;
+    }
+    coreNum_ = aicCoreNum_;
+    return (ParamsCheck() && ParamsInit());
 }
 
-bool QuantSalsIndexerMetaDataCpuKernel::ParamsCheck() {
-  if (actSeqLenKV_ != nullptr) {
-    auto shape = actSeqLenKV_->GetTensorShape();
-    auto data = actSeqLenKV_->GetData();
-    auto dtype = actSeqLenKV_->GetDataType();
+bool QuantSalsIndexerMetaDataCpuKernel::ParamsCheck()
+{
+    if (actSeqLenKV_ != nullptr) {
+        auto shape = actSeqLenKV_->GetTensorShape();
+        auto data = actSeqLenKV_->GetData();
+        auto dtype = actSeqLenKV_->GetDataType();
 
-    KERNEL_CHECK_NULLPTR(shape, false,
-                         "shape of actual_seq_lengths_kv is null");
-    KERNEL_CHECK_NULLPTR(data, false, "data of actual_seq_lengths_kv is null");
-    KERNEL_CHECK_FALSE((dtype == DataType::DT_INT32), false,
-                       "dtype of actual_seq_lengths_kv is not int32");
+        KERNEL_CHECK_NULLPTR(shape, false, "shape of actual_seq_lengths_kv is null");
+        KERNEL_CHECK_NULLPTR(data, false, "data of actual_seq_lengths_kv is null");
+        KERNEL_CHECK_FALSE((dtype == DataType::DT_INT32), false, "dtype of actual_seq_lengths_kv is not int32");
 
-    KERNEL_CHECK_FALSE(
-        (shape->GetDims() == 1 && shape->GetDimSize(0) == batchSize_), false,
-        "shape of actual_seq_lengths_query date is not {%u,}", batchSize_);
-  }
+        KERNEL_CHECK_FALSE((shape->GetDims() == 1 && shape->GetDimSize(0) == batchSize_), false,
+                           "shape of actual_seq_lengths_query date is not {%u,}", batchSize_);
+    }
 
-  KERNEL_CHECK_NULLPTR(metaData_, false, "metadata is null");
-  auto shape = metaData_->GetTensorShape();
-  auto data = metaData_->GetData();
-  auto dtype = metaData_->GetDataType();
+    KERNEL_CHECK_NULLPTR(metaData_, false, "metadata is null");
+    auto shape = metaData_->GetTensorShape();
+    auto data = metaData_->GetData();
+    auto dtype = metaData_->GetDataType();
 
-  KERNEL_CHECK_NULLPTR(shape, false, "shape of metadata is null");
-  KERNEL_CHECK_NULLPTR(data, false, "data of metadata is null");
-  KERNEL_CHECK_FALSE((dtype == DataType::DT_INT32), false,
-                     "dtype of metadata is not int32");
-  KERNEL_CHECK_FALSE((shape->GetDims() == 1 &&
-                      shape->GetDimSize(0) == optiling::QSI_META_SIZE),
-                     false, "shape of sparse_seq_lengths_kv date is not {%u,}",
-                     optiling::QSI_META_SIZE);
-  KERNEL_CHECK_FALSE(
-      (aicCoreNum_ != 0 && aivCoreNum_ != 0 && aivCoreNum_ % aicCoreNum_ == 0 &&
-       aicCoreNum_ <= optiling::CORE_NUM &&
-       aivCoreNum_ <= (2 * optiling::CORE_NUM)),
-      false, "core num invalid aic:%u aiv:%u", aicCoreNum_,
-      aivCoreNum_);  // more limit check with platform-core
+    KERNEL_CHECK_NULLPTR(shape, false, "shape of metadata is null");
+    KERNEL_CHECK_NULLPTR(data, false, "data of metadata is null");
+    KERNEL_CHECK_FALSE((dtype == DataType::DT_INT32), false, "dtype of metadata is not int32");
+    KERNEL_CHECK_FALSE((shape->GetDims() == 1 && shape->GetDimSize(0) == optiling::QSI_META_SIZE), false,
+                       "shape of sparse_seq_lengths_kv date is not {%u,}", optiling::QSI_META_SIZE);
+    KERNEL_CHECK_FALSE((aicCoreNum_ != 0 && aivCoreNum_ != 0 && aivCoreNum_ % aicCoreNum_ == 0 &&
+                        aicCoreNum_ <= optiling::CORE_NUM && aivCoreNum_ <= (2 * optiling::CORE_NUM)),
+                       false, "core num invalid aic:%u aiv:%u", aicCoreNum_,
+                       aivCoreNum_); // more limit check with platform-core
 
-  return true;
+    return true;
 }
 
-bool QuantSalsIndexerMetaDataCpuKernel::ParamsInit() {
+bool QuantSalsIndexerMetaDataCpuKernel::ParamsInit()
+{
     groupSize_ = 1U;
     mBaseSize_ = 1U;
     s2BaseSize_ = 2048U;
@@ -106,24 +98,25 @@ uint32_t QuantSalsIndexerMetaDataCpuKernel::GetS2SeqSize(uint32_t bIdx)
     if (actSeqLenKV_ == nullptr) {
         s2Size = kvSeqSize_;
     } else {
-        const int32_t *s2Ptr = (int32_t*)actSeqLenKV_->GetData();
+        const int32_t* s2Ptr = (int32_t*)actSeqLenKV_->GetData();
         s2Size = static_cast<uint32_t>(s2Ptr[bIdx]);
     }
 
-    // 即是S2为0，QSI依然存在刷-1和搬运动作。如果actual kv中存大量0，需要对刷新和搬运操作计算负载，避免集中在一个vector上操作
+    // 即是S2为0，QSI依然存在刷-1和搬运动作。如果actual
+    // kv中存大量0，需要对刷新和搬运操作计算负载，避免集中在一个vector上操作
     // 而如果存在部分0，刷新和搬运操作理应会被正常计算流水掩盖，所以需要给一个合适小的值。
     // 此处返回512U是计算测试所得经验值。
     int32_t totalNCount = (s2Size + sparseBlockSize_ - 1) / sparseBlockSize_;
     if (totalNCount <= fixedTailCount_) {
-        return 512U;         
+        return 512U;
     }
     return (totalNCount - fixedTailCount_) * sparseBlockSize_;
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
+void QuantSalsIndexerMetaDataCpuKernel::CalcSplitInfo(SplitContext& splitContext)
 {
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
-    SplitInfo &splitInfo = splitContext.splitInfo;
+    SplitInfo& splitInfo = splitContext.splitInfo;
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t s2Size = GetS2SeqSize(bIdx);
@@ -138,20 +131,19 @@ void QuantSalsIndexerMetaDataCpuKernel::CalcSplitInfo(SplitContext &splitContext
     return;
 }
 
-int64_t QuantSalsIndexerMetaDataCpuKernel::CalcCost(
-    uint32_t basicM, uint32_t basicS2)
+int64_t QuantSalsIndexerMetaDataCpuKernel::CalcCost(uint32_t basicM, uint32_t basicS2)
 {
     uint32_t alignCoefM = 16U;
     uint32_t alignCoefS2 = 64U;
-    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16
-    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
+    uint32_t alignBasicM = (basicM + alignCoefM - 1U) >> 4U; // 按alignCoefM对齐，向上取整，4：移位操作实现除16
+    uint32_t alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U; // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
+    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2); // 6：M轴系数，10：S2轴系数
 }
 
-BlockCost<int64_t> QuantSalsIndexerMetaDataCpuKernel::CalcCostTable(uint32_t s1NormalSize, 
-    uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize)
+BlockCost<int64_t> QuantSalsIndexerMetaDataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize,
+                                                                    uint32_t s1GTailSize, uint32_t s2TailSize)
 {
-    BlockCost<int64_t> typeCost {};
+    BlockCost<int64_t> typeCost{};
     typeCost[NORMAL_BLOCK][NORMAL_BLOCK] = CalcCost(s1NormalSize, s2NormalSize);
     typeCost[TAIL_BLOCK][NORMAL_BLOCK] = (s1GTailSize == 0U) ? 0U : CalcCost(s1GTailSize, s2NormalSize);
     typeCost[NORMAL_BLOCK][TAIL_BLOCK] = (s2TailSize == 0U) ? 0U : CalcCost(s1NormalSize, s2TailSize);
@@ -159,8 +151,7 @@ BlockCost<int64_t> QuantSalsIndexerMetaDataCpuKernel::CalcCostTable(uint32_t s1N
     return typeCost;
 }
 
-Range<uint32_t> QuantSalsIndexerMetaDataCpuKernel::CalcS2Range(
-    uint32_t s1GIdx, const BatchCache &batchCache)
+Range<uint32_t> QuantSalsIndexerMetaDataCpuKernel::CalcS2Range(uint32_t s1GIdx, const BatchCache& batchCache)
 {
     uint32_t s2Start = 0U;
     uint32_t s2End = 0U;
@@ -173,22 +164,22 @@ Range<uint32_t> QuantSalsIndexerMetaDataCpuKernel::CalcS2Range(
     return std::make_pair(s2Start, s2End);
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::CalcBatchCache(
-    uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache)
+void QuantSalsIndexerMetaDataCpuKernel::CalcBatchCache(uint32_t bIdx, const SplitContext& splitContext,
+                                                       BatchCache& batchCache)
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
+    const SplitInfo& splitInfo = splitContext.splitInfo;
 
     batchCache.bIdx = bIdx;
     batchCache.s1Size = GetS1SeqSize(bIdx);
     batchCache.s2Size = GetS2SeqSize(bIdx);
-    batchCache.typeCost = CalcCostTable(mBaseSize_, s2BaseSize_, splitInfo.s1GTailSize[bIdx],
-        splitInfo.s2TailSize[bIdx]);
+    batchCache.typeCost =
+        CalcCostTable(mBaseSize_, s2BaseSize_, splitInfo.s1GTailSize[bIdx], splitInfo.s2TailSize[bIdx]);
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::CalcS1GCache(uint32_t s1GIdx, 
-    const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
+void QuantSalsIndexerMetaDataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitContext& splitContext,
+                                                     const BatchCache& batchCache, S1GCache& s1GCache)
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
+    const SplitInfo& splitInfo = splitContext.splitInfo;
 
     s1GCache.bIdx = batchCache.bIdx;
     s1GCache.s1GIdx = s1GIdx;
@@ -207,8 +198,9 @@ void QuantSalsIndexerMetaDataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
 
     // 计算S2方向满块、尾块数量
     s1GCache.s1GBlock = s1GCache.s2End - s1GCache.s2Start;
-    uint32_t curTailS2Num = (splitInfo.s2TailSize[batchCache.bIdx] != 0U &&
-        s1GCache.s2End == splitInfo.s2BaseNum[batchCache.bIdx]) ? 1U : 0U;
+    uint32_t curTailS2Num =
+        (splitInfo.s2TailSize[batchCache.bIdx] != 0U && s1GCache.s2End == splitInfo.s2BaseNum[batchCache.bIdx]) ? 1U :
+                                                                                                                  0U;
     uint32_t curNormalS2Num = s1GCache.s1GBlock - curTailS2Num;
     if (splitInfo.s1GBaseNum[batchCache.bIdx] == 0) {
         s1GCache.s1GCost = 0;
@@ -216,23 +208,23 @@ void QuantSalsIndexerMetaDataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
         s1GCache.s1GNormalBlockCost = 0;
     } else if (s1GIdx == (splitInfo.s1GBaseNum[batchCache.bIdx] - 1U) && splitInfo.s1GTailSize[batchCache.bIdx] != 0U) {
         s1GCache.s1GCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
-            batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
+                           batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] * curTailS2Num;
         s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[TAIL_BLOCK][TAIL_BLOCK] :
-                                 batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK];
+                                                        batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK];
         s1GCache.s1GNormalBlockCost = batchCache.typeCost[TAIL_BLOCK][NORMAL_BLOCK];
     } else {
         s1GCache.s1GCost = batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK] * curNormalS2Num +
-            batchCache.typeCost[NORMAL_BLOCK][TAIL_BLOCK] * curTailS2Num;
+                           batchCache.typeCost[NORMAL_BLOCK][TAIL_BLOCK] * curTailS2Num;
         s1GCache.s1GLastBlockCost = curTailS2Num > 0U ? batchCache.typeCost[NORMAL_BLOCK][TAIL_BLOCK] :
-                                 batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
+                                                        batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
         s1GCache.s1GNormalBlockCost = batchCache.typeCost[NORMAL_BLOCK][NORMAL_BLOCK];
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::CalcBatchCost(
-    uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
+void QuantSalsIndexerMetaDataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext& splitContext,
+                                                      CostInfo& costInfo)
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
+    const SplitInfo& splitInfo = splitContext.splitInfo;
 
     costInfo.bN2CostOfEachBatch[bIdx] = 0;
     costInfo.bN2BlockOfEachBatch[bIdx] = 0U;
@@ -249,16 +241,16 @@ void QuantSalsIndexerMetaDataCpuKernel::CalcBatchCost(
         CalcS1GCache(s1GIdx, splitContext, bCache, s1GCache);
         costInfo.bN2CostOfEachBatch[bIdx] += s1GCache.s1GCost;
         costInfo.bN2BlockOfEachBatch[bIdx] += s1GCache.s1GBlock;
-        if(s1GCache.s1GBlock > 0){
+        if (s1GCache.s1GBlock > 0) {
             costInfo.bN2LastBlockCostOfEachBatch[bIdx] = s1GCache.s1GLastBlockCost;
         }
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::CalcCostInfo(SplitContext &splitContext)
+void QuantSalsIndexerMetaDataCpuKernel::CalcCostInfo(SplitContext& splitContext)
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-    CostInfo &costInfo = splitContext.costInfo;
+    const SplitInfo& splitInfo = splitContext.splitInfo;
+    CostInfo& costInfo = splitContext.costInfo;
 
     if (splitInfo.isKvSeqAllZero) {
         costInfo.totalCost = 0;
@@ -274,16 +266,16 @@ void QuantSalsIndexerMetaDataCpuKernel::CalcCostInfo(SplitContext &splitContext)
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantSalsIndexerMetaDataCpuKernel::UpdateCursor(const SplitContext& splitContext, AssignContext& assignContext)
 {
-    const SplitInfo &splitInfo = splitContext.splitInfo;
-    const CostInfo &costInfo = splitContext.costInfo;
+    const SplitInfo& splitInfo = splitContext.splitInfo;
+    const CostInfo& costInfo = splitContext.costInfo;
 
     bool UpdateS1G = false;
     bool UpdateBatch = false;
 
     // Update S2
-    if (assignContext.curS2Idx >= assignContext.s1GCache.s2End) {    // 边界assignInfo.s2End是取不到的开区间
+    if (assignContext.curS2Idx >= assignContext.s1GCache.s2End) { // 边界assignInfo.s2End是取不到的开区间
         assignContext.curS2Idx = 0U;
         assignContext.curS1GIdx++;
         UpdateS1G = true;
@@ -296,7 +288,7 @@ void QuantSalsIndexerMetaDataCpuKernel::UpdateCursor(const SplitContext &splitCo
     }
 
     // Update Batch
-    if (assignContext.curBN2Idx == batchSize_ * kvHeadNum_) {  // 所有负载全部分配完，设置最后一个核的右开区间，返回
+    if (assignContext.curBN2Idx == batchSize_ * kvHeadNum_) { // 所有负载全部分配完，设置最后一个核的右开区间，返回
         assignContext.curS1GIdx = 0U;
         assignContext.curS2Idx = 0U;
         assignContext.isFinished = true;
@@ -322,15 +314,16 @@ void QuantSalsIndexerMetaDataCpuKernel::UpdateCursor(const SplitContext &splitCo
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantSalsIndexerMetaDataCpuKernel::AssignByBatch(const SplitContext& splitContext, AssignContext& assignContext)
 {
     if (assignContext.isFinished) {
         return;
     }
-    const CostInfo &costInfo = splitContext.costInfo;
-    while (assignContext.bN2Cost == 0 || IsWithinTolerance(assignContext.coreCache.costLimit,
-        costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + assignContext.bN2Cost)) {
+    const CostInfo& costInfo = splitContext.costInfo;
+    while (assignContext.bN2Cost == 0 ||
+           IsWithinTolerance(assignContext.coreCache.costLimit,
+                             costInfo.bN2LastBlockCostOfEachBatch[assignContext.curBIdx] / FA_TOLERANCE_RATIO,
+                             assignContext.coreCache.cost + assignContext.bN2Cost)) {
         assignContext.coreCache.cost += assignContext.bN2Cost;
         assignContext.coreCache.block += assignContext.bN2Block;
         assignContext.curBN2Idx++;
@@ -357,33 +350,35 @@ void QuantSalsIndexerMetaDataCpuKernel::AssignByBatch(const SplitContext &splitC
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantSalsIndexerMetaDataCpuKernel::AssignByRow(const SplitContext& splitContext, AssignContext& assignContext)
 {
     if (assignContext.isFinished) {
         return;
     }
 
     while (IsWithinTolerance(assignContext.coreCache.costLimit,
-        assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
-        assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
+                             assignContext.s1GCache.s1GLastBlockCost / FA_TOLERANCE_RATIO,
+                             assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
         assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
         assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
 
         // 当前batch被分配一行出去，更新剩余负载
         assignContext.bN2Cost = assignContext.bN2Cost > assignContext.s1GCache.s1GCost ?
-                                assignContext.bN2Cost - assignContext.s1GCache.s1GCost : 0;
+                                    assignContext.bN2Cost - assignContext.s1GCache.s1GCost :
+                                    0;
         assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
-                                 assignContext.bN2Block - assignContext.s1GCache.s1GBlock : 0U;
+                                     assignContext.bN2Block - assignContext.s1GCache.s1GBlock :
+                                     0U;
         // 计算新一行的信息
-        do{
+        do {
             assignContext.curS1GIdx++;
             CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
-        }while(assignContext.s1GCache.s1GBlock == 0);
+        } while (assignContext.s1GCache.s1GBlock == 0);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantSalsIndexerMetaDataCpuKernel::AssignByBlock(const SplitContext& splitContext, AssignContext& assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -394,8 +389,9 @@ void QuantSalsIndexerMetaDataCpuKernel::AssignByBlock(const SplitContext &splitC
         curCost = assignContext.s1GCache.s1GLastBlockCost;
     }
 
-    while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO, 
-            assignContext.coreCache.cost + curCost)) { // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
+    while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
+                             assignContext.coreCache.cost +
+                                 curCost)) { // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
         assignContext.coreCache.cost += curCost;
         assignContext.coreCache.block++;
         assignContext.curS2Idx++;
@@ -408,7 +404,7 @@ void QuantSalsIndexerMetaDataCpuKernel::AssignByBlock(const SplitContext &splitC
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
+void QuantSalsIndexerMetaDataCpuKernel::ForceAssign(const SplitContext& splitContext, AssignContext& assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -428,13 +424,13 @@ void QuantSalsIndexerMetaDataCpuKernel::ForceAssign(const SplitContext &splitCon
     // 当前行被分配一块出去，更新剩余负载
     assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
     assignContext.s1GCache.s1GBlock--;
-    UpdateCursor(splitContext, assignContext); 
+    UpdateCursor(splitContext, assignContext);
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::CalcSplitPlan(uint32_t coreNum,
-    int64_t costLimit, const SplitContext &splitContext, SplitResult &result)
+void QuantSalsIndexerMetaDataCpuKernel::CalcSplitPlan(uint32_t coreNum, int64_t costLimit,
+                                                      const SplitContext& splitContext, SplitResult& result)
 {
-    const CostInfo &costInfo = splitContext.costInfo;
+    const CostInfo& costInfo = splitContext.costInfo;
 
     if (coreNum == 0U) {
         return;
@@ -442,7 +438,7 @@ void QuantSalsIndexerMetaDataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     result.maxCost = 0U;
     result.usedCoreNum = 0U;
 
-    AssignContext assignContext {};
+    AssignContext assignContext{};
     assignContext.curBIdx = 0U;
     assignContext.curS1GIdx = 0U;
     assignContext.unassignedCost = costInfo.totalCost;
@@ -487,7 +483,7 @@ void QuantSalsIndexerMetaDataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::CopyTmpResult(SplitResult &tmpRes, SplitResult &splitRes)
+void QuantSalsIndexerMetaDataCpuKernel::CopyTmpResult(SplitResult& tmpRes, SplitResult& splitRes)
 {
     uint64_t len = tmpRes.bN2End.size();
     splitRes.usedCoreNum = tmpRes.usedCoreNum;
@@ -500,7 +496,7 @@ void QuantSalsIndexerMetaDataCpuKernel::CopyTmpResult(SplitResult &tmpRes, Split
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::ClearTmpResult(SplitResult &tmpResult)
+void QuantSalsIndexerMetaDataCpuKernel::ClearTmpResult(SplitResult& tmpResult)
 {
     uint64_t len = tmpResult.bN2End.size();
     tmpResult.usedCoreNum = 0U;
@@ -513,8 +509,8 @@ void QuantSalsIndexerMetaDataCpuKernel::ClearTmpResult(SplitResult &tmpResult)
     }
 }
 
-void QuantSalsIndexerMetaDataCpuKernel::RollBackCursor(const SplitContext &splitContext,
-    const CostInfo &costInfo, SplitResult &splitRes)
+void QuantSalsIndexerMetaDataCpuKernel::RollBackCursor(const SplitContext& splitContext, const CostInfo& costInfo,
+                                                       SplitResult& splitRes)
 {
     for (size_t i = 0; i < splitRes.usedCoreNum; ++i) {
         // x, y, z
@@ -537,10 +533,10 @@ void QuantSalsIndexerMetaDataCpuKernel::RollBackCursor(const SplitContext &split
         // last end point
         if (i == splitRes.usedCoreNum - 1U && costInfo.bN2BlockOfEachBatch[bIdx] == 0U) {
             splitRes.bN2End[i] = batchSize_ * kvHeadNum_ - 1;
-            splitRes.gS1End[i] = splitContext.splitInfo.s1GBaseNum[bIdx] > 0 ?
-                                 splitContext.splitInfo.s1GBaseNum[bIdx] - 1U : 0U;
-            splitRes.s2End[i] = splitContext.splitInfo.s2BaseNum[bIdx] > 0 ?
-                                splitContext.splitInfo.s2BaseNum[bIdx] - 1U : 0U;
+            splitRes.gS1End[i] =
+                splitContext.splitInfo.s1GBaseNum[bIdx] > 0 ? splitContext.splitInfo.s1GBaseNum[bIdx] - 1U : 0U;
+            splitRes.s2End[i] =
+                splitContext.splitInfo.s2BaseNum[bIdx] > 0 ? splitContext.splitInfo.s2BaseNum[bIdx] - 1U : 0U;
             continue;
         }
 
@@ -561,7 +557,8 @@ void QuantSalsIndexerMetaDataCpuKernel::RollBackCursor(const SplitContext &split
     }
 }
 
-bool QuantSalsIndexerMetaDataCpuKernel::BalanceSchedule() {
+bool QuantSalsIndexerMetaDataCpuKernel::BalanceSchedule()
+{
     SplitContext splitContext(batchSize_);
 
     // 1、划分基本块，统计信息
@@ -578,13 +575,13 @@ bool QuantSalsIndexerMetaDataCpuKernel::BalanceSchedule() {
 
     // 2、获取每个核的分配方案
     uint32_t maxCore = std::min(coreNum_, splitContext.costInfo.totalBlockNum);
-    uint32_t minCore = static_cast<uint32_t>(
-        std::sqrt(static_cast<float>(splitContext.costInfo.totalBlockNum) + 0.25f) + 0.5f);
+    uint32_t minCore =
+        static_cast<uint32_t>(std::sqrt(static_cast<float>(splitContext.costInfo.totalBlockNum) + 0.25f) + 0.5f);
     minCore = std::min(minCore, maxCore);
 
     splitRes_.maxCost = INT64_MAX;
     splitRes_.usedCoreNum = 1U;
-    SplitResult tmpResult {coreNum_, aivCoreNum_ / aicCoreNum_}; // C: V = 1: 2, TODO: C: V = 1: 1 ?
+    SplitResult tmpResult{coreNum_, aivCoreNum_ / aicCoreNum_}; // C: V = 1: 2, TODO: C: V = 1: 1 ?
     for (uint32_t i = minCore; i <= maxCore; ++i) {
         CalcSplitPlan(i, splitRes_.maxCost, splitContext, tmpResult);
         if (tmpResult.maxCost < splitRes_.maxCost) {
@@ -593,17 +590,18 @@ bool QuantSalsIndexerMetaDataCpuKernel::BalanceSchedule() {
         ClearTmpResult(tmpResult);
     }
 
-    splitRes_.usedCoreNum = std::max(splitRes_.usedCoreNum, 1U);  // 至少使用1个core
+    splitRes_.usedCoreNum = std::max(splitRes_.usedCoreNum, 1U); // 至少使用1个core
     RollBackCursor(splitContext, splitContext.costInfo, splitRes_);
-    if (GetS2SeqSize(batchSize_-1) == 0U) {
-        splitRes_.bN2End[splitRes_.usedCoreNum-1] = batchSize_ * kvHeadNum_ - 1;
-        splitRes_.gS1End[splitRes_.usedCoreNum-1] = 0U;
-        splitRes_.s2End[splitRes_.usedCoreNum-1] = 0U;
+    if (GetS2SeqSize(batchSize_ - 1) == 0U) {
+        splitRes_.bN2End[splitRes_.usedCoreNum - 1] = batchSize_ * kvHeadNum_ - 1;
+        splitRes_.gS1End[splitRes_.usedCoreNum - 1] = 0U;
+        splitRes_.s2End[splitRes_.usedCoreNum - 1] = 0U;
     }
     return true;
 }
 
-bool QuantSalsIndexerMetaDataCpuKernel::GenMetaData() {
+bool QuantSalsIndexerMetaDataCpuKernel::GenMetaData()
+{
     optiling::detail::QsiMetaData* metaDataPtr = (optiling::detail::QsiMetaData*)metaData_->GetData();
     metaDataPtr->usedCoreNum = splitRes_.usedCoreNum;
 
@@ -613,12 +611,10 @@ bool QuantSalsIndexerMetaDataCpuKernel::GenMetaData() {
         metaDataPtr->s2End[i] = splitRes_.s2End[i];
     }
 
-
     return true;
 }
 
-static const char *qsiKernelType = "QuantSalsIndexerMetadata";
+static const char* qsiKernelType = "QuantSalsIndexerMetadata";
 REGISTER_CPU_KERNEL(qsiKernelType, QuantSalsIndexerMetaDataCpuKernel);
 
 }; // namespace aicpu
-

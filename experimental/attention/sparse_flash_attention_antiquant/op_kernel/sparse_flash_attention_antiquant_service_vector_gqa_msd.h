@@ -41,7 +41,8 @@ using AscendC::CrossCoreWaitFlag;
 #define SALSV_S2BASEIZE_1 1023
 #define SFACV_SOFTMAX_WITHOUT_BRC_PRELOAD
 constexpr SoftmaxConfig IFA_SOFTMAX_FLASHV2_CFG = {false}; // 将isCheckTiling设置为false
-template <typename SFAAT> class SFAAVectorServiceGqaMsd {
+template <typename SFAAT>
+class SFAAVectorServiceGqaMsd {
 public:
     // 中间计算数据类型为float，高精度模式
     using Q_T = typename SFAAT::queryType;
@@ -54,22 +55,25 @@ public:
     using MM2_OUT_T = half;
 
     __aicore__ inline SFAAVectorServiceGqaMsd(){};
-    __aicore__ inline void ProcessVec0Msd(const RunInfo &info);
-    __aicore__ inline void ProcessVec1Msd(const RunInfo &info);
-    __aicore__ inline void ProcessVec2Msd(const RunInfo &info);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
-                                      const SparseFlashAttentionAntiquantTilingDataMla *__restrict tilingData,
-                                      SfaMetaData *metaDataPtr);
-    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T> &keyMergeGm, const GlobalTensor<KV_T> &valueMergeGm,
-                                                const GlobalTensor<KV_T> &queryPreProcessResGm, const GlobalTensor<Q_T> &queryGm,
-                                                const GlobalTensor<KV_T> &keyGm, const GlobalTensor<KV_T> &valueGm,
-                                                const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<T> &keyDequantScaleGm);
+    __aicore__ inline void ProcessVec0Msd(const RunInfo& info);
+    __aicore__ inline void ProcessVec1Msd(const RunInfo& info);
+    __aicore__ inline void ProcessVec2Msd(const RunInfo& info);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitParams(const struct ConstInfo& constInfo,
+                                      const SparseFlashAttentionAntiquantTilingDataMla* __restrict tilingData,
+                                      SfaMetaData* metaDataPtr);
+    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T>& keyMergeGm,
+                                                const GlobalTensor<KV_T>& valueMergeGm,
+                                                const GlobalTensor<KV_T>& queryPreProcessResGm,
+                                                const GlobalTensor<Q_T>& queryGm, const GlobalTensor<KV_T>& keyGm,
+                                                const GlobalTensor<KV_T>& valueGm,
+                                                const GlobalTensor<int32_t>& blkTableGm,
+                                                const GlobalTensor<T>& keyDequantScaleGm);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> lseMaxFdGm,
                                                 GlobalTensor<T> lseSumFdGm, GlobalTensor<int32_t> topKGm);
-    __aicore__ inline void InitVec2GlobalTensor(const GlobalTensor<T> &valueDequantScaleGm, GlobalTensor<T> accumOutGm,
+    __aicore__ inline void InitVec2GlobalTensor(const GlobalTensor<T>& valueDequantScaleGm, GlobalTensor<T> accumOutGm,
                                                 GlobalTensor<MM2_OUT_T> mm2ResGm, GlobalTensor<OUT_T> attentionOutGm);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -81,88 +85,98 @@ private:
                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
                                      uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, LocalTensor<float> srcUb, uint32_t dealRowCount,
-                                                    uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &srcUb, uint32_t dealRowCount, uint32_t columnCount,
-                                  uint32_t actualColumnCount);
+    __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float>& dstUb, LocalTensor<float> srcUb,
+                                                    uint32_t dealRowCount, uint32_t columnCount,
+                                                    uint32_t actualColumnCount);
+    __aicore__ inline void RowMax(LocalTensor<float>& dstUb, LocalTensor<float>& srcUb, uint32_t dealRowCount,
+                                  uint32_t columnCount, uint32_t actualColumnCount);
     // ================================Vector0==========================================
-    __aicore__ inline void QueryPreProcess(const RunInfo &info);
-    __aicore__ inline void DealQueryPreProcessBaseBlock(const RunInfo &info, uint32_t startRow, uint32_t dealRowCount,
+    __aicore__ inline void QueryPreProcess(const RunInfo& info);
+    __aicore__ inline void DealQueryPreProcessBaseBlock(const RunInfo& info, uint32_t startRow, uint32_t dealRowCount,
                                                         uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void CopyAntiqQuery(LocalTensor<T> &queryCastUb, uint64_t qOffset, uint32_t dealRowCount,
+    __aicore__ inline void CopyAntiqQuery(LocalTensor<T>& queryCastUb, uint64_t qOffset, uint32_t dealRowCount,
                                           uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void AntiquantMatmulPreProcess(const RunInfo &info, GlobalTensor<KV_T> dstGm, LocalTensor<T> aMaxResUb,
-                                                     LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb, uint32_t startRow,
-                                                     uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void AbsRowMax(LocalTensor<T> &tmpAMaxRes, LocalTensor<T> &srcUb, LocalTensor<T> tmpAUb,
+    __aicore__ inline void AntiquantMatmulPreProcess(const RunInfo& info, GlobalTensor<KV_T> dstGm,
+                                                     LocalTensor<T> aMaxResUb, LocalTensor<T> srcUb,
+                                                     LocalTensor<T> tmpAFloorUb, uint32_t startRow,
+                                                     uint32_t dealRowCount, uint32_t columnCount,
+                                                     uint32_t actualColumnCount);
+    __aicore__ inline void AbsRowMax(LocalTensor<T>& tmpAMaxRes, LocalTensor<T>& srcUb, LocalTensor<T> tmpAUb,
                                      uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void AntiquantAIterExpand(GlobalTensor<KV_T> &dstGm, LocalTensor<half> &tmpA1, LocalTensor<half> &tmpA2,
-                                                uint32_t calcSize, bool isFirst, uint64_t outOffset);
-    __aicore__ inline int64_t MergeKv(const RunInfo &runInfo, int64_t s2GmStartOffset, int64_t s2GmLimit,
-                                    int64_t topkGmBaseOffset, bool isValue, int64_t mergeMte3Idx, int64_t s2GmStartOffset4Merge);
-    __aicore__ inline int64_t GetKeyBNBOffset(int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit);
-    __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx, int64_t topkGmBaseOffset,
-                                        const RunInfo &runInfo);
-    __aicore__ inline void CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
-                                    int64_t realS2Idx2, const RunInfo &runInfo, bool &mask,
-                                    int64_t s2GmOffsetArray, int64_t s2GmLimit);
+    __aicore__ inline void AntiquantAIterExpand(GlobalTensor<KV_T>& dstGm, LocalTensor<half>& tmpA1,
+                                                LocalTensor<half>& tmpA2, uint32_t calcSize, bool isFirst,
+                                                uint64_t outOffset);
+    __aicore__ inline int64_t MergeKv(const RunInfo& runInfo, int64_t s2GmStartOffset, int64_t s2GmLimit,
+                                      int64_t topkGmBaseOffset, bool isValue, int64_t mergeMte3Idx,
+                                      int64_t s2GmStartOffset4Merge);
+    __aicore__ inline int64_t GetKeyBNBOffset(int64_t realS2Idx, const RunInfo& runInfo, int64_t s2IdLimit);
+    __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t& realS2Idx, int64_t topkGmBaseOffset,
+                                        const RunInfo& runInfo);
+    __aicore__ inline void CopyInKv(int64_t& mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
+                                    int64_t realS2Idx2, const RunInfo& runInfo, bool& mask, int64_t s2GmOffsetArray,
+                                    int64_t s2GmLimit);
     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
-                                             int64_t mergeMte3Idx, const RunInfo &runInfo, bool isValue, bool &needWaitMte3ToMte2);
-    __aicore__ inline void SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
+                                             int64_t mergeMte3Idx, const RunInfo& runInfo, bool isValue,
+                                             bool& needWaitMte3ToMte2);
+    __aicore__ inline void SetInfInBlk(const LocalTensor<T>& mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                        uint64_t startId, uint64_t endId);
-    __aicore__ inline void SetInfInBlkHasTail(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
-                                              uint64_t startId, uint64_t endId);
-    __aicore__ inline void SetMidInf(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
+    __aicore__ inline void SetInfInBlkHasTail(const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
+                                              uint32_t columnCount, uint64_t startId, uint64_t endId);
+    __aicore__ inline void SetMidInf(const LocalTensor<T>& mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                      uint64_t startId, uint64_t endId);
-    __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-                                          int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo, bool &mask,
-                                          int64_t &s2GmOffsetArray, int64_t s2GmLimit);
+    __aicore__ inline void CopyInSingleKv(int64_t& mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
+                                          int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo& runInfo, bool& mask,
+                                          int64_t& s2GmOffsetArray, int64_t s2GmLimit);
     // ================================Vector1==========================================
-    __aicore__ inline void ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
-    __aicore__ inline void DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
+    __aicore__ inline void ProcessVec1SingleBuf(const RunInfo& info, const MSplitInfo& mSplitInfo);
+    __aicore__ inline void DealBmm1ResBaseBlock(const RunInfo& info, const MSplitInfo& mSplitInfo, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount,
-                                                uint32_t loopId, bool &needMask, uint32_t &maskStart, uint32_t &maskEnd);
-    __aicore__ inline void AntiquantMatmulResCombineDD(const RunInfo &info, LocalTensor<T> bmmResUb, GlobalTensor<MM1_OUT_T> srcGm,
-                                                       uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount,
-                                                       float scaleC);
-    __aicore__ inline void AntiquantSoftmaxResPreProcess(const RunInfo &info, GlobalTensor<KV_T> dstGm, LocalTensor<T> srcUb,
-                                                         LocalTensor<T> tmpAFloorUb, uint32_t startRow,
-                                                         uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void SoftmaxFlashV2Compute(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                 LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
+                                                uint32_t loopId, bool& needMask, uint32_t& maskStart,
+                                                uint32_t& maskEnd);
+    __aicore__ inline void AntiquantMatmulResCombineDD(const RunInfo& info, LocalTensor<T> bmmResUb,
+                                                       GlobalTensor<MM1_OUT_T> srcGm, uint32_t startRow,
+                                                       uint32_t dealRowCount, uint32_t columnCount,
+                                                       uint32_t actualColumnCount, float scaleC);
+    __aicore__ inline void AntiquantSoftmaxResPreProcess(const RunInfo& info, GlobalTensor<KV_T> dstGm,
+                                                         LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb,
+                                                         uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+                                                         uint32_t actualColumnCount);
+    __aicore__ inline void SoftmaxFlashV2Compute(const RunInfo& info, const MSplitInfo& mSplitInfo,
+                                                 LocalTensor<T>& mmResUb, LocalTensor<uint8_t>& softmaxTmpUb,
                                                  uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
                                                  uint32_t actualColumnCount);
-    __aicore__ inline void ElewiseCompute(const RunInfo &info, const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
+    __aicore__ inline void ElewiseCompute(const RunInfo& info, const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
                                           uint32_t columnCount);
-    __aicore__ inline void AttentionMaskCompute(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
-                                                uint32_t columnCount, uint32_t startRow, bool &needMask,
-                                                uint32_t &maskStart, uint32_t &maskEnd);
-    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                       LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
+    __aicore__ inline void AttentionMaskCompute(const RunInfo& info, const MSplitInfo& mSplitInfo,
+                                                const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
+                                                uint32_t columnCount, uint32_t startRow, bool& needMask,
+                                                uint32_t& maskStart, uint32_t& maskEnd);
+    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfo& info, const MSplitInfo& mSplitInfo,
+                                                       LocalTensor<T>& softmaxSumUb, LocalTensor<T>& softmaxMaxUb);
     // ================================Vecotr2==========================================
-    __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
-    __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
+    __aicore__ inline void ProcessVec2SingleBuf(const RunInfo& info, const MSplitInfo& mSplitInfo);
+    __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo& info, const MSplitInfo& mSplitInfo, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
-    __aicore__ inline void AntiquantMM2ResCombine(const RunInfo &info, LocalTensor<MM2_OUT_T> bmmResUb,
-                                                  GlobalTensor<MM2_OUT_T> srcGm, uint32_t startRow, uint32_t dealRowCount,
-                                                  uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void CopyAntiquantScale(LocalTensor<T> &castUb, GlobalTensor<T> srcGm, uint64_t offset);
-    __aicore__ inline void ProcessVec2Inner(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t mStartRow,
+    __aicore__ inline void AntiquantMM2ResCombine(const RunInfo& info, LocalTensor<MM2_OUT_T> bmmResUb,
+                                                  GlobalTensor<MM2_OUT_T> srcGm, uint32_t startRow,
+                                                  uint32_t dealRowCount, uint32_t columnCount,
+                                                  uint32_t actualColumnCount);
+    __aicore__ inline void CopyAntiquantScale(LocalTensor<T>& castUb, GlobalTensor<T> srcGm, uint64_t offset);
+    __aicore__ inline void ProcessVec2Inner(const RunInfo& info, const MSplitInfo& mSplitInfo, uint32_t mStartRow,
                                             uint32_t mDealSize);
-    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo& info, LocalTensor<OUT_T>& attenOutUb, uint32_t wsMStart,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2ResCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2ResCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb, uint32_t wsMStart,
                                           uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2CastAndCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb, uint32_t wsMStart,
                                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2FDDataCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb, uint32_t wsMStart,
                                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline uint64_t CalcAccumOffset(uint32_t bN2Idx, uint32_t gS1Idx);
     __aicore__ inline void GetConfusionTransposeTiling(int64_t numR, int64_t numC, const uint32_t stackBufferSize,
-                                                       const uint32_t typeSize, ConfusionTransposeTiling &tiling);
+                                                       const uint32_t typeSize, ConfusionTransposeTiling& tiling);
 
     static constexpr bool PAGE_ATTENTION = SFAAT::pageAttention;
     static constexpr int TEMPLATE_MODE = SFAAT::templateMode;
@@ -180,8 +194,8 @@ private:
     static constexpr uint64_t SYNC_OUTPUT_BUF2_FLAG = 5;
     static constexpr uint32_t INPUT1_BUFFER_OFFSET = ConstInfo::BUFFER_SIZE_BYTE_8K;
     static constexpr uint32_t SOFTMAX_TMP_BUFFER_OFFSET = ConstInfo::BUFFER_SIZE_BYTE_512B / sizeof(T);
-    static constexpr uint32_t BASE_BLOCK_MAX_ELEMENT_NUM = ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T);  // 32768/4=8192
-    static constexpr uint32_t BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(T);                                // 32/4=8
+    static constexpr uint32_t BASE_BLOCK_MAX_ELEMENT_NUM = ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T); // 32768/4=8192
+    static constexpr uint32_t BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(T);                               // 32/4=8
     static constexpr T FLOAT_E_SCALAR = 8388608;
     static constexpr T LN2 = 0.6931471805599453094172;
     static constexpr T RECIP_OF_LN2 = 1 / LN2;
@@ -193,8 +207,8 @@ private:
     MM1_OUT_T antiquantExpandCoeff = 254;
     static constexpr uint32_t msdIterNum = 2;
 
-    const SparseFlashAttentionAntiquantTilingDataMla *__restrict tilingData;
-    SfaMetaData *metaDataPtr;
+    const SparseFlashAttentionAntiquantTilingDataMla* __restrict tilingData;
+    SfaMetaData* metaDataPtr;
 
     uint32_t pingpongFlag = 0U;
     ConstInfo constInfo = {};
@@ -227,8 +241,8 @@ private:
     // ================================Local Buffer区====================================
 
     // queue
-    TBuf<> inputBuf1; // 32K, inque
-    TBuf<> inputBuf2; // 16K, inque
+    TBuf<> inputBuf1;  // 32K, inque
+    TBuf<> inputBuf2;  // 16K, inque
     TBuf<> outputBuf1; // 32K, outque
     TBuf<> outputBuf2; // 8K, outque
 
@@ -238,16 +252,16 @@ private:
     TBuf<> tmpBuff3; // 2K
 
     // 常驻tbuf
-    TBuf<> vec2ResBuff; // 16k 伪量化场景
-    TBuf<> antiqKeyScaleBuff; // 2K
-    TBuf<> antiqValueScaleBuff; // 2K
-    TBuf<> qAmaxBuff; // constInfo.preLoadNum * (2K + 256B)
-    TBuf<> softmaxResAmaxBuff; // 2K + 256B
-    TBuf<> qRowSumBuff; // 2K + 256B
-    TBuf<> softmaxResRowSumBuff; // 2K + 256B
-    TBuf<> softmaxMaxBuff; // constInfo.preLoadNum * 2K
-    TBuf<> softmaxExpBuff; // constInfo.preLoadNum * 2K
-    TBuf<> softmaxSumBuff; // constInfo.preLoadNum * 2K
+    TBuf<> vec2ResBuff;           // 16k 伪量化场景
+    TBuf<> antiqKeyScaleBuff;     // 2K
+    TBuf<> antiqValueScaleBuff;   // 2K
+    TBuf<> qAmaxBuff;             // constInfo.preLoadNum * (2K + 256B)
+    TBuf<> softmaxResAmaxBuff;    // 2K + 256B
+    TBuf<> qRowSumBuff;           // 2K + 256B
+    TBuf<> softmaxResRowSumBuff;  // 2K + 256B
+    TBuf<> softmaxMaxBuff;        // constInfo.preLoadNum * 2K
+    TBuf<> softmaxExpBuff;        // constInfo.preLoadNum * 2K
+    TBuf<> softmaxSumBuff;        // constInfo.preLoadNum * 2K
     TBuf<> softmaxMaxDefaultBuff; // 2K
     TBuf<> softmaxSumDefaultBuff; // 2K
 
@@ -278,27 +292,28 @@ __aicore__ inline uint32_t GetMinPowerTwo(uint32_t cap)
     return i;
 }
 
-template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitBuffers(TPipe *pipe)
+template <typename SFAAT>
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitBuffers(TPipe* pipe)
 {
     // 182.5k
     pipe->InitBuffer(inputBuf1, ConstInfo::BUFFER_SIZE_BYTE_16K * 2); // 32K // mm1 mm2 res
-    pipe->InitBuffer(inputBuf2, ConstInfo::BUFFER_SIZE_BYTE_8K * 2); // 16K // kvmerge
-    pipe->InitBuffer(outputBuf1, ConstInfo::BUFFER_SIZE_BYTE_16K); // 16K // attentionOut
-    pipe->InitBuffer(vec2ResBuff, ConstInfo::BUFFER_SIZE_BYTE_16K); // 16K // flashupdate常驻ub
-    pipe->InitBuffer(outputBuf2, ConstInfo::BUFFER_SIZE_BYTE_8K); // 8K
+    pipe->InitBuffer(inputBuf2, ConstInfo::BUFFER_SIZE_BYTE_8K * 2);  // 16K // kvmerge
+    pipe->InitBuffer(outputBuf1, ConstInfo::BUFFER_SIZE_BYTE_16K);    // 16K // attentionOut
+    pipe->InitBuffer(vec2ResBuff, ConstInfo::BUFFER_SIZE_BYTE_16K);   // 16K // flashupdate常驻ub
+    pipe->InitBuffer(outputBuf2, ConstInfo::BUFFER_SIZE_BYTE_8K);     // 8K
 
     // tmpBuff
     pipe->InitBuffer(tmpBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K); // 32K
     pipe->InitBuffer(tmpBuff2, ConstInfo::BUFFER_SIZE_BYTE_32K); // 32K
-    pipe->InitBuffer(tmpBuff3, ConstInfo::BUFFER_SIZE_BYTE_2K); // 2K
+    pipe->InitBuffer(tmpBuff3, ConstInfo::BUFFER_SIZE_BYTE_2K);  // 2K
 
     // 常驻buffer
-    pipe->InitBuffer(antiqKeyScaleBuff, ConstInfo::BUFFER_SIZE_BYTE_2K); // 2K // 实际0.5K
+    pipe->InitBuffer(antiqKeyScaleBuff, ConstInfo::BUFFER_SIZE_BYTE_2K);   // 2K // 实际0.5K
     pipe->InitBuffer(antiqValueScaleBuff, ConstInfo::BUFFER_SIZE_BYTE_2K); // 2K
     // 预留空间2K = 64 * 32，支持 gSize = 64
     // brcb 操作每次操作8*32字节输出，startRow接近64时，
     // 输出最多可能超出2k空间7*32字节， 这里预留256B防止越界
-    pipe->InitBuffer(qAmaxBuff, Q_AMAX_BUF_BYTES * constInfo.preLoadNum); // 2.25*2 = 4.5K
+    pipe->InitBuffer(qAmaxBuff, Q_AMAX_BUF_BYTES * constInfo.preLoadNum);           // 2.25*2 = 4.5K
     pipe->InitBuffer(softmaxMaxBuff, SOFTMAX_MAX_BUF_BYTES * constInfo.preLoadNum); // 0.5*2 = 1K
     pipe->InitBuffer(softmaxExpBuff, SOFTMAX_EXP_BUF_BYTES * constInfo.preLoadNum); // 0.5*2 = 1K
     pipe->InitBuffer(softmaxSumBuff, SOFTMAX_SUM_BUF_BYTES * constInfo.preLoadNum); // 0.5*2 = 1K
@@ -322,10 +337,9 @@ template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>:
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SFAAVectorServiceGqaMsd<SFAAT>::InitParams(const struct ConstInfo &constInfo,
-                                     const SparseFlashAttentionAntiquantTilingDataMla *__restrict tilingData,
-                                     SfaMetaData *metaDataPtr)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitParams(
+    const struct ConstInfo& constInfo, const SparseFlashAttentionAntiquantTilingDataMla* __restrict tilingData,
+    SfaMetaData* metaDataPtr)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
@@ -337,9 +351,10 @@ SFAAVectorServiceGqaMsd<SFAAT>::InitParams(const struct ConstInfo &constInfo,
 
 template <typename SFAAT>
 __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitVec0GlobalTensor(
-    const GlobalTensor<KV_T> &keyMergeGm, const GlobalTensor<KV_T> &valueMergeGm,
-    const GlobalTensor<KV_T> &queryPreProcessResGm, const GlobalTensor<Q_T> &queryGm, const GlobalTensor<KV_T> &keyGm, const GlobalTensor<KV_T> &valueGm,
-    const GlobalTensor<int32_t> &blkTableGm, const GlobalTensor<T> &keyDequantScaleGm)
+    const GlobalTensor<KV_T>& keyMergeGm, const GlobalTensor<KV_T>& valueMergeGm,
+    const GlobalTensor<KV_T>& queryPreProcessResGm, const GlobalTensor<Q_T>& queryGm, const GlobalTensor<KV_T>& keyGm,
+    const GlobalTensor<KV_T>& valueGm, const GlobalTensor<int32_t>& blkTableGm,
+    const GlobalTensor<T>& keyDequantScaleGm)
 {
     this->keyMergeGm_ = keyMergeGm;
     this->valueMergeGm_ = valueMergeGm;
@@ -353,9 +368,9 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitVec0GlobalTensor(
 
 template <typename SFAAT>
 __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitVec1GlobalTensor(
-    GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm,
-    GlobalTensor<int32_t> actualSeqLengthsQGm, GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> lseMaxFdGm,
-    GlobalTensor<T> lseSumFdGm, GlobalTensor<int32_t> topKGm)
+    GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<KV_T> vec1ResGm, GlobalTensor<int32_t> actualSeqLengthsQGm,
+    GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> lseMaxFdGm, GlobalTensor<T> lseSumFdGm,
+    GlobalTensor<int32_t> topKGm)
 {
     this->mm1ResGm = mm1ResGm;
     this->vec1ResGm = vec1ResGm;
@@ -367,7 +382,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitVec1GlobalTensor(
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitVec2GlobalTensor(const GlobalTensor<T> &valueDequantScaleGm,
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitVec2GlobalTensor(const GlobalTensor<T>& valueDequantScaleGm,
                                                                             GlobalTensor<T> accumOutGm,
                                                                             GlobalTensor<MM2_OUT_T> mm2ResGm,
                                                                             GlobalTensor<OUT_T> attentionOutGm)
@@ -378,7 +393,8 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitVec2GlobalTensor(cons
     this->valueDequantScaleGm_ = valueDequantScaleGm;
 }
 
-template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AllocEventID()
+template <typename SFAAT>
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AllocEventID()
 {
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG);
@@ -388,7 +404,8 @@ template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>:
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 }
 
-template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::FreeEventID()
+template <typename SFAAT>
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::FreeEventID()
 {
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG);
@@ -398,17 +415,18 @@ template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>:
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 }
 
-template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitSoftmaxDefaultBuffer()
+template <typename SFAAT>
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::InitSoftmaxDefaultBuffer()
 {
     Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, SOFTMAX_TMP_BUFFER_OFFSET);
     Duplicate(softmaxSumDefaultUb, ConstInfo::FLOAT_ZERO, SOFTMAX_TMP_BUFFER_OFFSET);
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ComputeLogSumExpAndCopyToGm(const RunInfo &info,
-                                                                                         const MSplitInfo &mSplitInfo,
-                                                                                         LocalTensor<T> &softmaxSumUb,
-                                                                                         LocalTensor<T> &softmaxMaxUb)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ComputeLogSumExpAndCopyToGm(const RunInfo& info,
+                                                                                   const MSplitInfo& mSplitInfo,
+                                                                                   LocalTensor<T>& softmaxSumUb,
+                                                                                   LocalTensor<T>& softmaxMaxUb)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -419,7 +437,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ComputeLogSumExpAndCopyTo
     uint64_t offset = (accumTmpOutNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                       FP32_BLOCK_ELEMENT_NUM; // m轴offset
+                      FP32_BLOCK_ELEMENT_NUM; // m轴offset
     if (info.actualSingleProcessSInnerSize != 0) {
         LocalTensor<T> tmp = outputBuf2.Get<T>();
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
@@ -443,21 +461,17 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ComputeLogSumExpAndCopyTo
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ElewiseCompute(const RunInfo &info,
-                                                                const LocalTensor<T> &mmResUb,
-                                                                uint32_t dealRowCount, uint32_t columnCount)
-{
-}
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ElewiseCompute(const RunInfo& info,
+                                                                      const LocalTensor<T>& mmResUb,
+                                                                      uint32_t dealRowCount, uint32_t columnCount)
+{}
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AttentionMaskCompute(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                            const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
-                                            uint32_t columnCount, uint32_t startRow, bool &needMask,
-                                            uint32_t &maskStart, uint32_t &maskEnd)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AttentionMaskCompute(
+    const RunInfo& info, const MSplitInfo& mSplitInfo, const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
+    uint32_t columnCount, uint32_t startRow, bool& needMask, uint32_t& maskStart, uint32_t& maskEnd)
 {
-    uint32_t maskEndCurrentPart = (maskEnd > info.nextS2BaseOffset) ?
-        info.nextS2BaseOffset : maskEnd;
-    uint32_t maskStartCurrentPart = (maskStart < info.curS2BaseOffset) ?
-        info.curS2BaseOffset : maskStart;
+    uint32_t maskEndCurrentPart = (maskEnd > info.nextS2BaseOffset) ? info.nextS2BaseOffset : maskEnd;
+    uint32_t maskStartCurrentPart = (maskStart < info.curS2BaseOffset) ? info.curS2BaseOffset : maskStart;
     if (!(maskStartCurrentPart < info.actS2Size && needMask) || maskStartCurrentPart >= maskEndCurrentPart) {
         return;
     }
@@ -465,7 +479,8 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AttentionMaskCompute(cons
         return;
     }
     uint32_t maskStartSinglePro = (maskStartCurrentPart & SALSV_S2BASEIZE_1);
-    uint32_t maskEndSinglePro = (maskEndCurrentPart & SALSV_S2BASEIZE_1)  == 0 ? SALSV_S2BASEIZE : (maskEndCurrentPart & SALSV_S2BASEIZE_1);
+    uint32_t maskEndSinglePro =
+        (maskEndCurrentPart & SALSV_S2BASEIZE_1) == 0 ? SALSV_S2BASEIZE : (maskEndCurrentPart & SALSV_S2BASEIZE_1);
     uint32_t gS1StartIdx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
     uint32_t s1StartIdx = gS1StartIdx / constInfo.gSize;
     uint32_t gStartIdx = gS1StartIdx % constInfo.gSize;
@@ -481,10 +496,10 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AttentionMaskCompute(cons
     SetInfInBlkHasTail(mmResUb, headGCount, columnCount, maskStartSinglePro, maskEndTmp);
     SetMidInf(mmResUb, headGCount, columnCount, s2StartCeilAlign, s2MidFloorAlign);
     SetInfInBlkHasTail(mmResUb, headGCount, columnCount, maskStartTmp, maskEndSinglePro);
-    if ((headGCount < dealRowCount) || ((headGCount == dealRowCount) && (((gS1StartIdx + headGCount) % (constInfo.gSize)) == 0))) {
+    if ((headGCount < dealRowCount) ||
+        ((headGCount == dealRowCount) && (((gS1StartIdx + headGCount) % (constInfo.gSize)) == 0))) {
         maskStart++;
-        maskStartCurrentPart = (maskStart < info.curS2BaseOffset) ?
-            info.curS2BaseOffset : maskStart;
+        maskStartCurrentPart = (maskStart < info.curS2BaseOffset) ? info.curS2BaseOffset : maskStart;
         if (!(maskStartCurrentPart < info.actS2Size) || maskStartCurrentPart >= maskEndCurrentPart) {
             return;
         }
@@ -507,8 +522,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AttentionMaskCompute(cons
         SetInfInBlkHasTail(mmResUb[dstMaskOffset], constInfo.gSize, columnCount, maskStartTmp, maskEndSinglePro);
         dstMaskOffset += constInfo.gSize * columnCount;
         maskStart++;
-        maskStartCurrentPart = (maskStart < info.curS2BaseOffset) ?
-            info.curS2BaseOffset : maskStart;
+        maskStartCurrentPart = (maskStart < info.curS2BaseOffset) ? info.curS2BaseOffset : maskStart;
         if (!(maskStartCurrentPart < info.actS2Size) || maskStartCurrentPart >= maskEndCurrentPart) {
             return;
         }
@@ -530,9 +544,9 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AttentionMaskCompute(cons
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetInfInBlk(const LocalTensor<T> &mmResUb,
-                                                             uint32_t dealRowCount, uint32_t columnCount,
-                                                             uint64_t startId, uint64_t endId)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetInfInBlk(const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
+                                                                   uint32_t columnCount, uint64_t startId,
+                                                                   uint64_t endId)
 {
     if (startId >= endId) {
         return;
@@ -543,38 +557,39 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetInfInBlk(const LocalTe
     uint64_t notComputePostMaskOneBlk = ~((1ULL << (endId - startFloorAlignSize)) - 1);
     uint64_t notComputeMaskOneBlk = notComputePreMaskOneBlk ^ notComputePostMaskOneBlk;
 
-    uint64_t maskOneBlk = (~notComputeMaskOneBlk) & 0xFFFFFFFFULL; 
+    uint64_t maskOneBlk = (~notComputeMaskOneBlk) & 0xFFFFFFFFULL;
     uint64_t mask[1] = {maskOneBlk};
     for (int i = 1; i < 8; i++) {
         mask[0] = mask[0] | (maskOneBlk << (i * 8));
     }
     for (uint64_t rowId = 0; rowId < dealRowCount; rowId += 8) {
-        Duplicate(mmResUb[rowId * columnCount + startFloorAlignSize], SOFTMAX_MIN_NUM, mask,
-                  1, SfaaCeilDiv(columnCount, 8), 0);
+        Duplicate(mmResUb[rowId * columnCount + startFloorAlignSize], SOFTMAX_MIN_NUM, mask, 1,
+                  SfaaCeilDiv(columnCount, 8), 0);
     }
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetInfInBlkHasTail(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
-                                                                       uint64_t startId, uint64_t endId)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetInfInBlkHasTail(const LocalTensor<T>& mmResUb,
+                                                                          uint32_t dealRowCount, uint32_t columnCount,
+                                                                          uint64_t startId, uint64_t endId)
 {
     if (startId >= endId) {
         return;
     }
     uint64_t startFloorAlignSize = startId / BLOCK_ELEMENT_NUM * BLOCK_ELEMENT_NUM;
     uint64_t notComputePreMaskOneBlk = ((1ULL << (startId - startFloorAlignSize)) - 1);
-    uint64_t notComputePostMaskOneBlk = ~((1ULL << (endId - startFloorAlignSize)) - 1); 
+    uint64_t notComputePostMaskOneBlk = ~((1ULL << (endId - startFloorAlignSize)) - 1);
     uint64_t notComputeMaskOneBlk = notComputePreMaskOneBlk ^ notComputePostMaskOneBlk;
-    uint64_t maskOneBlk = (~notComputeMaskOneBlk) & 0xFFFFFFFFULL; 
+    uint64_t maskOneBlk = (~notComputeMaskOneBlk) & 0xFFFFFFFFULL;
     uint64_t mask[1] = {maskOneBlk};
     for (int i = 1; i < 8; ++i) {
         mask[0] = mask[0] | (maskOneBlk << (i * 8));
     }
     uint32_t rowLoop = dealRowCount / 8;
     uint32_t rowTail = dealRowCount % 8;
-    for (uint64_t rowId = 0; rowId < rowLoop; rowId ++) {
-        Duplicate(mmResUb[rowId * columnCount * 8 + startFloorAlignSize], SOFTMAX_MIN_NUM, mask,
-            1, SfaaCeilDiv(columnCount, 8), 0);
+    for (uint64_t rowId = 0; rowId < rowLoop; rowId++) {
+        Duplicate(mmResUb[rowId * columnCount * 8 + startFloorAlignSize], SOFTMAX_MIN_NUM, mask, 1,
+                  SfaaCeilDiv(columnCount, 8), 0);
     }
 
     if (rowTail > 0) {
@@ -582,15 +597,14 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetInfInBlkHasTail(const 
         for (int i = 1; i < rowTail; ++i) {
             mask[0] = mask[0] | (maskOneBlk << (i * 8));
         }
-        Duplicate(mmResUb[rowLoop * columnCount * 8 + startFloorAlignSize], SOFTMAX_MIN_NUM, mask,
-            1, SfaaCeilDiv(columnCount, 8), 0);
+        Duplicate(mmResUb[rowLoop * columnCount * 8 + startFloorAlignSize], SOFTMAX_MIN_NUM, mask, 1,
+                  SfaaCeilDiv(columnCount, 8), 0);
     }
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetMidInf(const LocalTensor<T> &mmResUb,
-                                                           uint32_t dealRowCount, uint32_t columnCount,
-                                                           uint64_t startId, uint64_t endId)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetMidInf(const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
+                                                                 uint32_t columnCount, uint64_t startId, uint64_t endId)
 {
     if (startId >= endId) {
         return;
@@ -605,7 +619,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SetMidInf(const LocalTens
 
 template <typename SFAAT>
 __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SoftmaxFlashV2Compute(
-    const RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
+    const RunInfo& info, const MSplitInfo& mSplitInfo, LocalTensor<T>& mmResUb, LocalTensor<uint8_t>& softmaxTmpUb,
     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> inSumTensor;
@@ -625,7 +639,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SoftmaxFlashV2Compute(
         inMaxTensor = softmaxMaxUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset];
         inSumTensor = softmaxSumUb[inIdx * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset];
     }
-    if (actualColumnCount !=0) {
+    if (actualColumnCount != 0) {
         SoftMaxShapeInfo srcShape{dealRowCount, columnCount, dealRowCount, actualColumnCount};
         SoftMaxTiling newTiling =
             SoftMaxFlashV2TilingFunc(srcShape, sizeof(T), sizeof(T), softmaxTmpUb.GetSize(), true, false);
@@ -647,9 +661,9 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::SoftmaxFlashV2Compute(
 
 // 由于S在GM上已完成atomatic，此处只需要把数据拷贝出来有fp16转成fp32
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMatmulResCombineDD(const RunInfo &info,
-    LocalTensor<T> bmmResUb, GlobalTensor<MM1_OUT_T> srcGm, uint32_t startRow, uint32_t dealRowCount,
-    uint32_t columnCount, uint32_t actualColumnCount, float scaleC)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMatmulResCombineDD(
+    const RunInfo& info, LocalTensor<T> bmmResUb, GlobalTensor<MM1_OUT_T> srcGm, uint32_t startRow,
+    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount, float scaleC)
 {
     uint32_t baseOffset = startRow * columnCount;
     uint32_t copySize = dealRowCount * columnCount;
@@ -668,18 +682,19 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMatmulResCombine
 
 template <typename SFAAT>
 __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm1ResBaseBlock(
-    const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow, uint32_t dealRowCount,
-    uint32_t columnCount, uint32_t actualColumnCount, uint32_t loopId, bool &needMask, uint32_t &maskStart, uint32_t &maskEnd)
+    const RunInfo& info, const MSplitInfo& mSplitInfo, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount, uint32_t loopId, bool& needMask, uint32_t& maskStart, uint32_t& maskEnd)
 {
     uint32_t computeSize = dealRowCount * columnCount;
     uint64_t inGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize +
-                             (mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) * columnCount;
+                          (mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) * columnCount;
     uint64_t outGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.mmResUbSize * 2 +
                            (mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) * columnCount;
     LocalTensor<T> mmResUb = tmpBuff1.Get<T>();
     AntiquantMatmulResCombineDD(info, mmResUb, mm1ResGm[inGmOffset], startRow, dealRowCount, columnCount,
-        actualColumnCount, scaleC1 * static_cast<T>(tilingData->baseParams.scaleValue));
-    LocalTensor<T> aMax = aMaxBmm1Ub[(info.bN2Idx % constInfo.preLoadNum) * Q_AMAX_BUF_SIZE + startRow * BLOCK_ELEMENT_NUM];
+                                actualColumnCount, scaleC1 * static_cast<T>(tilingData->baseParams.scaleValue));
+    LocalTensor<T> aMax =
+        aMaxBmm1Ub[(info.bN2Idx % constInfo.preLoadNum) * Q_AMAX_BUF_SIZE + startRow * BLOCK_ELEMENT_NUM];
     RowMuls<T>(mmResUb, mmResUb, aMax, dealRowCount, columnCount, actualColumnCount);
     PipeBarrier<PIPE_V>();
     if (loopId == 0) {
@@ -688,21 +703,20 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm1ResBaseBlock(
     }
     ElewiseCompute(info, mmResUb, dealRowCount, columnCount);
     pipe_barrier(PIPE_V);
-    AttentionMaskCompute(info, mSplitInfo, mmResUb, dealRowCount, columnCount,
-        startRow, needMask, maskStart, maskEnd);
+    AttentionMaskCompute(info, mSplitInfo, mmResUb, dealRowCount, columnCount, startRow, needMask, maskStart, maskEnd);
     pipe_barrier(PIPE_V);
     LocalTensor<T> tmpAFloorUb = tmpBuff2.Get<T>();
     LocalTensor<uint8_t> softmaxTmpUb = tmpAFloorUb.template ReinterpretCast<uint8_t>();
-    SoftmaxFlashV2Compute(info, mSplitInfo, mmResUb, softmaxTmpUb, startRow, dealRowCount,
-                          columnCount, actualColumnCount);
+    SoftmaxFlashV2Compute(info, mSplitInfo, mmResUb, softmaxTmpUb, startRow, dealRowCount, columnCount,
+                          actualColumnCount);
     pipe_barrier(PIPE_V);
-    AntiquantSoftmaxResPreProcess(info, vec1ResGm[outGmOffset], mmResUb, tmpAFloorUb, startRow, dealRowCount, columnCount,
-                                  actualColumnCount);
+    AntiquantSoftmaxResPreProcess(info, vec1ResGm[outGmOffset], mmResUb, tmpAFloorUb, startRow, dealRowCount,
+                                  columnCount, actualColumnCount);
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantSoftmaxResPreProcess(const RunInfo &info,
-    GlobalTensor<KV_T> dstGm, LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb, uint32_t startRow,
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantSoftmaxResPreProcess(
+    const RunInfo& info, GlobalTensor<KV_T> dstGm, LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb, uint32_t startRow,
     uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t step = info.mSize * columnCount;
@@ -725,19 +739,21 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantSoftmaxResPrePro
     PipeBarrier<PIPE_V>();
 
     for (uint32_t i = 0; i < msdIterNum; i++) {
-        AntiquantAIterExpand(dstGm, srcUbFp16, tmpAFloorUbFp16, calcSize, (i == 0 ? true : false), step * i + baseOffset);
+        AntiquantAIterExpand(dstGm, srcUbFp16, tmpAFloorUbFp16, calcSize, (i == 0 ? true : false),
+                             step * i + baseOffset);
     }
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec1SingleBuf(const RunInfo &info,
-                                                                            const MSplitInfo &mSplitInfo)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec1SingleBuf(const RunInfo& info,
+                                                                            const MSplitInfo& mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
     uint32_t mSplitSize = info.actualSingleProcessSInnerSize == 0 ?
-        16 : BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
+                              16 :
+                              BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
 #ifdef SFACV_SOFTMAX_WITHOUT_BRC_PRELOAD
     // 1. 向下8对齐是因为UB操作至少32B
     // 2. info.actualSingleProcessSInnerSizeAlign最大512, mSplitSize可以确保最小为16
@@ -756,15 +772,15 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec1SingleBuf(cons
         if (i == (loopCount - 1)) {
             dealSize = tailSplitSize;
         }
-        DealBmm1ResBaseBlock(info, mSplitInfo, i * mSplitSize, dealSize,
-            info.actualSingleProcessSInnerSizeAlign, info.actualSingleProcessSInnerSize, i, needMask, maskStart, maskEnd);
+        DealBmm1ResBaseBlock(info, mSplitInfo, i * mSplitSize, dealSize, info.actualSingleProcessSInnerSizeAlign,
+                             info.actualSingleProcessSInnerSize, i, needMask, maskStart, maskEnd);
         pingpongFlag ^= 1; // pingpong 0 1切换
     }
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx,
-                                                              int64_t topkGmBaseOffset, const RunInfo &runInfo)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::GetRealS2Idx(int64_t s2GmOffset, int64_t& realS2Idx,
+                                                                    int64_t topkGmBaseOffset, const RunInfo& runInfo)
 {
     int64_t topkGmIdx = (s2GmOffset + runInfo.s2Idx * SALSV_S2BASEIZE) / constInfo.sparseBlockSize;
     if (unlikely(topkGmIdx >= runInfo.sparseBlockCount)) {
@@ -776,8 +792,8 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::GetRealS2Idx(int64_t s2Gm
 }
 
 template <typename SFAAT>
-__aicore__ inline int64_t SFAAVectorServiceGqaMsd<SFAAT>::GetKeyBNBOffset(int64_t realS2Idx,
-                                                                    const RunInfo &runInfo, int64_t s2IdLimit)
+__aicore__ inline int64_t SFAAVectorServiceGqaMsd<SFAAT>::GetKeyBNBOffset(int64_t realS2Idx, const RunInfo& runInfo,
+                                                                          int64_t s2IdLimit)
 {
     if (realS2Idx < 0 || realS2Idx >= s2IdLimit) {
         return -1;
@@ -788,33 +804,38 @@ __aicore__ inline int64_t SFAAVectorServiceGqaMsd<SFAAT>::GetKeyBNBOffset(int64_
         int64_t blkTableOffset = realS2Idx % constInfo.kvCacheBlockSize;
         if constexpr (KV_LAYOUT_T == SFAA_LAYOUT::PA_BSND) {
             realKeyBNBOffset = (blkTableGm_.GetValue(runInfo.bIdx * constInfo.maxBlockNumPerBatch + blkTableIdx) *
-                                static_cast<int64_t>(constInfo.kvCacheBlockSize) + blkTableOffset) *
-                                static_cast<int64_t>(constInfo.kvHeadNum) + runInfo.n2Idx;
+                                    static_cast<int64_t>(constInfo.kvCacheBlockSize) +
+                                blkTableOffset) *
+                                   static_cast<int64_t>(constInfo.kvHeadNum) +
+                               runInfo.n2Idx;
         } else if constexpr (KV_LAYOUT_T == SFAA_LAYOUT::PA_BNSD) { // PA_BNSD (blockNum n2 blockSize)
             realKeyBNBOffset = blkTableGm_.GetValue(runInfo.bIdx * constInfo.maxBlockNumPerBatch + blkTableIdx) *
-                               static_cast<int64_t>(constInfo.kvHeadNum) * static_cast<int64_t>(constInfo.kvCacheBlockSize) +
-                               + runInfo.n2Idx * static_cast<int64_t>(constInfo.kvCacheBlockSize) + blkTableOffset;
+                                   static_cast<int64_t>(constInfo.kvHeadNum) *
+                                   static_cast<int64_t>(constInfo.kvCacheBlockSize) +
+                               +runInfo.n2Idx * static_cast<int64_t>(constInfo.kvCacheBlockSize) + blkTableOffset;
         }
     } else {
-        realKeyBNBOffset = runInfo.tensorBOffset / constInfo.headDim + realS2Idx * static_cast<int64_t>(constInfo.kvHeadNum);
+        realKeyBNBOffset =
+            runInfo.tensorBOffset / constInfo.headDim + realS2Idx * static_cast<int64_t>(constInfo.kvHeadNum);
     }
 
     return realKeyBNBOffset;
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SFAAVectorServiceGqaMsd<SFAAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-                                               int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo, bool &mask,
-                                               int64_t &s2GmOffsetArray, int64_t s2GmLimit)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyInSingleKv(int64_t& mte2Size, int64_t mte3Size,
+                                                                      int64_t mergeMte3Idx, int64_t realS2Idx,
+                                                                      int64_t keyBNBOffset, int64_t s2IdLimit,
+                                                                      const RunInfo& runInfo, bool& mask,
+                                                                      int64_t& s2GmOffsetArray, int64_t s2GmLimit)
 {
     if (keyBNBOffset < 0) {
         return;
     }
-    int64_t sparseBlockRealSize = (s2GmLimit - s2GmOffsetArray < constInfo.sparseBlockSize) ? 
-                                  (s2GmLimit - s2GmOffsetArray) : constInfo.sparseBlockSize;
-    int64_t validS2Count =
-        (realS2Idx + sparseBlockRealSize > s2IdLimit ? s2IdLimit - realS2Idx : sparseBlockRealSize);
+    int64_t sparseBlockRealSize = (s2GmLimit - s2GmOffsetArray < constInfo.sparseBlockSize) ?
+                                      (s2GmLimit - s2GmOffsetArray) :
+                                      constInfo.sparseBlockSize;
+    int64_t validS2Count = (realS2Idx + sparseBlockRealSize > s2IdLimit ? s2IdLimit - realS2Idx : sparseBlockRealSize);
     // 当前仅支持SEPARATE模式
     if (constInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::SEPARATE) {
         DataCopyExtParams intriParams;
@@ -822,25 +843,30 @@ SFAAVectorServiceGqaMsd<SFAAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Si
         if constexpr (KV_LAYOUT_T == SFAA_LAYOUT::PA_NZ) {
             uint32_t copyFinishRowCnt = 0;
             uint32_t blockElementCnt = 32 / sizeof(KV_T);
-            uint32_t ubOffset = mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * blockElementCnt;
+            uint32_t ubOffset =
+                mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * blockElementCnt;
             uint32_t kvMergUbRowSize = ConstInfo::BUFFER_SIZE_BYTE_4K / constInfo.headDim;
             while (copyFinishRowCnt < validS2Count) {
                 uint64_t blockIdOffset = realS2Idx / constInfo.kvCacheBlockSize; // 获取block table上的索引
-                uint64_t reaminRowCnt = realS2Idx % constInfo.kvCacheBlockSize; // 获取在单个块上超出的行数
-                uint64_t idInBlockTable = blkTableGm_.GetValue(runInfo.bIdx * constInfo.maxBlockNumPerBatch + blockIdOffset); // 从block table上获取编号
+                uint64_t reaminRowCnt = realS2Idx % constInfo.kvCacheBlockSize;  // 获取在单个块上超出的行数
+                uint64_t idInBlockTable = blkTableGm_.GetValue(runInfo.bIdx * constInfo.maxBlockNumPerBatch +
+                                                               blockIdOffset); // 从block table上获取编号
                 // 计算可以拷贝的行数
                 uint32_t copyRowCnt = constInfo.kvCacheBlockSize - reaminRowCnt;
                 if (copyFinishRowCnt + copyRowCnt > validS2Count) {
                     copyRowCnt = validS2Count - copyFinishRowCnt;
                 }
-                uint64_t keyOffset = idInBlockTable * constInfo.kvCacheBlockSize * constInfo.headDim * constInfo.kvHeadNum;
-                keyOffset += (uint64_t)(runInfo.n2Idx * constInfo.headDim * constInfo.kvCacheBlockSize) + reaminRowCnt * blockElementCnt;
+                uint64_t keyOffset =
+                    idInBlockTable * constInfo.kvCacheBlockSize * constInfo.headDim * constInfo.kvHeadNum;
+                keyOffset += (uint64_t)(runInfo.n2Idx * constInfo.headDim * constInfo.kvCacheBlockSize) +
+                             reaminRowCnt * blockElementCnt;
                 intriParams.blockLen = copyRowCnt * blockElementCnt * sizeof(KV_T);
                 intriParams.blockCount = constInfo.headDim / blockElementCnt;
                 intriParams.dstStride = kvMergUbRowSize - copyRowCnt;
                 intriParams.srcStride = (constInfo.kvCacheBlockSize - copyRowCnt) * blockElementCnt * sizeof(KV_T);
                 padParams.isPad = false;
-                DataCopyPad(kvMergUb_[ubOffset + copyFinishRowCnt * blockElementCnt], keyGm_[keyOffset], intriParams, padParams);
+                DataCopyPad(kvMergUb_[ubOffset + copyFinishRowCnt * blockElementCnt], keyGm_[keyOffset], intriParams,
+                            padParams);
                 DataCopyPad(kvMergUb_[ubOffset + ConstInfo::BUFFER_SIZE_BYTE_4K + copyFinishRowCnt * blockElementCnt],
                             valueGm_[keyOffset], intriParams, padParams);
                 // 更新循环变量
@@ -848,7 +874,8 @@ SFAAVectorServiceGqaMsd<SFAAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Si
                 realS2Idx += copyRowCnt;
             }
         } else {
-            uint32_t ubOffset = mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim;
+            uint32_t ubOffset =
+                mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * constInfo.headDim;
             uint16_t srcStride = 0;
             if constexpr (KV_LAYOUT_T == SFAA_LAYOUT::PA_BNSD) {
                 intriParams.blockCount = 1;
@@ -860,14 +887,15 @@ SFAAVectorServiceGqaMsd<SFAAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Si
                     intriParams.blockLen = validS2Count * constInfo.headDim * sizeof(KV_T);
                 } else {
                     intriParams.blockCount = validS2Count;
-                    intriParams.blockLen = constInfo.headDim * sizeof(KV_T); 
+                    intriParams.blockLen = constInfo.headDim * sizeof(KV_T);
                 }
             }
             intriParams.dstStride = 0;
             intriParams.srcStride = srcStride;
             padParams.isPad = false;
             DataCopyPad(kvMergUb_[ubOffset], keyGm_[keyBNBOffset * constInfo.headDim], intriParams, padParams);
-            DataCopyPad(kvMergUb_[ubOffset + ConstInfo::BUFFER_SIZE_BYTE_4K], valueGm_[keyBNBOffset * constInfo.headDim], intriParams, padParams);
+            DataCopyPad(kvMergUb_[ubOffset + ConstInfo::BUFFER_SIZE_BYTE_4K],
+                        valueGm_[keyBNBOffset * constInfo.headDim], intriParams, padParams);
         }
     }
     mte2Size += validS2Count;
@@ -875,9 +903,10 @@ SFAAVectorServiceGqaMsd<SFAAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Si
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
-                                                                int64_t realS2Idx1, int64_t realS2Idx2, const RunInfo &runInfo,
-                                                                bool &mask, int64_t s2GmOffsetArray, int64_t s2GmLimit)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyInKv(int64_t& mte2Size, int64_t mte3Size,
+                                                                int64_t mergeMte3Idx, int64_t realS2Idx1,
+                                                                int64_t realS2Idx2, const RunInfo& runInfo, bool& mask,
+                                                                int64_t s2GmOffsetArray, int64_t s2GmLimit)
 {
     int64_t s2IdLimit = runInfo.threshold;
 
@@ -887,14 +916,18 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyInKv(int64_t &mte2Siz
         return;
     }
 
-    int64_t blkTableSrcStride = (keyBNBOffset1 > keyBNBOffset2 ? (keyBNBOffset1 - keyBNBOffset2) :
-        (keyBNBOffset2 - keyBNBOffset1)) - constInfo.sparseBlockSize;
+    int64_t blkTableSrcStride =
+        (keyBNBOffset1 > keyBNBOffset2 ? (keyBNBOffset1 - keyBNBOffset2) : (keyBNBOffset2 - keyBNBOffset1)) -
+        constInfo.sparseBlockSize;
     int64_t keySrcStride = blkTableSrcStride * constInfo.headDim;
-    if (likely(KV_LAYOUT_T == SFAA_LAYOUT::PA_NZ || constInfo.kvHeadNum > 1 || keySrcStride >= INT32_MAX || keySrcStride < 0 ||
-        realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit || realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit)) {
+    if (likely(KV_LAYOUT_T == SFAA_LAYOUT::PA_NZ || constInfo.kvHeadNum > 1 || keySrcStride >= INT32_MAX ||
+               keySrcStride < 0 || realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
+               realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit)) {
         // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
-        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyBNBOffset1, s2IdLimit, runInfo, mask, s2GmOffsetArray, s2GmLimit);
-        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx2, keyBNBOffset2, s2IdLimit, runInfo, mask, s2GmOffsetArray, s2GmLimit);
+        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx1, keyBNBOffset1, s2IdLimit, runInfo, mask,
+                       s2GmOffsetArray, s2GmLimit);
+        CopyInSingleKv(mte2Size, mte3Size, mergeMte3Idx, realS2Idx2, keyBNBOffset2, s2IdLimit, runInfo, mask,
+                       s2GmOffsetArray, s2GmLimit);
     } else {
         DataCopyExtParams intriParams;
         intriParams.blockCount = (keyBNBOffset1 >= 0) + (keyBNBOffset2 >= 0);
@@ -915,9 +948,11 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyInKv(int64_t &mte2Siz
             padParams.leftPadding = 0;
             padParams.rightPadding = headDimAlign - constInfo.headDim;
             padParams.paddingValue = 0;
-            uint32_t ubOffset = mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * headDimAlign;
+            uint32_t ubOffset =
+                mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T) + (mte2Size - mte3Size) * headDimAlign;
             DataCopyPad(kvMergUb_[ubOffset], keyGm_[startGmOffset * constInfo.headDim], intriParams, padParams);
-            DataCopyPad(kvMergUb_[ubOffset + ConstInfo::BUFFER_SIZE_BYTE_4K], valueGm_[startGmOffset * constInfo.headDim], intriParams, padParams);
+            DataCopyPad(kvMergUb_[ubOffset + ConstInfo::BUFFER_SIZE_BYTE_4K],
+                        valueGm_[startGmOffset * constInfo.headDim], intriParams, padParams);
         }
         mte2Size += ((keyBNBOffset1 > -1) + (keyBNBOffset2 > -1)) * constInfo.sparseBlockSize;
     }
@@ -925,8 +960,9 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyInKv(int64_t &mte2Siz
 
 template <typename SFAAT>
 __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
-                                                                   int64_t s2GmStartOffset, int64_t mergeMte3Idx,
-                                                                   const RunInfo &runInfo, bool isValue, bool &needWaitMte3ToMte2)
+                                                                         int64_t s2GmStartOffset, int64_t mergeMte3Idx,
+                                                                         const RunInfo& runInfo, bool isValue,
+                                                                         bool& needWaitMte3ToMte2)
 {
     if (mte2Size <= mte3Size) {
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG + mergeMte3Idx % 2);
@@ -934,7 +970,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyOutMrgeResult(int64_t
     }
     int32_t dealRow = mte2Size - mte3Size;
     LocalTensor<KV_T> srcTensor = kvMergUb_[mergeMte3Idx % 2 * INPUT1_BUFFER_OFFSET / sizeof(KV_T)];
-    
+
     SetFlag<AscendC::HardEvent::MTE2_MTE3>(SYNC_INPUT_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(SYNC_INPUT_BUF2_FLAG);
     DataCopyExtParams dataCopyParams;
@@ -945,19 +981,23 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyOutMrgeResult(int64_t
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = (SALSV_MERGESIZE - 32) * blockElementCnt * sizeof(KV_T);
         DataCopyPad(valueMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * SALSV_MERGESIZE * constInfo.headDim +
-            (s2GmStartOffset + mte3Size) * blockElementCnt], srcTensor[ConstInfo::BUFFER_SIZE_BYTE_4K], dataCopyParams);
+                                  (s2GmStartOffset + mte3Size) * blockElementCnt],
+                    srcTensor[ConstInfo::BUFFER_SIZE_BYTE_4K], dataCopyParams);
         DataCopyPad(keyMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * SALSV_MERGESIZE * constInfo.headDim +
-            (s2GmStartOffset + mte3Size) * blockElementCnt], srcTensor, dataCopyParams);
-        
+                                (s2GmStartOffset + mte3Size) * blockElementCnt],
+                    srcTensor, dataCopyParams);
+
     } else {
         dataCopyParams.blockCount = dealRow;
         dataCopyParams.blockLen = constInfo.headDim * sizeof(KV_T);
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 0;
-        DataCopyPad(keyMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * SALSV_MERGESIZE * constInfo.headDim + (s2GmStartOffset + mte3Size) *
-            constInfo.headDim], srcTensor, dataCopyParams);
-        DataCopyPad(valueMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * SALSV_MERGESIZE * constInfo.headDim + (s2GmStartOffset + mte3Size) *
-            constInfo.headDim], srcTensor[ConstInfo::BUFFER_SIZE_BYTE_4K], dataCopyParams);
+        DataCopyPad(keyMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * SALSV_MERGESIZE * constInfo.headDim +
+                                (s2GmStartOffset + mte3Size) * constInfo.headDim],
+                    srcTensor, dataCopyParams);
+        DataCopyPad(valueMergeGm_[runInfo.loop % MERGE_CACHE_GM_BUF_NUM * SALSV_MERGESIZE * constInfo.headDim +
+                                  (s2GmStartOffset + mte3Size) * constInfo.headDim],
+                    srcTensor[ConstInfo::BUFFER_SIZE_BYTE_4K], dataCopyParams);
     }
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG + mergeMte3Idx % 2);
     needWaitMte3ToMte2 = true;
@@ -965,7 +1005,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyOutMrgeResult(int64_t
 
 // b s1 k
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec0Msd(const RunInfo &info)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec0Msd(const RunInfo& info)
 {
     QueryPreProcess(info);
     if (info.aivS2AccessSize == 0) {
@@ -975,22 +1015,23 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec0Msd(const RunI
     int64_t s2Pair = SfaaCeilDiv(s2ProcessSize, 2L * constInfo.sparseBlockSize);
     int64_t topkGmBaseOffset = info.topkGmBaseOffset;
 
-    int64_t s2GmStartOffset = GetSubBlockIdx() == 0 ? 
-        info.aicS2AccessSize : (s2Pair / 2L) * 2 * constInfo.sparseBlockSize + info.aicS2AccessSize;
-    int64_t s2GmStartOffset4Merge = GetSubBlockIdx() == 0 ? 
-        0 : (s2Pair / 2L) * 2 * constInfo.sparseBlockSize;
+    int64_t s2GmStartOffset = GetSubBlockIdx() == 0 ?
+                                  info.aicS2AccessSize :
+                                  (s2Pair / 2L) * 2 * constInfo.sparseBlockSize + info.aicS2AccessSize;
+    int64_t s2GmStartOffset4Merge = GetSubBlockIdx() == 0 ? 0 : (s2Pair / 2L) * 2 * constInfo.sparseBlockSize;
     int64_t s2GmLimit = GetSubBlockIdx() == 0 ? (s2Pair / 2L) * 2 * constInfo.sparseBlockSize + info.aicS2AccessSize :
-        s2ProcessSize + info.aicS2AccessSize;
+                                                s2ProcessSize + info.aicS2AccessSize;
     if (s2GmLimit > s2ProcessSize + info.aicS2AccessSize) {
         s2GmLimit = s2ProcessSize + info.aicS2AccessSize;
     }
     int64_t mergeMte3Idx = 0;
-    int64_t mte2Size = MergeKv(info, s2GmStartOffset, s2GmLimit, topkGmBaseOffset, false, mergeMte3Idx, s2GmStartOffset4Merge);
+    int64_t mte2Size =
+        MergeKv(info, s2GmStartOffset, s2GmLimit, topkGmBaseOffset, false, mergeMte3Idx, s2GmStartOffset4Merge);
     return;
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::QueryPreProcess(const RunInfo &info)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::QueryPreProcess(const RunInfo& info)
 {
     if (!info.isFirstSInnerLoop) {
         return;
@@ -1009,7 +1050,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::QueryPreProcess(const Run
         SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_DEQUANT_SCALE_FLAG);
         WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_DEQUANT_SCALE_FLAG);
     }
-    
+
     uint32_t headDimAlign = SFAAAlign(constInfo.headDim, ConstInfo::BUFFER_SIZE_BYTE_32B); // headDim对齐32B
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / headDimAlign; // 单次处理query矩阵的行数（8192/128=64）
     if (mSplitSize > info.mSizeV) {
@@ -1031,8 +1072,8 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::QueryPreProcess(const Run
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealQueryPreProcessBaseBlock(const RunInfo &info,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealQueryPreProcessBaseBlock(
+    const RunInfo& info, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t bufferId = info.bN2Idx % constInfo.preLoadNum;
     LocalTensor<T> queryUb = tmpBuff1.Get<T>();
@@ -1040,15 +1081,15 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealQueryPreProcessBaseBl
     uint64_t qOffset = info.tensorAOffset + (info.mSizeVStart + startRow) * actualColumnCount;
 
     if (constInfo.kvHeadNum != 1) {
-        uint32_t startS1Idx = (info.mSizeVStart + startRow) / constInfo.gSize; // V0: 0 V1: 1
-        uint32_t startGOfffset = (info.mSizeVStart + startRow) % constInfo.gSize; // V0: 0 V1: 0
+        uint32_t startS1Idx = (info.mSizeVStart + startRow) / constInfo.gSize;                  // V0: 0 V1: 1
+        uint32_t startGOfffset = (info.mSizeVStart + startRow) % constInfo.gSize;               // V0: 0 V1: 0
         uint32_t endS1Idx = (info.mSizeVStart + startRow + dealRowCount - 1) / constInfo.gSize; // V0: 0 V1: 1
-        uint32_t curStartRow = (info.mSizeVStart + startRow); // V0: 0 V1: 2
+        uint32_t curStartRow = (info.mSizeVStart + startRow);                                   // V0: 0 V1: 2
         uint32_t curDealRowCount = 0;
         uint32_t ubOffset = 0;
         for (uint32_t curS1idx = startS1Idx; curS1idx <= endS1Idx; curS1idx++) {
             qOffset = info.tensorAOffset + curS1idx * constInfo.qHeadNum * constInfo.headDim +
-                startGOfffset * constInfo.headDim;
+                      startGOfffset * constInfo.headDim;
             if (curS1idx != endS1Idx) {
                 curDealRowCount = (curS1idx + 1) * constInfo.gSize - curStartRow;
             } else {
@@ -1072,13 +1113,14 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealQueryPreProcessBaseBl
     // A pre process
     size_t dstOffset = bufferId * constInfo.bmm2ResUbSize * 2 + info.mSizeVStart * columnCount;
 
-    AntiquantMatmulPreProcess(info, queryPreProcessResGm_[dstOffset], aMaxBmm1Ub[bufferId * Q_AMAX_BUF_SIZE],
-        queryUb, aFloorUb, startRow, dealRowCount, columnCount, actualColumnCount);
+    AntiquantMatmulPreProcess(info, queryPreProcessResGm_[dstOffset], aMaxBmm1Ub[bufferId * Q_AMAX_BUF_SIZE], queryUb,
+                              aFloorUb, startRow, dealRowCount, columnCount, actualColumnCount);
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
+                                                                 LocalTensor<float> src1Ub, uint32_t dealRowCount,
+                                                                 uint32_t columnCount, uint32_t actualColumnCount)
 {
     // vec mul by row
     // dstUb[i, j] = src0Ub[j] * src1Ub[i, j],
@@ -1114,8 +1156,9 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::VecMulMat(LocalTensor<flo
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyAntiqQuery(LocalTensor<T> &queryCastUb,
-    uint64_t qOffset, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyAntiqQuery(LocalTensor<T>& queryCastUb, uint64_t qOffset,
+                                                                      uint32_t dealRowCount, uint32_t columnCount,
+                                                                      uint32_t actualColumnCount)
 {
     uint32_t qTypeElementSize = BYTE_BLOCK / sizeof(Q_T); // 16 / 2 = 8
     DataCopyExtParams copyInParams;
@@ -1141,9 +1184,10 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyAntiqQuery(LocalTenso
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMatmulPreProcess(const RunInfo &info,
-    GlobalTensor<KV_T> dstGm, LocalTensor<T> aMaxResUb, LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMatmulPreProcess(
+    const RunInfo& info, GlobalTensor<KV_T> dstGm, LocalTensor<T> aMaxResUb, LocalTensor<T> srcUb,
+    LocalTensor<T> tmpAFloorUb, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     uint32_t step = info.mSize * columnCount;
     uint32_t baseOffset = startRow * columnCount;
@@ -1175,12 +1219,13 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMatmulPreProcess
     PipeBarrier<PIPE_V>();
 
     for (uint32_t i = 0; i < msdIterNum; i++) {
-        AntiquantAIterExpand(dstGm, srcUbFp16, tmpAFloorUbFp16, calcSize, (i == 0 ? true : false), step * i + baseOffset);
+        AntiquantAIterExpand(dstGm, srcUbFp16, tmpAFloorUbFp16, calcSize, (i == 0 ? true : false),
+                             step * i + baseOffset);
     }
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AbsRowMax(LocalTensor<T> &tmpAMaxRes, LocalTensor<T> &srcUb,
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AbsRowMax(LocalTensor<T>& tmpAMaxRes, LocalTensor<T>& srcUb,
                                                                  LocalTensor<T> tmpAUb, uint32_t dealRowCount,
                                                                  uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -1193,8 +1238,10 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AbsRowMax(LocalTensor<T> 
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::RowMaxForLongColumnCount(LocalTensor<float> &dstUb, LocalTensor<float> srcUb,
-                                                                                uint32_t dealRowCount, uint32_t columnCount,
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::RowMaxForLongColumnCount(LocalTensor<float>& dstUb,
+                                                                                LocalTensor<float> srcUb,
+                                                                                uint32_t dealRowCount,
+                                                                                uint32_t columnCount,
                                                                                 uint32_t actualColumnCount)
 {
     // max by row, 按行求最大值
@@ -1241,8 +1288,9 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::RowMaxForLongColumnCount(
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &srcUb,
-                                                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::RowMax(LocalTensor<float>& dstUb, LocalTensor<float>& srcUb,
+                                                              uint32_t dealRowCount, uint32_t columnCount,
+                                                              uint32_t actualColumnCount)
 {
     // max by row, 按行求最大值
     // dstUb[i] = max(srcUb[i, :])
@@ -1277,8 +1325,9 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::RowMax(LocalTensor<float>
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantAIterExpand(GlobalTensor<KV_T> &dstGm, LocalTensor<half> &tmpA1,
-                                                                            LocalTensor<half> &tmpA2, uint32_t calcSize,
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantAIterExpand(GlobalTensor<KV_T>& dstGm,
+                                                                            LocalTensor<half>& tmpA1,
+                                                                            LocalTensor<half>& tmpA2, uint32_t calcSize,
                                                                             bool isFirst, uint64_t outOffset)
 {
     if (!isFirst) {
@@ -1298,8 +1347,10 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantAIterExpand(Glob
 }
 
 template <typename SFAAT>
-__aicore__ inline int64_t SFAAVectorServiceGqaMsd<SFAAT>::MergeKv(const RunInfo &runInfo, int64_t s2GmStartOffset,
-    int64_t s2GmLimit, int64_t topkGmBaseOffset, bool isValue, int64_t mergeMte3Idx, int64_t s2GmStartOffset4Merge)
+__aicore__ inline int64_t SFAAVectorServiceGqaMsd<SFAAT>::MergeKv(const RunInfo& runInfo, int64_t s2GmStartOffset,
+                                                                  int64_t s2GmLimit, int64_t topkGmBaseOffset,
+                                                                  bool isValue, int64_t mergeMte3Idx,
+                                                                  int64_t s2GmStartOffset4Merge)
 {
     int64_t mte2Size = 0;
     int64_t mte3Size = 0;
@@ -1308,14 +1359,16 @@ __aicore__ inline int64_t SFAAVectorServiceGqaMsd<SFAAT>::MergeKv(const RunInfo 
     bool needWaitMte3ToMte2 = true;
     bool mask = false;
 
-    for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit; s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
+    for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit;
+         s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
         if (needWaitMte3ToMte2) {
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(SYNC_INPUT_BUF2_FLAG + mergeMte3Idx % 2);
             needWaitMte3ToMte2 = false;
         }
         GetRealS2Idx(s2GmOffsetArray, s2IdxArray0, topkGmBaseOffset, runInfo);
         if (unlikely(s2IdxArray0 < 0)) { // 当前sparseblock已经超过了sparseCount的范围
-            CopyOutMrgeResult(mte2Size, mte3Size, s2GmStartOffset4Merge, mergeMte3Idx, runInfo, isValue, needWaitMte3ToMte2);
+            CopyOutMrgeResult(mte2Size, mte3Size, s2GmStartOffset4Merge, mergeMte3Idx, runInfo, isValue,
+                              needWaitMte3ToMte2);
             mergeMte3Idx++;
             break;
         }
@@ -1323,7 +1376,8 @@ __aicore__ inline int64_t SFAAVectorServiceGqaMsd<SFAAT>::MergeKv(const RunInfo 
         CopyInKv(mte2Size, mte3Size, mergeMte3Idx, s2IdxArray0, s2IdxArray1, runInfo, mask, s2GmOffsetArray, s2GmLimit);
         if ((mte2Size - mte3Size + 2 * constInfo.sparseBlockSize > 32) || // TODO，这里可以支持到128，但需要循环拷出
             s2GmOffsetArray + 2 * constInfo.sparseBlockSize >= s2GmLimit) {
-            CopyOutMrgeResult(mte2Size, mte3Size, s2GmStartOffset4Merge, mergeMte3Idx, runInfo, isValue, needWaitMte3ToMte2);
+            CopyOutMrgeResult(mte2Size, mte3Size, s2GmStartOffset4Merge, mergeMte3Idx, runInfo, isValue,
+                              needWaitMte3ToMte2);
             mte3Size = mte2Size;
             mergeMte3Idx++;
         }
@@ -1332,7 +1386,7 @@ __aicore__ inline int64_t SFAAVectorServiceGqaMsd<SFAAT>::MergeKv(const RunInfo 
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec1Msd(const RunInfo &info)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec1Msd(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1377,11 +1431,14 @@ __aicore__ inline uint64_t SFAAVectorServiceGqaMsd<SFAAT>::CalcAccumOffset(uint3
     uint32_t taskId = 0;
 
     if constexpr (IS_META) {
-        const uint32_t *bN2IdxOfFdHead = metaDataPtr->fdRes.bN2IdxOfFdHead;
-        const uint32_t *gS1IdxOfFdHead = metaDataPtr->fdRes.gS1IdxOfFdHead;
-        const uint32_t *s2SplitNumOfFdHead = metaDataPtr->fdRes.s2SplitNumOfFdHead;
+        const uint32_t* bN2IdxOfFdHead = metaDataPtr->fdRes.bN2IdxOfFdHead;
+        const uint32_t* gS1IdxOfFdHead = metaDataPtr->fdRes.gS1IdxOfFdHead;
+        const uint32_t* s2SplitNumOfFdHead = metaDataPtr->fdRes.s2SplitNumOfFdHead;
         uint32_t usedCoreNum = metaDataPtr->usedCoreNum;
-        while (taskId < usedCoreNum && (bN2IdxOfFdHead[taskId] != bN2Idx || gS1IdxOfFdHead[taskId] * constInfo.mBaseSize != gS1Idx)) {  // 考虑在tiling阶段直接算出accumOut的偏置，则可以省略CalcAccumOffset()
+        while (taskId < usedCoreNum &&
+               (bN2IdxOfFdHead[taskId] != bN2Idx ||
+                gS1IdxOfFdHead[taskId] * constInfo.mBaseSize !=
+                    gS1Idx)) { // 考虑在tiling阶段直接算出accumOut的偏置，则可以省略CalcAccumOffset()
             accumTmpOutNum += s2SplitNumOfFdHead[taskId]; // 计算前面的workspace数
             taskId++;
         }
@@ -1392,8 +1449,8 @@ __aicore__ inline uint64_t SFAAVectorServiceGqaMsd<SFAAT>::CalcAccumOffset(uint3
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec2SingleBuf(const RunInfo &info,
-                                                                      const MSplitInfo &mSplitInfo)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec2SingleBuf(const RunInfo& info,
+                                                                            const MSplitInfo& mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -1416,9 +1473,9 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec2SingleBuf(cons
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMM2ResCombine(const RunInfo &info,
-    LocalTensor<MM2_OUT_T> bmmResUb, GlobalTensor<MM2_OUT_T> srcGm, uint32_t startRow, uint32_t dealRowCount,
-    uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMM2ResCombine(
+    const RunInfo& info, LocalTensor<MM2_OUT_T> bmmResUb, GlobalTensor<MM2_OUT_T> srcGm, uint32_t startRow,
+    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t baseOffset = startRow * columnCount;
     uint32_t copySize = dealRowCount * columnCount;
@@ -1432,9 +1489,11 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::AntiquantMM2ResCombine(co
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                                      uint32_t startRow, uint32_t dealRowCount,
-                                                                      uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm2ResBaseBlock(const RunInfo& info,
+                                                                            const MSplitInfo& mSplitInfo,
+                                                                            uint32_t startRow, uint32_t dealRowCount,
+                                                                            uint32_t columnCount,
+                                                                            uint32_t actualColumnCount)
 {
     uint32_t vec2ComputeSize = dealRowCount * columnCount;
 #ifdef SFACV_SOFTMAX_WITHOUT_BRC_PRELOAD
@@ -1447,19 +1506,21 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm2ResBaseBlock(cons
     uint64_t srcGmOffset = (info.loop % constInfo.preLoadNum) * constInfo.bmm2ResUbSize + inOutBaseOffset;
     LocalTensor<half> bmm2ResUb = tmpBuff1.Get<half>();
     bmm2ResUb.SetSize(vec2ComputeSize);
-    AntiquantMM2ResCombine(info, bmm2ResUb, mm2ResGm[srcGmOffset], startRow, dealRowCount, columnCount, actualColumnCount);
+    AntiquantMM2ResCombine(info, bmm2ResUb, mm2ResGm[srcGmOffset], startRow, dealRowCount, columnCount,
+                           actualColumnCount);
     // 除第一个循环外，均需要更新中间计算结果
     if (!info.isFirstSInnerLoop) {
-        //step2: 将softmaxExpUb转换为FP16
+        // step2: 将softmaxExpUb转换为FP16
 #ifdef SFACV_SOFTMAX_WITHOUT_BRC_PRELOAD
         LocalTensor<half> tmpSoftmaxFp16 = tmpBuff3.Get<half>();
         Cast(tmpSoftmaxFp16, softmaxExpUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
-            AscendC::RoundMode::CAST_ROUND, dealRowCount);
+             AscendC::RoundMode::CAST_ROUND, dealRowCount);
         PipeBarrier<PIPE_V>();
         LocalTensor<half> tmpExpBrcbResUb = tmpBuff2.Get<half>();
         // repeatTime:指令迭代次数，每次迭代完成8个datablock的数据收集
-        // repeatParams:{单次迭代内，矢量目的操作数不同datablock间地址步长, 相邻迭代间，矢量目的操作数相同datablock地址步长}
-        Brcb(tmpExpBrcbResUb, tmpSoftmaxFp16, (mSplitInfo.vecDealM + 7) / 8, {1, 8}); 
+        // repeatParams:{单次迭代内，矢量目的操作数不同datablock间地址步长,
+        // 相邻迭代间，矢量目的操作数相同datablock地址步长}
+        Brcb(tmpExpBrcbResUb, tmpSoftmaxFp16, (mSplitInfo.vecDealM + 7) / 8, {1, 8});
         // step3: Oi = (Oi - 1)*tmpSoftmaxFp16 + Otmp
         PipeBarrier<PIPE_V>();
         RowMuls<half>(vec2ResUb, vec2ResUb, tmpExpBrcbResUb, dealRowCount, columnCount, actualColumnCount);
@@ -1470,15 +1531,17 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm2ResBaseBlock(cons
         dataCopyParams.blockLen = 1;
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 1;
-        DataCopy(tmpSoftmaxFp32, softmaxExpUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset], dataCopyParams);
-        DataCopy(tmpSoftmaxFp32[BLOCK_ELEMENT_NUM], softmaxExpUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
-            dataCopyParams);
+        DataCopy(tmpSoftmaxFp32,
+                 softmaxExpUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
+                 dataCopyParams);
+        DataCopy(tmpSoftmaxFp32[BLOCK_ELEMENT_NUM],
+                 softmaxExpUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
+                 dataCopyParams);
         LocalTensor<half> tmpSoftmaxFp16 = tmpBuff3.Get<half>();
         PipeBarrier<PIPE_V>();
         Cast(tmpSoftmaxFp16, tmpSoftmaxFp32, AscendC::RoundMode::CAST_ROUND, dealRowCount * BLOCK_ELEMENT_NUM * 2);
         PipeBarrier<PIPE_V>();
-        RowMuls(vec2ResUb, vec2ResUb, tmpSoftmaxFp16,
-            dealRowCount, columnCount, actualColumnCount);
+        RowMuls(vec2ResUb, vec2ResUb, tmpSoftmaxFp16, dealRowCount, columnCount, actualColumnCount);
 #endif
         PipeBarrier<PIPE_V>();
         Add(bmm2ResUb, bmm2ResUb, vec2ResUb, vec2ComputeSize);
@@ -1493,12 +1556,13 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm2ResBaseBlock(cons
 #ifdef SFACV_SOFTMAX_WITHOUT_BRC_PRELOAD
         LocalTensor<T> tmpSumBrcbResUb = tmpBuff1.Get<T>();
         Brcb(tmpSumBrcbResUb, softmaxSumUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
-            (mSplitInfo.vecDealM + 7) / 8, {1, 8});
+             (mSplitInfo.vecDealM + 7) / 8, {1, 8});
         PipeBarrier<PIPE_V>();
         RowDivs(bmm2ResUbFp32, bmm2ResUbFp32, tmpSumBrcbResUb, dealRowCount, columnCount, actualColumnCount);
 #else
-        RowDivs(bmm2ResUbFp32, bmm2ResUbFp32, softmaxSumUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset],
-            dealRowCount, columnCount, actualColumnCount);
+        RowDivs(bmm2ResUbFp32, bmm2ResUbFp32,
+                softmaxSumUb[(info.loop % constInfo.preLoadNum) * SOFTMAX_TMP_BUFFER_OFFSET + baseOffset], dealRowCount,
+                columnCount, actualColumnCount);
 #endif
         pipe_barrier(PIPE_V);
         Muls(bmm2ResUbFp32, bmm2ResUbFp32, scaleC2, vec2ComputeSize);
@@ -1508,7 +1572,8 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm2ResBaseBlock(cons
         // ScaleV * bmm2res
         VecMulMat(bmm2ResUbFp32, antiquantVScaleUb_, bmm2ResUbFp32, dealRowCount, columnCount, actualColumnCount);
         PipeBarrier<PIPE_V>();
-        Bmm2ResCopyOut(info, bmm2ResUbFp32, mSplitInfo.vecStartM + startRow, dealRowCount, columnCount, actualColumnCount);
+        Bmm2ResCopyOut(info, bmm2ResUbFp32, mSplitInfo.vecStartM + startRow, dealRowCount, columnCount,
+                       actualColumnCount);
     } else {
         PipeBarrier<PIPE_V>();
         DataCopy(vec2ResUb, bmm2ResUb, dealRowCount * columnCount);
@@ -1516,7 +1581,7 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::DealBmm2ResBaseBlock(cons
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyAntiquantScale(LocalTensor<T> &castUb, GlobalTensor<T> srcGm,
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyAntiquantScale(LocalTensor<T>& castUb, GlobalTensor<T> srcGm,
                                                                           uint64_t offset)
 {
     uint32_t qTypeElementSize = BYTE_BLOCK / sizeof(T);
@@ -1541,7 +1606,8 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::CopyAntiquantScale(LocalT
     SetFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_DEQUANT_SCALE_FLAG);
 }
 
-template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec2Msd(const RunInfo &info)
+template <typename SFAAT>
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec2Msd(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1562,9 +1628,9 @@ template <typename SFAAT> __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>:
 }
 
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec2Inner(const RunInfo &info,
-                                                                  const MSplitInfo &mSplitInfo,
-                                                                  uint32_t mStartRow, uint32_t mDealSize)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec2Inner(const RunInfo& info,
+                                                                        const MSplitInfo& mSplitInfo,
+                                                                        uint32_t mStartRow, uint32_t mDealSize)
 {
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDim;
     if (mSplitSize > mDealSize) {
@@ -1577,17 +1643,17 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::ProcessVec2Inner(const Ru
         if (i == (loopCount - 1)) {
             dealSize = tailSplitSize;
         }
-        DealBmm2ResBaseBlock(info, mSplitInfo, i * mSplitSize + mStartRow, dealSize,
-                             constInfo.headDim, constInfo.headDim);
+        DealBmm2ResBaseBlock(info, mSplitInfo, i * mSplitSize + mStartRow, dealSize, constInfo.headDim,
+                             constInfo.headDim);
         pingpongFlag ^= 1; // pingpong 0 1切换
     }
 }
 
-
 template <typename SFAAT>
-__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::GetConfusionTransposeTiling(
-    int64_t numR, int64_t numC, const uint32_t stackBufferSize, const uint32_t typeSize,
-    ConfusionTransposeTiling &tiling)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::GetConfusionTransposeTiling(int64_t numR, int64_t numC,
+                                                                                   const uint32_t stackBufferSize,
+                                                                                   const uint32_t typeSize,
+                                                                                   ConfusionTransposeTiling& tiling)
 {
     (void)stackBufferSize;
     uint32_t blockSize = ONE_BLK_SIZE / typeSize;
@@ -1606,10 +1672,10 @@ __aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::GetConfusionTransposeTili
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SFAAVectorServiceGqaMsd<SFAAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                            uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
-                                            uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::Bmm2FDDataCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb,
+                                                                         uint32_t wsMStart, uint32_t dealRowCount,
+                                                                         uint32_t columnCount,
+                                                                         uint32_t actualColumnCount)
 {
     LocalTensor<T> tmp = outputBuf1.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1618,7 +1684,7 @@ SFAAVectorServiceGqaMsd<SFAAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTens
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     uint64_t accumTmpOutNum = CalcAccumOffset(info.bN2Idx, info.gS1Idx);
     uint64_t offset = accumTmpOutNum * constInfo.mBaseSize * constInfo.headDim + // taskoffset
-                      // 份数offset
+                                                                                 // 份数offset
                       info.tndCoreStartKVSplitPos * constInfo.mBaseSize * constInfo.headDim +
                       wsMStart * actualColumnCount; // m轴offset
     GlobalTensor<T> dst = accumOutGm[offset];
@@ -1636,10 +1702,11 @@ SFAAVectorServiceGqaMsd<SFAAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTens
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SFAAVectorServiceGqaMsd<SFAAT>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb,
-                                               uint32_t wsMStart, uint32_t dealRowCount,
-                                               uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::Bmm2DataCopyOutTrans(const RunInfo& info,
+                                                                            LocalTensor<OUT_T>& attenOutUb,
+                                                                            uint32_t wsMStart, uint32_t dealRowCount,
+                                                                            uint32_t columnCount,
+                                                                            uint32_t actualColumnCount)
 {
     uint32_t s1StartIdx = wsMStart / constInfo.gSize;
     uint32_t startGOffset = wsMStart % constInfo.gSize;
@@ -1648,9 +1715,10 @@ SFAAVectorServiceGqaMsd<SFAAT>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalT
     uint32_t curDealRowCount = 0;
     uint32_t ubOffset = 0;
     for (uint32_t curS1idx = s1StartIdx; curS1idx <= s1EndIdx; curS1idx++) {
-        uint32_t outOffset = info.attenOutOffset + curS1idx * constInfo.qHeadNum * constInfo.headDim + startGOffset * constInfo.headDim;
+        uint32_t outOffset =
+            info.attenOutOffset + curS1idx * constInfo.qHeadNum * constInfo.headDim + startGOffset * constInfo.headDim;
         if (curS1idx != s1EndIdx) {
-            curDealRowCount = (curS1idx + 1) * constInfo.gSize -curStartRow;
+            curDealRowCount = (curS1idx + 1) * constInfo.gSize - curStartRow;
         } else {
             curDealRowCount = wsMStart + dealRowCount - curStartRow;
         }
@@ -1674,10 +1742,10 @@ SFAAVectorServiceGqaMsd<SFAAT>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalT
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SFAAVectorServiceGqaMsd<SFAAT>::Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
-                                             uint32_t wsMStart, uint32_t dealRowCount, uint32_t columnCount,
-                                             uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::Bmm2CastAndCopyOut(const RunInfo& info,
+                                                                          LocalTensor<T>& bmm2ResUb, uint32_t wsMStart,
+                                                                          uint32_t dealRowCount, uint32_t columnCount,
+                                                                          uint32_t actualColumnCount)
 {
     LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputBuf1.Get<OUT_T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
@@ -1693,10 +1761,9 @@ SFAAVectorServiceGqaMsd<SFAAT>::Bmm2CastAndCopyOut(const RunInfo &info, LocalTen
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SFAAVectorServiceGqaMsd<SFAAT>::Bmm2ResCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
-                                         uint32_t dealRowCount, uint32_t columnCount,
-                                         uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::Bmm2ResCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb,
+                                                                      uint32_t wsMStart, uint32_t dealRowCount,
+                                                                      uint32_t columnCount, uint32_t actualColumnCount)
 {
     if constexpr (IS_META) {
         if (FLASH_DECODE) {
@@ -1714,9 +1781,9 @@ SFAAVectorServiceGqaMsd<SFAAT>::Bmm2ResCopyOut(const RunInfo &info, LocalTensor<
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SFAAVectorServiceGqaMsd<SFAAT>::RowDivs(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                  uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SFAAVectorServiceGqaMsd<SFAAT>::RowDivs(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
+                                                               LocalTensor<float> src1Ub, uint32_t dealRowCount,
+                                                               uint32_t columnCount, uint32_t actualColumnCount)
 {
     // divs by row, 每行的元素除以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
@@ -1747,7 +1814,7 @@ SFAAVectorServiceGqaMsd<SFAAT>::RowDivs(LocalTensor<float> dstUb, LocalTensor<fl
         columnRepeatParams.dstBlkStride = 1;
         columnRepeatParams.src0RepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         columnRepeatParams.src1RepStride = 0;
-        columnRepeatParams.dstRepStride = 8;  // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
+        columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         uint32_t offset = 0;
         for (uint32_t i = 0; i < dealRowCount; i++) {
             Div(dstUb[offset], src0Ub[offset], src1Ub[i * FP32_BLOCK_ELEMENT_NUM], dtypeMask, columnRepeatCount,

@@ -63,10 +63,10 @@ std::vector<OpAttr> BaseAttrs()
 }
 
 // 单点改写某个属性
-std::vector<OpAttr> AttrsWith(const std::string &name, const AnyValue &value)
+std::vector<OpAttr> AttrsWith(const std::string& name, const AnyValue& value)
 {
     auto attrs = BaseAttrs();
-    for (auto &attr : attrs) {
+    for (auto& attr : attrs) {
         if (attr.attrName_ == name) {
             attr.attr_ = value;
         }
@@ -77,9 +77,15 @@ std::vector<OpAttr> AttrsWith(const std::string &name, const AnyValue &value)
 
 class TurboQuantSparseFlashAttentionTiling : public testing::Test {
 protected:
-    static void SetUpTestCase() { std::cout << "TurboQuantSparseFlashAttentionTiling SetUp" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionTiling SetUp" << std::endl;
+    }
 
-    static void TearDownTestCase() { std::cout << "TurboQuantSparseFlashAttentionTiling TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "TurboQuantSparseFlashAttentionTiling TearDown" << std::endl;
+    }
 };
 
 struct TurboQuantSparseFlashAttentionCompileInfo {};

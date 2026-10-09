@@ -86,7 +86,7 @@ uint64_t AlignUp(uint64_t value, uint64_t alignment)
 
 namespace optiling {
 
-ge::graphStatus W8a8GSATiling::GetNpuInfo(gert::TilingContext *context)
+ge::graphStatus W8a8GSATiling::GetNpuInfo(gert::TilingContext* context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     aicNum_ = ascendcPlatform.GetCoreNumAic();
@@ -97,46 +97,46 @@ ge::graphStatus W8a8GSATiling::GetNpuInfo(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus W8a8GSATiling::ParseAttrs(gert::TilingContext *context)
+ge::graphStatus W8a8GSATiling::ParseAttrs(gert::TilingContext* context)
 {
     auto attrs = context->GetAttrs();
     OP_CHECK_IF(attrs == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "GetAttrs returned nullptr."),
                 return ge::GRAPH_FAILED);
 
-    const float *scalePtr = attrs->GetFloat(ATTR_SCALE_VALUE_INDEX);
+    const float* scalePtr = attrs->GetFloat(ATTR_SCALE_VALUE_INDEX);
     if (scalePtr != nullptr) {
         scaleValue_ = *scalePtr;
     }
 
-    const gert::TypedContinuousVector<int64_t> *blockShapeArr = attrs->GetListInt(ATTR_BLOCK_SHAPE_INDEX);
+    const gert::TypedContinuousVector<int64_t>* blockShapeArr = attrs->GetListInt(ATTR_BLOCK_SHAPE_INDEX);
     if (blockShapeArr != nullptr && blockShapeArr->GetSize() >= 2) {
         blockShapeX_ = static_cast<uint32_t>(blockShapeArr->GetData()[0]);
         blockShapeY_ = static_cast<uint32_t>(blockShapeArr->GetData()[1]);
     }
 
-    const int64_t *softmaxPrecPtr = attrs->GetInt(ATTR_SOFTMAX_PRECISION_INDEX);
+    const int64_t* softmaxPrecPtr = attrs->GetInt(ATTR_SOFTMAX_PRECISION_INDEX);
     if (softmaxPrecPtr != nullptr) {
         softmaxPrecision_ = static_cast<uint32_t>(*softmaxPrecPtr);
     }
 
-    const char *layoutQPtr = attrs->GetStr(ATTR_Q_INPUT_LAYOUT_INDEX);
+    const char* layoutQPtr = attrs->GetStr(ATTR_Q_INPUT_LAYOUT_INDEX);
     if (layoutQPtr != nullptr) {
         layoutQ_ = std::string(layoutQPtr);
     }
 
-    const char *layoutKvPtr = attrs->GetStr(ATTR_KV_INPUT_LAYOUT_INDEX);
+    const char* layoutKvPtr = attrs->GetStr(ATTR_KV_INPUT_LAYOUT_INDEX);
     if (layoutKvPtr != nullptr) {
         layoutKv_ = std::string(layoutKvPtr);
     }
 
-    const int64_t *maskTypePtr = attrs->GetInt(ATTR_MASK_TYPE_INDEX);
+    const int64_t* maskTypePtr = attrs->GetInt(ATTR_MASK_TYPE_INDEX);
     if (maskTypePtr != nullptr) {
         maskType_ = *maskTypePtr;
     }
 
     // Kernel task decode and sparse layouts are packed-GQA only (task = T * Nkv).
-    const int64_t *isPackedGqaPtr = attrs->GetInt(ATTR_IS_PACKED_GQA_INDEX);
+    const int64_t* isPackedGqaPtr = attrs->GetInt(ATTR_IS_PACKED_GQA_INDEX);
     const int64_t isPackedGQA = (isPackedGqaPtr != nullptr) ? *isPackedGqaPtr : 1;
     if (isPackedGQA != 1) {
         OP_LOGE(context->GetNodeName(), "Unsupported isPackedGQA=%ld, only 1 (packed GQA) is supported.", isPackedGQA);
@@ -148,13 +148,13 @@ ge::graphStatus W8a8GSATiling::ParseAttrs(gert::TilingContext *context)
 
 // PA_NZ has a fixed inner layout [kvHead, D1, blockSize, D0].  Only the
 // page axis may carry a hole; all inner strides must remain contiguous.
-static ge::graphStatus ValidatePagedNzInnerContig(gert::TilingContext *context, uint64_t inputIndex,
-                                                  const gert::Shape &shape, const char *tensorName)
+static ge::graphStatus ValidatePagedNzInnerContig(gert::TilingContext* context, uint64_t inputIndex,
+                                                  const gert::Shape& shape, const char* tensorName)
 {
     if (shape.GetDimNum() != PAGED_NZ_DIM_NUM) {
         return ge::GRAPH_FAILED;
     }
-    auto *stride = context->GetRequiredInputStride(inputIndex);
+    auto* stride = context->GetRequiredInputStride(inputIndex);
     if (stride == nullptr || stride->GetDimNum() != shape.GetDimNum()) {
         return ge::GRAPH_SUCCESS;
     }
@@ -176,13 +176,13 @@ static ge::graphStatus ValidatePagedNzInnerContig(gert::TilingContext *context, 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus W8a8GSATiling::ParseKvCacheStride0(gert::TilingContext *context)
+ge::graphStatus W8a8GSATiling::ParseKvCacheStride0(gert::TilingContext* context)
 {
     const uint64_t pageElems =
         static_cast<uint64_t>(blockSize_) * static_cast<uint64_t>(kvHeads_) * static_cast<uint64_t>(embeddingSize_);
 
-    const gert::StorageShape *keyShape = context->GetInputShape(KEY_INDEX);
-    const gert::StorageShape *valueShape = context->GetInputShape(VALUE_INDEX);
+    const gert::StorageShape* keyShape = context->GetInputShape(KEY_INDEX);
+    const gert::StorageShape* valueShape = context->GetInputShape(VALUE_INDEX);
     OP_CHECK_IF(keyShape == nullptr || valueShape == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention",
                                             "key/value shape is nullptr when parsing KV stride0."),
@@ -193,11 +193,11 @@ ge::graphStatus W8a8GSATiling::ParseKvCacheStride0(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    auto *keyStrides = context->GetRequiredInputStride(KEY_INDEX);
+    auto* keyStrides = context->GetRequiredInputStride(KEY_INDEX);
     kStride0_ = (keyStrides != nullptr && keyStrides->GetDimNum() > 0 && keyStrides->GetStride(0) > 0) ?
                     static_cast<uint64_t>(keyStrides->GetStride(0)) :
                     pageElems;
-    auto *valueStrides = context->GetRequiredInputStride(VALUE_INDEX);
+    auto* valueStrides = context->GetRequiredInputStride(VALUE_INDEX);
     vStride0_ = (valueStrides != nullptr && valueStrides->GetDimNum() > 0 && valueStrides->GetStride(0) > 0) ?
                     static_cast<uint64_t>(valueStrides->GetStride(0)) :
                     pageElems;
@@ -222,9 +222,9 @@ ge::graphStatus W8a8GSATiling::ParseKvCacheStride0(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus W8a8GSATiling::ParseInputTensors(gert::TilingContext *context)
+ge::graphStatus W8a8GSATiling::ParseInputTensors(gert::TilingContext* context)
 {
-    const gert::StorageShape *queryShape = context->GetInputShape(QUERY_INDEX);
+    const gert::StorageShape* queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_IF(queryShape == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "Query shape is nullptr."),
                 return ge::GRAPH_FAILED);
@@ -233,18 +233,18 @@ ge::graphStatus W8a8GSATiling::ParseInputTensors(gert::TilingContext *context)
     numHeads_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(queryShape->GetStorageShape().GetDim(TND_DIM_D));
 
-    const gert::StorageShape *keyShape = context->GetInputShape(KEY_INDEX);
+    const gert::StorageShape* keyShape = context->GetInputShape(KEY_INDEX);
     OP_CHECK_IF(keyShape == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "Key shape is nullptr."),
                 return ge::GRAPH_FAILED);
 
     // INT8 PA_NZ uses the physical format shape [blockNum, Nkv, D1, blockSize, D0].
-    const gert::Shape &keyOrigin = keyShape->GetOriginShape();
-    const gert::StorageShape *valueShape = context->GetInputShape(VALUE_INDEX);
+    const gert::Shape& keyOrigin = keyShape->GetOriginShape();
+    const gert::StorageShape* valueShape = context->GetInputShape(VALUE_INDEX);
     OP_CHECK_IF(valueShape == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "Value shape is nullptr."),
                 return ge::GRAPH_FAILED);
-    const gert::Shape &valueOrigin = valueShape->GetOriginShape();
+    const gert::Shape& valueOrigin = valueShape->GetOriginShape();
     if (keyOrigin.GetDimNum() != PAGED_NZ_DIM_NUM || valueOrigin.GetDimNum() != PAGED_NZ_DIM_NUM) {
         OP_LOGE(context->GetNodeName(),
                 "PAGED_NZ key/value origin shape must be 5D [page,kvHead,D1,blockSize,D0], "
@@ -262,7 +262,7 @@ ge::graphStatus W8a8GSATiling::ParseInputTensors(gert::TilingContext *context)
     }
 
     // TND + isPackedGQA=1: sparseBlockIdx 3D [N_kv, totalQBlocks, topK]
-    const gert::StorageShape *sparseIdxShape = context->GetInputShape(SPARSE_BLOCK_IDX_INDEX);
+    const gert::StorageShape* sparseIdxShape = context->GetInputShape(SPARSE_BLOCK_IDX_INDEX);
     OP_CHECK_IF(sparseIdxShape == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "sparseBlockIdx shape is nullptr."),
                 return ge::GRAPH_FAILED);
@@ -280,7 +280,7 @@ ge::graphStatus W8a8GSATiling::ParseInputTensors(gert::TilingContext *context)
     topK_ = static_cast<uint32_t>(sparseIdxShape->GetStorageShape().GetDim(SPARSE_IDX_DIM_KV_BLOCK));
 
     // sparseBlockCount 2D: [N_kv, totalQBlocks]
-    const gert::StorageShape *sparseCountShape = context->GetInputShape(SPARSE_BLOCK_COUNT_INDEX);
+    const gert::StorageShape* sparseCountShape = context->GetInputShape(SPARSE_BLOCK_COUNT_INDEX);
     OP_CHECK_IF(sparseCountShape == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "sparseBlockCount shape is nullptr."),
                 return ge::GRAPH_FAILED);
@@ -303,7 +303,7 @@ ge::graphStatus W8a8GSATiling::ParseInputTensors(gert::TilingContext *context)
     }
 
     // blockTable is OPTIONAL in OpDef — must use GetOptionalInputShape (GetInputShape always nullptr).
-    const gert::StorageShape *blockTableShape = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
+    const gert::StorageShape* blockTableShape = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
     if (blockTableShape != nullptr) {
         blockTablePresent_ = true;
         batch_ = static_cast<uint32_t>(blockTableShape->GetStorageShape().GetDim(BLOCK_TABLE_DIM_BATCH));
@@ -404,7 +404,7 @@ ge::graphStatus W8a8GSATiling::ParseInputTensors(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus W8a8GSATiling::CalculateWorkSpace(gert::TilingContext *context)
+ge::graphStatus W8a8GSATiling::CalculateWorkSpace(gert::TilingContext* context)
 {
     constexpr uint32_t WORKSPACE_BLOCK_SIZE_DB = 131072;
     constexpr uint32_t NUM3 = 3;
@@ -420,7 +420,7 @@ ge::graphStatus W8a8GSATiling::CalculateWorkSpace(gert::TilingContext *context)
     // two-digit expansion by default.  The optional override is restricted
     // to the supported two- and three-digit modes; MSD1 is not valid.
     uint32_t antiquantMsdIterNum = GBSA_MSD_DEFAULT;
-    const char *msdEnv = std::getenv("GBSA_ANTIQUANT_MSD_ITER");
+    const char* msdEnv = std::getenv("GBSA_ANTIQUANT_MSD_ITER");
     if (msdEnv != nullptr) {
         const long msdVal = strtol(msdEnv, nullptr, 10);
         if (msdVal == static_cast<long>(GBSA_MSD_HIGH_PRECISION)) {
@@ -464,7 +464,7 @@ ge::graphStatus W8a8GSATiling::CalculateWorkSpace(gert::TilingContext *context)
     workSpaceSize_ = libapiSize_ + userWorkspaceSize;
 
     context->SetBlockDim(blockDim_);
-    size_t *workspaceArray = context->GetWorkspaceSizes(1);
+    size_t* workspaceArray = context->GetWorkspaceSizes(1);
     if (workspaceArray != nullptr) {
         workspaceArray[0] = static_cast<size_t>(workSpaceSize_);
     }
@@ -472,11 +472,11 @@ ge::graphStatus W8a8GSATiling::CalculateWorkSpace(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus W8a8GSATiling::CheckMetadata(gert::TilingContext *context)
+ge::graphStatus W8a8GSATiling::CheckMetadata(gert::TilingContext* context)
 {
     // Align SMLA / FlashAttn: metadata is required shell — INT32, 1D, fixed size.
     // Content (magic / schedule tables) is produced by AICPU and not re-validated here.
-    const gert::StorageShape *metadataShape = context->GetOptionalInputShape(METADATA_INDEX);
+    const gert::StorageShape* metadataShape = context->GetOptionalInputShape(METADATA_INDEX);
     if (metadataShape == nullptr) {
         OP_LOGE(context->GetNodeName(), "metadata must be provided.");
         return ge::GRAPH_FAILED;
@@ -505,7 +505,7 @@ ge::graphStatus W8a8GSATiling::CheckMetadata(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus W8a8GSATiling::ValidateSupportedConfig(gert::TilingContext *context)
+ge::graphStatus W8a8GSATiling::ValidateSupportedConfig(gert::TilingContext* context)
 {
     // W8A8 path: query=TND, kv=PAGED_NZ, maskType=1, blockShapeX=1, isPackedGQA=1.
     // IMPORTANT: must fail hard — a wrong tiling key can launch the wrong
@@ -522,8 +522,8 @@ ge::graphStatus W8a8GSATiling::ValidateSupportedConfig(gert::TilingContext *cont
     // The current sparse-page loader maps one logical sparse block to one
     // physical page, so reject mismatched sizes instead of silently using a
     // wrong page stride.
-    const auto *keyDesc = context->GetInputDesc(KEY_INDEX);
-    const auto *valueDesc = context->GetInputDesc(VALUE_INDEX);
+    const auto* keyDesc = context->GetInputDesc(KEY_INDEX);
+    const auto* valueDesc = context->GetInputDesc(VALUE_INDEX);
     const ge::Format keyFormat =
         keyDesc == nullptr ? ge::FORMAT_RESERVED :
                              static_cast<ge::Format>(ge::GetPrimaryFormat(keyDesc->GetFormat().GetStorageFormat()));
@@ -535,10 +535,10 @@ ge::graphStatus W8a8GSATiling::ValidateSupportedConfig(gert::TilingContext *cont
                                         "key/value storage format FRACTAL_NZ.");
         return ge::GRAPH_FAILED;
     }
-    const auto *keyShape = context->GetInputShape(KEY_INDEX);
-    const auto *valueShape = context->GetInputShape(VALUE_INDEX);
-    const gert::Shape &keyOrigin = keyShape->GetOriginShape();
-    const gert::Shape &valueOrigin = valueShape->GetOriginShape();
+    const auto* keyShape = context->GetInputShape(KEY_INDEX);
+    const auto* valueShape = context->GetInputShape(VALUE_INDEX);
+    const gert::Shape& keyOrigin = keyShape->GetOriginShape();
+    const gert::Shape& valueOrigin = valueShape->GetOriginShape();
     if (keyOrigin.GetDimNum() != PAGED_NZ_DIM_NUM || valueOrigin.GetDimNum() != PAGED_NZ_DIM_NUM ||
         keyOrigin.GetDim(PAGED_NZ_DIM_KV_HEAD) != static_cast<int64_t>(kvHeads_) ||
         valueOrigin.GetDim(PAGED_NZ_DIM_KV_HEAD) != static_cast<int64_t>(kvHeads_) ||
@@ -599,7 +599,7 @@ uint64_t W8a8GSATiling::GenerateTilingKey()
     return (dataType_ == ge::DT_BF16) ? GSA_BF16_INT8_ARCH22_TILING : GSA_FP16_INT8_ARCH22_TILING;
 }
 
-ge::graphStatus W8a8GSATiling::FillTilingData(gert::TilingContext *context)
+ge::graphStatus W8a8GSATiling::FillTilingData(gert::TilingContext* context)
 {
     tilingData_->set_batch(batch_);
     tilingData_->set_numHeads(numHeads_);
@@ -664,8 +664,8 @@ ge::graphStatus W8a8GSATiling::FillTilingData(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus W8a8GSATiling::GetTiling(gert::TilingContext *context,
-                                         GenericBlockSparseAttentionTilingData &tilingData)
+ge::graphStatus W8a8GSATiling::GetTiling(gert::TilingContext* context,
+                                         GenericBlockSparseAttentionTilingData& tilingData)
 {
     tilingData_ = &tilingData;
 
@@ -712,8 +712,8 @@ ge::graphStatus W8a8GSATiling::GetTiling(gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus W8a8GSATiling::SetTilingData(gert::TilingContext *context,
-                                             GenericBlockSparseAttentionTilingData &tilingData)
+ge::graphStatus W8a8GSATiling::SetTilingData(gert::TilingContext* context,
+                                             GenericBlockSparseAttentionTilingData& tilingData)
 {
     OP_CHECK_IF(
         context->GetRawTilingData() == nullptr,
@@ -724,7 +724,7 @@ ge::graphStatus W8a8GSATiling::SetTilingData(gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingGenericBlockSparseAttention(gert::TilingContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingGenericBlockSparseAttention(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("GenericBlockSparseAttention", "Context is nullptr."),
                 return ge::GRAPH_FAILED);
@@ -739,7 +739,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGenericBlockSparseAttention(gert::TilingC
     }
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGenericBlockSparseAttention(gert::TilingParseContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGenericBlockSparseAttention(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

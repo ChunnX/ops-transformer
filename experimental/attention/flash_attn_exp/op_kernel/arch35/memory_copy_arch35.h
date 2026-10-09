@@ -20,7 +20,7 @@
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                     uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                    const CONST_INFO_T &constInfo, uint64_t s1LeftPaddingSize = 0)
+                                                    const CONST_INFO_T& constInfo, uint64_t s1LeftPaddingSize = 0)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;
@@ -51,7 +51,7 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                     uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                    const CONST_INFO_T &constInfo, uint64_t qActSeqLens,
+                                                    const CONST_INFO_T& constInfo, uint64_t qActSeqLens,
                                                     uint64_t s1LeftPaddingSize = 0)
 {
     uint64_t gOffset = mOffset / qActSeqLens * constInfo.s1Size;
@@ -108,7 +108,7 @@ __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxL
 template <typename T, typename CONST_INFO_T>
 __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                        uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                       const CONST_INFO_T &constInfo)
+                                                       const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;

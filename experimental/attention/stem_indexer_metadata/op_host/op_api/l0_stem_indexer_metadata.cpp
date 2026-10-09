@@ -26,23 +26,21 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(StemIndexerMetadata);
 
-const aclTensor* StemIndexerMetadata(const aclTensor* qSeqLens, const aclTensor* kvSeqLens,
-                                     int64_t qHeads, int64_t kvHeads, bool causal, int64_t stemBlockSize,
-                                     int64_t dimQkflat, int64_t windowSize,
-                                     const char* socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
+const aclTensor* StemIndexerMetadata(const aclTensor* qSeqLens, const aclTensor* kvSeqLens, int64_t qHeads,
+                                     int64_t kvHeads, bool causal, int64_t stemBlockSize, int64_t dimQkflat,
+                                     int64_t windowSize, const char* socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
                                      const aclTensor* metadata, aclOpExecutor* executor)
 {
     L0_DFX(StemIndexerMetadata, qSeqLens, kvSeqLens, qHeads, kvHeads, causal, stemBlockSize, dimQkflat, windowSize,
-        socVersion, aicCoreNum, aivCoreNum, metadata);
+           socVersion, aicCoreNum, aivCoreNum, metadata);
 
     static internal::AicpuTaskSpace space("StemIndexerMetadata");
 
     auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
         StemIndexerMetadata,
-        OP_ATTR_NAMES({"q_heads", "kv_heads", "causal", "stem_block_size",
-                       "dim_qkflat", "window_size", "soc_version", "aic_core_num", "aiv_core_num"}),
-        OP_INPUT(qSeqLens, kvSeqLens),
-        OP_OUTPUT(metadata),
+        OP_ATTR_NAMES({"q_heads", "kv_heads", "causal", "stem_block_size", "dim_qkflat", "window_size", "soc_version",
+                       "aic_core_num", "aiv_core_num"}),
+        OP_INPUT(qSeqLens, kvSeqLens), OP_OUTPUT(metadata),
         OP_ATTR(qHeads, kvHeads, causal, stemBlockSize, dimQkflat, windowSize, socVersion, aicCoreNum, aivCoreNum));
 
     OP_CHECK(ret == ACL_SUCCESS,

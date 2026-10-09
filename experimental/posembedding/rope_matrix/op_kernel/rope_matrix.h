@@ -34,13 +34,13 @@ using AscendC::Cast;
 using AscendC::HardEvent;
 using AscendC::PipeBarrier; // <PIPE_V>();
 
-__aicore__ inline void CopyTiling(TCubeTiling *tiling, RopeMatrixTiling *ropeTiling, 
-                                    TCubeTiling *mmTilingDataGm, RopeMatrixTiling *ropeTilingGm)
+__aicore__ inline void CopyTiling(TCubeTiling* tiling, RopeMatrixTiling* ropeTiling, TCubeTiling* mmTilingDataGm,
+                                  RopeMatrixTiling* ropeTilingGm)
 {
-    uint32_t *ptr = reinterpret_cast<uint32_t *>(tiling);
-    uint32_t *ropePtr = reinterpret_cast<uint32_t *>(ropeTiling);
-    auto mmtiling32 = reinterpret_cast<uint32_t *>(mmTilingDataGm);
-    auto vectiling32 = reinterpret_cast<uint32_t *>(ropeTilingGm);
+    uint32_t* ptr = reinterpret_cast<uint32_t*>(tiling);
+    uint32_t* ropePtr = reinterpret_cast<uint32_t*>(ropeTiling);
+    auto mmtiling32 = reinterpret_cast<uint32_t*>(mmTilingDataGm);
+    auto vectiling32 = reinterpret_cast<uint32_t*>(ropeTilingGm);
 
     uint32_t i = 0;
     for (; i < sizeof(TCubeTiling) / sizeof(uint32_t); i++, ptr++) {
@@ -54,12 +54,12 @@ __aicore__ inline void CopyTiling(TCubeTiling *tiling, RopeMatrixTiling *ropeTil
 }
 
 template <typename T>
-class RopeVec{
-public :
-    __aicore__ inline RopeVec(){}
+class RopeVec {
+public:
+    __aicore__ inline RopeVec() {}
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR xNew, GM_ADDR sin, GM_ADDR cos, GM_ADDR out,
-                                RopeMatrixTiling *ropeTiling, TPipe *tpipe)
+                                RopeMatrixTiling* ropeTiling, TPipe* tpipe)
     {
         this->aivIdx = GetBlockIdx();
         this->aivNum = GetBlockNum();
@@ -97,11 +97,11 @@ public :
         this->sdLastBlockSize = this->sLastBlockSize * this->d;
 
         uint32_t startNumel = this->startSize * this->d;
-        xGm.SetGlobalBuffer((__gm__ T*) x + startNumel);
-        xNewGm.SetGlobalBuffer((__gm__ T*) xNew + startNumel);
-        yGm.SetGlobalBuffer((__gm__ T*) out + startNumel);
-        cosGm.SetGlobalBuffer((__gm__ T*) cos + startNumel);
-        sinGm.SetGlobalBuffer((__gm__ T*) sin + startNumel);
+        xGm.SetGlobalBuffer((__gm__ T*)x + startNumel);
+        xNewGm.SetGlobalBuffer((__gm__ T*)xNew + startNumel);
+        yGm.SetGlobalBuffer((__gm__ T*)out + startNumel);
+        cosGm.SetGlobalBuffer((__gm__ T*)cos + startNumel);
+        sinGm.SetGlobalBuffer((__gm__ T*)sin + startNumel);
 
         pipe->InitBuffer(inQueueX, DOUBLE_BUFFER, sinSize);
         pipe->InitBuffer(inQueueXnew, DOUBLE_BUFFER, sinSize);
@@ -123,7 +123,7 @@ public :
         return (a + b - 1) / b;
     }
 
-    __aicore__ inline void CopyTiling(RopeMatrixTiling *ropeTiling)
+    __aicore__ inline void CopyTiling(RopeMatrixTiling* ropeTiling)
     {
         this->seqLen = ropeTiling->s;
         this->n = ropeTiling->n;
@@ -132,12 +132,14 @@ public :
         return;
     }
 
-    __aicore__ inline void Debug(){
+    __aicore__ inline void Debug()
+    {
         // add debug code using AscendC::printf(), like the code below
         // AscendC::printf("... debug %d, %d, %d, %d\n", this->aivIdx, this->aivNum, this->subIdx, this->subNum);
     }
 
-    __aicore__ inline void Process() {
+    __aicore__ inline void Process()
+    {
         uint32_t ubLoop = this->sBlockNum - 1;
         for (uint32_t progress = 0; progress < ubLoop; progress++) {
             SingleStepProcess(progress, this->sdBlockSize, this->sdBlockSize);
@@ -146,7 +148,8 @@ public :
         SingleStepProcess(ubLoop, this->sdLastBlockSize, this->sdLastBlockSize);
     }
 
-    __aicore__ inline void SingleStepProcess(uint32_t progress, uint64_t copyLength, uint64_t calcLength) {
+    __aicore__ inline void SingleStepProcess(uint32_t progress, uint64_t copyLength, uint64_t calcLength)
+    {
         uint64_t xOffset;
         uint64_t rOffset;
         uint64_t bnLoopXStartOffset;
@@ -173,7 +176,8 @@ public :
         }
     }
 
-    __aicore__ inline void CopyInR(uint64_t rStartOffset, uint32_t copyLength) {
+    __aicore__ inline void CopyInR(uint64_t rStartOffset, uint32_t copyLength)
+    {
         LocalTensor<T> sinLocal = inQueueSin.AllocTensor<T>();
         LocalTensor<T> cosLocal = inQueueCos.AllocTensor<T>();
         DataCopy(sinLocal, sinGm[rStartOffset], copyLength);
@@ -182,7 +186,8 @@ public :
         inQueueCos.EnQue(cosLocal);
     }
 
-    __aicore__ inline void CopyInX(uint64_t xStartOffset, uint32_t copyLength) {
+    __aicore__ inline void CopyInX(uint64_t xStartOffset, uint32_t copyLength)
+    {
         LocalTensor<T> xLocal = inQueueX.AllocTensor<T>();
         LocalTensor<T> xNewLocal = inQueueXnew.AllocTensor<T>();
         DataCopy(xLocal, xGm[xStartOffset], copyLength);
@@ -191,13 +196,15 @@ public :
         inQueueXnew.EnQue(xNewLocal);
     }
 
-    __aicore__ inline void CopyOut(uint64_t yStartOffset, uint32_t copyLength) {
+    __aicore__ inline void CopyOut(uint64_t yStartOffset, uint32_t copyLength)
+    {
         LocalTensor<T> yLocal = outQueueY.DeQue<T>();
         DataCopy(yGm[yStartOffset], yLocal, copyLength);
         outQueueY.FreeTensor(yLocal);
     }
 
-    __aicore__ inline void Compute(LocalTensor<float>& cos, LocalTensor<float>& sin, uint32_t calcLength) {
+    __aicore__ inline void Compute(LocalTensor<float>& cos, LocalTensor<float>& sin, uint32_t calcLength)
+    {
         LocalTensor<T> xLocal = inQueueX.DeQue<T>();
         LocalTensor<T> xNewLocal = inQueueXnew.DeQue<T>();
         LocalTensor<T> yLocal = outQueueY.AllocTensor<T>();
@@ -214,16 +221,16 @@ public :
         outQueueY.EnQue(yLocal);
     }
 
-    __aicore__ inline void ComputeInner(LocalTensor<float>& x, LocalTensor<float>& xNew,
-                                        LocalTensor<float>& cos , LocalTensor<float>& sin,
-                                        uint32_t calcLength) {
+    __aicore__ inline void ComputeInner(LocalTensor<float>& x, LocalTensor<float>& xNew, LocalTensor<float>& cos,
+                                        LocalTensor<float>& sin, uint32_t calcLength)
+    {
         Mul(x, x, cos, calcLength);
         Mul(xNew, xNew, sin, calcLength);
         Add(xNew, xNew, x, calcLength);
     }
 
 protected:
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueX;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueXnew;
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQueueCos;
@@ -263,4 +270,4 @@ protected:
     uint32_t sdLastBlockSize;
 };
 } // namespace RopeMatrix
-} //namespace npu_ops_transformer_ext
+} // namespace npu_ops_transformer_ext

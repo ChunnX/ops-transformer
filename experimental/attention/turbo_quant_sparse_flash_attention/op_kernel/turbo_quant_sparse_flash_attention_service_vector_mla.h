@@ -50,17 +50,17 @@ public:
     using MM2_OUT_T = float;
 
     __aicore__ inline QSFAVectorService(){};
-    __aicore__ inline void ProcessVec1L(const RunInfo &info);
-    __aicore__ inline void ProcessVec2L(const RunInfo &info);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
-                                      const TurboQuantSparseFlashAttentionTilingDataMla *__restrict tilingData);
+    __aicore__ inline void ProcessVec1L(const RunInfo& info);
+    __aicore__ inline void ProcessVec2L(const RunInfo& info);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitParams(const struct ConstInfo& constInfo,
+                                      const TurboQuantSparseFlashAttentionTilingDataMla* __restrict tilingData);
     __aicore__ inline void InitMm2ResInt32GmGlobalTensor(GlobalTensor<int32_t> mm2ResInt32Gm);
-    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<int32_t> &kvValidSizeGm,
-                                                const GlobalTensor<K_ROPE_T> &kvMergeGm,
-                                                const GlobalTensor<K_ROPE_T> &keyRopeGm,
-                                                const GlobalTensor<KV_T> &keyGm,
-                                                const GlobalTensor<int32_t> &blkTableGm);
+    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<int32_t>& kvValidSizeGm,
+                                                const GlobalTensor<K_ROPE_T>& kvMergeGm,
+                                                const GlobalTensor<K_ROPE_T>& keyRopeGm,
+                                                const GlobalTensor<KV_T>& keyGm,
+                                                const GlobalTensor<int32_t>& blkTableGm);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<K_ROPE_T> vec1ResGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsQGm,
                                                 GlobalTensor<int32_t> actualSeqLengthsKVGm, GlobalTensor<T> lseMaxFdGm,
@@ -77,53 +77,53 @@ public:
     __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, LocalTensor<T> src1Ub,
                                    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     // ================================Vector0==========================================
-    __aicore__ inline void MergeKv(const RunInfo &runInfo);
-    __aicore__ inline int64_t GetKeyBNBOffset(int64_t realS2Idx, const RunInfo &runInfo, int64_t s2IdLimit);
-    __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx, int64_t topkGmBaseOffset,
-                                        const RunInfo &runInfo);
-    __aicore__ inline void SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
+    __aicore__ inline void MergeKv(const RunInfo& runInfo);
+    __aicore__ inline int64_t GetKeyBNBOffset(int64_t realS2Idx, const RunInfo& runInfo, int64_t s2IdLimit);
+    __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t& realS2Idx, int64_t topkGmBaseOffset,
+                                        const RunInfo& runInfo);
+    __aicore__ inline void SetInfInBlk(const LocalTensor<T>& mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                        uint64_t startId, uint64_t endId);
-    __aicore__ inline void SetMidInf(const LocalTensor<T> &mmResUb, uint32_t dealRowCount, uint32_t columnCount,
+    __aicore__ inline void SetMidInf(const LocalTensor<T>& mmResUb, uint32_t dealRowCount, uint32_t columnCount,
                                      uint64_t startId, uint64_t endId);
-    __aicore__ inline void CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
-                                    int64_t realS2Idx2, const RunInfo &runInfo);
+    __aicore__ inline void CopyInKv(int64_t& mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
+                                    int64_t realS2Idx2, const RunInfo& runInfo);
     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2StartGmOffset,
-                                             int64_t mergeMte3Idx, const RunInfo &runInfo);
-    __aicore__ inline void CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
-                                          int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo &runInfo);
+                                             int64_t mergeMte3Idx, const RunInfo& runInfo);
+    __aicore__ inline void CopyInSingleKv(int64_t& mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx,
+                                          int64_t keyBNBOffset, int64_t s2IdLimit, const RunInfo& runInfo);
     // [TQ4] codebook dequant of dealRow combined slots -> antiKvTensorAsB16 [dealRow,512] bf16 (Phase B)
-    __aicore__ inline void Tq4DequantRows(LocalTensor<KV_T> &srcTensor, LocalTensor<K_ROPE_T> &dstB16, int32_t dealRow);
+    __aicore__ inline void Tq4DequantRows(LocalTensor<KV_T>& srcTensor, LocalTensor<K_ROPE_T>& dstB16, int32_t dealRow);
     // ================================Vector1==========================================
-    __aicore__ inline void ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
-    __aicore__ inline void DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
+    __aicore__ inline void ProcessVec1SingleBuf(const RunInfo& info, const MSplitInfo& mSplitInfo);
+    __aicore__ inline void DealBmm1ResBaseBlock(const RunInfo& info, const MSplitInfo& mSplitInfo, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t loopId);
-    __aicore__ inline void SoftmaxFlashV2Compute(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                 LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
+    __aicore__ inline void SoftmaxFlashV2Compute(const RunInfo& info, const MSplitInfo& mSplitInfo,
+                                                 LocalTensor<T>& mmResUb, LocalTensor<uint8_t>& softmaxTmpUb,
                                                  uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
                                                  uint32_t actualColumnCount);
-    __aicore__ inline void ElewiseCompute(const RunInfo &info, const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
+    __aicore__ inline void ElewiseCompute(const RunInfo& info, const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
                                           uint32_t columnCount);
-    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                       LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
+    __aicore__ inline void ComputeLogSumExpAndCopyToGm(const RunInfo& info, const MSplitInfo& mSplitInfo,
+                                                       LocalTensor<T>& softmaxSumUb, LocalTensor<T>& softmaxMaxUb);
     // 有效 KV 长度为 0 时补齐 LSE 输出（该场景不会进入 CopyFALseToGm）
     __aicore__ inline void InitLseForZeroSeqLen(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
-    __aicore__ inline void CopyFALseToGm(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                         LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb);
+    __aicore__ inline void CopyFALseToGm(const RunInfo& info, const MSplitInfo& mSplitInfo,
+                                         LocalTensor<T>& softmaxSumUb, LocalTensor<T>& softmaxMaxUb);
     // ================================Vecotr2==========================================
-    __aicore__ inline void ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo);
-    __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t startRow,
+    __aicore__ inline void ProcessVec2SingleBuf(const RunInfo& info, const MSplitInfo& mSplitInfo);
+    __aicore__ inline void DealBmm2ResBaseBlock(const RunInfo& info, const MSplitInfo& mSplitInfo, uint32_t startRow,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
-    __aicore__ inline void ProcessVec2Inner(const RunInfo &info, const MSplitInfo &mSplitInfo, uint32_t mStartRow,
+    __aicore__ inline void ProcessVec2Inner(const RunInfo& info, const MSplitInfo& mSplitInfo, uint32_t mStartRow,
                                             uint32_t mDealSize);
-    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo& info, LocalTensor<OUT_T>& attenOutUb, uint32_t wsMStart,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2ResCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2ResCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb, uint32_t wsMStart,
                                           uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2CastAndCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb, uint32_t wsMStart,
                                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t wsMStart,
+    __aicore__ inline void Bmm2FDDataCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb, uint32_t wsMStart,
                                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline uint64_t CalcAccumOffset(uint32_t bN2Idx, uint32_t gS1Idx);
 
@@ -166,7 +166,7 @@ private:
     // idx 8K = 20K）。
     static constexpr int32_t TQ4_DEQUANT_CHUNK = IsSameType<K_ROPE_T, bfloat16_t>::value ? 16 : 4;
 
-    const TurboQuantSparseFlashAttentionTilingDataMla *__restrict tilingData;
+    const TurboQuantSparseFlashAttentionTilingDataMla* __restrict tilingData;
 
     uint32_t pingpongFlag = 0U;
     ConstInfo constInfo = {};
@@ -239,7 +239,7 @@ private:
 };
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void QSFAVectorService<QSFAT>::InitBuffers(TPipe* pipe)
 {
     pipe->InitBuffer(inputBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K * 2); // 2:pingpong
     pipe->InitBuffer(inputBuff2, ConstInfo::BUFFER_SIZE_BYTE_32K);
@@ -332,7 +332,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitBuffers(TPipe *pipe)
 
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::InitParams(
-    const struct ConstInfo &constInfo, const TurboQuantSparseFlashAttentionTilingDataMla *__restrict tilingData)
+    const struct ConstInfo& constInfo, const TurboQuantSparseFlashAttentionTilingDataMla* __restrict tilingData)
 {
     this->constInfo = constInfo;
     this->tilingData = tilingData;
@@ -345,18 +345,18 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitMm2ResInt32GmGlobalTensor(G
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::InitVec0GlobalTensor(const GlobalTensor<int32_t> &kvValidSizeGm,
-                                                                      const GlobalTensor<K_ROPE_T> &kvMergeGm,
-                                                                      const GlobalTensor<K_ROPE_T> &keyRopeGm,
-                                                                      const GlobalTensor<KV_T> &keyGm,
-                                                                      const GlobalTensor<int32_t> &blkTableGm)
+__aicore__ inline void QSFAVectorService<QSFAT>::InitVec0GlobalTensor(const GlobalTensor<int32_t>& kvValidSizeGm,
+                                                                      const GlobalTensor<K_ROPE_T>& kvMergeGm,
+                                                                      const GlobalTensor<K_ROPE_T>& keyRopeGm,
+                                                                      const GlobalTensor<KV_T>& keyGm,
+                                                                      const GlobalTensor<int32_t>& blkTableGm)
 {
     this->kvMergeGm_ = kvMergeGm;
     this->keyRopeGm_ = keyRopeGm;
     this->keyGm_ = keyGm;
     this->blkTableGm_ = blkTableGm;
     this->kvValidSizeGm_ = kvValidSizeGm;
-    this->tq4ScaleGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint16_t *>(kvValidSizeGm.GetPhyAddr(0)));
+    this->tq4ScaleGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint16_t*>(kvValidSizeGm.GetPhyAddr(0)));
 }
 
 template <typename QSFAT>
@@ -416,10 +416,10 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitSoftmaxDefaultBuffer()
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::ComputeLogSumExpAndCopyToGm(const RunInfo &info,
-                                                                             const MSplitInfo &mSplitInfo,
-                                                                             LocalTensor<T> &softmaxSumUb,
-                                                                             LocalTensor<T> &softmaxMaxUb)
+__aicore__ inline void QSFAVectorService<QSFAT>::ComputeLogSumExpAndCopyToGm(const RunInfo& info,
+                                                                             const MSplitInfo& mSplitInfo,
+                                                                             LocalTensor<T>& softmaxSumUb,
+                                                                             LocalTensor<T>& softmaxMaxUb)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -501,9 +501,9 @@ __aicore__ inline void QSFAVectorService<QSFAT>::InitLseForZeroSeqLen(uint32_t b
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::CopyFALseToGm(const RunInfo &info, const MSplitInfo &mSplitInfo,
-                                                               LocalTensor<T> &softmaxSumUb,
-                                                               LocalTensor<T> &softmaxMaxUb)
+__aicore__ inline void QSFAVectorService<QSFAT>::CopyFALseToGm(const RunInfo& info, const MSplitInfo& mSplitInfo,
+                                                               LocalTensor<T>& softmaxSumUb,
+                                                               LocalTensor<T>& softmaxMaxUb)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -553,7 +553,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyFALseToGm(const RunInfo &in
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::ElewiseCompute(const RunInfo &info, const LocalTensor<T> &mmResUb,
+__aicore__ inline void QSFAVectorService<QSFAT>::ElewiseCompute(const RunInfo& info, const LocalTensor<T>& mmResUb,
                                                                 uint32_t dealRowCount, uint32_t columnCount)
 {
     Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.scaleValue), dealRowCount * columnCount);
@@ -617,7 +617,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ElewiseCompute(const RunInfo &i
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::SetInfInBlk(const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
+__aicore__ inline void QSFAVectorService<QSFAT>::SetInfInBlk(const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
                                                              uint32_t columnCount, uint64_t startId, uint64_t endId)
 {
     //       startId     endId
@@ -644,7 +644,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::SetInfInBlk(const LocalTensor<T
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::SetMidInf(const LocalTensor<T> &mmResUb, uint32_t dealRowCount,
+__aicore__ inline void QSFAVectorService<QSFAT>::SetMidInf(const LocalTensor<T>& mmResUb, uint32_t dealRowCount,
                                                            uint32_t columnCount, uint64_t startId, uint64_t endId)
 {
     if (startId >= endId) {
@@ -660,7 +660,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::SetMidInf(const LocalTensor<T> 
 
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::SoftmaxFlashV2Compute(
-    const RunInfo &info, const MSplitInfo &mSplitInfo, LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
+    const RunInfo& info, const MSplitInfo& mSplitInfo, LocalTensor<T>& mmResUb, LocalTensor<uint8_t>& softmaxTmpUb,
     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> inSumTensor;
@@ -691,7 +691,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::SoftmaxFlashV2Compute(
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo,
+__aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(const RunInfo& info, const MSplitInfo& mSplitInfo,
                                                                       uint32_t startRow, uint32_t dealRowCount,
                                                                       uint32_t columnCount, uint32_t loopId)
 {
@@ -745,7 +745,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm1ResBaseBlock(const RunI
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo)
+__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunInfo& info, const MSplitInfo& mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -822,8 +822,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1SingleBuf(const RunI
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx,
-                                                              int64_t topkGmBaseOffset, const RunInfo &runInfo)
+__aicore__ inline void QSFAVectorService<QSFAT>::GetRealS2Idx(int64_t s2GmOffset, int64_t& realS2Idx,
+                                                              int64_t topkGmBaseOffset, const RunInfo& runInfo)
 {
     int64_t qsfaTopkGmIdx = (s2GmOffset + runInfo.s2Idx * constInfo.s2BaseSize) / constInfo.sparseBlockSize;
     if (unlikely(qsfaTopkGmIdx >= constInfo.sparseBlockCount)) {
@@ -835,7 +835,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::GetRealS2Idx(int64_t s2GmOffset
 }
 
 template <typename QSFAT>
-__aicore__ inline int64_t QSFAVectorService<QSFAT>::GetKeyBNBOffset(int64_t realS2Idx, const RunInfo &runInfo,
+__aicore__ inline int64_t QSFAVectorService<QSFAT>::GetKeyBNBOffset(int64_t realS2Idx, const RunInfo& runInfo,
                                                                     int64_t s2IdLimit)
 {
     if (realS2Idx < 0 || realS2Idx >= s2IdLimit) {
@@ -862,8 +862,8 @@ __aicore__ inline int64_t QSFAVectorService<QSFAT>::GetKeyBNBOffset(int64_t real
 // other dtypes: per-nibble int4b_t Cast/index/Gather/output Cast in 4-row chunks.
 // The 2B slot scale is expected to be vecNorm/sqrt(Sum c^2) on the fused-SFA write path.
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T> &srcTensor,
-                                                                LocalTensor<K_ROPE_T> &dstB16, int32_t dealRow)
+__aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T>& srcTensor,
+                                                                LocalTensor<K_ROPE_T>& dstB16, int32_t dealRow)
 {
     uint32_t HD = constInfo.headDim;
     uint32_t ROW_BYTES =
@@ -963,10 +963,10 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Tq4DequantRows(LocalTensor<KV_T
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t &mte2Size, int64_t mte3Size,
+__aicore__ inline void QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t& mte2Size, int64_t mte3Size,
                                                                 int64_t mergeMte3Idx, int64_t realS2Idx,
                                                                 int64_t keyBNBOffset, int64_t s2IdLimit,
-                                                                const RunInfo &runInfo)
+                                                                const RunInfo& runInfo)
 {
     if (keyBNBOffset < 0) {
         return;
@@ -998,9 +998,9 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInSingleKv(int64_t &mte2Siz
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
+__aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t& mte2Size, int64_t mte3Size, int64_t mergeMte3Idx,
                                                           int64_t realS2Idx1, int64_t realS2Idx2,
-                                                          const RunInfo &runInfo)
+                                                          const RunInfo& runInfo)
 {
     int64_t s2IdLimit = runInfo.curActualSeqLenOri;
     if (constInfo.sparseMode == 3) {
@@ -1057,7 +1057,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyInKv(int64_t &mte2Size, int
 template <typename QSFAT>
 __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
                                                                    int64_t s2GmStartOffset, int64_t mergeMte3Idx,
-                                                                   const RunInfo &runInfo)
+                                                                   const RunInfo& runInfo)
 {
     if (mte2Size <= mte3Size) {
         return;
@@ -1148,7 +1148,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::CopyOutMrgeResult(int64_t mte2S
 
 // b s1 k
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
+__aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo& runInfo)
 {
     int64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
     int64_t s2Pair = CeilDiv(s2ProcessSize, 2L * constInfo.sparseBlockSize);
@@ -1264,7 +1264,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::MergeKv(const RunInfo &runInfo)
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1L(const RunInfo &info)
+__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec1L(const RunInfo& info)
 {
     uint32_t qsfaNBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t qsfaNBufferTail = info.actMBaseSize - (qsfaNBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1310,7 +1310,7 @@ __aicore__ inline uint64_t QSFAVectorService<QSFAT>::CalcAccumOffset(uint32_t bN
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2SingleBuf(const RunInfo &info, const MSplitInfo &mSplitInfo)
+__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2SingleBuf(const RunInfo& info, const MSplitInfo& mSplitInfo)
 {
     if (mSplitInfo.vecDealM == 0) {
         return;
@@ -1333,7 +1333,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2SingleBuf(const RunI
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunInfo &info, const MSplitInfo &mSplitInfo,
+__aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunInfo& info, const MSplitInfo& mSplitInfo,
                                                                       uint32_t startRow, uint32_t dealRowCount,
                                                                       uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -1402,7 +1402,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::DealBmm2ResBaseBlock(const RunI
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo &info)
+__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo& info)
 {
     uint32_t qsfaNBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t qsfaNBufferTail = info.actMBaseSize - (qsfaNBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -1425,7 +1425,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2L(const RunInfo &inf
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2Inner(const RunInfo &info, const MSplitInfo &mSplitInfo,
+__aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2Inner(const RunInfo& info, const MSplitInfo& mSplitInfo,
                                                                   uint32_t mStartRow, uint32_t mDealSize)
 {
     uint32_t qsfaMSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDim;
@@ -1446,7 +1446,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::ProcessVec2Inner(const RunInfo 
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
+__aicore__ inline void QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb,
                                                                    uint32_t wsMStart, uint32_t dealRowCount,
                                                                    uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -1475,8 +1475,8 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2FDDataCopyOut(const RunInfo
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::Bmm2DataCopyOutTrans(const RunInfo &info,
-                                                                      LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart,
+__aicore__ inline void QSFAVectorService<QSFAT>::Bmm2DataCopyOutTrans(const RunInfo& info,
+                                                                      LocalTensor<OUT_T>& attenOutUb, uint32_t wsMStart,
                                                                       uint32_t dealRowCount, uint32_t columnCount,
                                                                       uint32_t actualColumnCount)
 {
@@ -1490,7 +1490,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2DataCopyOutTrans(const RunI
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
+__aicore__ inline void QSFAVectorService<QSFAT>::Bmm2CastAndCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb,
                                                                     uint32_t wsMStart, uint32_t dealRowCount,
                                                                     uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -1509,7 +1509,7 @@ __aicore__ inline void QSFAVectorService<QSFAT>::Bmm2CastAndCopyOut(const RunInf
 }
 
 template <typename QSFAT>
-__aicore__ inline void QSFAVectorService<QSFAT>::Bmm2ResCopyOut(const RunInfo &info, LocalTensor<T> &bmm2ResUb,
+__aicore__ inline void QSFAVectorService<QSFAT>::Bmm2ResCopyOut(const RunInfo& info, LocalTensor<T>& bmm2ResUb,
                                                                 uint32_t wsMStart, uint32_t dealRowCount,
                                                                 uint32_t columnCount, uint32_t actualColumnCount)
 {

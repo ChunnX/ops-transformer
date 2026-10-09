@@ -89,11 +89,11 @@ TEST_P(CompressorV2TilingArch22, ValidateContractAndSplitK)
         ASSERT_GE(info.tilingDataSize, sizeof(optiling::CompressorV2TilingData));
         optiling::CompressorV2TilingData data;
         std::memcpy(&data, info.tilingData.get(), sizeof(data));
-        const auto &base = data.baseParams;
+        const auto& base = data.baseParams;
         EXPECT_EQ(base.kBaseNum, std::min<uint32_t>(hidden / 128, base.usedCoreNum / (head / 128)));
         uint32_t coveredK = 0;
         for (uint32_t split = 0; split < base.kBaseNum; ++split) {
-            const auto &part = base.splitCoreParam[split * (head / 128)];
+            const auto& part = base.splitCoreParam[split * (head / 128)];
             EXPECT_EQ(part.kStart, coveredK);
             EXPECT_GT(part.kEnd, part.kStart);
             EXPECT_LE(part.kEnd, hidden);
@@ -104,8 +104,8 @@ TEST_P(CompressorV2TilingArch22, ValidateContractAndSplitK)
 }
 
 INSTANTIATE_TEST_SUITE_P(Contract, CompressorV2TilingArch22, testing::Range(0, 18),
-                         ([](const testing::TestParamInfo<int> &info) {
-                             const char *names[] = {"Normal",
+                         ([](const testing::TestParamInfo<int>& info) {
+                             const char* names[] = {"Normal",
                                                     "FullLoadSplitKBound",
                                                     "ThNormal",
                                                     "EmptyBsh",

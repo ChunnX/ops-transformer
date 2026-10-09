@@ -43,13 +43,13 @@ static int64_t CalcMetadataCapacity(int64_t batchSize, int64_t kvHeads)
            STEM_INDEXER_METADATA_ALIGN_SIZE;
 }
 
-static bool IsTensorExist(const aclTensor *tensor)
+static bool IsTensorExist(const aclTensor* tensor)
 {
     return (tensor != nullptr) && (tensor->GetData() != nullptr);
 }
 
-static aclnnStatus ParamsCheck(const aclTensor *qSeqLens, const aclTensor *kvSeqLens, int64_t qHeads, int64_t kvHeads,
-                               int64_t stemBlockSize, int64_t dimQkflat, int64_t windowSize, const aclTensor *metadata)
+static aclnnStatus ParamsCheck(const aclTensor* qSeqLens, const aclTensor* kvSeqLens, int64_t qHeads, int64_t kvHeads,
+                               int64_t stemBlockSize, int64_t dimQkflat, int64_t windowSize, const aclTensor* metadata)
 {
     if (!IsTensorExist(qSeqLens)) {
         OP_LOGE(ACLNN_ERR_RUNTIME_ERROR, "qSeqLens does not exists");

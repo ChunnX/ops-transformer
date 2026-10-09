@@ -20,7 +20,7 @@
 namespace optiling {
 namespace sfag {
 
-ge::graphStatus CheckTndSoftmaxMaxShape(gert::TilingContext *context, int64_t t1, int64_t n2, int64_t g)
+ge::graphStatus CheckTndSoftmaxMaxShape(gert::TilingContext* context, int64_t t1, int64_t n2, int64_t g)
 {
     auto softmaxMaxShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
     if (softmaxMaxShape == nullptr) {
@@ -44,7 +44,7 @@ ge::graphStatus CheckTndSoftmaxMaxShape(gert::TilingContext *context, int64_t t1
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext *context, int64_t t1, int64_t n2, int64_t g)
+ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext* context, int64_t t1, int64_t n2, int64_t g)
 {
     auto softmaxSumShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::SOFTMAX_SUM));
     if (softmaxSumShape == nullptr) {
@@ -68,7 +68,7 @@ ge::graphStatus CheckTndSoftmaxSumShape(gert::TilingContext *context, int64_t t1
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
+ge::graphStatus CheckAttentionInShape(gert::TilingContext* context)
 {
     auto attentionInShape = context->GetOptionalInputShape(static_cast<size_t>(InputIndex::ATTENTION_OUT));
     if (attentionInShape == nullptr) {
@@ -108,7 +108,7 @@ ge::graphStatus CheckAttentionInShape(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context)
+ge::graphStatus CheckSoftmaxDtype(gert::TilingContext* context)
 {
     auto softmaxMax = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SOFTMAX_MAX));
     auto softmaxSum = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SOFTMAX_SUM));
@@ -126,7 +126,7 @@ ge::graphStatus CheckSoftmaxDtype(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context)
+ge::graphStatus CheckAttentionInDtype(gert::TilingContext* context)
 {
     auto query = context->GetInputDesc(static_cast<size_t>(InputIndex::QUERY));
     auto attentionIn = context->GetOptionalInputDesc(static_cast<size_t>(InputIndex::ATTENTION_OUT));
@@ -143,7 +143,7 @@ ge::graphStatus CheckAttentionInDtype(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d, int64_t d2,
+ge::graphStatus CheckTndShapeValid(gert::TilingContext* context, int64_t t1, int64_t n1, int64_t d, int64_t d2,
                                    int64_t n2)
 {
     if (context == nullptr) {
@@ -174,7 +174,7 @@ ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckDtypeValid(gert::TilingContext *context)
+ge::graphStatus CheckDtypeValid(gert::TilingContext* context)
 {
     if (context == nullptr) {
         OP_LOGE("SparseFlashAttentionGrad", "context is nullptr");
@@ -193,7 +193,7 @@ ge::graphStatus CheckDtypeValid(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape)
+bool IsSameShape(const gert::StorageShape* aShape, const gert::StorageShape* bShape)
 {
     OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
                 OP_LOGW("SparseFlashAttentionGrad", "aShape or bShape is nullptr."), return false);

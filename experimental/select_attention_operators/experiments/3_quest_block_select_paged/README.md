@@ -33,9 +33,9 @@ python ./benchmark_quest_block_select_paged.py | tee run_bench_quest_block_selec
 
 ```
 
-This benchmarks the two operator variants (with preallocated output and without) on float16 and bfloat16 data types on x86 host and 910B4 card. 
-Note that bfloat16 causes lower bandwidths due to the necessity to cast to bf16->float32 in the vector unit, and to use larger buffers compared 
-to ones used for float16 precision (which is natively supported in the vector unit). This could be mitigated by significantly complicating the 
+This benchmarks the two operator variants (with preallocated output and without) on float16 and bfloat16 data types on x86 host and 910B4 card.
+Note that bfloat16 causes lower bandwidths due to the necessity to cast to bf16->float32 in the vector unit, and to use larger buffers compared
+to ones used for float16 precision (which is natively supported in the vector unit). This could be mitigated by significantly complicating the
 kernel and introducing further tiling along the block_size dimension.
 
 ```bash

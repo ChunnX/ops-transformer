@@ -47,9 +47,14 @@ def _testcase_files():
 def bsa(testcase_file):
     test_data = torch.load(testcase_file, map_location="cpu")
     try:
-        npu_result, cpu_result = quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
-            test_data, device_id=DEVICE_ID)
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+        npu_result, cpu_result = (
+            quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
+                test_data, device_id=DEVICE_ID
+            )
+        )
+        result, fulfill_percent = result_compare_method.check_result(
+            cpu_result, npu_result
+        )
     except pytest.skip.Exception:
         raise
     except Exception as error:

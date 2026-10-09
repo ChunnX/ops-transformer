@@ -27,7 +27,9 @@ dtype = torch.bfloat16  # 只测试 BF16
 
 
 # CPU侧参考实现
-def get_routing_conf_cpu(indices, scores, local_expert_num, start_expert_id, end_expert_id):
+def get_routing_conf_cpu(
+    indices, scores, local_expert_num, start_expert_id, end_expert_id
+):
     """
     CPU reference for get_routing_conf
     - init_token_table: 每个expert对应的token索引列表 (flat layout: expert_id * token_num + token_idx)
@@ -51,15 +53,22 @@ def get_routing_conf_cpu(indices, scores, local_expert_num, start_expert_id, end
             if seen[local_expert_id] or init_token_list[local_expert_id] >= token_num:
                 continue
             seen_mask[local_expert_id] = True
-            init_token_table[local_expert_id, init_token_list[local_expert_id]] = i_token
+            init_token_table[local_expert_id, init_token_list[local_expert_id]] = (
+                i_token
+            )
             init_token_list[local_expert_id] += 1
             final_score_table[i_token, local_expert_id] = scores[i_token, i_topk]
 
     return init_token_table, init_token_list, final_score_table
 
 
-def convert_npu_output_to_2d(init_token_table_npu, init_token_list_npu,
-                             final_score_table_npu, local_expert_num, token_num):
+def convert_npu_output_to_2d(
+    init_token_table_npu,
+    init_token_list_npu,
+    final_score_table_npu,
+    local_expert_num,
+    token_num,
+):
     """
     将NPU输出的flat tensor转换为2D view
     NPU kernel内部使用flat layout，需要转换为PyTorch的2D view
@@ -75,7 +84,9 @@ def convert_npu_output_to_2d(init_token_table_npu, init_token_list_npu,
 
 # 1. 构造测试数据
 torch.manual_seed(42)  # 固定随机种子，保证可复现
-indices1 = torch.randint(START_EXPERT_ID, end_expert_id1, (TOKEN_NUM, TOPK), dtype=torch.int32)
+indices1 = torch.randint(
+    START_EXPERT_ID, end_expert_id1, (TOKEN_NUM, TOPK), dtype=torch.int32
+)
 scores1 = torch.randn(TOKEN_NUM, TOPK, dtype=dtype)
 
 # 创建flat tensor (与kernel内部layout一致)
@@ -83,11 +94,14 @@ init_token_table1 = torch.full((LOCAL_EXPERT_NUM * TOKEN_NUM,), -1, dtype=torch.
 init_token_list1 = torch.zeros(LOCAL_EXPERT_NUM, dtype=torch.int64)
 final_token_table1 = torch.full((TOKEN_NUM * LOCAL_EXPERT_NUM,), -1, dtype=torch.int32)
 final_score_table1 = torch.zeros(TOKEN_NUM * LOCAL_EXPERT_NUM, dtype=dtype)
-token_idx_intra_expert1 = torch.full((LOCAL_EXPERT_NUM * TOKEN_NUM,), -1, dtype=torch.int32)
+token_idx_intra_expert1 = torch.full(
+    (LOCAL_EXPERT_NUM * TOKEN_NUM,), -1, dtype=torch.int32
+)
 
 # 2. CPU侧计算结果
 init_token_table_cpu, init_token_list_cpu, final_score_table_cpu = get_routing_conf_cpu(
-    indices1, scores1, LOCAL_EXPERT_NUM, START_EXPERT_ID, end_expert_id1)
+    indices1, scores1, LOCAL_EXPERT_NUM, START_EXPERT_ID, end_expert_id1
+)
 
 # 3. NPU侧计算结果
 # 3.1 数据迁移到NPU
@@ -101,45 +115,90 @@ token_idx_intra_expert_npu1 = token_idx_intra_expert1.npu()
 
 # 3.2 调用NPU算子
 result = torch.ops.ascend_ops.get_routing_conf(
-    BLOCK_DIM, indices_npu, scores_npu,
-    init_token_table_npu1, init_token_list_npu1, final_token_table_npu1, final_score_table_npu1,
-    token_idx_intra_expert_npu1, START_EXPERT_ID, end_expert_id1, LOCAL_EXPERT_NUM, TOKEN_NUM, TOPK)
+    BLOCK_DIM,
+    indices_npu,
+    scores_npu,
+    init_token_table_npu1,
+    init_token_list_npu1,
+    final_token_table_npu1,
+    final_score_table_npu1,
+    token_idx_intra_expert_npu1,
+    START_EXPERT_ID,
+    end_expert_id1,
+    LOCAL_EXPERT_NUM,
+    TOKEN_NUM,
+    TOPK,
+)
 logging.info(f"NPU operator return code: {result}")
 
 torch.npu.empty_cache()  # 每次循环都释放NPU缓存
 
 # 4. 转换NPU输出为2D view
-init_token_table_2d1, init_token_list_npu_2d1, final_score_table_2d1 = \
-    convert_npu_output_to_2d(init_token_table_npu1, init_token_list_npu1, final_token_table_npu1,
-                             LOCAL_EXPERT_NUM, TOKEN_NUM)
+init_token_table_2d1, init_token_list_npu_2d1, final_score_table_2d1 = (
+    convert_npu_output_to_2d(
+        init_token_table_npu1,
+        init_token_list_npu1,
+        final_token_table_npu1,
+        LOCAL_EXPERT_NUM,
+        TOKEN_NUM,
+    )
+)
 
 # 5. 结果对比
-logging.info(f"------------------------------------------结果对比-----------------------------------------")
+logging.info(
+    "------------------------------------------结果对比-----------------------------------------"
+)
 logging.info(f"indices tensor: \n{indices1}")
 logging.info(f"scores tensor: \n{scores1}")
 
 # init_token_list对比
 init_token_list_abs_error = torch.abs(init_token_list_npu_2d - init_token_list_cpu)
-logging.info(f"-------------------------------init_token_list的结果对比---------------------------")
+logging.info(
+    "-------------------------------init_token_list的结果对比---------------------------"
+)
 logging.info(f"init_token_list cpu result: \n{init_token_list_cpu}")
 logging.info(f"init_token_list npu result: \n{init_token_list_npu_2d}")
-logging.info(f"init_token_list max absolute error: {init_token_list_abs_error.max().item()}")
+logging.info(
+    f"init_token_list max absolute error: {init_token_list_abs_error.max().item()}"
+)
 
 # init_token_table对比
-init_token_table_abs_error = torch.abs(init_token_table_2d1.float() - init_token_table_cpu.float())
-logging.info(f"------------------------init_token_table的结果对比----------------------------------")
+init_token_table_abs_error = torch.abs(
+    init_token_table_2d1.float() - init_token_table_cpu.float()
+)
+logging.info(
+    "------------------------init_token_table的结果对比----------------------------------"
+)
 logging.info(f"init_token_table cpu result: \n{init_token_table_cpu}")
 logging.info(f"init_token_table npu result: \n{init_token_table_2d1}")
-logging.info(f"init_token_table max absolute error: {init_token_table_abs_error.max().item()}")
-logging.info(f"init_token_table average absolute error: {init_token_table_abs_error.mean().item()}")
+logging.info(
+    f"init_token_table max absolute error: {init_token_table_abs_error.max().item()}"
+)
+logging.info(
+    f"init_token_table average absolute error: {init_token_table_abs_error.mean().item()}"
+)
 
 # final_score_table对比
-final_score_table_abs_error = torch.abs(final_score_table_2d1.float() - final_score_table_cpu.float())
-final_score_table_rel_error = final_score_table_abs_error / (torch.abs(final_score_table_cpu.float()) + 1e-12)
-logging.info(f"-------------------------final_score_table的结果对比----------------------------------")
+final_score_table_abs_error = torch.abs(
+    final_score_table_2d1.float() - final_score_table_cpu.float()
+)
+final_score_table_rel_error = final_score_table_abs_error / (
+    torch.abs(final_score_table_cpu.float()) + 1e-12
+)
+logging.info(
+    "-------------------------final_score_table的结果对比----------------------------------"
+)
 logging.info(f"final_score_table cpu result: \n{final_score_table_cpu}")
 logging.info(f"final_score_table npu result: \n{final_score_table_2d1}")
-logging.info(f"final_score_table max absolute error: {final_score_table_abs_error.max().item():.8f}")
-logging.info(f"final_score_table average absolute error: {final_score_table_abs_error.mean().item():.8f}")
-logging.info(f"final_score_table max relative error: {final_score_table_rel_error.max().item():.8f}")
-logging.info(f"final_score_table average relative error: {final_score_table_rel_error.mean().item():.8f}")
+logging.info(
+    f"final_score_table max absolute error: {final_score_table_abs_error.max().item():.8f}"
+)
+logging.info(
+    f"final_score_table average absolute error: {final_score_table_abs_error.mean().item():.8f}"
+)
+logging.info(
+    f"final_score_table max relative error: {final_score_table_rel_error.max().item():.8f}"
+)
+logging.info(
+    f"final_score_table average relative error: {final_score_table_rel_error.mean().item():.8f}"
+)

@@ -18,6 +18,7 @@ import numpy as np
 import os
 import utils
 
+
 def load_excel_test_cases(excel_file_path: str, sheetname: str):
     """
     从 Excel 文件加载测试用例。
@@ -30,7 +31,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         list[]: 测试用例字典列表
     """
     if sheetname is None:
-        sheetname = 'Sheet1'
+        sheetname = "Sheet1"
 
     # 检查文件是否存在
     if not os.path.exists(excel_file_path):
@@ -43,15 +44,41 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
 
         # 定义必需的列名
         required_columns = [
-            "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1",
-            "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
-            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "kv_quant_mode", "tile_size",
-            "rope_head_dim", "template_run_mode", "actlen_mode", "S1EQS2",
+            "Testcase_Name",
+            "layout_q",
+            "layout_kv",
+            "q_type",
+            "ori_kv_type",
+            "cmp_kv_type",
+            "B",
+            "S1",
+            "S2",
+            "N1",
+            "N2",
+            "D",
+            "K",
+            "block_size1",
+            "block_size2",
+            "softmax_scale",
+            "cmp_ratio",
+            "ori_mask_mode",
+            "cmp_mask_mode",
+            "ori_win_left",
+            "ori_win_right",
+            "kv_quant_mode",
+            "tile_size",
+            "rope_head_dim",
+            "template_run_mode",
+            "actlen_mode",
+            "S1EQS2",
         ]
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
-            pytest.skip(f"Missing required columns in Excel: {missing_cols}", allow_module_level=True)
+            pytest.skip(
+                f"Missing required columns in Excel: {missing_cols}",
+                allow_module_level=True,
+            )
 
         # 构建测试用例列表
         test_cases = []
@@ -62,10 +89,11 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             i = i + 1
 
         return test_cases
-        
+
     except Exception as e:
         pytest.skip(f"Failed to read Excel file: {e}", allow_module_level=True)
         return None
+
 
 def save_result(params, result, fulfill_percent, result_path):
     """
@@ -116,13 +144,13 @@ def save_result(params, result, fulfill_percent, result_path):
             print(f"变量名: {list(row_data.keys())}")
             print("请检查变量名或Excel文件")
             return False
-        
+
         # 追加新行
         new_df = pd.DataFrame([row_data])
         df = pd.concat([df, new_df], ignore_index=True)
     else:
         # 文件不存在，创建新的DataFrame
         df = pd.DataFrame([row_data])
-    
+
     # 保存到Excel
     df.to_excel(result_path, index=False)

@@ -26,13 +26,12 @@ public:
     __aicore__ SwigluGatedMlpScalarMatmul() = default;
     __aicore__ ~SwigluGatedMlpScalarMatmul() = default;
 
-    __aicore__ void Init(GM_ADDR xGm, GM_ADDR weightGm, GM_ADDR yGm,
-        const SwigluGatedMlpTilingData &tilingData)
+    __aicore__ void Init(GM_ADDR xGm, GM_ADDR weightGm, GM_ADDR yGm, const SwigluGatedMlpTilingData& tilingData)
     {
         tiling_.Parse(tilingData);
-        xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(xGm), tiling_.totalRows * tiling_.hiddenSize);
-        weightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(weightGm), tiling_.hiddenSize * tiling_.outSize);
-        yGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(yGm), tiling_.totalRows * tiling_.outSize);
+        xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(xGm), tiling_.totalRows * tiling_.hiddenSize);
+        weightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(weightGm), tiling_.hiddenSize * tiling_.outSize);
+        yGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(yGm), tiling_.totalRows * tiling_.outSize);
     }
 
     __aicore__ void Process()
@@ -104,8 +103,7 @@ private:
         }
     }
 
-    __aicore__ void AccumulateFullTile(float (&acc)[4][8], float a0, float a1, float a2, float a3,
-        uint64_t weightBase)
+    __aicore__ void AccumulateFullTile(float (&acc)[4][8], float a0, float a1, float a2, float a3, uint64_t weightBase)
     {
         for (uint64_t c = 0; c < 8U; ++c) {
             const float w = ScalarToFloat<T>(weightGm_.GetValue(weightBase + c));
@@ -162,12 +160,12 @@ private:
         }
     }
 
-    GluTilingInfo tiling_ {};
+    GluTilingInfo tiling_{};
     AscendC::GlobalTensor<T> xGm_;
     AscendC::GlobalTensor<T> weightGm_;
     AscendC::GlobalTensor<T> yGm_;
 };
 
-}  // namespace swiglu_gated_mlp_kernel
+} // namespace swiglu_gated_mlp_kernel
 
-#endif  // OP_KERNEL_SWIGLU_GATED_MLP_SCALAR_MATMUL_HPP_
+#endif // OP_KERNEL_SWIGLU_GATED_MLP_SCALAR_MATMUL_HPP_

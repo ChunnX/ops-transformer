@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #include <ATen/Operators.h>
 #include <torch/all.h>
 #include <torch/library.h>
@@ -17,18 +17,17 @@
 #include "torch_npu/csrc/framework/OpCommand.h"
 
 namespace ascend_ops {
-    namespace BiasGateGelu {
+namespace BiasGateGelu {
 #include "kernel_operator.h"
 #include <iostream>
 #include <stdio.h>
 using namespace AscendC;
-constexpr int64_t UB_MAX_BYTES = 184*1024;
+constexpr int64_t UB_MAX_BYTES = 184 * 1024;
 constexpr int64_t BUFFER_NUM = 2;
 class BIAS_GATE_GELU {
 public:
     __aicore__ inline BIAS_GATE_GELU() {}
-    __aicore__ inline void Init(const int64_t gbH, const int64_t gbW,
-                                GM_ADDR in, GM_ADDR bias, GM_ADDR out)
+    __aicore__ inline void Init(const int64_t gbH, const int64_t gbW, GM_ADDR in, GM_ADDR bias, GM_ADDR out)
     {
         blockNum_ = GetBlockNum();
         blockIdx_ = GetBlockIdx();
@@ -38,7 +37,9 @@ public:
         bkW_ = gbW_ / 2; // in (inOne + inTwo)
         bkAlignW_ = AlignUp(bkW_, 16);
         bkLoop_ = (int64_t)(gbH_ / blockNum_);
-        if (gbH_ % blockNum_ != 0) { bkLoop_ += 1; }
+        if (gbH_ % blockNum_ != 0) {
+            bkLoop_ += 1;
+        }
         int64_t temp = BUFFER_NUM * bkH_ * sizeof(half) * 3;
         temp += BUFFER_NUM * 2 * sizeof(half);
         tlMaxW_ = UB_MAX_BYTES / temp;
@@ -46,8 +47,7 @@ public:
         tlH_ = 1;
         if (bkW_ < tlMaxW_) {
             tlW_ = bkW_;
-        }
-        else {
+        } else {
             int64_t temp = bkW_ / tlMaxW_;
             temp += (bkW_ % tlMaxW_ == 0) ? 0 : 1;
             tlW_ = bkW_ / temp;
@@ -56,20 +56,21 @@ public:
         tlTailW_ = bkW_ % tlW_;
         tlAlignTailW_ = AlignUp(tlTailW_, 64);
         tlLoop_ = (int64_t)(bkW_ / tlW_);
-        if (tlTailW_ != 0) { tlLoop_ += 1; }
+        if (tlTailW_ != 0) {
+            tlLoop_ += 1;
+        }
         inGm_.SetGlobalBuffer((__gm__ half*)in, gbH_ * gbW_);
         biasGm_.SetGlobalBuffer((__gm__ half*)bias, gbW_);
         outGm_.SetGlobalBuffer((__gm__ half*)out, gbH_ * gbW_ / 2);
         pipe_.InitBuffer(inQueInOne_, BUFFER_NUM, bkH_ * tlW_ * sizeof(half));
         pipe_.InitBuffer(inQueInTwo_, BUFFER_NUM, bkH_ * tlW_ * sizeof(half));
-        pipe_.InitBuffer(inQueBias_,  BUFFER_NUM, tlW_ * 2 * sizeof(half));
-        pipe_.InitBuffer(outQueOut_,  BUFFER_NUM, bkH_ * tlW_ * sizeof(half));
+        pipe_.InitBuffer(inQueBias_, BUFFER_NUM, tlW_ * 2 * sizeof(half));
+        pipe_.InitBuffer(outQueOut_, BUFFER_NUM, bkH_ * tlW_ * sizeof(half));
 #ifdef __CCE_KT_TEST__
         if (blockIdx_ == 0) {
             float use_byte = BUFFER_NUM * bkH_ * tlW_ * sizeof(half) * 3;
             use_byte += BUFFER_NUM * tlW_ * 2 * sizeof(half);
-            fprintf(stdout, "\033[33m[_AI] Use UB bytes: %f B, %f KB\033[0m\n",
-                    use_byte, use_byte/1024);
+            fprintf(stdout, "\033[33m[_AI] Use UB bytes: %f B, %f KB\033[0m\n", use_byte, use_byte / 1024);
         }
 #endif
     }
@@ -79,21 +80,20 @@ public:
             LocalTensor<half> bias_local = inQueBias_.AllocTensor<half>();
             DataCopyParams copy_pas{1, (uint16_t)(tlW_ * sizeof(half)), 0, 0};
             DataCopyPadParams pad_pas;
-            if ((tlTailW_ > 0) && (j == tlLoop_-1)) {
+            if ((tlTailW_ > 0) && (j == tlLoop_ - 1)) {
                 copy_pas.blockLen = (uint16_t)(tlTailW_ * sizeof(half));
             }
-            DataCopyPad(bias_local, biasGm_[j*tlW_], copy_pas, pad_pas);
-            DataCopyPad(bias_local[tlW_], biasGm_[bkW_+j*tlW_], copy_pas, pad_pas);
+            DataCopyPad(bias_local, biasGm_[j * tlW_], copy_pas, pad_pas);
+            DataCopyPad(bias_local[tlW_], biasGm_[bkW_ + j * tlW_], copy_pas, pad_pas);
             inQueBias_.EnQue(bias_local);
             biasLm_ = inQueBias_.DeQue<half>();
             for (int64_t i = 0; i < bkLoop_; i++) {
                 if (i * blockNum_ + blockIdx_ < gbH_) {
-                    if ((tlTailW_ > 0) && (j == tlLoop_-1)) {
+                    if ((tlTailW_ > 0) && (j == tlLoop_ - 1)) {
                         CopyIn(i, j, tlTailW_, tlAlignTailW_);
                         Compute(i, j, tlTailW_, tlAlignTailW_);
                         CopyOut(i, j, tlTailW_, tlAlignTailW_);
-                    }
-                    else {
+                    } else {
                         CopyIn(i, j, tlW_, tlW_);
                         Compute(i, j, tlW_, tlW_);
                         CopyOut(i, j, tlW_, tlW_);
@@ -103,6 +103,7 @@ public:
             inQueBias_.FreeTensor(bias_local);
         }
     }
+
 private:
     __aicore__ inline void CopyIn(int64_t bkl, int64_t tll, int64_t real_tlW, int64_t real_tlAlignW)
     {
@@ -113,7 +114,7 @@ private:
         DataCopyPadParams pad_pas;
         DataCopyPad(in_one_local, inGm_[offset], copy_pas, pad_pas);
         inQueInOne_.EnQue(in_one_local);
-        DataCopyPad(in_two_local, inGm_[offset+bkW_], copy_pas, pad_pas);
+        DataCopyPad(in_two_local, inGm_[offset + bkW_], copy_pas, pad_pas);
         inQueInTwo_.EnQue(in_two_local);
     }
     __aicore__ inline void Compute(int64_t bkl, int64_t tll, int64_t real_tlW, int64_t real_tlAlignW)
@@ -137,6 +138,7 @@ private:
         DataCopyPad(outGm_[offset], out_local, copy_pas);
         outQueOut_.FreeTensor(out_local);
     }
+
 private:
     TPipe pipe_;
     TQue<QuePosition::VECIN, BUFFER_NUM> inQueInOne_, inQueInTwo_;
@@ -158,22 +160,24 @@ private:
     int64_t tlLoop_;
     int64_t tlMaxW_;
 };
-extern "C" __global__ __aicore__ void biasGateGelu_kernel(const int64_t gbH, const int64_t gbW,
-        GM_ADDR in, GM_ADDR bias, GM_ADDR out)
+extern "C" __global__ __aicore__ void biasGateGelu_kernel(const int64_t gbH, const int64_t gbW, GM_ADDR in,
+                                                          GM_ADDR bias, GM_ADDR out)
 {
     BIAS_GATE_GELU op;
     op.Init(gbH, gbW, in, bias, out);
     op.Process();
 }
-void biasGateGelu_lanuch(int64_t blockDim, void* stream,
-                         const int64_t gbH, const int64_t gbW, uint8_t* in, uint8_t* bias, uint8_t* out)
+void biasGateGelu_lanuch(int64_t blockDim, void* stream, const int64_t gbH, const int64_t gbW, uint8_t* in,
+                         uint8_t* bias, uint8_t* out)
 {
-    if (gbH < blockDim){ blockDim = gbH; }
+    if (gbH < blockDim) {
+        blockDim = gbH;
+    }
     biasGateGelu_kernel<<<blockDim, nullptr, stream>>>(gbH, gbW, in, bias, out);
 }
 
-int64_t bias_gate_gelu_npu(int64_t block_dim, torch::Tensor &in, torch::Tensor &bias, torch::Tensor &out,
-                           int64_t gbH, int64_t gbW)
+int64_t bias_gate_gelu_npu(int64_t block_dim, torch::Tensor& in, torch::Tensor& bias, torch::Tensor& out, int64_t gbH,
+                           int64_t gbW)
 {
     TORCH_CHECK(in.device().type() == torch::kPrivateUse1, "input must be on NPU");
     TORCH_CHECK(bias.device().type() == torch::kPrivateUse1, "bias must be on NPU");
@@ -192,9 +196,9 @@ int64_t bias_gate_gelu_npu(int64_t block_dim, torch::Tensor &in, torch::Tensor &
     biasGateGelu_lanuch(blockDim, stream, gbH, gbW, in_ptr, bias_ptr, out_ptr);
     return 0;
 }
-    }
-    TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
-    {
-        m.impl("bias_gate_gelu", BiasGateGelu::bias_gate_gelu_npu);
-    }
+} // namespace BiasGateGelu
+TORCH_LIBRARY_IMPL(ascend_ops, PrivateUse1, m)
+{
+    m.impl("bias_gate_gelu", BiasGateGelu::bias_gate_gelu_npu);
 }
+} // namespace ascend_ops

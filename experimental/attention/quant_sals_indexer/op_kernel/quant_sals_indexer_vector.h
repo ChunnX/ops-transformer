@@ -20,7 +20,6 @@
 namespace QSIServiceVec {
 using namespace AscendC;
 
-
 constexpr int32_t INVALID_INDEX = -1;
 constexpr uint8_t VEC_REPEAT_MAX = 255;
 
@@ -29,12 +28,7 @@ constexpr uint8_t B32_VEC_REPEAT_STRIDE = 8;
 constexpr uint64_t VEC_REPEAT_BYTES = 256;
 constexpr int32_t CONST_TWO = 2;
 
-
-
-
-
-__aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, GlobalTensor<float> &mMoutGm,
-                            int64_t MMout_gmoffset,
+__aicore__ inline void CopyIn(LocalTensor<float>& mmOutUb, GlobalTensor<float>& mMoutGm, int64_t MMout_gmoffset,
                               int64_t groupInner, int64_t s2Inner, int64_t mmUbStride)
 {
     // 将MMout_gmoffset copy到UB上
@@ -48,9 +42,8 @@ __aicore__ inline void CopyIn(LocalTensor<float> &mmOutUb, GlobalTensor<float> &
     AscendC::DataCopyPad(mmOutUb, mMoutGm[MMout_gmoffset], dataCopymMoutParams, padParams);
 }
 
-
 template <typename T>
-__aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T> &srcUb, int64_t copyCount)
+__aicore__ inline void CopyOut(const GlobalTensor<T>& dstGm, const LocalTensor<T>& srcUb, int64_t copyCount)
 {
     AscendC::DataCopyParams dataCopyOutyParams;
     dataCopyOutyParams.blockCount = 1;
@@ -60,9 +53,8 @@ __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T
     AscendC::DataCopyPad(dstGm, srcUb, dataCopyOutyParams);
 }
 
-__aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTensor<float> &mmOutUb,
-                               LocalTensor<float> &tmpBuff,
-                               int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
+__aicore__ inline void DoScale(const LocalTensor<float>& reduceCacheBuf, LocalTensor<float>& mmOutUb,
+                               LocalTensor<float>& tmpBuff, int64_t groupInner, int64_t s2Inner, int32_t outerGidx)
 {
     // do scale: [groupInner, 8] * [groupInner, s2Inner]
     uint64_t countPerRepeat = VEC_REPEAT_BYTES / sizeof(float);
@@ -84,7 +76,6 @@ __aicore__ inline void DoScale(const LocalTensor<float> &reduceCacheBuf, LocalTe
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
 {
     if (value <= CONST_TWO) {
@@ -95,9 +86,8 @@ __aicore__ inline uint64_t FindNearestPower2(uint64_t value)
     }
 }
 
-
 // dstTensor 需要初始化0
-__aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor<float> &dstTensor, int32_t rNum,
+__aicore__ inline void DoReduce(const LocalTensor<float>& srcTensor, LocalTensor<float>& dstTensor, int32_t rNum,
                                 int32_t aNum)
 {
     if (rNum == 1) {
@@ -122,12 +112,11 @@ __aicore__ inline void DoReduce(const LocalTensor<float> &srcTensor, LocalTensor
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 /**
   src: 传入的初始化空间
   eleNum: 需要初始化的元素个数需为64整数倍，元素将被初始化为交错排布的-inf，-1
  */
-__aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t eleNum)
+__aicore__ inline void InitSortOutBuf(const LocalTensor<float>& src, int64_t eleNum)
 {
     uint64_t mask1[2] = {0x5555555555555555, 0};
     uint64_t mask0[2] = {0xaaaaaaaaaaaaaaaa, 0};
@@ -149,7 +138,6 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 /**
   dst: 输出全排序的结果，排布方式为value，index
   srcValue：输入的待排序浮点数
@@ -157,22 +145,21 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
   tmp: 计算使用到的临时空间，大小为srcValue+srcIndex
   logitsNum: 排序的元素个数
  */
-__aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcValue, LocalTensor<uint32_t> &srcIndex,
-                               LocalTensor<float> &tmpTensor, int64_t logitsNum)
+__aicore__ inline void SortAll(LocalTensor<float>& dst, LocalTensor<float>& srcValue, LocalTensor<uint32_t>& srcIndex,
+                               LocalTensor<float>& tmpTensor, int64_t logitsNum)
 {
     int64_t sort32Repeats = logitsNum / BLOCK_BYTES;
     AscendC::Sort<float, true>(dst, srcValue, srcIndex, tmpTensor, sort32Repeats);
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 /**
   mrgDst: 合并进的Tensor
   mrgSrc: 待合并的Tensor
   tmpTensor：空间为mrgDst+mrgSrc
  */
-__aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDstNum, LocalTensor<float> &mrgSrc,
-                                 int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
+__aicore__ inline void MergeSort(const LocalTensor<float>& mrgDst, int32_t mrgDstNum, LocalTensor<float>& mrgSrc,
+                                 int32_t mrgSrcNum, LocalTensor<float>& tmpTensor)
 {
     AscendC::MrgSort4Info params;
     params.elementLengths[0] = mrgDstNum;
@@ -191,7 +178,6 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-
 /**
  * @brief 合并基础块函数
  * @param dst 归并后的输出, 大小为blockNum * basicBlockSize * 2 * sizeof(float)
@@ -200,7 +186,7 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
  * @param basicBlockSize 基础块的大小
  * @return 无
  */
-__aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalTensor<float> &src, int64_t blockNum,
+__aicore__ inline void MrgBasicBlock(const LocalTensor<float>& dst, const LocalTensor<float>& src, int64_t blockNum,
                                      int64_t basicBlockSize)
 {
     // 初始化合并排序参数
@@ -231,7 +217,6 @@ __aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalT
     AscendC::MrgSort<float>(dst, srcList, params);
 }
 
-
 /**
  * @brief 从两个队列中选择topk
  * @param dst 已经归并好的topk数据
@@ -242,8 +227,8 @@ __aicore__ inline void MrgBasicBlock(const LocalTensor<float> &dst, const LocalT
  * @return 无
  */
 template <bool needMrg = true>
-__aicore__ inline void SparseTopK(const LocalTensor<float> &dst, const LocalTensor<float> &needsMerging,
-                                  const LocalTensor<float> &tmp, int64_t topk, int64_t mergSize)
+__aicore__ inline void SparseTopK(const LocalTensor<float>& dst, const LocalTensor<float>& needsMerging,
+                                  const LocalTensor<float>& tmp, int64_t topk, int64_t mergSize)
 {
     // 如果不需要合并，则直接复制数据
     if (!needMrg) {

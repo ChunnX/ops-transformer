@@ -48,12 +48,12 @@ constexpr uint32_t QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7U; // 当前AIC核�
 
 #ifndef __CCE_AICORE__
 namespace detail {
-inline bool IsPaddedQueryLayout(const char *layout)
+inline bool IsPaddedQueryLayout(const char* layout)
 {
     return layout != nullptr && (std::strcmp(layout, "BSND") == 0 || std::strcmp(layout, "BNSD") == 0);
 }
 
-inline bool IsSupportedQueryLayout(const char *layout, int64_t quantMode)
+inline bool IsSupportedQueryLayout(const char* layout, int64_t quantMode)
 {
     if (layout == nullptr) {
         return false;
@@ -65,13 +65,13 @@ inline bool IsSupportedQueryLayout(const char *layout, int64_t quantMode)
 
 struct qbsaMetaData {
     uint32_t sectionNum{0U};
-    QBSA_METADATA_T *headMetadata; // [QBSA_HEAD_METADATA_SIZE];
-    QBSA_METADATA_T *qbsaMetadata; // [sectionNum][AIC_CORE_NUM][QBSA_METADATA_SIZE];
-    QBSA_METADATA_T *fdMetadata;   // [AIV_CORE_NUM][FD_METADATA_SIZE];
+    QBSA_METADATA_T* headMetadata; // [QBSA_HEAD_METADATA_SIZE];
+    QBSA_METADATA_T* qbsaMetadata; // [sectionNum][AIC_CORE_NUM][QBSA_METADATA_SIZE];
+    QBSA_METADATA_T* fdMetadata;   // [AIV_CORE_NUM][FD_METADATA_SIZE];
 
-    explicit qbsaMetaData(void *metadataPtr, uint32_t sectionNumVal)
+    explicit qbsaMetaData(void* metadataPtr, uint32_t sectionNumVal)
         : sectionNum(sectionNumVal),
-          headMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr)),
+          headMetadata(static_cast<QBSA_METADATA_T*>(metadataPtr)),
           qbsaMetadata(headMetadata + QBSA_HEAD_METADATA_SIZE),
           fdMetadata(qbsaMetadata + sectionNum * AIC_CORE_NUM * QBSA_METADATA_SIZE)
     {}

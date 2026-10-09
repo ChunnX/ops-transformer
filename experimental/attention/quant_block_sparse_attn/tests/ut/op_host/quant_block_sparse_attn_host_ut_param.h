@@ -30,7 +30,7 @@ struct QuantBlockSparseAttnHostUtParamBase {
     bool return_softmax_lse = false;
     ge::graphStatus expectResult = ge::GRAPH_FAILED;
 
-    explicit QuantBlockSparseAttnHostUtParamBase(const csv_map &csvMap)
+    explicit QuantBlockSparseAttnHostUtParamBase(const csv_map& csvMap)
     {
         this->case_name = ReadMap(csvMap, "caseName");
         this->softmax_scale = std::stof(ReadMap(csvMap, "softmax_scale", "1.0"));
@@ -47,7 +47,7 @@ struct QuantBlockSparseAttnHostUtParamBase {
     }
 };
 
-inline std::ostream &operator<<(std::ostream &os, const QuantBlockSparseAttnHostUtParamBase &param)
+inline std::ostream& operator<<(std::ostream& os, const QuantBlockSparseAttnHostUtParamBase& param)
 {
     return os << param.case_name;
 }
@@ -75,7 +75,7 @@ struct QuantBlockSparseAttnTilingUtParam : public QuantBlockSparseAttnHostUtPara
     bool provideFp8Metadata = true;
     bool mismatchValueStride = false;
 
-    explicit QuantBlockSparseAttnTilingUtParam(const csv_map &csvMap)
+    explicit QuantBlockSparseAttnTilingUtParam(const csv_map& csvMap)
         : QuantBlockSparseAttnHostUtParamBase(csvMap)
     {
         GetTensorGE(csvMap, "queryShape", "queryDtype", "queryFormat", this->query);
@@ -123,7 +123,7 @@ struct QuantBlockSparseAttnInferShapeUtParam : public QuantBlockSparseAttnHostUt
     gert::InfershapeContextPara::TensorDescription softmaxLse = ID_DEFAULT;
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    explicit QuantBlockSparseAttnInferShapeUtParam(const csv_map &csvMap)
+    explicit QuantBlockSparseAttnInferShapeUtParam(const csv_map& csvMap)
         : QuantBlockSparseAttnHostUtParamBase(csvMap)
     {
         GetTensorGE(csvMap, "queryShape", "queryDtype", "queryFormat", this->query);
@@ -176,7 +176,7 @@ struct QuantBlockSparseAttnInferDTypeUtParam : public QuantBlockSparseAttnHostUt
     ge::DataType expectAttentionOutDtype = ge::DT_UNDEFINED;
     ge::DataType expectSoftmaxLseDtype = ge::DT_UNDEFINED;
 
-    explicit QuantBlockSparseAttnInferDTypeUtParam(const csv_map &csvMap)
+    explicit QuantBlockSparseAttnInferDTypeUtParam(const csv_map& csvMap)
         : QuantBlockSparseAttnHostUtParamBase(csvMap)
     {
         GetDataTypeGE(csvMap, "queryDtype", this->query);

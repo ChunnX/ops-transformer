@@ -3,7 +3,7 @@
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 """
@@ -32,7 +32,7 @@ import re
 import sys
 from collections import defaultdict, namedtuple
 
-logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
 # Composite sort key produced by `_sort_key` — wraps the six lexicographic
@@ -141,10 +141,10 @@ def _line_label(key, common):
 # values; markers separate sequence lengths (typically a single S in one run,
 # so all markers look identical).
 _kv_palette = {
-    128: "#d62728",   # tab:red
-    256: "#ff7f0e",   # tab:orange
-    512: "#2ca02c",   # tab:green
-    1024: "#1f77b4",   # tab:blue
+    128: "#d62728",  # tab:red
+    256: "#ff7f0e",  # tab:orange
+    512: "#2ca02c",  # tab:green
+    1024: "#1f77b4",  # tab:blue
 }
 _linestyle_by_q = {128: "-", 256: "--", 512: "-.", 1024: ":"}
 _seq_markers = ("o", "s", "^", "D", "v", "P", "X", "*")
@@ -159,10 +159,14 @@ def _sort_key(key):
 def _parse_args():
     parser = argparse.ArgumentParser(
         description="Plot blitz_sparse_attention speedup vs sparsity "
-                    "from benchmark.py stdout.",
+        "from benchmark.py stdout.",
     )
-    parser.add_argument("--output", "-o", default="benchmark.png",
-                        help="output PNG path (default: benchmark.png)")
+    parser.add_argument(
+        "--output",
+        "-o",
+        default="benchmark.png",
+        help="output PNG path (default: benchmark.png)",
+    )
     parser.add_argument("--title", default="blitz_sparse_attention speedup vs sparsity")
     parser.add_argument("--dpi", type=int, default=120)
     return parser.parse_args()
@@ -208,11 +212,13 @@ def _plot_lines(ax, groups, common):
             skipped.append((s_q, bs, skip_reason))
             continue
         ax.plot(
-            xs, ys,
+            xs,
+            ys,
             color=_kv_palette.get(bskv, "#666666"),
             linestyle=_linestyle_by_q.get(bsq, "-"),
             marker=marker_by_seq.get(s_q, "o"),
-            markersize=5, linewidth=1.5,
+            markersize=5,
+            linewidth=1.5,
             label=_line_label(key, common),
         )
         lines_drawn += 1
@@ -234,7 +240,9 @@ def _finalize_figure(fig, ax, title):
 def _report(output_path, lines_drawn, rows_total, skipped):
     logger.info(
         "plot.py: wrote %s  (%d lines, %d rows parsed)",
-        output_path, lines_drawn, rows_total,
+        output_path,
+        lines_drawn,
+        rows_total,
     )
     for s_q, bs, why in skipped:
         logger.info("plot.py: skipped S=%s %dx%d  (%s)", s_q, bs[0], bs[1], why)
@@ -244,12 +252,15 @@ def main():
     args = _parse_args()
     rows, groups = _load_groups()
     if rows is None:
-        sys.exit("plot.py: no benchmark rows parsed from stdin "
-                 "(pipe `benchmark.py` stdout into this script).")
+        sys.exit(
+            "plot.py: no benchmark rows parsed from stdin "
+            "(pipe `benchmark.py` stdout into this script)."
+        )
     common = _compute_common_bnsd(groups)
 
     # matplotlib is imported lazily so `--help` works on hosts without it.
     import matplotlib
+
     matplotlib.use("Agg")  # headless backend — no DISPLAY on NPU hosts.
     import matplotlib.pyplot as plt
 

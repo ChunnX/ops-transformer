@@ -77,7 +77,7 @@ public:
 
     __aicore__ inline BlockEpilogue() {}
 
-    __aicore__ inline void InitFDBuffers(AscendC::LocalTensor<T> &ubBase, uint32_t D, uint32_t groupSize, uint32_t topK,
+    __aicore__ inline void InitFDBuffers(AscendC::LocalTensor<T>& ubBase, uint32_t D, uint32_t groupSize, uint32_t topK,
                                          uint32_t kvHeads, uint32_t softmaxLseFlag, uint32_t layoutType,
                                          uint32_t qSeqLen, uint32_t numHeads)
     {
@@ -128,11 +128,11 @@ public:
     }
 
     __aicore__ inline void FlashDecodeCompute(uint32_t tmpBlockIdx, uint32_t totalTaskNumP2,
-                                              AscendC::GlobalTensor<ElementO> &gmO,
-                                              AscendC::GlobalTensor<TwsO> &gmAccumOut,
-                                              AscendC::GlobalTensor<T> &gmSoftmaxMax,
-                                              AscendC::GlobalTensor<T> &gmSoftmaxSum,
-                                              AscendC::GlobalTensor<T> &gmSoftmaxLse, uint32_t numHeads,
+                                              AscendC::GlobalTensor<ElementO>& gmO,
+                                              AscendC::GlobalTensor<TwsO>& gmAccumOut,
+                                              AscendC::GlobalTensor<T>& gmSoftmaxMax,
+                                              AscendC::GlobalTensor<T>& gmSoftmaxSum,
+                                              AscendC::GlobalTensor<T>& gmSoftmaxLse, uint32_t numHeads,
                                               uint32_t kvHeads)
     {
         if (tmpBlockIdx >= totalTaskNumP2) {
@@ -208,8 +208,8 @@ private:
 
     // GM max/sum compact [topK, groupSize] -> UB IFA layout [topK, dealRow, 8].
     __aicore__ inline void CopyLseIn(uint32_t qToken, uint32_t kvHeadIdx, uint32_t dealRowCount,
-                                     AscendC::GlobalTensor<T> &gmSoftmaxMax, AscendC::GlobalTensor<T> &gmSoftmaxSum,
-                                     AscendC::LocalTensor<T> &lseMaxLocal, AscendC::LocalTensor<T> &lseSumLocal)
+                                     AscendC::GlobalTensor<T>& gmSoftmaxMax, AscendC::GlobalTensor<T>& gmSoftmaxSum,
+                                     AscendC::LocalTensor<T>& lseMaxLocal, AscendC::LocalTensor<T>& lseSumLocal)
     {
         uint32_t ubRowStride = dealRowCount * FP32_ONE_BLOCK_SIZE;
         auto lseCount = dealRowCount * topK_;
@@ -255,9 +255,9 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void ComputeScaleValue(AscendC::LocalTensor<T> &lseMaxLocal, AscendC::LocalTensor<T> &lseSumLocal,
+    __aicore__ inline void ComputeScaleValue(AscendC::LocalTensor<T>& lseMaxLocal, AscendC::LocalTensor<T>& lseSumLocal,
                                              uint32_t dealRowCount, uint32_t qToken, uint32_t kvHeadIdx,
-                                             AscendC::GlobalTensor<T> &gmSoftmaxLse)
+                                             AscendC::GlobalTensor<T>& gmSoftmaxLse)
     {
         AscendC::LocalTensor<bfloat16_t> tmpSinkUb;
         bool learnableSinkFlag = false;
@@ -280,8 +280,8 @@ private:
     // DataCopyPad blockLen=4, srcStride=0 copies the first float of each 32B row
     // (same as IFA FlashDecode / DataCopySoftmaxLseTNDArch35).
     __aicore__ inline void CopySoftmaxLseOut(uint32_t qToken, uint32_t kvHeadIdx, uint32_t dealRowCount,
-                                             AscendC::GlobalTensor<T> &gmSoftmaxLse,
-                                             AscendC::LocalTensor<T> &lseOutputUb)
+                                             AscendC::GlobalTensor<T>& gmSoftmaxLse,
+                                             AscendC::LocalTensor<T>& lseOutputUb)
     {
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
@@ -308,8 +308,8 @@ private:
     }
 
     __aicore__ inline void CopyAccumOutIn(uint32_t qToken, uint32_t kvHeadIdx, uint32_t jStart, uint32_t nSplits,
-                                          uint32_t dealRowCount, AscendC::GlobalTensor<TwsO> &gmAccumOut,
-                                          AscendC::LocalTensor<TwsO> &accumOutLocal)
+                                          uint32_t dealRowCount, AscendC::GlobalTensor<TwsO>& gmAccumOut,
+                                          AscendC::LocalTensor<TwsO>& accumOutLocal)
     {
         // E: batched contiguous read of nSplits splits in one DataCopyPad (was one
         // 8KB DataCopyPad per split). GM layout [totalQ, kvHead, topK, groupSize, D]
@@ -335,9 +335,9 @@ private:
         AscendC::DataCopyPad(accumOutLocal, gmAccumOut[oOffset], copyInParams, copyInPadParams);
     }
 
-    __aicore__ inline void ReduceFinalRes(uint32_t qToken, uint32_t kvHeadIdx, AscendC::LocalTensor<TwsO> &dst,
-                                          AscendC::LocalTensor<T> &scaleLocal, uint32_t dealRowCount,
-                                          AscendC::GlobalTensor<TwsO> &gmAccumOut)
+    __aicore__ inline void ReduceFinalRes(uint32_t qToken, uint32_t kvHeadIdx, AscendC::LocalTensor<TwsO>& dst,
+                                          AscendC::LocalTensor<T>& scaleLocal, uint32_t dealRowCount,
+                                          AscendC::GlobalTensor<TwsO>& gmAccumOut)
     {
         // Slot validity check from UB (no GM round-trip). After CopyLseIn +
         // ComputeScaleValue, lseMaxBuf_ holds the per-slot rowMax in broadcast
@@ -450,8 +450,8 @@ private:
         }
     }
 
-    __aicore__ inline void CopyFinalResOut(uint32_t qToken, uint32_t kvHeadIdx, AscendC::GlobalTensor<ElementO> &gmO,
-                                           AscendC::LocalTensor<TwsO> &accumOutLocal, uint32_t dealRowCount)
+    __aicore__ inline void CopyFinalResOut(uint32_t qToken, uint32_t kvHeadIdx, AscendC::GlobalTensor<ElementO>& gmO,
+                                           AscendC::LocalTensor<TwsO>& accumOutLocal, uint32_t dealRowCount)
     {
         AscendC::PipeBarrier<PIPE_V>();
         const bool isBnsd = (layoutType_ == 1U && qSeqLen_ > 0U); // LAYOUT_BNSD only; BSND is contiguous like TND.
@@ -509,11 +509,11 @@ private:
         }
     }
 
-    __aicore__ inline void CombineSplitKVRes(uint32_t qToken, uint32_t kvHeadIdx, AscendC::GlobalTensor<ElementO> &gmO,
-                                             AscendC::GlobalTensor<TwsO> &gmAccumOut,
-                                             AscendC::GlobalTensor<T> &gmSoftmaxMax,
-                                             AscendC::GlobalTensor<T> &gmSoftmaxSum,
-                                             AscendC::GlobalTensor<T> &gmSoftmaxLse)
+    __aicore__ inline void CombineSplitKVRes(uint32_t qToken, uint32_t kvHeadIdx, AscendC::GlobalTensor<ElementO>& gmO,
+                                             AscendC::GlobalTensor<TwsO>& gmAccumOut,
+                                             AscendC::GlobalTensor<T>& gmSoftmaxMax,
+                                             AscendC::GlobalTensor<T>& gmSoftmaxSum,
+                                             AscendC::GlobalTensor<T>& gmSoftmaxLse)
     {
         // groupSize <= 16 fits every UB buffer (lse 8K cap, dst/accumOut/castOut 32K slots)
         // for topK <= 16, D <= 512, so a single chunk covers the whole group.

@@ -17,15 +17,27 @@
 using namespace ge;
 using namespace AscendC;
 
-#define TRUE_IF_NULLPTR(X) (X)==nullptr
-#define CHECK_ON_NULLPTR(X, MESSAGE) if (TRUE_IF_NULLPTR(X)){std::cout<<MESSAGE<<std::endl; return ge::GRAPH_FAILED;}
-#define CHECK_ON_ERROR(X, MESSAGE) if (X==ge::GRAPH_FAILED){std::cout<<MESSAGE<<std::endl; return ge::GRAPH_FAILED;}
-#define OPS_ERR_IF_CONDITION(context, condition, message, ...) OPS_ERR_IF((condition), \
-     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), message, __VA_ARGS__), return ge::GRAPH_FAILED)
-#define RETURN_IF_FAILED(X) if (X==ge::GRAPH_FAILED) {return ge::GRAPH_FAILED;}
+#define TRUE_IF_NULLPTR(X) (X) == nullptr
+#define CHECK_ON_NULLPTR(X, MESSAGE) \
+    if (TRUE_IF_NULLPTR(X)) { \
+        std::cout << MESSAGE << std::endl; \
+        return ge::GRAPH_FAILED; \
+    }
+#define CHECK_ON_ERROR(X, MESSAGE) \
+    if (X == ge::GRAPH_FAILED) { \
+        std::cout << MESSAGE << std::endl; \
+        return ge::GRAPH_FAILED; \
+    }
+#define OPS_ERR_IF_CONDITION(context, condition, message, ...) \
+    OPS_ERR_IF((condition), OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), message, __VA_ARGS__), \
+               return ge::GRAPH_FAILED)
+#define RETURN_IF_FAILED(X) \
+    if (X == ge::GRAPH_FAILED) { \
+        return ge::GRAPH_FAILED; \
+    }
 #define TO_CHAR(X) #X
-#define MIN(A, B) ((A)>(B))?(B):(A)
-#define MAX(A, B) ((A)<=(B))?(B):(A)
+#define MIN(A, B) ((A) > (B)) ? (B) : (A)
+#define MAX(A, B) ((A) <= (B)) ? (B) : (A)
 
 #ifdef DEBUG_MODE
 #define PRINT_VAL(x) std::cout << #x << " = " << x << std::endl
@@ -63,8 +75,8 @@ ge::graphStatus JMTiling::InitAInput()
     const gert::Shape& inputShape = inputShapePtr->GetStorageShape();
     int64_t inputShapeSize = inputShape.GetShapeSize();
     int64_t inputShapeRank = inputShape.GetDimNum();
-    OPS_ERR_IF_CONDITION(context_, (inputShapeRank < 2),
-        "Input rank must be more than 1. Current rank is %i!!!\n", inputShapeRank);
+    OPS_ERR_IF_CONDITION(context_, (inputShapeRank < 2), "Input rank must be more than 1. Current rank is %i!!!\n",
+                         inputShapeRank);
     inputShapeRank--;
     jmData_.shapeInfo.nSize = static_cast<uint32_t>(inputShape.GetDim(inputShapeRank--));
     jmData_.shapeInfo.mSize = static_cast<uint32_t>(inputShape.GetDim(inputShapeRank--));
@@ -73,7 +85,8 @@ ge::graphStatus JMTiling::InitAInput()
         int32_t dim = static_cast<int32_t>(inputShape.GetDim(inputShapeRank--));
         batchSize *= dim > 0 ? dim : 1;
     }
-    OPS_ERR_IF_CONDITION(context_, (jmData_.shapeInfo.nSize < jmData_.shapeInfo.mSize),
+    OPS_ERR_IF_CONDITION(
+        context_, (jmData_.shapeInfo.nSize < jmData_.shapeInfo.mSize),
         "Now Jacobi kernel does not support cases, when tensor with size (..., M, N) where M(%i)>N(%i)!!!",
         jmData_.shapeInfo.mSize, jmData_.shapeInfo.nSize);
     jmData_.shapeInfo.batchSize = batchSize;
@@ -107,11 +120,11 @@ ge::graphStatus JMTiling::InitSOutput()
     const gert::Shape& outputShape = outputSShapePtr->GetStorageShape();
     int64_t outputShapeSize = outputShape.GetShapeSize();
     int64_t outputShapeRank = outputShape.GetDimNum();
-    OPS_ERR_IF_CONDITION(context_, (outputShapeRank < 1),
-        "Output S rank must be more than 0. Current rank is %i!!!\n", outputShapeRank);
+    OPS_ERR_IF_CONDITION(context_, (outputShapeRank < 1), "Output S rank must be more than 0. Current rank is %i!!!\n",
+                         outputShapeRank);
     uint32_t sSize = outputShape.GetDim(outputShapeRank - 1);
     OPS_ERR_IF_CONDITION(context_, sSize != jmData_.shapeInfo.sSize,
-        "Input  sSize %i and output S sSize %i is not equal!!!", jmData_.shapeInfo.sSize, sSize);
+                         "Input  sSize %i and output S sSize %i is not equal!!!", jmData_.shapeInfo.sSize, sSize);
 
     outputShapeRank -= 2;
     uint32_t batchSize = 1;
@@ -120,7 +133,8 @@ ge::graphStatus JMTiling::InitSOutput()
         batchSize *= dim > 0 ? dim : 1;
     }
     OPS_ERR_IF_CONDITION(context_, batchSize != jmData_.shapeInfo.batchSize,
-        "Input  batch %i and output S batch %i is not equal!!!", jmData_.shapeInfo.batchSize, batchSize);
+                         "Input  batch %i and output S batch %i is not equal!!!", jmData_.shapeInfo.batchSize,
+                         batchSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -130,8 +144,7 @@ ge::graphStatus JMTiling::InitVOutput()
     OPS_LOG_E_IF_NULL(context_, outputVDescPtr, return ge::GRAPH_FAILED);
     auto dtype = outputVDescPtr->GetDataType();
     if (dtype != ge::DT_FLOAT) {
-        OPS_ERR_IF_CONDITION(context_, true,
-            "Output V type does not support this type!!!", TO_CHAR(dtype));
+        OPS_ERR_IF_CONDITION(context_, true, "Output V type does not support this type!!!", TO_CHAR(dtype));
     }
 
     auto outputVShapePtr = context_->GetOutputShape(OUTPUT_V_IDX);
@@ -139,23 +152,24 @@ ge::graphStatus JMTiling::InitVOutput()
     const gert::Shape& outputShape = outputVShapePtr->GetStorageShape();
     int64_t outputShapeSize = outputShape.GetShapeSize();
     int64_t outputShapeRank = outputShape.GetDimNum();
-    OPS_ERR_IF_CONDITION(context_, (outputShapeRank < 2),
-        "Output V rank must be more than 1. Current rank is %i!!!\n", outputShapeRank);
+    OPS_ERR_IF_CONDITION(context_, (outputShapeRank < 2), "Output V rank must be more than 1. Current rank is %i!!!\n",
+                         outputShapeRank);
 
     outputShapeRank--;
     uint32_t vDim2 = static_cast<uint32_t>(outputShape.GetDim(outputShapeRank--));
     OPS_ERR_IF_CONDITION(context_, vDim2 != jmData_.shapeInfo.vDim2,
-        "Input  vDim2 %i and output vDim2 %i is not equal!!!", jmData_.shapeInfo.vDim2, vDim2);
+                         "Input  vDim2 %i and output vDim2 %i is not equal!!!", jmData_.shapeInfo.vDim2, vDim2);
     uint32_t vDim1 = static_cast<uint32_t>(outputShape.GetDim(outputShapeRank--));
     OPS_ERR_IF_CONDITION(context_, vDim1 != jmData_.shapeInfo.vDim1,
-        "Input  vDim1 %i and output vDim1 %i is not equal!!!", jmData_.shapeInfo.vDim1, vDim1);
+                         "Input  vDim1 %i and output vDim1 %i is not equal!!!", jmData_.shapeInfo.vDim1, vDim1);
     uint32_t batchSize = 1;
     while (outputShapeRank >= 0) {
         int32_t dim = static_cast<int32_t>(outputShape.GetDim(outputShapeRank--));
         batchSize *= dim > 0 ? dim : 1;
     }
     OPS_ERR_IF_CONDITION(context_, batchSize != jmData_.shapeInfo.batchSize,
-        "Input  batch %i and output V batch %i is not equal!!!", jmData_.shapeInfo.batchSize, batchSize);
+                         "Input  batch %i and output V batch %i is not equal!!!", jmData_.shapeInfo.batchSize,
+                         batchSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -173,23 +187,24 @@ ge::graphStatus JMTiling::InitUOutput()
     const gert::Shape& outputShape = outputUShapePtr->GetStorageShape();
     int64_t outputShapeSize = outputShape.GetShapeSize();
     int64_t outputShapeRank = outputShape.GetDimNum();
-    OPS_ERR_IF_CONDITION(context_, (outputShapeRank < 2),
-        "Output U rank must be more than 1. Current rank is %i!!!\n", outputShapeRank);
+    OPS_ERR_IF_CONDITION(context_, (outputShapeRank < 2), "Output U rank must be more than 1. Current rank is %i!!!\n",
+                         outputShapeRank);
 
     outputShapeRank--;
     uint32_t uDim2 = static_cast<uint32_t>(outputShape.GetDim(outputShapeRank--));
     OPS_ERR_IF_CONDITION(context_, uDim2 != jmData_.shapeInfo.uDim2,
-        "Input  uDim2 %i and output uDim2 %i is not equal!!!", jmData_.shapeInfo.uDim2, uDim2);
+                         "Input  uDim2 %i and output uDim2 %i is not equal!!!", jmData_.shapeInfo.uDim2, uDim2);
     uint32_t uDim1 = static_cast<uint32_t>(outputShape.GetDim(outputShapeRank--));
     OPS_ERR_IF_CONDITION(context_, uDim1 != jmData_.shapeInfo.uDim1,
-        "Input  uDim1 %i and output uDim1 %i is not equal!!!", jmData_.shapeInfo.uDim1, uDim1);
+                         "Input  uDim1 %i and output uDim1 %i is not equal!!!", jmData_.shapeInfo.uDim1, uDim1);
     uint32_t batchSize = 1;
     while (outputShapeRank >= 0) {
         int32_t dim = static_cast<int32_t>(outputShape.GetDim(outputShapeRank--));
         batchSize *= dim > 0 ? dim : 1;
     }
     OPS_ERR_IF_CONDITION(context_, batchSize != jmData_.shapeInfo.batchSize,
-        "Input  batch %i and output U batch %i is not equal!!!", jmData_.shapeInfo.batchSize, batchSize);
+                         "Input  batch %i and output U batch %i is not equal!!!", jmData_.shapeInfo.batchSize,
+                         batchSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -201,7 +216,7 @@ ge::graphStatus JMTiling::InitAttrs()
     OPS_LOG_E_IF_NULL(context_, numIterationsPtr, return ge::GRAPH_FAILED);
     int numIterations = *numIterationsPtr;
     OPS_ERR_IF_CONDITION(context_, numIterations < 1,
-        "Number iterations must be a positive number. Current value is %i", numIterations);
+                         "Number iterations must be a positive number. Current value is %i", numIterations);
     jmData_.iterInfo.nIterations = numIterations;
     return ge::GRAPH_SUCCESS;
 }
@@ -251,16 +266,16 @@ ge::graphStatus JMTiling::InitMemInfo()
     uint32_t nSize = jmData_.shapeInfo.nSize;
     jmData_.memInfo.rowSize = nSize * sizeof(float);
     jmData_.memInfo.nMaskSize = MASK256_BYTES;
-    jmData_.memInfo.nSizeAligned = (((nSize + jmData_.memInfo.nMaskSize - 1) / jmData_.memInfo.nMaskSize) *
-                                    jmData_.memInfo.nMaskSize);
+    jmData_.memInfo.nSizeAligned =
+        (((nSize + jmData_.memInfo.nMaskSize - 1) / jmData_.memInfo.nMaskSize) * jmData_.memInfo.nMaskSize);
     jmData_.memInfo.nTailSize = nSize % jmData_.memInfo.nMaskSize;
     jmData_.memInfo.nRepeatsNum = jmData_.memInfo.nSizeAligned / jmData_.memInfo.nMaskSize;
     jmData_.memInfo.rowSizeAligned = jmData_.memInfo.nSizeAligned * sizeof(float);
 
     uint32_t uNSize = jmData_.shapeInfo.uDim2;
     jmData_.memInfo.uRowSize = uNSize * sizeof(float);
-    jmData_.memInfo.uNSizeAligned = (((uNSize + jmData_.memInfo.nMaskSize - 1) / jmData_.memInfo.nMaskSize) *
-                                    jmData_.memInfo.nMaskSize);
+    jmData_.memInfo.uNSizeAligned =
+        (((uNSize + jmData_.memInfo.nMaskSize - 1) / jmData_.memInfo.nMaskSize) * jmData_.memInfo.nMaskSize);
     jmData_.memInfo.uNumRepeats = jmData_.memInfo.uNSizeAligned / jmData_.memInfo.nMaskSize;
     uint32_t uRowSizeAligned = jmData_.memInfo.uNSizeAligned * sizeof(float);
     jmData_.memInfo.uTailSize = uNSize % jmData_.memInfo.nMaskSize;
@@ -272,16 +287,18 @@ ge::graphStatus JMTiling::InitMemInfo()
     jmData_.memInfo.recordMemSize = jmData_.memInfo.recordSizeAligned * sizeof(float);
 
     jmData_.shapeInfo.vDim2Aligned = jmData_.memInfo.nSizeAligned;
-    jmData_.shapeInfo.uDim2Aligned = (((jmData_.shapeInfo.uDim2 + jmData_.memInfo.nMaskSize - 1) /
-        jmData_.memInfo.nMaskSize) * jmData_.memInfo.nMaskSize);
+    jmData_.shapeInfo.uDim2Aligned =
+        (((jmData_.shapeInfo.uDim2 + jmData_.memInfo.nMaskSize - 1) / jmData_.memInfo.nMaskSize) *
+         jmData_.memInfo.nMaskSize);
 
-    int bucketSize = (ubSize - RESERVED_VECTOR_MEMORY_SIZE) / (3 * jmData_.memInfo.recordMemSize +
-        2 * jmData_.memInfo.tmpRowSizeAligned * sizeof(float) + 2 * jmData_.memInfo.nMaskSize * sizeof(float));
+    int bucketSize = (ubSize - RESERVED_VECTOR_MEMORY_SIZE) /
+                     (3 * jmData_.memInfo.recordMemSize + 2 * jmData_.memInfo.tmpRowSizeAligned * sizeof(float) +
+                      2 * jmData_.memInfo.nMaskSize * sizeof(float));
     PRINT_VAL(bucketSize);
     bucketSize = MIN(bucketSize, MAX_VEC_INSTRUCTION_NUM);
     PRINT_VAL(bucketSize);
     OPS_ERR_IF_CONDITION(context_, bucketSize < 1,
-        "Bucket size is less than 1 (%i), this configuration is not supported!!!", bucketSize);
+                         "Bucket size is less than 1 (%i), this configuration is not supported!!!", bucketSize);
     jmData_.memInfo.maxBucketSize = bucketSize;
     return ge::GRAPH_SUCCESS;
 }
@@ -362,8 +379,9 @@ ge::graphStatus JMTiling::DoTiling()
     RETURN_IF_FAILED(InitMemInfo());
     RETURN_IF_FAILED(FillTiling());
     size_t* workSpaces = context_->GetWorkspaceSizes(1);
-    uint32_t aTmpSize = jmData_.shapeInfo.batchSize * jmData_.shapeInfo.mSize * jmData_.memInfo.recordSizeAligned *
-        sizeof(float) + jmData_.shapeInfo.batchSize * jmData_.shapeInfo.sSize * sizeof(float);
+    uint32_t aTmpSize =
+        jmData_.shapeInfo.batchSize * jmData_.shapeInfo.mSize * jmData_.memInfo.recordSizeAligned * sizeof(float) +
+        jmData_.shapeInfo.batchSize * jmData_.shapeInfo.sSize * sizeof(float);
     workSpaces[0] = 16 * 1024 * 1024 + 2 * aTmpSize;
 
     context_->SetBlockDim(tilingData_.get_numAICores());
@@ -380,8 +398,6 @@ ge::graphStatus TilingForJacobi(gert::TilingContext* context)
 }
 
 // --------------------------Registering the Tiling and TilingPrepare Functions--------
-IMPL_OP_OPTILING(Jacobi)
-    .Tiling(TilingForJacobi)
-    .TilingParse<JMCompileInfo>(TilingPrepareForJacobi);
+IMPL_OP_OPTILING(Jacobi).Tiling(TilingForJacobi).TilingParse<JMCompileInfo>(TilingPrepareForJacobi);
 
 } // namespace optiling

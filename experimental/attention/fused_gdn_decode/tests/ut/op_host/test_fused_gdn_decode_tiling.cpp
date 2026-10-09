@@ -21,7 +21,7 @@ namespace {
 
 gert::TilingContextPara MakeContext(int64_t batch, int64_t qkHeads, int64_t valueHeads, int64_t keyDim,
                                     int64_t valueDim, ge::DataType inputDtype, ge::DataType stateDtype,
-                                    FusedGdnDecodeCompileInfo *compileInfo)
+                                    FusedGdnDecodeCompileInfo* compileInfo)
 {
     const int64_t mixedDim = 2 * qkHeads * keyDim + valueHeads * valueDim;
     constexpr int64_t stateSlots = 128;

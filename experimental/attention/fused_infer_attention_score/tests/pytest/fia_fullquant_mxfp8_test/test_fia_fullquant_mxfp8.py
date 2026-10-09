@@ -43,30 +43,60 @@ def _execute_test(params):
     _apply_params(params)
 
     data = golden.generate_data()
-    q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale, qr_bf16, kr_bf16, block_table_torch = data
+    (
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        deq_q,
+        deq_k,
+        deq_v,
+        p_scale,
+        qr_bf16,
+        kr_bf16,
+        block_table_torch,
+    ) = data
 
     cpu_out, cpu_lse = golden.cpu_mxfp8_golden(
-        q_fp8, k_fp8, v_fp8,
-        deq_q, deq_k, deq_v, p_scale,
-        golden.ACTUAL_SEQ_Q, golden.ACTUAL_SEQ_KV,
-        qr_bf16, kr_bf16,
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        deq_q,
+        deq_k,
+        deq_v,
+        p_scale,
+        golden.ACTUAL_SEQ_Q,
+        golden.ACTUAL_SEQ_KV,
+        qr_bf16,
+        kr_bf16,
     )
 
     npu_out, lse_out = golden.npu_mxfp8_fa(
-        q_fp8, k_fp8, v_fp8,
-        deq_q, deq_k, deq_v, p_scale,
-        golden.ACTUAL_SEQ_Q, golden.ACTUAL_SEQ_KV,
-        block_table_torch, qr_bf16, kr_bf16,
+        q_fp8,
+        k_fp8,
+        v_fp8,
+        deq_q,
+        deq_k,
+        deq_v,
+        p_scale,
+        golden.ACTUAL_SEQ_Q,
+        golden.ACTUAL_SEQ_KV,
+        block_table_torch,
+        qr_bf16,
+        kr_bf16,
     )
 
     compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
-    cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.ACTUAL_SEQ_Q, compare_layout)
+    cpu_cmp = golden.convert_q_bnsd_to_layout(
+        cpu_out, golden.ACTUAL_SEQ_Q, compare_layout
+    )
 
     atten_result = result_compare_method.check_result(cpu_cmp, npu_out)
 
     lse_result = None
     if golden.ENABLE_LSE:
-        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.ACTUAL_SEQ_Q, compare_layout)
+        lse_cmp = golden.convert_q_bnsd_to_layout(
+            cpu_lse, golden.ACTUAL_SEQ_Q, compare_layout
+        )
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result
@@ -81,11 +111,21 @@ def test_fia_fullquant_mxfp8(params):
 
     atten_status = atten_result[0] if isinstance(atten_result, tuple) else atten_result
     if atten_status != "Pass":
-        pct = atten_result[1] if isinstance(atten_result, tuple) and len(atten_result) > 1 else "N/A"
-        pytest.fail(f"Attention output compare failed: result={atten_status}, PctRlt={pct}")
+        pct = (
+            atten_result[1]
+            if isinstance(atten_result, tuple) and len(atten_result) > 1
+            else "N/A"
+        )
+        pytest.fail(
+            f"Attention output compare failed: result={atten_status}, PctRlt={pct}"
+        )
 
     if lse_result is not None:
         lse_status = lse_result[0] if isinstance(lse_result, tuple) else lse_result
         if lse_status != "Pass":
-            pct = lse_result[1] if isinstance(lse_result, tuple) and len(lse_result) > 1 else "N/A"
+            pct = (
+                lse_result[1]
+                if isinstance(lse_result, tuple) and len(lse_result) > 1
+                else "N/A"
+            )
             pytest.fail(f"LSE compare failed: result={lse_status}, PctRlt={pct}")

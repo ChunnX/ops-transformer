@@ -45,11 +45,11 @@ struct Convert;
 
 template <>
 struct Convert<half> {
-    __aicore__ static inline void ToFloat(const LocalTensor<float> &dst, const LocalTensor<half> &src, uint32_t count)
+    __aicore__ static inline void ToFloat(const LocalTensor<float>& dst, const LocalTensor<half>& src, uint32_t count)
     {
         Cast(dst, src, RoundMode::CAST_NONE, count);
     }
-    __aicore__ static inline void FromFloat(const LocalTensor<half> &dst, const LocalTensor<float> &src, uint32_t count)
+    __aicore__ static inline void FromFloat(const LocalTensor<half>& dst, const LocalTensor<float>& src, uint32_t count)
     {
         Cast(dst, src, RoundMode::CAST_NONE, count);
     }
@@ -57,12 +57,12 @@ struct Convert<half> {
 
 template <>
 struct Convert<bfloat16_t> {
-    __aicore__ static inline void ToFloat(const LocalTensor<float> &dst, const LocalTensor<bfloat16_t> &src,
+    __aicore__ static inline void ToFloat(const LocalTensor<float>& dst, const LocalTensor<bfloat16_t>& src,
                                           uint32_t count)
     {
         Cast(dst, src, RoundMode::CAST_NONE, count);
     }
-    __aicore__ static inline void FromFloat(const LocalTensor<bfloat16_t> &dst, const LocalTensor<float> &src,
+    __aicore__ static inline void FromFloat(const LocalTensor<bfloat16_t>& dst, const LocalTensor<float>& src,
                                             uint32_t count)
     {
         Cast(dst, src, RoundMode::CAST_RINT, count);
@@ -71,11 +71,11 @@ struct Convert<bfloat16_t> {
 
 template <>
 struct Convert<float> {
-    __aicore__ static inline void ToFloat(const LocalTensor<float> &dst, const LocalTensor<float> &src, uint32_t count)
+    __aicore__ static inline void ToFloat(const LocalTensor<float>& dst, const LocalTensor<float>& src, uint32_t count)
     {
         Adds(dst, src, 0.0F, count);
     }
-    __aicore__ static inline void FromFloat(const LocalTensor<float> &dst, const LocalTensor<float> &src,
+    __aicore__ static inline void FromFloat(const LocalTensor<float>& dst, const LocalTensor<float>& src,
                                             uint32_t count)
     {
         Adds(dst, src, 0.0F, count);
@@ -88,7 +88,7 @@ public:
     __aicore__ inline ScaledCosineAttentionScoreImpl() = default;
 
     __aicore__ inline void Init(GM_ADDR query, GM_ADDR key, GM_ADDR scale, GM_ADDR output,
-                                const optiling::ScaledCosineAttentionScoreTilingData *tiling)
+                                const optiling::ScaledCosineAttentionScoreTilingData* tiling)
     {
         heads_ = tiling->heads;
         seqLen_ = tiling->seqLen;
@@ -102,10 +102,10 @@ public:
 
         const uint64_t inputElements = static_cast<uint64_t>(tiling->batch) * heads_ * seqLen_ * headDim_;
         const uint64_t outputElements = static_cast<uint64_t>(tiling->batch) * heads_ * seqLen_ * seqLen_;
-        queryGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(query), inputElements);
-        keyGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(key), inputElements);
-        scaleGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(scale), heads_);
-        outputGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(output), outputElements);
+        queryGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(query), inputElements);
+        keyGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(key), inputElements);
+        scaleGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(scale), heads_);
+        outputGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(output), outputElements);
 
         pipe_.InitBuffer(queryQueue_, 1, AlignUpBytes(alignedHeadDim_ * sizeof(T)));
         pipe_.InitBuffer(keyQueue_, 1, AlignUpBytes(keyTileRows_ * alignedHeadDim_ * sizeof(T)));
@@ -132,7 +132,7 @@ public:
     }
 
 private:
-    __aicore__ inline void CopyOneInputRow(const LocalTensor<T> &dst, const GlobalTensor<T> &src)
+    __aicore__ inline void CopyOneInputRow(const LocalTensor<T>& dst, const GlobalTensor<T>& src)
     {
         DataCopyExtParams copy{1, static_cast<uint32_t>(headDim_ * sizeof(T)), 0, 0, 0};
         const uint8_t rightPad = static_cast<uint8_t>(alignedHeadDim_ - headDim_);
@@ -140,7 +140,7 @@ private:
         DataCopyPad(dst, src, copy, pad);
     }
 
-    __aicore__ inline void CopyKeyTile(const LocalTensor<T> &dst, const GlobalTensor<T> &src, uint32_t rows)
+    __aicore__ inline void CopyKeyTile(const LocalTensor<T>& dst, const GlobalTensor<T>& src, uint32_t rows)
     {
         DataCopyExtParams copy{static_cast<uint16_t>(rows), static_cast<uint32_t>(headDim_ * sizeof(T)), 0, 0, 0};
         const uint8_t rightPad = static_cast<uint8_t>(alignedHeadDim_ - headDim_);
@@ -157,14 +157,14 @@ private:
         scaleQueue_.EnQue(scaleLocal);
     }
 
-    __aicore__ inline void CopyOutput(uint64_t offset, const LocalTensor<T> &src, uint32_t count)
+    __aicore__ inline void CopyOutput(uint64_t offset, const LocalTensor<T>& src, uint32_t count)
     {
         DataCopyExtParams copy{1, static_cast<uint32_t>(count * sizeof(T)), 0, 0, 0};
         DataCopyPad(outputGm_[offset], src, copy);
     }
 
-    __aicore__ inline void ComputeInverseNorm(const LocalTensor<float> &src, const LocalTensor<float> &tmp,
-                                              const LocalTensor<float> &work, const LocalTensor<float> &scalar,
+    __aicore__ inline void ComputeInverseNorm(const LocalTensor<float>& src, const LocalTensor<float>& tmp,
+                                              const LocalTensor<float>& work, const LocalTensor<float>& scalar,
                                               uint32_t sumOffset, uint32_t sumEpsOffset, uint32_t normOffset,
                                               uint32_t invNormOffset)
     {

@@ -22,11 +22,11 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(MhcPreSinkhornPremixBackward);
 
-const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *> MhcPreSinkhornPremixBackward(
-    const aclTensor *gradHin, const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *x,
-    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *hPre,
-    const aclTensor *hcBeforeNorm, const aclTensor *invRms, const aclTensor *sumOut, const aclTensor *normOut,
-    const aclTensor *preMix, const aclTensor *gradPre, float hcEps, aclOpExecutor *executor)
+const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPreSinkhornPremixBackward(
+    const aclTensor* gradHin, const aclTensor* gradHPost, const aclTensor* gradHRes, const aclTensor* x,
+    const aclTensor* phi, const aclTensor* alpha, const aclTensor* bias, const aclTensor* hPre,
+    const aclTensor* hcBeforeNorm, const aclTensor* invRms, const aclTensor* sumOut, const aclTensor* normOut,
+    const aclTensor* preMix, const aclTensor* gradPre, float hcEps, aclOpExecutor* executor)
 {
     L0_DFX(MhcPreSinkhornPremixBackward, gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm, invRms,
            sumOut, normOut, preMix, gradPre, hcEps);
@@ -43,7 +43,7 @@ const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *
     // gradBias: shape与bias一致，dtype为FP32
     auto outGradBias = executor->AllocTensor(bias->GetViewShape(), outType, format);
     // gradPreMix: shape同pre_mix(无pre_mix时用hPre占位, kernel不写入), dtype为FP32
-    const aclTensor *gradPreMixShapeRef = (preMix != nullptr) ? preMix : hPre;
+    const aclTensor* gradPreMixShapeRef = (preMix != nullptr) ? preMix : hPre;
     auto outGradPreMix = executor->AllocTensor(gradPreMixShapeRef->GetViewShape(), outType, format);
 
     auto ret1 = ADD_TO_LAUNCHER_LIST_AICORE(MhcPreSinkhornPremixBackward,

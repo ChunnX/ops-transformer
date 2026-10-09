@@ -29,8 +29,8 @@ uint64_t GetQbsaMetadataOutputSize(int64_t batchSize, int64_t numHeadsQ)
            QBSA_AIV_CORE_NUM * QBSA_FD_METADATA_SIZE;
 }
 
-void CheckQbsaMetadataLayout(const at::Tensor &sparseSeqLen, const c10::optional<at::Tensor> &cuSeqlensQ,
-                             const c10::optional<at::Tensor> &sequsedQ, int64_t batchSize, int64_t numHeadsQ,
+void CheckQbsaMetadataLayout(const at::Tensor& sparseSeqLen, const c10::optional<at::Tensor>& cuSeqlensQ,
+                             const c10::optional<at::Tensor>& sequsedQ, int64_t batchSize, int64_t numHeadsQ,
                              int64_t quantMode, c10::string_view layoutQ, c10::string_view layoutKv)
 {
     TORCH_CHECK(optiling::detail::IsSupportedQueryLayout(std::string(layoutQ).c_str(), quantMode),
@@ -50,9 +50,9 @@ void CheckQbsaMetadataLayout(const at::Tensor &sparseSeqLen, const c10::optional
 }
 
 at::Tensor npu_quant_block_sparse_attn_metadata_npu(
-    const at::Tensor &sparseSeqLen, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv, int64_t batchSize,
+    const at::Tensor& sparseSeqLen, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+    const c10::optional<at::Tensor>& cuSeqlensQ, const c10::optional<at::Tensor>& cuSeqlensKv,
+    const c10::optional<at::Tensor>& sequsedQ, const c10::optional<at::Tensor>& sequsedKv, int64_t batchSize,
     int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode, c10::string_view layoutQ,
     c10::string_view layoutKv, c10::string_view layoutSparseIndices)
 {
@@ -64,9 +64,9 @@ at::Tensor npu_quant_block_sparse_attn_metadata_npu(
     std::string layoutQStr = std::string(layoutQ);
     std::string layoutKvStr = std::string(layoutKv);
     std::string layoutSparseIndicesStr = std::string(layoutSparseIndices);
-    char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
-    char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
-    char *layoutSparseIndicesPtr = const_cast<char *>(layoutSparseIndicesStr.c_str());
+    char* layoutQPtr = const_cast<char*>(layoutQStr.c_str());
+    char* layoutKvPtr = const_cast<char*>(layoutKvStr.c_str());
+    char* layoutSparseIndicesPtr = const_cast<char*>(layoutSparseIndicesStr.c_str());
 
     EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttnMetadata, sparseSeqLen, cuSeqlensQ, cuSeqlensKv, sequsedQ, sequsedKv,
                     batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode, maskMode,
@@ -75,9 +75,9 @@ at::Tensor npu_quant_block_sparse_attn_metadata_npu(
 }
 
 at::Tensor npu_quant_block_sparse_attn_metadata_meta(
-    const at::Tensor &sparseSeqLen, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv, int64_t batchSize,
+    const at::Tensor& sparseSeqLen, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+    const c10::optional<at::Tensor>& cuSeqlensQ, const c10::optional<at::Tensor>& cuSeqlensKv,
+    const c10::optional<at::Tensor>& sequsedQ, const c10::optional<at::Tensor>& sequsedKv, int64_t batchSize,
     int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode, c10::string_view layoutQ,
     c10::string_view layoutKv, c10::string_view layoutSparseIndices)
 {

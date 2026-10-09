@@ -44,9 +44,9 @@ struct StageTwoParams {
     GlobalTensor<lowType> bf16State; // (Nv, Dv, Dk)  state 的 lowType 影子（CalVPrime/CalAttnInter 的 B 输入）
     GlobalTensor<lowType> bf16VNew;  // (Nv, Sp, Dv)  v_new 的 lowType 影子（CalStateNew 的 A 输入）
     GM_ADDR ws;
-    StageTwoMT<lowType, highType> *mm1;
-    TPipe *pipe;
-    ChunkGroup *cg;
+    StageTwoMT<lowType, highType>* mm1;
+    TPipe* pipe;
+    ChunkGroup* cg;
     int64_t Nv;
     int64_t Nk;
     int64_t Dv;
@@ -56,7 +56,7 @@ struct StageTwoParams {
 template <typename lowType, typename highType, bool hasG>
 class Stage2 {
 public:
-    __aicore__ inline void Init(StageTwoParams<lowType, highType> *initParams, int32_t coreNum)
+    __aicore__ inline void Init(StageTwoParams<lowType, highType>* initParams, int32_t coreNum)
     {
         sTP_ = initParams;
         pipe_ = sTP_->pipe;
@@ -278,8 +278,8 @@ private:
         sTP_->mm1->End();
     }
 
-    StageTwoParams<lowType, highType> *sTP_;
-    TPipe *pipe_;
+    StageTwoParams<lowType, highType>* sTP_;
+    TPipe* pipe_;
     TQue<QuePosition::VECIN, BUFFER_NUM_ONE> inQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> bf16CastQueue_;

@@ -32,19 +32,20 @@ JACOBI_SVD_TEST_CASES = [
 ]
 
 QR_TEST_CASES = [
-#    ((32, 16), 1e-5),
+    #    ((32, 16), 1e-5),
     ((128, 16), 1e-5),
     ((1, 128, 16), 1e-5),
     ((48, 128, 16), 1e-5),
     ((2, 1, 3, 128, 16), 1e-5),
-#    ((4, 4*1024, 168), 1e-4),
-    ((48, 64*1024, 160), 1e-2),
+    #    ((4, 4*1024, 168), 1e-4),
+    ((48, 64 * 1024, 160), 1e-2),
 ]
 
 RSVD_TEST_CASES = [
-    ((48, 64*1024, 512), 160, 8, 1e-2),
-    ((48, 128*1024, 512), 160, 8, 1e-2),
+    ((48, 64 * 1024, 512), 160, 8, 1e-2),
+    ((48, 128 * 1024, 512), 160, 8, 1e-2),
 ]
+
 
 @pytest.mark.parametrize("test_shapes,atol,num_iter", JACOBI_SVD_TEST_CASES)
 def test_jacobi_svd(test_shapes, atol, num_iter):
@@ -52,7 +53,7 @@ def test_jacobi_svd(test_shapes, atol, num_iter):
     A = torch.randn(test_shapes, dtype=torch.float32, device="cpu")
     npu_a = A.to("npu:%s" % DEVICE_ID)
 
-    npu_u, npu_s,  npu_v = torch.ops.npu_linalg.svd(npu_a, num_iter)
+    npu_u, npu_s, npu_v = torch.ops.npu_linalg.svd(npu_a, num_iter)
     u, s, v = npu_u.cpu(), npu_s.cpu(), npu_v.cpu()
     A = A.reshape(-1, A.shape[-2], A.shape[-1])
     u = torch.transpose(u, -2, -1).reshape(-1, A.shape[-2], A.shape[-2])
@@ -60,6 +61,7 @@ def test_jacobi_svd(test_shapes, atol, num_iter):
     v = v.reshape(-1, A.shape[-2], A.shape[-1])
     res = torch.matmul((u * s), v)
     assert torch.allclose(A, res, atol=atol)
+
 
 @pytest.mark.parametrize("test_shapes,atol", QR_TEST_CASES)
 def test_qr_decomposition(test_shapes, atol):
@@ -74,6 +76,7 @@ def test_qr_decomposition(test_shapes, atol):
     r = r.reshape(-1, A.shape[-1], A.shape[-1])
     assert torch.allclose(A, torch.matmul(q, r), atol=atol)
 
+
 @pytest.mark.parametrize("test_shapes,rank,gen_mtx_rank,atol", RSVD_TEST_CASES)
 def test_svd_lowrank(test_shapes, rank, gen_mtx_rank, atol):
     b, m, n = test_shapes
@@ -82,4 +85,6 @@ def test_svd_lowrank(test_shapes, rank, gen_mtx_rank, atol):
 
     npu_u, npu_s, npu_v = torch.ops.npu_linalg.svd_lowrank(npu_a, q=rank)
     u, s, v = npu_u.cpu(), npu_s.cpu(), npu_v.cpu()
-    assert torch.allclose(A, torch.matmul(torch.matmul(u, torch.diag_embed(s)), v), atol=atol)
+    assert torch.allclose(
+        A, torch.matmul(torch.matmul(u, torch.diag_embed(s)), v), atol=atol
+    )

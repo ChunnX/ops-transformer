@@ -27,8 +27,8 @@ const int DIM_2 = 2;
 const int DIM_3 = 3;
 
 // 工具函数，推导输出 shape（与 LIV2 ConstructLightningIndexerOutputTensor 同构，returnValue 恒 false）
-std::tuple<at::Tensor, at::Tensor> ConstructSparseLightningIndexerOutputTensor(const at::Tensor &query,
-                                                                               const at::Tensor &key, int64_t topk,
+std::tuple<at::Tensor, at::Tensor> ConstructSparseLightningIndexerOutputTensor(const at::Tensor& query,
+                                                                               const at::Tensor& key, int64_t topk,
                                                                                std::string queryLayoutStr,
                                                                                std::string keyLayoutStr)
 {
@@ -64,13 +64,13 @@ std::tuple<at::Tensor, at::Tensor> ConstructSparseLightningIndexerOutputTensor(c
 // 输入签名按 aclnn 原型序：inputs 0-12（candidate_topk_indices 必传、candidate_block_length 预留仅空）、
 // outputs 0-1、attrs 0-7（return_value 固定 0，不暴露）。
 std::tuple<at::Tensor, at::Tensor> SparseLightningIndexer(
-    const at::Tensor &q, const at::Tensor &k, const at::Tensor &w, int64_t topk, const at::Tensor &candidateTopkIndices,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensK,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedK,
-    const c10::optional<at::Tensor> &cmpResidualK, const c10::optional<at::Tensor> &blockTable,
-    const c10::optional<at::Tensor> &outputIdxOffset, const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ,
+    const at::Tensor& q, const at::Tensor& k, const at::Tensor& w, int64_t topk, const at::Tensor& candidateTopkIndices,
+    const c10::optional<at::Tensor>& cuSeqlensQ, const c10::optional<at::Tensor>& cuSeqlensK,
+    const c10::optional<at::Tensor>& sequsedQ, const c10::optional<at::Tensor>& sequsedK,
+    const c10::optional<at::Tensor>& cmpResidualK, const c10::optional<at::Tensor>& blockTable,
+    const c10::optional<at::Tensor>& outputIdxOffset, const c10::optional<at::Tensor>& metadata, int64_t maxSeqlenQ,
     c10::string_view layoutQ, c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio,
-    const c10::optional<at::Tensor> &candidateBlockLength, int64_t candidateBlockSize)
+    const c10::optional<at::Tensor>& candidateBlockLength, int64_t candidateBlockSize)
 {
     TORCH_CHECK(q.numel() > 0, "Tensor q is empty.")
     TORCH_CHECK(k.numel() > 0, "Tensor k is empty.")
@@ -101,8 +101,8 @@ std::tuple<at::Tensor, at::Tensor> SparseLightningIndexer(
     at::Tensor sparseIndicesOut = std::get<0>(sparseOutput);
     at::Tensor sparseValuesOut = std::get<1>(sparseOutput);
     // convert str
-    char *queryLayoutPtr = const_cast<char *>(queryLayoutStr.c_str());
-    char *keyLayoutPtr = const_cast<char *>(keyLayoutStr.c_str());
+    char* queryLayoutPtr = const_cast<char*>(queryLayoutStr.c_str());
+    char* keyLayoutPtr = const_cast<char*>(keyLayoutStr.c_str());
     int64_t returnValueOff = 0; // C6：固定 0（左值供 ACLNN_CMD 转发）
 
     ACLNN_CMD(aclnnSparseLightningIndexer, q, k, w, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,

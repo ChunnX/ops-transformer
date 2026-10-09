@@ -397,14 +397,14 @@ ge::graphStatus StemIndexerInfoParser::GetBaseShapeInfo()
 
 ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
 {
-    const auto &qShape = opParamInfo_.qflat.shape->GetStorageShape();
-    const auto &kShape = opParamInfo_.kflat.shape->GetStorageShape();
-    const auto &vShape = opParamInfo_.vbias.shape->GetStorageShape();
-    const auto &qSeqShape = opParamInfo_.qSeqLens.shape->GetStorageShape();
-    const auto &kvSeqShape = opParamInfo_.kvSeqLens.shape->GetStorageShape();
-    const auto &metadataShape = opParamInfo_.metadata.tensor->GetStorageShape();
-    const auto &sparseIndicesShape = opParamInfo_.sparseIndicesOut.shape->GetStorageShape();
-    const auto &sparseSeqLenShape = opParamInfo_.sparseSeqLenOut.shape->GetStorageShape();
+    const auto& qShape = opParamInfo_.qflat.shape->GetStorageShape();
+    const auto& kShape = opParamInfo_.kflat.shape->GetStorageShape();
+    const auto& vShape = opParamInfo_.vbias.shape->GetStorageShape();
+    const auto& qSeqShape = opParamInfo_.qSeqLens.shape->GetStorageShape();
+    const auto& kvSeqShape = opParamInfo_.kvSeqLens.shape->GetStorageShape();
+    const auto& metadataShape = opParamInfo_.metadata.tensor->GetStorageShape();
+    const auto& sparseIndicesShape = opParamInfo_.sparseIndicesOut.shape->GetStorageShape();
+    const auto& sparseSeqLenShape = opParamInfo_.sparseSeqLenOut.shape->GetStorageShape();
     const std::string qkShapeStr = Ops::Base::ToString(qShape) + " and " + Ops::Base::ToString(kShape);
 
     OP_CHECK_IF(
@@ -432,7 +432,7 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
             ("The shapes of input q_seq_lens and kv_seq_lens should both be [" + std::to_string(bSize_) + "]").c_str()),
         return ge::GRAPH_FAILED);
     if (!useKvSeqLensAsNumPrompt_) {
-        const auto &numPromptShape = opParamInfo_.numPromptTokens.tensor->GetStorageShape();
+        const auto& numPromptShape = opParamInfo_.numPromptTokens.tensor->GetStorageShape();
         OP_CHECK_IF(numPromptShape.GetDim(DIM_IDX_ZERO) != bSize_,
                     OP_LOGE_FOR_INVALID_SHAPE(opName_, "num_prompt_tokens", Ops::Base::ToString(numPromptShape).c_str(),
                                               ("[" + std::to_string(bSize_) + "]").c_str()),
@@ -465,7 +465,7 @@ ge::graphStatus StemIndexerInfoParser::ValidateInputShapesMatch()
     return ge::GRAPH_SUCCESS;
 }
 
-void StemIndexerInfoParser::GenerateInfo(StemIndexerTilingInfo &stemInfo)
+void StemIndexerInfoParser::GenerateInfo(StemIndexerTilingInfo& stemInfo)
 {
     stemInfo.opName = opName_;
     stemInfo.platformInfo = platformInfo_;
@@ -497,7 +497,7 @@ void StemIndexerInfoParser::GenerateInfo(StemIndexerTilingInfo &stemInfo)
     stemInfo.outputType = outputType_;
 }
 
-ge::graphStatus StemIndexerInfoParser::ParseAndCheck(StemIndexerTilingInfo &stemInfo)
+ge::graphStatus StemIndexerInfoParser::ParseAndCheck(StemIndexerTilingInfo& stemInfo)
 {
     if (GetOpName() != ge::GRAPH_SUCCESS || GetNpuInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -515,12 +515,12 @@ ge::graphStatus StemIndexerInfoParser::ParseAndCheck(StemIndexerTilingInfo &stem
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingPrepareForStemIndexer(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForStemIndexer(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingInfo)
+ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo* tilingInfo)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
@@ -529,7 +529,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     context_->SetBlockDim(blockDim);
 
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize;
 
     tilingData_.set_bSize(tilingInfo->bSize);
@@ -568,7 +568,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingForStemIndexer(gert::TilingContext *context)
+ge::graphStatus TilingForStemIndexer(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("StemIndexer", "Tiling context is null."),
                 return ge::GRAPH_FAILED);

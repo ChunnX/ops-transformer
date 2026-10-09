@@ -25,14 +25,14 @@ using namespace AscendC;
 namespace optiling {
 namespace bsag {
 
-ASCENDC_EXTERN_C ge::graphStatus TilingBlockSparseAttentionGrad(gert::TilingContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingBlockSparseAttentionGrad(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("BlockSparseAttentionGrad", "Context is nullptr."),
                 return ge::GRAPH_FAILED);
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareBlockSparseAttentionGrad(gert::TilingParseContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareBlockSparseAttentionGrad(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

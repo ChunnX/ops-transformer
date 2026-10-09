@@ -30,7 +30,7 @@ using namespace Ops::Transformer::OpTiling;
 
 class MhcPreSinkhornPremixBackwardArch35DeterminiticTiling : public MhcPreSinkhornPremixBackwardArch35Tiling {
 public:
-    explicit MhcPreSinkhornPremixBackwardArch35DeterminiticTiling(gert::TilingContext *context)
+    explicit MhcPreSinkhornPremixBackwardArch35DeterminiticTiling(gert::TilingContext* context)
         : MhcPreSinkhornPremixBackwardArch35Tiling(context)
     {}
 

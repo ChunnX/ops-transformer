@@ -14,21 +14,12 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* QuantSalsIndexerMetadata(
-    const aclTensor* actualSeqLengthsKvOptional,
-    int64_t batchSize,
-    int64_t keySeqSize,
-    int64_t keyHeadNum,
-    int64_t headDim,
-    int64_t aicCoreNum,
-    int64_t aivCoreNum,
-    int64_t sparseBlockSize,
-    double sparseRatio,
-    int64_t fixedTailCount,
-    char* layoutKeyOptional,
-    const char* socVersionOptional,
-    const aclTensor* metaData,
-    aclOpExecutor* executor);
-}  // namespace l0op
+const aclTensor* QuantSalsIndexerMetadata(const aclTensor* actualSeqLengthsKvOptional, int64_t batchSize,
+                                          int64_t keySeqSize, int64_t keyHeadNum, int64_t headDim, int64_t aicCoreNum,
+                                          int64_t aivCoreNum, int64_t sparseBlockSize, double sparseRatio,
+                                          int64_t fixedTailCount, char* layoutKeyOptional,
+                                          const char* socVersionOptional, const aclTensor* metaData,
+                                          aclOpExecutor* executor);
+} // namespace l0op
 
 #endif

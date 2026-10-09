@@ -20,7 +20,7 @@ using namespace Reg;
 // 通用 chunk 全0 模板：pDest 清 0 + local_group_max 填 MIN_VALUE + global_max 置极负
 template <typename T, bool HAS_HIGH_OFF = true, uint16_t GROUPS = 4, uint16_t CHUNKS = 2, uint16_t LGM_GROUPS = 0,
           uint16_t CHUNK_START = 0>
-__simd_vf__ inline void softmax_all_invalid_chunk_vf(__ubuf__ uint8_t *p_dest, __ubuf__ T *local_group_max)
+__simd_vf__ inline void softmax_all_invalid_chunk_vf(__ubuf__ uint8_t* p_dest, __ubuf__ T* local_group_max)
 {
     constexpr uint16_t P_GROUP_STRIDE = 2048; // 每 32 行组 P 字节数(qs128/qs64 均为 2048)
     constexpr uint16_t P_HIGH_OFF = 16256;    // qs128 高位 128 字节远端地址
@@ -43,16 +43,16 @@ __simd_vf__ inline void softmax_all_invalid_chunk_vf(__ubuf__ uint8_t *p_dest, _
         const uint16_t groupBase = c * GROUPS;
         for (uint16_t g = 0; g < GROUPS; ++g) {
             for (uint16_t j = 0; j < 8; j += 2) {
-                StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * P_GROUP_STRIDE + j * 256, zero8,
+                StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * P_GROUP_STRIDE + j * 256, zero8,
                            preg_vl128);
                 if constexpr (HAS_HIGH_OFF) {
-                    StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * P_GROUP_STRIDE + j * 256 + P_HIGH_OFF,
+                    StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * P_GROUP_STRIDE + j * 256 + P_HIGH_OFF,
                                zero8, preg_vl128_not);
                 }
-                StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * P_GROUP_STRIDE + j * 256 + 128, zero8,
+                StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * P_GROUP_STRIDE + j * 256 + 128, zero8,
                            preg_vl128);
                 if constexpr (HAS_HIGH_OFF) {
-                    StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * P_GROUP_STRIDE + j * 256 + P_HIGH_STEP,
+                    StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * P_GROUP_STRIDE + j * 256 + P_HIGH_STEP,
                                zero8, preg_vl128_not);
                 }
             }
@@ -69,14 +69,14 @@ __simd_vf__ inline void softmax_all_invalid_chunk_vf(__ubuf__ uint8_t *p_dest, _
 
 template <typename T, bool HAS_HIGH_OFF = true, uint16_t GROUPS = 4, uint16_t CHUNKS = 2, uint16_t LGM_GROUPS = 0,
           uint16_t CHUNK_START = 0>
-__aicore__ inline void SoftmaxAllInvalidCallVF(const LocalTensor<uint8_t> &pDest, const LocalTensor<T> &localGroupMax)
+__aicore__ inline void SoftmaxAllInvalidCallVF(const LocalTensor<uint8_t>& pDest, const LocalTensor<T>& localGroupMax)
 {
     softmax_all_invalid_chunk_vf<T, HAS_HIGH_OFF, GROUPS, CHUNKS, LGM_GROUPS, CHUNK_START>(
-        (__ubuf__ uint8_t *)pDest.GetPhyAddr(), (__ubuf__ T *)localGroupMax.GetPhyAddr());
+        (__ubuf__ uint8_t*)pDest.GetPhyAddr(), (__ubuf__ T*)localGroupMax.GetPhyAddr());
 }
 
 template <typename T>
-__simd_vf__ inline void init_global_max_vf(__ubuf__ T *global_max)
+__simd_vf__ inline void init_global_max_vf(__ubuf__ T* global_max)
 {
     MaskReg preg_all_16 = CreateMask<uint16_t, MaskPattern::ALL>();
     RegTensor<T> neg_reg;
@@ -85,9 +85,9 @@ __simd_vf__ inline void init_global_max_vf(__ubuf__ T *global_max)
 }
 
 template <typename T>
-__aicore__ inline void InitGlobalMaxCallVF(const LocalTensor<T> &localGlobalMax)
+__aicore__ inline void InitGlobalMaxCallVF(const LocalTensor<T>& localGlobalMax)
 {
-    init_global_max_vf<T>((__ubuf__ T *)localGlobalMax.GetPhyAddr());
+    init_global_max_vf<T>((__ubuf__ T*)localGlobalMax.GetPhyAddr());
 }
 
 } // namespace NpuArch::Epilogue::Block::Mxfp4VF

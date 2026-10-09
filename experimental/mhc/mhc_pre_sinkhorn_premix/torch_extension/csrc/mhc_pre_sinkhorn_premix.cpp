@@ -19,8 +19,8 @@
 namespace op_api {
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>
-MhcPreSinkhornPremix(const at::Tensor &x, const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias,
-                     const c10::optional<at::Tensor> &premix, int64_t hcMult, int64_t numIters, double hcEps,
+MhcPreSinkhornPremix(const at::Tensor& x, const at::Tensor& phi, const at::Tensor& alpha, const at::Tensor& bias,
+                     const c10::optional<at::Tensor>& premix, int64_t hcMult, int64_t numIters, double hcEps,
                      double normEps, bool outFlag)
 {
     TORCH_CHECK(x.dim() == 3 || x.dim() == 4, "x dim must be 3 (t, n, d) or 4 (b, s, n, d), but got ", x.dim());
@@ -28,7 +28,7 @@ MhcPreSinkhornPremix(const at::Tensor &x, const at::Tensor &phi, const at::Tenso
 
     // premix 为可选输入，shape 应为 x.shape[:-1]，dtype 为 float32
     if (premix.has_value() && premix.value().defined()) {
-        const at::Tensor &pm = premix.value();
+        const at::Tensor& pm = premix.value();
         TORCH_CHECK(pm.scalar_type() == at::kFloat, "premix dtype must be float32, but got ", pm.scalar_type());
         TORCH_CHECK(pm.dim() == x.dim() - 1, "premix dim must be x.dim() - 1 (", x.dim() - 1, "), but got ", pm.dim());
         for (int64_t i = 0; i + 1 < x.dim(); i++) {

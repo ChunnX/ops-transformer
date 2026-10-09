@@ -90,7 +90,7 @@ static int64_t GroupCount(int64_t tokenNum, int64_t aiv)
     return groupNum;
 }
 
-static void CalcCuBlockStatsFromDevice(const at::Tensor &cuBlockLens, int64_t &totalRows, int64_t &maxKv)
+static void CalcCuBlockStatsFromDevice(const at::Tensor& cuBlockLens, int64_t& totalRows, int64_t& maxKv)
 {
     TORCH_CHECK(cuBlockLens.dim() == DIM_ONE, "cu_block_lens must be 1-D");
     at::Tensor host = cuBlockLens.contiguous().to(at::kCPU);
@@ -101,7 +101,7 @@ static void CalcCuBlockStatsFromDevice(const at::Tensor &cuBlockLens, int64_t &t
         return;
     }
 
-    const int32_t *ptr = host.data_ptr<int32_t>();
+    const int32_t* ptr = host.data_ptr<int32_t>();
     totalRows = static_cast<int64_t>(ptr[n - 1]);
     maxKv = 0;
     for (int64_t i = 0; i + 1 < n; ++i) {
@@ -112,8 +112,8 @@ static void CalcCuBlockStatsFromDevice(const at::Tensor &cuBlockLens, int64_t &t
     }
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> k2q_csr(const at::Tensor &q2k, const at::Tensor &cuSeqlens,
-                                                       const at::Tensor &cuBlockLens, int64_t orderMethod,
+std::tuple<at::Tensor, at::Tensor, at::Tensor> k2q_csr(const at::Tensor& q2k, const at::Tensor& cuSeqlens,
+                                                       const at::Tensor& cuBlockLens, int64_t orderMethod,
                                                        int64_t totalRows, int64_t maxKv, int64_t useSimt,
                                                        int64_t qGlobalOffset)
 {

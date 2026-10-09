@@ -28,13 +28,13 @@
 namespace optiling {
 // ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct TilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 enum class DataLayout : uint32_t {
@@ -140,27 +140,27 @@ struct LiV2ParaInfo {
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
     TilingRequiredParaInfo valuesOut = {nullptr, nullptr};
 
-    const char *layOut = nullptr;
-    const char *layOutKey = nullptr;
-    const int32_t *blockSize = nullptr;
+    const char* layOut = nullptr;
+    const char* layOutKey = nullptr;
+    const int32_t* blockSize = nullptr;
     // 【R15 修复 2026-09-23】GE .Int() 属性统一 int64_t* 读取（仓惯例，与 cmp_ratio/candidate_topk_blocks 一致；
     // 原 int32_t* 为依赖小端截断的 type-punning）
-    const int64_t *maskMode = nullptr;
-    const int64_t *topk = nullptr;
-    const int64_t *maxSeqlenQ = nullptr;
-    const int64_t *preTokens = nullptr;
-    const int64_t *nextTokens = nullptr;
-    const int64_t *cmpRatio = nullptr;
-    const int64_t *returnValue = nullptr;
-    const int64_t *candidateTopkBlocks = nullptr;
-    const int64_t *candidateBlockSize = nullptr;
+    const int64_t* maskMode = nullptr;
+    const int64_t* topk = nullptr;
+    const int64_t* maxSeqlenQ = nullptr;
+    const int64_t* preTokens = nullptr;
+    const int64_t* nextTokens = nullptr;
+    const int64_t* cmpRatio = nullptr;
+    const int64_t* returnValue = nullptr;
+    const int64_t* candidateTopkBlocks = nullptr;
+    const int64_t* candidateBlockSize = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
 class LIV2TilingInfo {
 public:
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     LiV2ParaInfo opParamInfo;
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
@@ -203,7 +203,7 @@ public:
 // -----------算子Tiling入参信息解析及Check类---------------
 class LIV2InfoParser {
 public:
-    explicit LIV2InfoParser(gert::TilingContext *context)
+    explicit LIV2InfoParser(gert::TilingContext* context)
         : context_(context)
     {}
     ~LIV2InfoParser() = default;
@@ -211,8 +211,8 @@ public:
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                        const std::string &actualSeqLenName) const;
+    ge::graphStatus GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor,
+                                        const std::string& actualSeqLenName) const;
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
@@ -240,13 +240,13 @@ public:
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
     ge::graphStatus CheckKeyContiguous() const;
-    void GenerateInfo(LIV2TilingInfo &liInfo);
-    ge::graphStatus ParseAndCheck(LIV2TilingInfo &liInfo);
+    void GenerateInfo(LIV2TilingInfo& liInfo);
+    ge::graphStatus ParseAndCheck(LIV2TilingInfo& liInfo);
 
 public:
-    gert::TilingContext *context_ = nullptr;
-    const char *opName_ = nullptr;
-    fe::PlatFormInfos *platformInfo_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
+    const char* opName_ = nullptr;
+    fe::PlatFormInfos* platformInfo_ = nullptr;
     LiV2ParaInfo opParamInfo_;
 
     // BaseParams
@@ -280,12 +280,12 @@ public:
 // ---------------算子Tiling类---------------
 class LightningIndexerV2Tiling {
 public:
-    explicit LightningIndexerV2Tiling(gert::TilingContext *context)
+    explicit LightningIndexerV2Tiling(gert::TilingContext* context)
         : context_(context) {};
-    ge::graphStatus DoTiling(LIV2TilingInfo *tilingInfo);
+    ge::graphStatus DoTiling(LIV2TilingInfo* tilingInfo);
 
 private:
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     LIV2TilingData tilingData_;
 };
 } // namespace optiling

@@ -48,7 +48,7 @@ constexpr int ACTUAL_SEQ_LENGTHS_KV_INDEX = 8;
 // tiling reports "actual_seq_lengths ... required" (EZ1008).
 // GetRequiredInputShape maps IR prototype index -> instance when the API works;
 // otherwise compact the instance index ourselves.
-static int RequiredInstanceIndex(gert::TilingContext *context, int irIndex)
+static int RequiredInstanceIndex(gert::TilingContext* context, int irIndex)
 {
     if (irIndex <= BLOCK_TABLE_INDEX) {
         return irIndex;
@@ -59,18 +59,18 @@ static int RequiredInstanceIndex(gert::TilingContext *context, int irIndex)
     return irIndex;
 }
 
-static const gert::StorageShape *GetIrRequiredShape(gert::TilingContext *context, int irIndex)
+static const gert::StorageShape* GetIrRequiredShape(gert::TilingContext* context, int irIndex)
 {
-    const gert::StorageShape *shape = context->GetRequiredInputShape(static_cast<size_t>(irIndex));
+    const gert::StorageShape* shape = context->GetRequiredInputShape(static_cast<size_t>(irIndex));
     if (shape != nullptr) {
         return shape;
     }
     return context->GetInputShape(static_cast<size_t>(RequiredInstanceIndex(context, irIndex)));
 }
 
-static const gert::CompileTimeTensorDesc *GetIrRequiredDesc(gert::TilingContext *context, int irIndex)
+static const gert::CompileTimeTensorDesc* GetIrRequiredDesc(gert::TilingContext* context, int irIndex)
 {
-    const gert::CompileTimeTensorDesc *desc = context->GetRequiredInputDesc(static_cast<size_t>(irIndex));
+    const gert::CompileTimeTensorDesc* desc = context->GetRequiredInputDesc(static_cast<size_t>(irIndex));
     if (desc != nullptr) {
         return desc;
     }
@@ -149,7 +149,7 @@ static inline uint64_t AlignUp(uint64_t value, uint64_t align)
 // Logic aligned with original commit 4f74888af baseline.
 // =================================================================================
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::GetNpuInfo(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::GetNpuInfo(gert::TilingContext* context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
@@ -161,7 +161,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::GetNpuInfo(gert::TilingContext *contex
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::ParseAttrs(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::ParseAttrs(gert::TilingContext* context)
 {
     auto attrs = context->GetAttrs();
     kvHeads_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_NUM_KV_HEADS_INDEX));
@@ -169,9 +169,9 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::ParseAttrs(gert::TilingContext *contex
     blockSize_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_BLOCK_SIZE_INDEX));
     topK_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_TOP_K_INDEX));
     innerPrecise_ = static_cast<uint32_t>(*attrs->GetInt(ATTR_INNER_PRECISE_INDEX));
-    const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
+    const bool* softmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
     softmaxLseFlag_ = (softmaxLsePtr != nullptr && *softmaxLsePtr) ? 1U : 0U;
-    const char *layoutStr = attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX);
+    const char* layoutStr = attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX);
     if (layoutStr == nullptr || layoutStr[0] == '\0' || strcmp(layoutStr, "TND") == 0) {
         layoutType_ = LAYOUT_TND;
     } else if (strcmp(layoutStr, "BNSD") == 0) {
@@ -193,7 +193,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::ParseAttrs(gert::TilingContext *contex
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::ParseInputTensors(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::ParseInputTensors(gert::TilingContext* context)
 {
     auto qShape = GetIrRequiredShape(context, QUERY_INDEX);
     if (qShape == nullptr) {
@@ -260,7 +260,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::ParseInputTensors(gert::TilingContext 
     }
 
     // block_table present => paged KV cache; absent => contiguous dense K/V.
-    const gert::StorageShape *btShape = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
+    const gert::StorageShape* btShape = context->GetOptionalInputShape(BLOCK_TABLE_INDEX);
     isPageAttention_ = (btShape != nullptr) ? 1U : 0U;
 
     if (isPageAttention_ == 1U) {
@@ -323,7 +323,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::ParseInputTensors(gert::TilingContext 
         if (kvHeads_ == 0U) {
             kvHeads_ = keyHeads;
         }
-        const char *layoutName = (layoutType_ == LAYOUT_BNSD) ? "BNSD" : "BSND";
+        const char* layoutName = (layoutType_ == LAYOUT_BNSD) ? "BNSD" : "BSND";
         if (keyB != batch_ || keyHeads != kvHeads_ || keyD != embeddingSize_ || kvSeqLen_ == 0U) {
             OP_LOGE(context->GetNodeName(),
                     "%s key must match query B=%u kvHeads=%u embeddingSize=%u with S>0, "
@@ -411,7 +411,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::ParseInputTensors(gert::TilingContext 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::CheckTilingConstraints(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::CheckTilingConstraints(gert::TilingContext* context)
 {
     if (embeddingSize_ != KERNEL_HEAD_SIZE) {
         OP_LOGE(context->GetNodeName(), "Only D=%u is supported, got embeddingSize=%u.", KERNEL_HEAD_SIZE,
@@ -514,7 +514,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::CheckTilingConstraints(gert::TilingCon
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::ParseSeqlens(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::ParseSeqlens(gert::TilingContext* context)
 {
     auto k2qRowPtrShape = GetIrRequiredShape(context, K2Q_ROW_PTR_INDEX);
     if (k2qRowPtrShape == nullptr) {
@@ -543,7 +543,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::ParseSeqlens(gert::TilingContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateReverseIndexMeta(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateReverseIndexMeta(gert::TilingContext* context)
 {
     // k2qQIndices / k2qSlotIndices: [kvHeads, totalQ * topK]
     auto qIndicesShape = GetIrRequiredShape(context, K2Q_Q_INDICES_INDEX);
@@ -558,7 +558,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateReverseIndexMeta(gert::Tiling
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateTaskSplit(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateTaskSplit(gert::TilingContext* context)
 {
     // STRIDED row-outer head-split partition (Phase1). taskIdx = packedRow*kvHeads + kvHeadIdx
     // (row-outer); core coreIdx handles taskIdx in {coreIdx, coreIdx+coreNum, ...}. A row's
@@ -576,7 +576,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateTaskSplit(gert::TilingContext
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateWorkSpace(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateWorkSpace(gert::TilingContext* context)
 {
     (void)context;
     uint64_t slotOElems = static_cast<uint64_t>(groupSize_) * embeddingSize_;
@@ -599,7 +599,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::CalculateWorkSpace(gert::TilingContext
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::FillTilingData(gert::TilingContext *context)
+ge::graphStatus MinimaxSaSplitKvTilingA5::FillTilingData(gert::TilingContext* context)
 {
     tilingData_->set_batch(batch_);
     tilingData_->set_numHeads(numHeads_);
@@ -646,8 +646,8 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::FillTilingData(gert::TilingContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::GetTiling(gert::TilingContext *context,
-                                                    MinimaxSparseAttentionSplitKvTilingData &tilingData)
+ge::graphStatus MinimaxSaSplitKvTilingA5::GetTiling(gert::TilingContext* context,
+                                                    MinimaxSparseAttentionSplitKvTilingData& tilingData)
 {
     tilingData_ = &tilingData;
 
@@ -690,8 +690,8 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::GetTiling(gert::TilingContext *context
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MinimaxSaSplitKvTilingA5::SetTilingData(gert::TilingContext *context,
-                                                        MinimaxSparseAttentionSplitKvTilingData &tilingData)
+ge::graphStatus MinimaxSaSplitKvTilingA5::SetTilingData(gert::TilingContext* context,
+                                                        MinimaxSparseAttentionSplitKvTilingData& tilingData)
 {
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);
@@ -700,7 +700,7 @@ ge::graphStatus MinimaxSaSplitKvTilingA5::SetTilingData(gert::TilingContext *con
     context->SetBlockDim(blockDim_);
 
     // Set workspace size
-    size_t *workspaces = context->GetWorkspaceSizes(1);
+    size_t* workspaces = context->GetWorkspaceSizes(1);
     workspaces[0] = static_cast<size_t>(workSpaceSize_);
 
     // Set tiling data

@@ -42,8 +42,8 @@ bool IsSameShape(Args... shapes)
     return true;
 }
 
-ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vector<int32_t> &k_shape,
-                           const std::vector<int32_t> &v_shape, const int32_t q_group, gert::TilingContext *context)
+ge::graphStatus InputCheck(const std::vector<int32_t>& q_shape, const std::vector<int32_t>& k_shape,
+                           const std::vector<int32_t>& v_shape, const int32_t q_group, gert::TilingContext* context)
 {
     /* function: 根据固定格式传入shape检查输入是否符合要求
      * shape：[b, n, s, d]
@@ -66,7 +66,7 @@ ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vecto
 
 class BlockSparseAttentionGradArch35Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit BlockSparseAttentionGradArch35Tiling(gert::TilingContext *context_)
+    explicit BlockSparseAttentionGradArch35Tiling(gert::TilingContext* context_)
         : TilingBaseClass(context_)
     {}
 
@@ -103,11 +103,11 @@ protected:
         int32_t k_batch_num, k_head_num, k_seq_len, k_head_dim;
         int32_t v_batch_num, v_head_num, v_seq_len, v_head_dim;
         auto qInputDesc = context_->GetInputDesc(1);
-        const gert::StorageShape *queryShape = context_->GetInputShape(1);
-        const gert::StorageShape *keyShape = context_->GetInputShape(2);
-        const gert::StorageShape *valueShape = context_->GetInputShape(3);
-        const char *qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
-        const char *kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
+        const gert::StorageShape* queryShape = context_->GetInputShape(1);
+        const gert::StorageShape* keyShape = context_->GetInputShape(2);
+        const gert::StorageShape* valueShape = context_->GetInputShape(3);
+        const char* qInputLayout = context_->GetAttrs()->GetAttrPointer<char>(0);
+        const char* kvInputLayout = context_->GetAttrs()->GetAttrPointer<char>(1);
         const int64_t maskType = *context_->GetAttrs()->GetAttrPointer<int64_t>(3);
         const float softmaxScale = *context_->GetAttrs()->GetAttrPointer<float>(4);
         auto blockShapeOptional = context_->GetInputTensor(8);
@@ -115,7 +115,7 @@ protected:
             OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
         }
-        const int64_t *blockShapeList = blockShapeOptional->GetData<int64_t>();
+        const int64_t* blockShapeList = blockShapeOptional->GetData<int64_t>();
         if (blockShapeList == nullptr) {
             OP_LOGE(context_->GetNodeName(), "Block shape tensor is null");
             return ge::GRAPH_FAILED;
@@ -247,7 +247,7 @@ protected:
                 OP_LOGE(context_->GetNodeName(), "attenMaskOptional dtype must be INT32 when maskType=1.");
                 return ge::GRAPH_FAILED;
             }
-            auto &maskShape = attenMaskOptional->GetStorageShape();
+            auto& maskShape = attenMaskOptional->GetStorageShape();
             if (maskShape.GetDimNum() != 4 || maskShape.GetDim(3) != 2) {
                 OP_LOGE(context_->GetNodeName(),
                         "attenMaskOptional must be 4D [B, N, maxBlockNum, 2] when maskType=1.");
@@ -290,8 +290,8 @@ protected:
         if (strcmp(layout_, TND_STR) == 0) {
             auto actualSeqLengths = context_->GetOptionalInputTensor(9);
             auto actualKVSeqLengths = context_->GetOptionalInputTensor(10);
-            const int64_t *qSeqData = actualSeqLengths->GetData<int64_t>();
-            const int64_t *kvSeqData = actualKVSeqLengths->GetData<int64_t>();
+            const int64_t* qSeqData = actualSeqLengths->GetData<int64_t>();
+            const int64_t* kvSeqData = actualKVSeqLengths->GetData<int64_t>();
             int64_t prevQ = 0;
             int64_t prevKv = 0;
             for (int32_t i = 0; i < batch_num_; i++) {
@@ -314,7 +314,7 @@ protected:
         //   dim2 < maxBlockNum 会越界读；dim2 > maxBlockNum 会导致 b/n>0 时错位读（静默错误）。
         if (maskType_ == 1) {
             auto attenMaskOptional = context_->GetOptionalInputTensor(7);
-            auto &maskShape = attenMaskOptional->GetStorageShape();
+            auto& maskShape = attenMaskOptional->GetStorageShape();
             if (maskShape.GetDim(0) != static_cast<int64_t>(batch_num_) ||
                 maskShape.GetDim(1) != static_cast<int64_t>(q_head_num_) ||
                 maskShape.GetDim(2) != static_cast<int64_t>(maxBlockNum) || maskShape.GetDim(3) != 2) {
@@ -425,13 +425,13 @@ protected:
     }
 
 private:
-    const char *layout_;
+    const char* layout_;
     ge::DataType dataType_;
     uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
     BlockSparseAttentionGradTilingDataArch35 tilingData_;
-    static constexpr const char *BSND_STR = "BSND";
-    static constexpr const char *BNSD_STR = "BNSD";
-    static constexpr const char *TND_STR = "TND";
+    static constexpr const char* BSND_STR = "BSND";
+    static constexpr const char* BNSD_STR = "BNSD";
+    static constexpr const char* TND_STR = "TND";
     int32_t batch_num_ = 0;
     int32_t q_seq_len_ = 0;
     int32_t kv_seq_len_ = 0;

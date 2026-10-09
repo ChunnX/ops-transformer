@@ -29,7 +29,7 @@ using namespace Ops::Transformer::OpTiling;
 
 class MhcPreSinkhornPremixBackwardArch35Tiling : public TilingBaseClass {
 public:
-    explicit MhcPreSinkhornPremixBackwardArch35Tiling(gert::TilingContext *context)
+    explicit MhcPreSinkhornPremixBackwardArch35Tiling(gert::TilingContext* context)
         : TilingBaseClass(context)
     {}
 
@@ -76,7 +76,7 @@ protected:
     int64_t mm2M_{0};
     int64_t mm2N_{0};
 
-    const char *opName = "MhcPreSinkhornPremixBackward";
+    const char* opName = "MhcPreSinkhornPremixBackward";
 };
 
 } // namespace optiling

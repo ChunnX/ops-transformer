@@ -24,8 +24,8 @@
 #endif
 namespace optiling {
 
-FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContext *context);
-bool RouteToFia(gert::TilingContext *context);
+FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContext* context);
+bool RouteToFia(gert::TilingContext* context);
 
 } // namespace optiling
 #endif // FUSED_INFER_ATTENTION_SCORE_TILING_V3

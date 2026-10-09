@@ -69,7 +69,7 @@ struct S2ValidLen4 {
 };
 
 template <typename T>
-__aicore__ inline void SetLane(T &value4, uint32_t lane, uint32_t value)
+__aicore__ inline void SetLane(T& value4, uint32_t lane, uint32_t value)
 {
     if (lane == 0U) {
         value4.v0 = value;
@@ -83,7 +83,7 @@ __aicore__ inline void SetLane(T &value4, uint32_t lane, uint32_t value)
 }
 
 template <typename T>
-__aicore__ inline uint32_t GetLane(const T &value4, uint32_t lane)
+__aicore__ inline uint32_t GetLane(const T& value4, uint32_t lane)
 {
     return (lane == 0U) ? value4.v0 : ((lane == 1U) ? value4.v1 : ((lane == 2U) ? value4.v2 : value4.v3));
 }

@@ -24,7 +24,7 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
-ge::graphStatus TilingSparseLightningIndexerGradKLLoss(gert::TilingContext *context)
+ge::graphStatus TilingSparseLightningIndexerGradKLLoss(gert::TilingContext* context)
 {
     SparseLightningIndexerGradKLLossTilingBase sligKLLossTiling(context);
     auto ret = sligKLLossTiling.DoTiling();
@@ -34,7 +34,7 @@ ge::graphStatus TilingSparseLightningIndexerGradKLLoss(gert::TilingContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForSparseLightningIndexerGradKLLoss(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForSparseLightningIndexerGradKLLoss(gert::TilingParseContext* context)
 {
     OP_LOGD(context->GetNodeName(), "Start registering tiling.");
     auto compileInfoPtr = context->GetCompiledInfo<SparseLightningIndexerGradKLLossCompileInfo>();

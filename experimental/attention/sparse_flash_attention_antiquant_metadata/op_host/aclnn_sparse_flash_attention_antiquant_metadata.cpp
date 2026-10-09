@@ -33,27 +33,15 @@
 extern "C" {
 #endif
 
-static aclnnStatus ParamsCheck(const aclTensor *actualSeqLengthsQueryOptional,
-                               const aclTensor *actualSeqLengthsKvOptional,
-                               const aclTensor *sparseSeqLengthsKvOptional,
-                               int64_t batchSize,
-                               int64_t querySeqSize,
-                               int64_t queryHeadNum,
-                               int64_t kvSeqSize,
-                               int64_t kvHeadNum,
-                               int64_t headDim,
-                               int64_t topkSize,
-                               int64_t sparseBlockSize,
-                               char *layoutQueryOptional,
-                               char *layoutKvOptional,
-                               int64_t sparseMode,
-                               int64_t attentionMode,
-                               int64_t ropeHeadDim,
-                               int64_t sparseSharedSize,
-                               const aclTensor *metaData)
+static aclnnStatus ParamsCheck(const aclTensor* actualSeqLengthsQueryOptional,
+                               const aclTensor* actualSeqLengthsKvOptional, const aclTensor* sparseSeqLengthsKvOptional,
+                               int64_t batchSize, int64_t querySeqSize, int64_t queryHeadNum, int64_t kvSeqSize,
+                               int64_t kvHeadNum, int64_t headDim, int64_t topkSize, int64_t sparseBlockSize,
+                               char* layoutQueryOptional, char* layoutKvOptional, int64_t sparseMode,
+                               int64_t attentionMode, int64_t ropeHeadDim, int64_t sparseSharedSize,
+                               const aclTensor* metaData)
 {
-    if (batchSize < 0 || querySeqSize < 0 || queryHeadNum < 0 ||
-        kvSeqSize < 0 || kvHeadNum < 0 || headDim < 0 ||
+    if (batchSize < 0 || querySeqSize < 0 || queryHeadNum < 0 || kvSeqSize < 0 || kvHeadNum < 0 || headDim < 0 ||
         sparseBlockSize < 0 || sparseSharedSize < 0) {
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -61,61 +49,40 @@ static aclnnStatus ParamsCheck(const aclTensor *actualSeqLengthsQueryOptional,
 }
 
 aclnnStatus aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
-    const aclTensor *actualSeqLengthsQueryOptional,
-    const aclTensor *actualSeqLengthsKvOptional,
-    const aclTensor *sparseSeqLengthsKvOptional,
-    int64_t batchSize,
-    int64_t querySeqSize,
-    int64_t queryHeadNum,
-    int64_t kvSeqSize,
-    int64_t kvHeadNum,
-    int64_t headDim,
-    int64_t topkSize,
-    int64_t sparseBlockSize,
-    char *layoutQueryOptional,
-    char *layoutKvOptional,
-    int64_t sparseMode,
-    int64_t attentionMode,
-    int64_t ropeHeadDim,
-    int64_t sparseSharedSize,
-    const aclTensor *metaData,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKvOptional,
+    const aclTensor* sparseSeqLengthsKvOptional, int64_t batchSize, int64_t querySeqSize, int64_t queryHeadNum,
+    int64_t kvSeqSize, int64_t kvHeadNum, int64_t headDim, int64_t topkSize, int64_t sparseBlockSize,
+    char* layoutQueryOptional, char* layoutKvOptional, int64_t sparseMode, int64_t attentionMode, int64_t ropeHeadDim,
+    int64_t sparseSharedSize, const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(
         aclnnKvQuantSparseFlashAttentionMetadata,
-        DFX_IN(actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional,
-               sparseSeqLengthsKvOptional, batchSize, querySeqSize, queryHeadNum,
-               kvSeqSize, kvHeadNum, headDim, topkSize, sparseBlockSize,
-               layoutQueryOptional, layoutKvOptional,
-               sparseMode, attentionMode, ropeHeadDim, sparseSharedSize),
+        DFX_IN(actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, sparseSeqLengthsKvOptional, batchSize,
+               querySeqSize, queryHeadNum, kvSeqSize, kvHeadNum, headDim, topkSize, sparseBlockSize,
+               layoutQueryOptional, layoutKvOptional, sparseMode, attentionMode, ropeHeadDim, sparseSharedSize),
         DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = ParamsCheck(
-        actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional,
-        sparseSeqLengthsKvOptional, batchSize, querySeqSize, queryHeadNum,
-        kvSeqSize, kvHeadNum, headDim, topkSize, sparseBlockSize,
-        layoutQueryOptional, layoutKvOptional, sparseMode,
-        attentionMode, ropeHeadDim, sparseSharedSize, metaData);
+    auto ret = ParamsCheck(actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, sparseSeqLengthsKvOptional,
+                           batchSize, querySeqSize, queryHeadNum, kvSeqSize, kvHeadNum, headDim, topkSize,
+                           sparseBlockSize, layoutQueryOptional, layoutKvOptional, sparseMode, attentionMode,
+                           ropeHeadDim, sparseSharedSize, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
+    const op::PlatformInfo& npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
 
     std::string socVersionStr = npuInfo.GetSocLongVersion();
-    const char *socVersionOptional = socVersionStr.c_str();
+    const char* socVersionOptional = socVersionStr.c_str();
 
     auto output = l0op::KvQuantSparseFlashAttentionMetadata(
-        actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional,
-        sparseSeqLengthsKvOptional, batchSize, querySeqSize, queryHeadNum,
-        kvSeqSize, kvHeadNum, headDim, topkSize, sparseBlockSize, aicCoreNum,
-        aivCoreNum, layoutQueryOptional, layoutKvOptional, sparseMode,
-        attentionMode, ropeHeadDim, sparseSharedSize, socVersionOptional, metaData,
-        uniqueExecutor.get());
+        actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, sparseSeqLengthsKvOptional, batchSize, querySeqSize,
+        queryHeadNum, kvSeqSize, kvHeadNum, headDim, topkSize, sparseBlockSize, aicCoreNum, aivCoreNum,
+        layoutQueryOptional, layoutKvOptional, sparseMode, attentionMode, ropeHeadDim, sparseSharedSize,
+        socVersionOptional, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -123,11 +90,10 @@ aclnnStatus aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnKvQuantSparseFlashAttentionMetadata(void *workspace,
-                                         uint64_t workspaceSize,
-                                         aclOpExecutor *executor,
-                                         aclrtStream stream)
+__attribute__((visibility("default"))) aclnnStatus aclnnKvQuantSparseFlashAttentionMetadata(void* workspace,
+                                                                                            uint64_t workspaceSize,
+                                                                                            aclOpExecutor* executor,
+                                                                                            aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnKvQuantSparseFlashAttentionMetadata);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

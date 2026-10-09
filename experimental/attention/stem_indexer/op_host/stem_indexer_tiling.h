@@ -26,13 +26,13 @@
 
 namespace optiling {
 struct TilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct TilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 constexpr uint32_t QFLAT_INDEX = 0;
@@ -142,23 +142,23 @@ struct StemIndexerParaInfo {
     TilingRequiredParaInfo sparseIndicesOut = {nullptr, nullptr};
     TilingRequiredParaInfo sparseSeqLenOut = {nullptr, nullptr};
 
-    const bool *causal = nullptr;
-    const int64_t *stemBlockSize = nullptr;
-    const int64_t *stemStride = nullptr;
-    const float *alpha = nullptr;
-    const int64_t *initialBlocks = nullptr;
-    const int64_t *windowSize = nullptr;
-    const float *kBlockNumRateMedium = nullptr;
-    const int64_t *kBlockNumBiasMedium = nullptr;
-    const float *kBlockNumRateLarge = nullptr;
-    const int64_t *kBlockNumBiasLarge = nullptr;
-    const int64_t *topkScorePrecision = nullptr;
+    const bool* causal = nullptr;
+    const int64_t* stemBlockSize = nullptr;
+    const int64_t* stemStride = nullptr;
+    const float* alpha = nullptr;
+    const int64_t* initialBlocks = nullptr;
+    const int64_t* windowSize = nullptr;
+    const float* kBlockNumRateMedium = nullptr;
+    const int64_t* kBlockNumBiasMedium = nullptr;
+    const float* kBlockNumRateLarge = nullptr;
+    const int64_t* kBlockNumBiasLarge = nullptr;
+    const int64_t* topkScorePrecision = nullptr;
 };
 
 class StemIndexerTilingInfo {
 public:
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     StemIndexerParaInfo opParamInfo;
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND950;
     uint32_t bSize = 0;
@@ -188,7 +188,7 @@ public:
 
 class StemIndexerInfoParser {
 public:
-    explicit StemIndexerInfoParser(gert::TilingContext *context)
+    explicit StemIndexerInfoParser(gert::TilingContext* context)
         : context_(context)
     {}
     ~StemIndexerInfoParser() = default;
@@ -204,8 +204,8 @@ public:
     ge::graphStatus CheckShapeDim();
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus ValidateInputShapesMatch();
-    ge::graphStatus ParseAndCheck(StemIndexerTilingInfo &stemInfo);
-    void GenerateInfo(StemIndexerTilingInfo &stemInfo);
+    ge::graphStatus ParseAndCheck(StemIndexerTilingInfo& stemInfo);
+    void GenerateInfo(StemIndexerTilingInfo& stemInfo);
 
 private:
     __attribute__((noinline)) bool IsFloatEqual(float lhs, float rhs) const;
@@ -213,9 +213,9 @@ private:
     __attribute__((noinline)) bool IsSupportedKvHeadNum(uint32_t kvHeadNum) const;
 
 private:
-    gert::TilingContext *context_ = nullptr;
-    const char *opName_ = nullptr;
-    fe::PlatFormInfos *platformInfo_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
+    const char* opName_ = nullptr;
+    fe::PlatFormInfos* platformInfo_ = nullptr;
     StemIndexerParaInfo opParamInfo_;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND950;
     NpuArch npuArch_ = NpuArch::DAV_3510;
@@ -237,13 +237,13 @@ private:
 
 class StemIndexerTiling {
 public:
-    explicit StemIndexerTiling(gert::TilingContext *context)
+    explicit StemIndexerTiling(gert::TilingContext* context)
         : context_(context)
     {}
-    ge::graphStatus DoTiling(const StemIndexerTilingInfo *tilingInfo);
+    ge::graphStatus DoTiling(const StemIndexerTilingInfo* tilingInfo);
 
 private:
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     StemIndexerTilingData tilingData_;
 };
 } // namespace optiling

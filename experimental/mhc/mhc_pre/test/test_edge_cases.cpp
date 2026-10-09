@@ -24,24 +24,21 @@
 #include <cstring>
 #include <random>
 
-extern "C" void mhc_pre_do_fp32(
-    uint32_t blockDim, void* stream,
-    uint8_t* input, uint8_t* h_pre, uint8_t* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-);
+extern "C" void mhc_pre_do_fp32(uint32_t blockDim, void* stream, uint8_t* input, uint8_t* h_pre, uint8_t* output,
+                                int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-#define CHECK_ACL(x) do { \
-    aclError err = (x); \
-    if (err != ACL_SUCCESS) { \
-        printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
-        exit(1); \
-    } \
-} while(0)
+#define CHECK_ACL(x) \
+    do { \
+        aclError err = (x); \
+        if (err != ACL_SUCCESS) { \
+            printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
+            exit(1); \
+        } \
+    } while (0)
 
-void cpu_reference_fp32(
-    const float* input, const float* h_pre, float* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-) {
+void cpu_reference_fp32(const float* input, const float* h_pre, float* output, int64_t batch, int64_t seq_len,
+                        int64_t dim, int64_t num_streams)
+{
     int64_t batch_elements = seq_len * dim;
     for (int64_t b = 0; b < batch; ++b) {
         for (int64_t i = 0; i < batch_elements; ++i) {
@@ -55,7 +52,8 @@ void cpu_reference_fp32(
     }
 }
 
-bool test_case(const char* name, int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams) {
+bool test_case(const char* name, int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
+{
     printf("Test: %s [B=%ld, S=%ld, D=%ld, N=%ld]\n", name, batch, seq_len, dim, num_streams);
 
     int64_t input_size = batch * num_streams * seq_len * dim;
@@ -78,33 +76,32 @@ bool test_case(const char* name, int64_t batch, int64_t seq_len, int64_t dim, in
     for (int64_t i = 0; i < weight_size; ++i)
         h_weight[i] /= sum;
 
-    cpu_reference_fp32(h_input.data(), h_weight.data(), h_ref.data(),
-                       batch, seq_len, dim, num_streams);
+    cpu_reference_fp32(h_input.data(), h_weight.data(), h_ref.data(), batch, seq_len, dim, num_streams);
 
     void *d_input, *d_weight, *d_output;
     CHECK_ACL(aclrtMalloc(&d_input, input_size * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST));
     CHECK_ACL(aclrtMalloc(&d_weight, weight_size * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST));
     CHECK_ACL(aclrtMalloc(&d_output, output_size * sizeof(float), ACL_MEM_MALLOC_HUGE_FIRST));
-    CHECK_ACL(aclrtMemcpy(d_input, input_size * sizeof(float), h_input.data(),
-                          input_size * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE));
-    CHECK_ACL(aclrtMemcpy(d_weight, weight_size * sizeof(float), h_weight.data(),
-                          weight_size * sizeof(float), ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(d_input, input_size * sizeof(float), h_input.data(), input_size * sizeof(float),
+                          ACL_MEMCPY_HOST_TO_DEVICE));
+    CHECK_ACL(aclrtMemcpy(d_weight, weight_size * sizeof(float), h_weight.data(), weight_size * sizeof(float),
+                          ACL_MEMCPY_HOST_TO_DEVICE));
 
     aclrtStream stream;
     CHECK_ACL(aclrtCreateStream(&stream));
-    mhc_pre_do_fp32(0, stream,
-                    (uint8_t*)d_input, (uint8_t*)d_weight, (uint8_t*)d_output,
-                    batch, seq_len, dim, num_streams);
+    mhc_pre_do_fp32(0, stream, (uint8_t*)d_input, (uint8_t*)d_weight, (uint8_t*)d_output, batch, seq_len, dim,
+                    num_streams);
     CHECK_ACL(aclrtSynchronizeStream(stream));
-    CHECK_ACL(aclrtMemcpy(h_npu.data(), output_size * sizeof(float),
-                          d_output, output_size * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST));
+    CHECK_ACL(aclrtMemcpy(h_npu.data(), output_size * sizeof(float), d_output, output_size * sizeof(float),
+                          ACL_MEMCPY_DEVICE_TO_HOST));
 
     bool pass = true;
     float max_err = 0.0f;
     for (int64_t i = 0; i < output_size; ++i) {
         float err = std::abs(h_npu[i] - h_ref[i]);
         max_err = std::max(max_err, err);
-        if (err > 1e-6f) pass = false;
+        if (err > 1e-6f)
+            pass = false;
     }
 
     CHECK_ACL(aclrtFree(d_input));
@@ -116,7 +113,8 @@ bool test_case(const char* name, int64_t batch, int64_t seq_len, int64_t dim, in
     return pass;
 }
 
-int main() {
+int main()
+{
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(0));
 

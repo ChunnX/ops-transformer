@@ -30,12 +30,11 @@
 #endif
 using namespace AscendC;
 
-template<typename T>
+template <typename T>
 class PromptFlashAttentionZeroOutPut {
 public:
-    __aicore__ inline PromptFlashAttentionZeroOutPut() {};
-    __aicore__ inline void Init(__gm__ uint8_t*  attentionOut,
-                                __gm__ uint8_t*  softmaxLse,
+    __aicore__ inline PromptFlashAttentionZeroOutPut(){};
+    __aicore__ inline void Init(__gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
                                 const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tiling);
     __aicore__ inline void Process();
     static constexpr bool POST_QUANT = !IsSameType<T, half>::value;
@@ -46,24 +45,27 @@ protected:
     GlobalTensor<float> softmaxLseGm;
 };
 
-template<typename T>
-__aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Init(__gm__ uint8_t*  attentionOut,
-                                                               __gm__ uint8_t*  softmaxLse,
-                                                               const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tiling) {
+template <typename T>
+__aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Init(
+    __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
+    const optiling::FlashAttentionScoreSimplifiedTilingData* __restrict tiling)
+{
     attentionOutGm.SetGlobalBuffer((__gm__ half*)attentionOut);
-    softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+    softmaxLseGm.SetGlobalBuffer((__gm__ float*)softmaxLse);
     tilingData = tiling;
 }
 
-template<typename T>
-__aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Process() {
+template <typename T>
+__aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Process()
+{
     uint32_t tmp_block_idx = GetBlockIdx();
-    auto &initParams = tilingData->initOutputParams;
+    auto& initParams = tilingData->initOutputParams;
     uint32_t tailSize = initParams.totalOutputSize - tmp_block_idx * initParams.singleCoreSize;
     uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
     if (singleInitOutputSize > 0) {
-        if constexpr (POST_QUANT){
-            InitOutput<half>(attentionOutGm[tmp_block_idx * initParams.singleCoreSize / 2], singleInitOutputSize / 2, 0);
+        if constexpr (POST_QUANT) {
+            InitOutput<half>(attentionOutGm[tmp_block_idx * initParams.singleCoreSize / 2], singleInitOutputSize / 2,
+                             0);
         } else {
             InitOutput<half>(attentionOutGm[tmp_block_idx * initParams.singleCoreSize], singleInitOutputSize, 0);
         }
@@ -80,12 +82,12 @@ __aicore__ inline void PromptFlashAttentionZeroOutPut<T>::Process() {
             singleCoreLseSize += initParams.totalSoftMaxLseOutputSize % coreNum;
         }
         if (singleCoreLseSize > 0) {
-            InitOutput<float>(softmaxLseGm[tmp_block_idx * (initParams.totalSoftMaxLseOutputSize / coreNum)], 
-                singleCoreLseSize, 3e+99); // 3e+99:set the value of invalid batch to inf
+            InitOutput<float>(softmaxLseGm[tmp_block_idx * (initParams.totalSoftMaxLseOutputSize / coreNum)],
+                              singleCoreLseSize, 3e+99); // 3e+99:set the value of invalid batch to inf
         }
     }
 
     SetFlag<HardEvent::MTE3_V>(mte3ToV);
     WaitFlag<HardEvent::MTE3_V>(mte3ToV);
 }
-#endif  // PROMPT_FLASH_ATTENTION_ZERO_OUTPUT_H
+#endif // PROMPT_FLASH_ATTENTION_ZERO_OUTPUT_H

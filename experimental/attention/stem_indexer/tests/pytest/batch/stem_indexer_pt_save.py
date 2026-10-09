@@ -206,7 +206,9 @@ def generate_and_save_case(case, output_path):
 
 def resolve_worker_count(workers, case_count):
     if workers < 0:
-        raise ValueError(f"workers must be greater than or equal to 0, but got {workers}")
+        raise ValueError(
+            f"workers must be greater than or equal to 0, but got {workers}"
+        )
     available_cpu_count = os.cpu_count() or 1
     requested_worker_count = available_cpu_count if workers == 0 else workers
     return max(1, min(requested_worker_count, max(case_count, 1)))
@@ -242,7 +244,9 @@ def save_test_cases(test_cases, output_dir, workers):
                 saved_count += 1
                 print(f"Saved StemIndexer testcase pt: {output_path}")
             except Exception as err:
-                print(f"[FAILED] Generate pt for {case.get('case_id', '<unknown>')}: {err}")
+                print(
+                    f"[FAILED] Generate pt for {case.get('case_id', '<unknown>')}: {err}"
+                )
                 raise
     else:
         multiprocessing_context = multiprocessing.get_context("spawn")
@@ -266,7 +270,9 @@ def save_test_cases(test_cases, output_dir, workers):
                     saved_count += 1
                     print(f"Saved StemIndexer testcase pt: {output_path}")
                 except Exception as err:
-                    print(f"[FAILED] Generate pt for {case.get('case_id', '<unknown>')}: {err}")
+                    print(
+                        f"[FAILED] Generate pt for {case.get('case_id', '<unknown>')}: {err}"
+                    )
                     raise
     print(
         f"Saved {saved_count}, skipped {skipped_count} existing StemIndexer testcase pt files."

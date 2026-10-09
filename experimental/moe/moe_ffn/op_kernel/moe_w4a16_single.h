@@ -24,15 +24,13 @@ class MOEW4A16Single {
 public:
     TPipe pipe;
 
-    __aicore__ inline MOEW4A16Single()
-    {
-    }
+    __aicore__ inline MOEW4A16Single() {}
     __aicore__ inline void Process();
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR quantized_weight_13, GM_ADDR weight_scale_13,
                                 GM_ADDR weight_offset_13, GM_ADDR quantized_weight_2, GM_ADDR weight_scale_2,
                                 GM_ADDR weight_offset_2, GM_ADDR expanded_expert_idx, GM_ADDR sorted_row_idx,
                                 GM_ADDR expanded_row_idx, GM_ADDR topk_weights, GM_ADDR y, GM_ADDR usrworkspace,
-                                const MoeFFNTilingData *__restrict moeTiling);
+                                const MoeFFNTilingData* __restrict moeTiling);
 
 protected:
     __aicore__ inline void InitWorkspaceTensors(GM_ADDR usrWorkspace);
@@ -56,7 +54,7 @@ protected:
 
     __aicore__ inline void PrepareSwigluCommon();
     template <typename U>
-    __aicore__ inline void SwishFunc(const LocalTensor<U> &dst, const LocalTensor<U> &src);
+    __aicore__ inline void SwishFunc(const LocalTensor<U>& dst, const LocalTensor<U>& src);
     __aicore__ inline void ProcessSwiglu();
 
     __aicore__ inline void PrepareReRouteCommon();
@@ -101,7 +99,7 @@ protected:
     event_t eventIdMToFIX;
     event_t eventIdFIXToM;
 
-    const MoeFFNTilingData *__restrict tilingData;
+    const MoeFFNTilingData* __restrict tilingData;
 
     // common
     int32_t block_id;

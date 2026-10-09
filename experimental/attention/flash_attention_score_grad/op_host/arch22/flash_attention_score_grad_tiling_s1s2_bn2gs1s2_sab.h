@@ -18,7 +18,6 @@
 #include "flash_attention_score_grad_tiling_common.h"
 #include "op_host/tiling_base.h"
 
-
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
@@ -124,11 +123,13 @@ struct SameAbFuzzyBaseInfoParams { // 频繁使用的基础参数
 
 class FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb : public TilingBaseClass {
 public:
-    explicit FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb(gert::TilingContext *context) : TilingBaseClass(context)
+    explicit FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb(gert::TilingContext* context)
+        : TilingBaseClass(context)
     {
         tilingData->reset();
     }
-    FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb *tilingData = context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb>();
+    FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb* tilingData =
+        context_->GetTilingData<FlashAttentionScoreGradTilingDataS1s2Bn2gs1s2SameAb>();
 
 protected:
     bool IsCapable() override;
@@ -147,9 +148,9 @@ protected:
     void DetermineMode();
     virtual void SetQKVStartIdx();
     ge::graphStatus CheckAttenMaskShape();
-    ge::graphStatus ProcessPseInfo(const char *inputLayout);
-    ge::graphStatus ProcessDropInfo(const char *inputLayout);
-    ge::graphStatus ProcessPseNormal(const char *inputLayout);
+    ge::graphStatus ProcessPseInfo(const char* inputLayout);
+    ge::graphStatus ProcessDropInfo(const char* inputLayout);
+    ge::graphStatus ProcessPseNormal(const char* inputLayout);
     ge::graphStatus ProcessSparseModeInfo();
     ge::graphStatus ProcessTokensInfo();
     ge::graphStatus ProcessSinkInfo();
@@ -171,10 +172,9 @@ private:
 
 class FlashAttentionScoreGradTilingSameABDeterministic : public FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb {
 public:
-    explicit FlashAttentionScoreGradTilingSameABDeterministic(gert::TilingContext *context)
+    explicit FlashAttentionScoreGradTilingSameABDeterministic(gert::TilingContext* context)
         : FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb(context)
-    {
-    }
+    {}
 
 protected:
     bool IsCapable() override;

@@ -25,17 +25,17 @@ import multiprocessing as mp
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 pt_dir = os.getenv("SAS_PT_LOAD_PATH", "./data")
-result_path = Path(os.getenv("SAS_RESULT_SAVE_PATH", './result/sas_result.xlsx'))
+result_path = Path(os.getenv("SAS_RESULT_SAVE_PATH", "./result/sas_result.xlsx"))
 
 # 生成所有的组合，并转换为字典列表
 locals()["testcase_files"] = []
 if os.path.isdir(pt_dir):
-    pt_files = [f for f in os.listdir(pt_dir) if f.endswith('.pt')]
+    pt_files = [f for f in os.listdir(pt_dir) if f.endswith(".pt")]
     if not pt_files:
         print(f"错误: 目录中没有找到.pt文件: {pt_dir}")
     else:
         print(f"找到 {len(pt_files)} 个测试用例文件")
-        for pt_file in pt_files:  
+        for pt_file in pt_files:
             filepath = os.path.join(pt_dir, pt_file)
             locals()["testcase_files"].append(filepath)
 else:
@@ -43,7 +43,8 @@ else:
 
 print("files:", locals()["testcase_files"])
 
-def call_sas_npu(testcase_files):   # 初始化参数和tensor
+
+def call_sas_npu(testcase_files):  # 初始化参数和tensor
     print("执行文件: ", testcase_files)
     torch_npu.npu.set_device(0)
     test_data = torch.load(testcase_files, map_location="cpu")
@@ -51,18 +52,21 @@ def call_sas_npu(testcase_files):   # 初始化参数和tensor
     try:
         npu_result, softmax_lse = sparse_attn_sharedkv_process.call_npu(test_data)
     except Exception as e:
-        utils.save_result('Exception', 0, test_data['params'], result_path)
+        utils.save_result("Exception", 0, test_data["params"], result_path)
         raise e
     if npu_result is not None:
-        result, fulfill_percent = result_compare_method.check_result(test_data['cpu_output'], npu_result)
+        result, fulfill_percent = result_compare_method.check_result(
+            test_data["cpu_output"], npu_result
+        )
     else:
         result = "Failed"
         fulfill_percent = 0
-    utils.save_result(result, fulfill_percent, test_data['params'], result_path)
+    utils.save_result(result, fulfill_percent, test_data["params"], result_path)
+
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
-def test_sparse_attn_sharedkv(testcase_files):   # 初始化参数和tensor
+def test_sparse_attn_sharedkv(testcase_files):  # 初始化参数和tensor
     with ThreadPoolExecutor(max_workers=1) as executor:
         # 创建当前用例子进程
         future1 = executor.submit(call_sas_npu, testcase_files)

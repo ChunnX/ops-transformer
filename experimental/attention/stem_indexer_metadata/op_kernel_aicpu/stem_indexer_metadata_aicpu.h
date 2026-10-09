@@ -53,32 +53,32 @@ public:
     }
 
 public:
-    int64_t tailSize { 0 };
+    int64_t tailSize{0};
 };
 
 class StemIndexerMetadataCpuKernel : public CpuKernel {
 public:
     StemIndexerMetadataCpuKernel() = default;
     ~StemIndexerMetadataCpuKernel() = default;
-    uint32_t Compute(CpuKernelContext &ctx) override;
+    uint32_t Compute(CpuKernelContext& ctx) override;
 
 private:
-    bool Prepare(CpuKernelContext &ctx);
-    bool GenerateDeviceInfo(DeviceInfo &deviceInfo);
-    bool GenerateBaseInfo(StemIndexerBaseInfo &baseInfo);
-    bool GenerateSectionStreamKParam(load_balance::SectionStreamKParam &param);
-    bool BalanceSchedule(SectionStreamKResult &balanceResult);
-    std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size);
-    bool GenMetadata(SectionStreamKResult &result);
+    bool Prepare(CpuKernelContext& ctx);
+    bool GenerateDeviceInfo(DeviceInfo& deviceInfo);
+    bool GenerateBaseInfo(StemIndexerBaseInfo& baseInfo);
+    bool GenerateSectionStreamKParam(load_balance::SectionStreamKParam& param);
+    bool BalanceSchedule(SectionStreamKResult& balanceResult);
+    std::vector<int64_t> GetTensorDataAsInt64(Tensor* tensor, size_t size);
+    bool GenMetadata(SectionStreamKResult& result);
 
 private:
-    CpuKernelContext *context_ = nullptr;
+    CpuKernelContext* context_ = nullptr;
     // input tensor
-    Tensor *qSeqLens_ = nullptr;
-    Tensor *kvSeqLens_ = nullptr;
+    Tensor* qSeqLens_ = nullptr;
+    Tensor* kvSeqLens_ = nullptr;
 
     // output tensor
-    Tensor *metadata_ = nullptr;
+    Tensor* metadata_ = nullptr;
 
     // input attr
     int64_t numHeadsQ_ = 0;
@@ -91,6 +91,7 @@ private:
     std::string socVersion_ = "";
     int32_t aicCoreNum_ = 36U;
     int32_t aivCoreNum_ = 72U;
+
 private:
     enum class ParamId : uint32_t {
         // input

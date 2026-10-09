@@ -37,25 +37,15 @@ public:
     __aicore__ SwigluGatedMlpSingle() = default;
     __aicore__ ~SwigluGatedMlpSingle() = default;
 
-    __aicore__ void Init(
-        GM_ADDR xGm,
-        GM_ADDR gateUpWeightGm,
-        GM_ADDR downWeightGm,
-        GM_ADDR yGm,
-        GM_ADDR workspaceGm,
-        GM_ADDR tilingGm)
+    __aicore__ void Init(GM_ADDR xGm, GM_ADDR gateUpWeightGm, GM_ADDR downWeightGm, GM_ADDR yGm, GM_ADDR workspaceGm,
+                         GM_ADDR tilingGm)
     {
         GET_TILING_DATA(localTiling, tilingGm);
         Init(xGm, gateUpWeightGm, downWeightGm, yGm, workspaceGm, localTiling);
     }
 
-    __aicore__ void Init(
-        GM_ADDR xGm,
-        GM_ADDR gateUpWeightGm,
-        GM_ADDR downWeightGm,
-        GM_ADDR yGm,
-        GM_ADDR workspaceGm,
-        const SwigluGatedMlpTilingData &tilingData)
+    __aicore__ void Init(GM_ADDR xGm, GM_ADDR gateUpWeightGm, GM_ADDR downWeightGm, GM_ADDR yGm, GM_ADDR workspaceGm,
+                         const SwigluGatedMlpTilingData& tilingData)
     {
         tilingData_ = tilingData;
         kernel_.Init(xGm, gateUpWeightGm, downWeightGm, yGm, workspaceGm, tilingData_);
@@ -70,10 +60,10 @@ public:
     }
 
 private:
-    SwigluGatedMlpTilingData tilingData_ {};
-    KernelImpl kernel_ {};
+    SwigluGatedMlpTilingData tilingData_{};
+    KernelImpl kernel_{};
 };
 
-}  // namespace swiglu_gated_mlp_kernel
+} // namespace swiglu_gated_mlp_kernel
 
-#endif  // OP_KERNEL_SWIGLU_GATED_MLP_SINGLE_HPP_
+#endif // OP_KERNEL_SWIGLU_GATED_MLP_SINGLE_HPP_

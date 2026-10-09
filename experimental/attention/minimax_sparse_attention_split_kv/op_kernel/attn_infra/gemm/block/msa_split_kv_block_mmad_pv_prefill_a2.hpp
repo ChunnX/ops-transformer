@@ -107,7 +107,7 @@ struct BlockMmadPVPrefillA2 {
     TileMmad tileMmad;
 
     // === L1 管理状态 ===
-    Arch::Resource<ArchTag> *resourcePtr_; // Resource 指针 (用于 SetL1PBuf 重新绑定)
+    Arch::Resource<ArchTag>* resourcePtr_; // Resource 指针 (用于 SetL1PBuf 重新绑定)
     uint32_t l1BaseAddr_;                  // L1 起始偏移 (V buffer 起点, 在 QK 的 K/Q 之后)
     uint32_t vBufBytes_;                   // V buffer 字节数
     uint32_t l1PStageBytes_;               // 每个 P stage 的字节数 (用于多级 P buffer 轮转)
@@ -123,7 +123,7 @@ struct BlockMmadPVPrefillA2 {
     AscendC::GlobalTensor<ElementP> gmPWorkspace_;
     uint32_t gmPStageElems_ = 0;
 
-    __aicore__ inline void SetGmPWorkspace(AscendC::GlobalTensor<ElementP> &gmPWorkspace, uint32_t gmPStageElems)
+    __aicore__ inline void SetGmPWorkspace(AscendC::GlobalTensor<ElementP>& gmPWorkspace, uint32_t gmPStageElems)
     {
         gmPWorkspace_ = gmPWorkspace;
         gmPStageElems_ = gmPStageElems;
@@ -140,7 +140,7 @@ struct BlockMmadPVPrefillA2 {
     // SET: CrossCoreSetFlag<0x2, PIPE_MTE1> (CUBE's MTE1 pipe, after L1→L0A copy).
     // WAIT: CrossCoreWaitFlag (non-templated, MODE=0/PIPE_S — generic sync pipe).
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 0x2U) {
             Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
@@ -148,7 +148,7 @@ struct BlockMmadPVPrefillA2 {
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 0x2U) {
             // A2 CUBE: must use MODE=0x2 with a CUBE-available pipe (PIPE_FIX etc).
@@ -175,7 +175,7 @@ struct BlockMmadPVPrefillA2 {
     //   L0A[0], L0A[1]: P tile 双缓冲 (与 QK 共享 L0A, 按 batch 乒乓)
     //   L0B[1]:         V 常驻 (L0B[0] 给 QK 的 K, PV/ QK 各用不同 stage 不冲突)
     //   L0C[0], L0C[1]: O_partial 双缓冲 (上半区: L0C_HALF_SIZE + offset, 与 QK 下半区不冲突)
-    __aicore__ inline void Init(Arch::Resource<ArchTag> &resource, uint32_t l1StartAddr, uint32_t blockSize, uint32_t D,
+    __aicore__ inline void Init(Arch::Resource<ArchTag>& resource, uint32_t l1StartAddr, uint32_t blockSize, uint32_t D,
                                 uint32_t groupSize)
     {
         vBufBytes_ = blockSize * D * sizeof(ElementV);
@@ -228,7 +228,7 @@ struct BlockMmadPVPrefillA2 {
     //     Set<MTE1_M>(3): L0B[1] 已加载完成, 通知首个 batch 的 MMAD 可读
     //     末个 batch Set<M_MTE1>(3): 释放 L0B[1] 给下一个 task
     template <class TensorV>
-    __aicore__ inline void LoadVResident(TensorV &gmVTensor, uint32_t validSize, uint32_t D)
+    __aicore__ inline void LoadVResident(TensorV& gmVTensor, uint32_t validSize, uint32_t D)
     {
         residentValidSize_ = validSize;
         using CopyGmToL1V = typename TileCopy::template CopyGmToL1B<TensorV>;
@@ -284,10 +284,10 @@ struct BlockMmadPVPrefillA2 {
     //   smToMm2Flag     — 跨核同步 flag: VEC(softmax) → CUBE(PV)
     // =====================================================================================
     template <class TensorO>
-    __aicore__ inline void operator()(TensorO &gAccumOut, const uint32_t *qTokens, const uint32_t *slotKs,
+    __aicore__ inline void operator()(TensorO& gAccumOut, const uint32_t* qTokens, const uint32_t* slotKs,
                                       uint32_t groupCount, uint32_t groupRows, uint32_t D, uint64_t perQTokenStride,
                                       uint64_t kvHeadBase, uint64_t slotOElems, uint32_t numBatches, uint32_t bDe,
-                                      uint32_t pStage, Arch::CrossCoreFlag &smToMm2Flag)
+                                      uint32_t pStage, Arch::CrossCoreFlag& smToMm2Flag)
     {
         uint32_t M = groupCount * groupRows;
         uint32_t N = D;

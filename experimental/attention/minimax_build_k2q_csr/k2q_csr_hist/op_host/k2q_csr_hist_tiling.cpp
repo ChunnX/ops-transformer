@@ -16,12 +16,12 @@
 namespace optiling {
 struct K2qCsrHistCompileInfo {};
 
-static ge::graphStatus K2qCsrHistTilingFunc(gert::TilingContext *context)
+static ge::graphStatus K2qCsrHistTilingFunc(gert::TilingContext* context)
 {
     return k2q_csr_tiling::FillTiling(context, k2q_csr_tiling::Stage::Hist);
 }
 
-static ge::graphStatus TilingParseForK2qCsrHist([[maybe_unused]] gert::TilingParseContext *context)
+static ge::graphStatus TilingParseForK2qCsrHist([[maybe_unused]] gert::TilingParseContext* context)
 {
     return ge::GRAPH_SUCCESS;
 }

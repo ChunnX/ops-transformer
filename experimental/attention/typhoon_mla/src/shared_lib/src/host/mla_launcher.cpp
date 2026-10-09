@@ -23,8 +23,8 @@ const uint32_t TILINGKEY_BFP16 = 1;
 const uint32_t TILINGKEY_TP1_SPEC_FP16 = 4;
 const uint32_t TILINGKEY_TP1_SPEC_BFP16 = 5;
 
-
-MLATiling::MLAInfo CreateMlaInfo(MLAKernelInfo& mlaKernelInfo){
+MLATiling::MLAInfo CreateMlaInfo(MLAKernelInfo& mlaKernelInfo)
+{
     MLATiling::MLAInfo mlaInfo;
 
     mlaInfo.numTokens = mlaKernelInfo.numTokens;
@@ -40,23 +40,20 @@ MLATiling::MLAInfo CreateMlaInfo(MLAKernelInfo& mlaKernelInfo){
     mlaInfo.kvSeqLen = mlaKernelInfo.kvSeqLen;
 
     return mlaInfo;
-}   
+}
 
-
-struct InputTensors{
+struct InputTensors {
     uint8_t *q, *qRope, *k, *kRope, *blockTable, *s, *p;
 };
 
-
-struct OutputTensors{
+struct OutputTensors {
     uint8_t *o, *oTmp, *globalO, *l, *oCoreTmp;
 };
-
 
 void LaunchMLA(uint32_t blockNum, aclrtStream stream, MLAKernelInfo mlaKernelInfo)
 {
     MLATiling::MLAInfo mlaInfo = CreateMlaInfo(mlaKernelInfo);
-   
+
     // get MLA tiling on host
     int32_t specStraKey = (mlaInfo.numHeads == MLATiling::NUM128) ? 1 : 0;
     uint32_t tilingSize = (MLATiling::TILING_HEAD_SIZE + mlaInfo.batch * MLATiling::TILING_PARA_SIZE) * sizeof(int32_t);
@@ -64,13 +61,13 @@ void LaunchMLA(uint32_t blockNum, aclrtStream stream, MLAKernelInfo mlaKernelInf
         tilingSize = (MLATiling::TILING_HEAD_SIZE + mlaInfo.numTokens * MLATiling::TILING_PARA_SIZE) * sizeof(int32_t);
     }
 
-    void *tilingHost = nullptr;
+    void* tilingHost = nullptr;
     ACL_CHECK(aclrtMallocHost(&tilingHost, tilingSize));
-    MLATiling::GetMLATilingParam(mlaInfo, blockNum, (uint32_t *)tilingHost, mlaKernelInfo.softmaxScale);
+    MLATiling::GetMLATilingParam(mlaInfo, blockNum, (uint32_t*)tilingHost, mlaKernelInfo.softmaxScale);
 
     // copy tiling info to device
-    uint8_t *tilingDevice;
-    ACL_CHECK(aclrtMalloc((void **)(&tilingDevice), tilingSize, ACL_MEM_MALLOC_HUGE_FIRST));
+    uint8_t* tilingDevice;
+    ACL_CHECK(aclrtMalloc((void**)(&tilingDevice), tilingSize, ACL_MEM_MALLOC_HUGE_FIRST));
     ACL_CHECK(aclrtMemcpy(tilingDevice, tilingSize, tilingHost, tilingSize, ACL_MEMCPY_HOST_TO_DEVICE));
 
     // prepare for device kernel launch
@@ -81,35 +78,36 @@ void LaunchMLA(uint32_t blockNum, aclrtStream stream, MLAKernelInfo mlaKernelInf
     // 3 bits for tilingKey(specStraKey : 1, dTypeKey : 2)
     int32_t tilingKey = (specStraKey << MLATiling::NUM2) + mlaKernelInfo.dTypeKey;
 
-    std::vector<uint8_t *> inAddrs = mlaKernelInfo.inputAddr;
+    std::vector<uint8_t*> inAddrs = mlaKernelInfo.inputAddr;
     InputTensors inputs{inAddrs[0], inAddrs[1], inAddrs[2], inAddrs[3], inAddrs[4], inAddrs[5], inAddrs[6]};
-    
-    std::vector<uint8_t *> outAddrs = mlaKernelInfo.outputAddr;
+
+    std::vector<uint8_t*> outAddrs = mlaKernelInfo.outputAddr;
     OutputTensors outputs{outAddrs[0], outAddrs[1], outAddrs[2], outAddrs[3], outAddrs[4]};
 
     // use Tp1Spec kernel to get better performance when numHeads = 128
     switch (tilingKey) {
         case TILINGKEY_FP16:
             MLAFp16<<<blockNum, nullptr, stream>>>(fftsAddr, inputs.q, inputs.qRope, inputs.k, inputs.kRope,
-                                                inputs.blockTable, outputs.o, inputs.s, inputs.p, outputs.oTmp,
-                                                outputs.globalO, outputs.oCoreTmp, outputs.l, tilingDevice); 
+                                                   inputs.blockTable, outputs.o, inputs.s, inputs.p, outputs.oTmp,
+                                                   outputs.globalO, outputs.oCoreTmp, outputs.l, tilingDevice);
             break;
         case TILINGKEY_BFP16:
             MLABf16<<<blockNum, nullptr, stream>>>(fftsAddr, inputs.q, inputs.qRope, inputs.k, inputs.kRope,
-                                                inputs.blockTable, outputs.o, inputs.s, inputs.p, outputs.oTmp,
-                                                outputs.globalO, outputs.oCoreTmp, outputs.l, tilingDevice); 
+                                                   inputs.blockTable, outputs.o, inputs.s, inputs.p, outputs.oTmp,
+                                                   outputs.globalO, outputs.oCoreTmp, outputs.l, tilingDevice);
             break;
         case TILINGKEY_TP1_SPEC_FP16:
-            MLATp1SpecFp16<<<blockNum, nullptr, stream>>>(fftsAddr, inputs.q, inputs.qRope, inputs.k, inputs.kRope,
-                                                inputs.blockTable, outputs.o, inputs.s, inputs.p, outputs.oTmp,
-                                                outputs.globalO, outputs.oCoreTmp, outputs.l, tilingDevice); 
+            MLATp1SpecFp16<<<blockNum, nullptr, stream>>>(
+                fftsAddr, inputs.q, inputs.qRope, inputs.k, inputs.kRope, inputs.blockTable, outputs.o, inputs.s,
+                inputs.p, outputs.oTmp, outputs.globalO, outputs.oCoreTmp, outputs.l, tilingDevice);
             break;
         case TILINGKEY_TP1_SPEC_BFP16:
-            MLATp1SpecBf16<<<blockNum, nullptr, stream>>>(fftsAddr, inputs.q, inputs.qRope, inputs.k, inputs.kRope,
-                                                inputs.blockTable, outputs.o, inputs.s, inputs.p, outputs.oTmp,
-                                                outputs.globalO, outputs.oCoreTmp, outputs.l, tilingDevice); 
+            MLATp1SpecBf16<<<blockNum, nullptr, stream>>>(
+                fftsAddr, inputs.q, inputs.qRope, inputs.k, inputs.kRope, inputs.blockTable, outputs.o, inputs.s,
+                inputs.p, outputs.oTmp, outputs.globalO, outputs.oCoreTmp, outputs.l, tilingDevice);
             break;
-        default: break;
+        default:
+            break;
     }
     // memory clean-up
     aclrtFreeHost(tilingHost);
@@ -133,12 +131,12 @@ std::vector<uint64_t> GetKVSplitKernel(uint32_t blockNum, aclrtStream stream, ML
         tilingSize = (MLATiling::TILING_HEAD_SIZE + numTokens * MLATiling::TILING_PARA_SIZE) * sizeof(int32_t);
     }
 
-    void *tilingHost = nullptr;
+    void* tilingHost = nullptr;
     ACL_CHECK(aclrtMallocHost(&tilingHost, tilingSize));
-    MLATiling::GetMLATilingParam(mlaInfo, blockNum, (uint32_t *)tilingHost, 0.0);
+    MLATiling::GetMLATilingParam(mlaInfo, blockNum, (uint32_t*)tilingHost, 0.0);
 
     uint64_t aicCoreNum = (uint64_t)blockNum;
-    uint64_t kvSplitCoreNum = (uint64_t)(*((uint32_t *)tilingHost + MLATiling::TILING_KVCORENUM));
+    uint64_t kvSplitCoreNum = (uint64_t)(*((uint32_t*)tilingHost + MLATiling::TILING_KVCORENUM));
     uint64_t oFdSize = embeddingSize * numHeads * numTokens * kvSplitCoreNum * sizeof(float);
     uint64_t lSize = numTokens * numHeads * kvSplitCoreNum * sizeof(float);
 

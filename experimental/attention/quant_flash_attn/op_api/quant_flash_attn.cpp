@@ -18,14 +18,14 @@ namespace l0op {
 
 OP_TYPE_REGISTER(QuantFlashAttn);
 
-const std::array<const aclTensor *, 2> QuantFlashAttn(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *qDescale, const aclTensor *kDescale,
-    const aclTensor *vDescale, const aclTensor *blockTableOptional, const aclTensor *pScaleOptional,
-    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
-    const aclTensor *metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
-    int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutQDescale,
-    const char *layoutKv, const char *layoutOut, bool returnSoftmaxLse, aclOpExecutor *executor)
+const std::array<const aclTensor*, 2> QuantFlashAttn(
+    const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* qDescale, const aclTensor* kDescale,
+    const aclTensor* vDescale, const aclTensor* blockTableOptional, const aclTensor* pScaleOptional,
+    const aclTensor* cuSeqlensQOptional, const aclTensor* cuSeqlensKvOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* sequsedKvOptional, const aclTensor* sinksOptional, const aclTensor* attnMaskOptional,
+    const aclTensor* metadataOptional, int64_t quantMode, double softmaxScale, int64_t maskMode, int64_t winLeft,
+    int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char* layoutQ, const char* layoutQDescale,
+    const char* layoutKv, const char* layoutOut, bool returnSoftmaxLse, aclOpExecutor* executor)
 {
     L0_DFX(QuantFlashAttn, q, k, v, qDescale, kDescale, vDescale, blockTableOptional, pScaleOptional,
            cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, sinksOptional,

@@ -12,22 +12,24 @@ import torch
 import torch_npu
 import ascend_ops
 
+
 def bias_gate_gelu_cpu(in_tensor, bias):
     """CPU侧实现 BiasGateGelu 算子"""
     gbH, gbW = in_tensor.shape
     half_dim = gbW // 2
-    
+
     gate = in_tensor[:, :half_dim]
     value = in_tensor[:, half_dim:]
-    
+
     gate_bias = bias[:half_dim]
     value_bias = bias[half_dim:]
-    
-    gate = torch.nn.functional.gelu(gate + gate_bias, approximate='tanh')
+
+    gate = torch.nn.functional.gelu(gate + gate_bias, approximate="tanh")
     value = value + value_bias
     out = gate * value
-    
+
     return out
+
 
 # 测试逻辑
 print("=== BiasGateGelu 算子测试 ===")
@@ -51,7 +53,9 @@ in_tensor_npu = in_tensor.npu()
 bias_npu = bias.npu()
 out_npu = torch.zeros(gbH, gbW // 2, dtype=dtype).npu()
 
-torch.ops.ascend_ops.bias_gate_gelu(block_dim, in_tensor_npu, bias_npu, out_npu, gbH, gbW)
+torch.ops.ascend_ops.bias_gate_gelu(
+    block_dim, in_tensor_npu, bias_npu, out_npu, gbH, gbW
+)
 z_npu_cpu = out_npu.cpu()
 print(f"  输出形状: {z_npu_cpu.shape}")
 print(f"  前2行示例:\n{z_npu_cpu[:2]}")

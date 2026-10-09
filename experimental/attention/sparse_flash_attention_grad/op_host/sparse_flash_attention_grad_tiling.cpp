@@ -27,7 +27,7 @@ using namespace AscendC;
 namespace optiling {
 namespace sfag {
 
-ge::graphStatus TilingSparseFlashAttentionGrad(gert::TilingContext *context)
+ge::graphStatus TilingSparseFlashAttentionGrad(gert::TilingContext* context)
 {
     SparseFlashAttentionGradBasicTiling sfagTiling(context);
 
@@ -61,10 +61,10 @@ ge::graphStatus TilingSparseFlashAttentionGrad(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForSparseFlashAttentionGrad(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForSparseFlashAttentionGrad(gert::TilingParseContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashAttentionGrad", "context is null."), return ge::GRAPH_FAILED);
-    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null."),
                 return ge::GRAPH_FAILED);
 

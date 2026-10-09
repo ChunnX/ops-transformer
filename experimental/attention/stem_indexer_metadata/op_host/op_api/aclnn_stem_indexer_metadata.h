@@ -17,15 +17,14 @@
 extern "C" {
 #endif
 
-__attribute__((visibility("default")))
-aclnnStatus aclnnStemIndexerMetadataGetWorkspaceSize(
-    const aclTensor* qSeqLens, const aclTensor* kvSeqLens,
-    int64_t qHeads, int64_t kvHeads, bool causal, int64_t stemBlockSize, int64_t dimQkflat, int64_t windowSize,
-    const aclTensor *metadata, uint64_t *workspaceSize, aclOpExecutor **executor);
+__attribute__((visibility("default"))) aclnnStatus aclnnStemIndexerMetadataGetWorkspaceSize(
+    const aclTensor* qSeqLens, const aclTensor* kvSeqLens, int64_t qHeads, int64_t kvHeads, bool causal,
+    int64_t stemBlockSize, int64_t dimQkflat, int64_t windowSize, const aclTensor* metadata, uint64_t* workspaceSize,
+    aclOpExecutor** executor);
 
-__attribute__((visibility("default")))
-aclnnStatus aclnnStemIndexerMetadata(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnStemIndexerMetadata(void* workspace, uint64_t workspaceSize,
+                                                                            aclOpExecutor* executor,
+                                                                            aclrtStream stream);
 
 #ifdef __cplusplus
 }

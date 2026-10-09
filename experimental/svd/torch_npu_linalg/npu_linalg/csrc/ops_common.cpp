@@ -13,7 +13,7 @@
 const std::vector<std::string> g_custom_lib_path = get_custom_lib_path();
 const std::vector<std::string> g_default_custom_lib_path = get_default_custom_lib_path();
 
-void *GetOpApiFuncAddrFromFeatureLib(const char *api_name)
+void* GetOpApiFuncAddrFromFeatureLib(const char* api_name)
 {
     GET_OP_API_FUNC_FROM_FEATURE_LIB(ops_infer_handler, "libaclnn_ops_infer.so", api_name);
     GET_OP_API_FUNC_FROM_FEATURE_LIB(ops_train_handler, "libaclnn_ops_train.so", api_name);

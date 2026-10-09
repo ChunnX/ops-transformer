@@ -17,10 +17,10 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeK2qCsrHist(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeK2qCsrHist(gert::InferShapeContext* context)
 {
-    const gert::Shape *scratchIn = context->GetInputShape(1);
-    gert::Shape *scratchOut = context->GetOutputShape(0);
+    const gert::Shape* scratchIn = context->GetInputShape(1);
+    gert::Shape* scratchOut = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, scratchIn);
     OP_CHECK_NULL_WITH_CONTEXT(context, scratchOut);
     *scratchOut = *scratchIn;

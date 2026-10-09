@@ -118,7 +118,7 @@ static constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);  
 static constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float); // = 64
 static constexpr uint32_t REPEATE_STRIDE_UP_BOUND = 256;
 
-__aicore__ inline void AbsRowMax(AscendC::LocalTensor<float> &tmpAMaxRes, AscendC::LocalTensor<float> &srcUb,
+__aicore__ inline void AbsRowMax(AscendC::LocalTensor<float>& tmpAMaxRes, AscendC::LocalTensor<float>& srcUb,
                                  AscendC::LocalTensor<float> tmpAUb, AscendC::LocalTensor<float> tmpRowMaxUb,
                                  uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -294,9 +294,9 @@ __aicore__ inline void RowDivs(AscendC::LocalTensor<float> dstUb, AscendC::Local
     }
 }
 
-__aicore__ inline void AntiquantAIterExpand(AscendC::GlobalTensor<int8_t> dstGm, AscendC::LocalTensor<float> &tmpA1,
-                                            AscendC::LocalTensor<float> &tmpA2, AscendC::LocalTensor<half> &aResOutUb,
-                                            AscendC::LocalTensor<int8_t> &aResOutUbI8, uint32_t calcSize, bool isFirst,
+__aicore__ inline void AntiquantAIterExpand(AscendC::GlobalTensor<int8_t> dstGm, AscendC::LocalTensor<float>& tmpA1,
+                                            AscendC::LocalTensor<float>& tmpA2, AscendC::LocalTensor<half>& aResOutUb,
+                                            AscendC::LocalTensor<int8_t>& aResOutUbI8, uint32_t calcSize, bool isFirst,
                                             uint64_t outOffset, uint32_t eventId, bool deferMte3Wait)
 {
     if (!isFirst) {
@@ -414,7 +414,7 @@ __aicore__ inline void AntiquantSoftmaxResPreProcess(
 }
 
 template <typename Q_T>
-__aicore__ inline void CopyAntiqQuery(AscendC::LocalTensor<float> &queryCastUb, AscendC::LocalTensor<Q_T> &inputUb,
+__aicore__ inline void CopyAntiqQuery(AscendC::LocalTensor<float>& queryCastUb, AscendC::LocalTensor<Q_T>& inputUb,
                                       AscendC::GlobalTensor<Q_T> queryGm, uint64_t qOffset, uint32_t dealRowCount,
                                       uint32_t columnCount, uint32_t actualColumnCount)
 {
@@ -435,7 +435,7 @@ __aicore__ inline void CopyAntiqQuery(AscendC::LocalTensor<float> &queryCastUb, 
     AscendC::Cast(queryCastUb, inputUb, AscendC::RoundMode::CAST_NONE, dealRowCount * columnCount);
 }
 
-__aicore__ inline void CopyAntiquantScalePerToken(AscendC::LocalTensor<float> &scaleUb,
+__aicore__ inline void CopyAntiquantScalePerToken(AscendC::LocalTensor<float>& scaleUb,
                                                   AscendC::GlobalTensor<float> srcGm, uint64_t offset,
                                                   uint32_t actualColumnCount)
 {

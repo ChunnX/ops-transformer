@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 
-template <typename T, uint32_t N, uint64_t Stride=0>
+template <typename T, uint32_t N, uint64_t Stride = 0>
 class Array {
 private:
     T elems[N];
@@ -37,7 +37,7 @@ private:
 public:
     __aicore__ inline void Init(const LocalTensor<T>& tensor)
     {
-         this->tensor = tensor;
+        this->tensor = tensor;
     }
     __aicore__ inline LocalTensor<T> operator[](uint32_t i)
     {
@@ -52,11 +52,11 @@ private:
     uint64_t stride = 0;
 
 public:
-	__aicore__ inline void Init(const GlobalTensor<T>& tensor, uint64_t splitSize)
- 	{
+    __aicore__ inline void Init(const GlobalTensor<T>& tensor, uint64_t splitSize)
+    {
         this->tensor = tensor;
-    	this->stride = splitSize;
- 	}
+        this->stride = splitSize;
+    }
     __aicore__ inline GlobalTensor<T> operator[](uint32_t i)
     {
         return tensor[i * stride];

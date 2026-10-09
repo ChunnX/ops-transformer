@@ -29,7 +29,7 @@ namespace optiling {
 
 #define OPS_CHECK_NULL_WITH_CONTEXT_RET(context, ptr, ret) \
     if ((ptr) == nullptr) { \
-        const char *name = ((context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(); \
+        const char* name = ((context)->GetNodeName() == nullptr) ? "nil" : (context)->GetNodeName(); \
         printf("EZ9999 op[%s], %s is nullptr!", name, #ptr); \
         return ret; \
     }
@@ -45,17 +45,17 @@ namespace optiling {
         } \
     } while (0)
 
-bool AddWorkspaceFFN(gert::TilingContext *context, const size_t workspace)
+bool AddWorkspaceFFN(gert::TilingContext* context, const size_t workspace)
 {
-    size_t *workspace_size = context->GetWorkspaceSizes(1);
+    size_t* workspace_size = context->GetWorkspaceSizes(1);
     OPS_CHECK_NULL_WITH_CONTEXT_RET(context, workspace_size, false);
     *workspace_size = workspace;
     return true;
 }
 
-bool MoeFFNTiling::GetPlatformInfo(gert::TilingContext *context)
+bool MoeFFNTiling::GetPlatformInfo(gert::TilingContext* context)
 {
-    fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
+    fe::PlatFormInfos* platformInfo = context->GetPlatformInfo();
     OPS_CHECK_NULL_WITH_CONTEXT_RET(context, platformInfo, false);
 
     _Params.CoreNum = platformInfo->GetCoreNum() / 2;
@@ -67,7 +67,7 @@ bool MoeFFNTiling::GetPlatformInfo(gert::TilingContext *context)
     return true;
 }
 
-bool MoeFFNTiling::CheckTensorShape(gert::TilingContext *context, gert::Shape &shape, uint64_t ndim,
+bool MoeFFNTiling::CheckTensorShape(gert::TilingContext* context, gert::Shape& shape, uint64_t ndim,
                                     std::vector<uint64_t> dims)
 {
     OP_TILING_CHECK(shape.GetDimNum() != ndim,
@@ -85,7 +85,7 @@ bool MoeFFNTiling::CheckTensorShape(gert::TilingContext *context, gert::Shape &s
     return true;
 }
 
-bool MoeFFNTiling::CheckInOutShapes(gert::TilingContext *context)
+bool MoeFFNTiling::CheckInOutShapes(gert::TilingContext* context)
 {
     uint32_t idx = 0;
     auto x = context->GetInputShape(idx++);
@@ -230,12 +230,12 @@ bool MoeFFNTiling::CheckInOutShapes(gert::TilingContext *context)
     return true;
 }
 
-bool MoeFFNTiling::GetTilingData(gert::TilingContext *context)
+bool MoeFFNTiling::GetTilingData(gert::TilingContext* context)
 {
     return true;
 }
 
-bool MoeFFNTiling::SetTilingData(gert::TilingContext *context)
+bool MoeFFNTiling::SetTilingData(gert::TilingContext* context)
 {
     tilingData.set_CoreNum(_Params.CoreNum);
     tilingData.set_dataType(static_cast<uint32_t>(_Params.dataType));
@@ -267,7 +267,7 @@ bool MoeFFNTiling::SetTilingData(gert::TilingContext *context)
     return true;
 }
 
-bool MoeFFNTiling::SetLaunchInfo(gert::TilingContext *context)
+bool MoeFFNTiling::SetLaunchInfo(gert::TilingContext* context)
 {
     context->SetBlockDim(_Params.CoreNum);
     context->SetScheduleMode(1);
@@ -294,12 +294,12 @@ bool MoeFFNTiling::SetLaunchInfo(gert::TilingContext *context)
     return true;
 }
 
-bool MoeFFNTiling::GetCheckAttr(gert::TilingContext *context)
+bool MoeFFNTiling::GetCheckAttr(gert::TilingContext* context)
 {
     auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT_RET(context, attrs, false);
     //  optional
-    const int64_t *scale_group_size = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t* scale_group_size = attrs->GetAttrPointer<int64_t>(0);
     OP_TILING_CHECK(scale_group_size == nullptr,
                     VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(),
                                                     "MoeFFN get scale_group_size is nullptr, please check."),
@@ -313,7 +313,7 @@ bool MoeFFNTiling::GetCheckAttr(gert::TilingContext *context)
                                                     "MoeFFN get scale_group_size not aligned to 32, please check."),
                     return false);
     _Params.scaleGroupSize = *scale_group_size;
-    const int64_t *topk = attrs->GetAttrPointer<int64_t>(1);
+    const int64_t* topk = attrs->GetAttrPointer<int64_t>(1);
     OP_TILING_CHECK(
         topk == nullptr,
         VECTOR_INNER_ERR_REPORT_TILIING(context->GetNodeName(), "MoeFFN get topk is nullptr, please check."),
@@ -325,7 +325,7 @@ bool MoeFFNTiling::GetCheckAttr(gert::TilingContext *context)
     return true;
 }
 
-ge::graphStatus MoeFFNTiling::runTiling(gert::TilingContext *context)
+ge::graphStatus MoeFFNTiling::runTiling(gert::TilingContext* context)
 {
     // 910b AscendC platformINFO
     OP_TILING_CHECK(!GetPlatformInfo(context),
@@ -358,7 +358,7 @@ ge::graphStatus MoeFFNTiling::runTiling(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingMoeFFN(gert::TilingContext *context)
+ge::graphStatus TilingMoeFFN(gert::TilingContext* context)
 {
     MoeFFNTiling tiling_handle;
     return tiling_handle.runTiling(context);

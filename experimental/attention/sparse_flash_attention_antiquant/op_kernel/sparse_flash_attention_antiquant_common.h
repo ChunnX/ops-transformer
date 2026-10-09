@@ -33,24 +33,24 @@ enum class SFAA_LAYOUT {
 };
 
 enum class QUANT_MODE {
-    PER_CHANNEL = 0,  // GQA支持
+    PER_CHANNEL = 0,    // GQA支持
     PER_TOKEN_HEAD = 1, // GQA支持
-    PER_TILE = 2,   // MLA支持
+    PER_TILE = 2,       // MLA支持
 };
 
 enum class ATTENTION_MODE {
-    GQA_MHA = 0,  // QKV headDim相等
-    MLA_NAIVE = 1, // Dn=128, Dr=64
-    MLA_ABSORB = 2,   // Dn=512, Dr=64
+    GQA_MHA = 0,    // QKV headDim相等
+    MLA_NAIVE = 1,  // Dn=128, Dr=64
+    MLA_ABSORB = 2, // Dn=512, Dr=64
 };
 
 enum class QUANT_SCALE_REPO_MODE {
-    SEPARATE = 0,  // 分开存储
+    SEPARATE = 0, // 分开存储
     COMBINE = 1, // 合并存储，量化模式是PER_TOKEN_HEAD/PER_TILE时支持COMBINE模式，参数顺序为：Nope+Rope+DequantScale
 };
 
 template <typename Q_T, typename KV_T, typename OUT_T, const bool FLASH_DECODE = false,
-	  SFAA_LAYOUT LAYOUT_T = SFAA_LAYOUT::BSND, SFAA_LAYOUT KV_LAYOUT_T = SFAA_LAYOUT::BSND,
+          SFAA_LAYOUT LAYOUT_T = SFAA_LAYOUT::BSND, SFAA_LAYOUT KV_LAYOUT_T = SFAA_LAYOUT::BSND,
           const int TEMPLATE_MODE = C_TEMPLATE, const bool MSD_DD = false, typename... Args>
 struct SFAAType {
     using queryType = Q_T;
@@ -62,28 +62,29 @@ struct SFAAType {
     static constexpr SFAA_LAYOUT layout = LAYOUT_T;
     static constexpr SFAA_LAYOUT kvLayout = KV_LAYOUT_T;
     static constexpr int templateMode = TEMPLATE_MODE;
-    static constexpr bool pageAttention = (KV_LAYOUT_T == SFAA_LAYOUT::PA_BSND ||
-                                           KV_LAYOUT_T == SFAA_LAYOUT::PA_BNSD ||
+    static constexpr bool pageAttention = (KV_LAYOUT_T == SFAA_LAYOUT::PA_BSND || KV_LAYOUT_T == SFAA_LAYOUT::PA_BNSD ||
                                            KV_LAYOUT_T == SFAA_LAYOUT::PA_NZ);
 };
 
 // ================================Util functions==================================
 __aicore__ inline uint64_t SFAAAlign(uint64_t num, uint64_t rnd)
 {
-    return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
 __aicore__ inline uint64_t SfaaCeilDiv(uint64_t num, uint64_t rnd)
 {
-    return rnd == 0 ? 0 : (num + rnd-1) / rnd;
+    return rnd == 0 ? 0 : (num + rnd - 1) / rnd;
 }
 
-template <typename T1, typename T2> __aicore__ inline T1 Min(T1 a, T2 b)
+template <typename T1, typename T2>
+__aicore__ inline T1 Min(T1 a, T2 b)
 {
     return (a > b) ? (b) : (a);
 }
 
-template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
+template <typename T>
+__aicore__ inline size_t BlockAlign(size_t s)
 {
     if constexpr (IsSameType<T, int4b_t>::value) {
         return (s + 63) / 64 * 64;
@@ -93,13 +94,13 @@ template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
 }
 
 struct FDparams {
-    uint32_t *bN2IdxOfFdHead;
-    uint32_t *gS1IdxOfFdHead;
-    uint32_t *s2SplitNumOfFdHead;
-    uint32_t *gS1SplitNumOfFdHead;
-    uint32_t *gS1LastPartSizeOfFdHead;
-    uint32_t *gS1IdxEndOfFdHead;
-    uint32_t *gS1IdxEndOfFdHeadSplit;
+    uint32_t* bN2IdxOfFdHead;
+    uint32_t* gS1IdxOfFdHead;
+    uint32_t* s2SplitNumOfFdHead;
+    uint32_t* gS1SplitNumOfFdHead;
+    uint32_t* gS1LastPartSizeOfFdHead;
+    uint32_t* gS1IdxEndOfFdHead;
+    uint32_t* gS1IdxEndOfFdHeadSplit;
     uint32_t usedVecNumOfFd;
     uint32_t gS1BaseSizeOfFd;
 };
@@ -196,13 +197,13 @@ struct ConstInfo {
     uint64_t headDim;
     uint64_t headDimRope;
     uint64_t headDimAlign;
-    uint64_t combineHeadDim; // quantScaleRepoMode为Combine模式时=headDim+headDimRope, 否则=headDim
+    uint64_t combineHeadDim;          // quantScaleRepoMode为Combine模式时=headDim+headDimRope, 否则=headDim
     uint64_t kvSeqSize = 0ULL;        // kv最大S长度
     uint64_t qSeqSize = 1ULL;         // q最大S长度
-    int64_t kvCacheBlockSize = 0;    // PA场景的block size
+    int64_t kvCacheBlockSize = 0;     // PA场景的block size
     uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t splitKVNum = 0U;         // S2核间切分的切分份数
-    SFAA_LAYOUT outputLayout;          // 输出的Transpose格式
+    SFAA_LAYOUT outputLayout;         // 输出的Transpose格式
     uint32_t sparseMode = 0;
     bool needInit = false;
 
@@ -211,9 +212,9 @@ struct ConstInfo {
     uint64_t combineLseOffset = 0ULL;
     uint64_t combineAccumOutOffset = 0ULL;
 
-    uint32_t actualLenDimsQ = 0U;   // query的actualSeqLength 的维度
-    uint32_t actualLenDimsKV = 0U;  // KV 的actualSeqLength 的维度
-    uint32_t sparseLenDimsKV = 0U;  // TopK的实际K大小的维度
+    uint32_t actualLenDimsQ = 0U;  // query的actualSeqLength 的维度
+    uint32_t actualLenDimsKV = 0U; // KV 的actualSeqLength 的维度
+    uint32_t sparseLenDimsKV = 0U; // TopK的实际K大小的维度
 
     // TND
     uint32_t s2Start = 0U; // TND场景下，S2的起始位置
@@ -250,7 +251,6 @@ struct MSplitInfo {
     uint32_t vecStartM = 0U;
     uint32_t vecDealM = 0U;
 };
-
 
 // BLOCK和REPEAT的字节数
 constexpr uint64_t BYTE_BLOCK = 32UL;
@@ -346,7 +346,7 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
 }
 
 __aicore__ inline void MatDivsVec(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                  uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -367,12 +367,13 @@ __aicore__ inline void MatDivsVec(LocalTensor<float> dstUb, LocalTensor<float> s
     }
 
     if (dRemain > 0) {
-        Div(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount, repeatParamsDiv);
+        Div(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+            repeatParamsDiv);
     }
 }
 
 __aicore__ inline void RowSub(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -393,12 +394,13 @@ __aicore__ inline void RowSub(LocalTensor<float> dstUb, LocalTensor<float> src0U
     }
 
     if (dRemain > 0) {
-        Sub(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount, repeatParamsSub);
+        Sub(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+            repeatParamsSub);
     }
 }
 
 __aicore__ inline void ColMax(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -419,12 +421,13 @@ __aicore__ inline void ColMax(LocalTensor<float> dstUb, LocalTensor<float> src0U
     }
 
     if (dRemain > 0) {
-        Max(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount, repeatParamsMax);
+        Max(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+            repeatParamsMax);
     }
 }
 
 __aicore__ inline void ColAdd(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -445,7 +448,8 @@ __aicore__ inline void ColAdd(LocalTensor<float> dstUb, LocalTensor<float> src0U
     }
 
     if (dRemain > 0) {
-        Add(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount, repeatParamsAdd);
+        Add(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+            repeatParamsAdd);
     }
 }
 

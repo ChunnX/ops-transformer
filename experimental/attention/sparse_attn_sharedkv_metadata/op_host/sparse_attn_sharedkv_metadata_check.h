@@ -82,7 +82,7 @@ aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, con
                               const aclTensor* cuSeqLensOriKvOptional, const aclTensor* cuSeqLensCmpKvOptional,
                               const aclTensor* sequsedKvOptional, bool hasCmpKv, const aclTensor* metadata)
 {
-    int64_t *viewDims = nullptr;
+    int64_t* viewDims = nullptr;
     uint64_t viewDimsNum = 0;
     // cu_seqlens_q 存在性校验
     if (strcmp(layoutQOptional, "TND") == 0) {
@@ -114,7 +114,7 @@ aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, con
         auto ret = aclGetViewShape(cuSeqLensCmpKvOptional, &viewDims, &viewDimsNum);
         if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_kv TND and has_cmp_kv is true, "
-                "cu_seqlens_cmp_kv must be provided!");
+                                             "cu_seqlens_cmp_kv must be provided!");
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -134,7 +134,7 @@ int64_t GetQueryBatchSizeSas(const aclTensor* sequsedQOptional, const aclTensor*
                              char* layoutQOptional, int64_t batchSize)
 {
     // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BatchSize
-    int64_t *viewDims = nullptr;
+    int64_t* viewDims = nullptr;
     uint64_t viewDimsNum = 0;
     auto ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
@@ -161,7 +161,7 @@ int64_t GetKvBatchSizeSas(const aclTensor* sequsedKvOptional, const aclTensor* c
                           char* layoutKvOptional, int64_t batchSize)
 {
     // 1. 如果sequsedKvOptional传了，使用sequsedKvOptional获取BatchSize
-    int64_t *viewDims = nullptr;
+    int64_t* viewDims = nullptr;
     uint64_t viewDimsNum = 0;
     auto ret = aclGetViewShape(sequsedKvOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
@@ -189,7 +189,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
                                 const aclTensor* sequsedKvOptional, char* layoutQOptional, char* layoutKvOptional,
                                 int64_t batchSize, const aclTensor* metadata)
 {
-    int64_t *viewDims = nullptr;
+    int64_t* viewDims = nullptr;
     uint64_t viewDimsNum = 0;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     // 校验 cu_seqlens_q
@@ -284,7 +284,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
         // 校验 metadata 元素数
         if (viewDims[0] != optiling::SAS_META_SIZE) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
-                optiling::SAS_META_SIZE, viewDims[0]);
+                    optiling::SAS_META_SIZE, viewDims[0]);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -297,13 +297,13 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
         }
     }
     // 校验 q/kv 维度
-    int64_t queryBatchSize = GetQueryBatchSizeSas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional,
-                                                  batchSize);
-    int64_t kvBatchSize = GetKvBatchSizeSas(sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional,
-                                            batchSize);
+    int64_t queryBatchSize = GetQueryBatchSizeSas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, batchSize);
+    int64_t kvBatchSize = GetKvBatchSizeSas(sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional, batchSize);
     if (queryBatchSize != kvBatchSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size obtained from q Tensor should be the same as "
-                "that obtained from kv tensor, but got %ld and %ld", queryBatchSize, kvBatchSize);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "The batch_size obtained from q Tensor should be the same as "
+                "that obtained from kv tensor, but got %ld and %ld",
+                queryBatchSize, kvBatchSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
     delete[] viewDims;

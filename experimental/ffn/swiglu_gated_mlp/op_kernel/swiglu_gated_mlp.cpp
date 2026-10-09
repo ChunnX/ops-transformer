@@ -28,11 +28,8 @@ using namespace AscendC;
 namespace {
 
 template <typename T>
-__aicore__ inline void RunCubeMatmulStage(
-    GM_ADDR xGm,
-    GM_ADDR weightGm,
-    GM_ADDR yGm,
-    const SwigluGatedMlpTilingData &tilingData)
+__aicore__ inline void RunCubeMatmulStage(GM_ADDR xGm, GM_ADDR weightGm, GM_ADDR yGm,
+                                          const SwigluGatedMlpTilingData& tilingData)
 {
     swiglu_gated_mlp_kernel::SwigluGatedMlpCubeMatmulStage<T> op;
     op.Init(xGm, weightGm, yGm, tilingData);
@@ -40,7 +37,7 @@ __aicore__ inline void RunCubeMatmulStage(
 }
 
 template <typename T, int BUFFER_NUM>
-__aicore__ inline void RunSwigluStage(GM_ADDR gateUpGm, GM_ADDR hiddenGm, const SwigluGatedMlpTilingData &tilingData)
+__aicore__ inline void RunSwigluStage(GM_ADDR gateUpGm, GM_ADDR hiddenGm, const SwigluGatedMlpTilingData& tilingData)
 {
     swiglu_gated_mlp_kernel::SwigluGatedMlpSwigluStage<T, BUFFER_NUM> op;
     op.Init(gateUpGm, hiddenGm, tilingData);
@@ -48,10 +45,8 @@ __aicore__ inline void RunSwigluStage(GM_ADDR gateUpGm, GM_ADDR hiddenGm, const 
 }
 
 template <typename T>
-__aicore__ inline void RunScalarSwigluStage(
-    GM_ADDR gateUpGm,
-    GM_ADDR hiddenGm,
-    const SwigluGatedMlpTilingData &tilingData)
+__aicore__ inline void RunScalarSwigluStage(GM_ADDR gateUpGm, GM_ADDR hiddenGm,
+                                            const SwigluGatedMlpTilingData& tilingData)
 {
     swiglu_gated_mlp_kernel::SwigluGatedMlpScalarSwigluStage<T> op;
     op.Init(gateUpGm, hiddenGm, tilingData);
@@ -59,13 +54,8 @@ __aicore__ inline void RunScalarSwigluStage(
 }
 
 template <typename T>
-__aicore__ inline void RunStage(
-    GM_ADDR xGm,
-    GM_ADDR gateUpWeightGm,
-    GM_ADDR downWeightGm,
-    GM_ADDR yGm,
-    GM_ADDR workspaceGm,
-    const SwigluGatedMlpTilingData &tilingData)
+__aicore__ inline void RunStage(GM_ADDR xGm, GM_ADDR gateUpWeightGm, GM_ADDR downWeightGm, GM_ADDR yGm,
+                                GM_ADDR workspaceGm, const SwigluGatedMlpTilingData& tilingData)
 {
     if (tilingData.stage == WG_MLP_STAGE_FUSED) {
         if ASCEND_IS_AIC {
@@ -92,15 +82,10 @@ __aicore__ inline void RunStage(
     }
 }
 
-}  // namespace
+} // namespace
 
-extern "C" __global__ __aicore__ void swiglu_gated_mlp(
-    GM_ADDR x_gm,
-    GM_ADDR gate_up_weight_gm,
-    GM_ADDR down_weight_gm,
-    GM_ADDR y_gm,
-    GM_ADDR workspace,
-    GM_ADDR tiling)
+extern "C" __global__ __aicore__ void swiglu_gated_mlp(GM_ADDR x_gm, GM_ADDR gate_up_weight_gm, GM_ADDR down_weight_gm,
+                                                       GM_ADDR y_gm, GM_ADDR workspace, GM_ADDR tiling)
 {
     REGISTER_TILING_DEFAULT(SwigluGatedMlpTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
@@ -127,12 +112,12 @@ extern "C" __global__ __aicore__ void swiglu_gated_mlp(
         TILING_KEY_IS(WG_MLP_KEY_FP16_MM2)) {
         RunStage<half>(x_gm, gate_up_weight_gm, down_weight_gm, y_gm, workspace, tilingData);
     } else if (TILING_KEY_IS(WG_MLP_STATIC_FLOAT32) || TILING_KEY_IS(WG_MLP_DYNAMIC_FLOAT32) ||
-        TILING_KEY_IS(WG_MLP_KEY_FP32_MM1) || TILING_KEY_IS(WG_MLP_KEY_FP32_SWIGLU) ||
-        TILING_KEY_IS(WG_MLP_KEY_FP32_MM2) || TILING_KEY_IS(WG_MLP_KEY_FP32_FUSED)) {
+               TILING_KEY_IS(WG_MLP_KEY_FP32_MM1) || TILING_KEY_IS(WG_MLP_KEY_FP32_SWIGLU) ||
+               TILING_KEY_IS(WG_MLP_KEY_FP32_MM2) || TILING_KEY_IS(WG_MLP_KEY_FP32_FUSED)) {
         RunStage<float>(x_gm, gate_up_weight_gm, down_weight_gm, y_gm, workspace, tilingData);
     } else if (TILING_KEY_IS(WG_MLP_STATIC_BF16) || TILING_KEY_IS(WG_MLP_DYNAMIC_BF16) ||
-        TILING_KEY_IS(WG_MLP_KEY_BF16_MM1) || TILING_KEY_IS(WG_MLP_KEY_BF16_SWIGLU) ||
-        TILING_KEY_IS(WG_MLP_KEY_BF16_MM2)) {
+               TILING_KEY_IS(WG_MLP_KEY_BF16_MM1) || TILING_KEY_IS(WG_MLP_KEY_BF16_SWIGLU) ||
+               TILING_KEY_IS(WG_MLP_KEY_BF16_MM2)) {
         RunStage<bfloat16_t>(x_gm, gate_up_weight_gm, down_weight_gm, y_gm, workspace, tilingData);
     }
 }

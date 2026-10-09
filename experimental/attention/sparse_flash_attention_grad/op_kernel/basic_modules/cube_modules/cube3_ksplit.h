@@ -19,7 +19,7 @@
 template <typename T1>
 __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube3ProcessKsplitSparse(
     const int64_t dsGmOffset, const int64_t keyGmOffset, const int32_t blkCntOffset, const int64_t lastBlockSize,
-    const bool isLastBasicBlock, const GlobalTensor<float> &dqPartialGm)
+    const bool isLastBasicBlock, const GlobalTensor<float>& dqPartialGm)
 {
     uint32_t dLoopTimes = (dimDTotal + 127) / N_SPLIT_SIZE;
     uint32_t perLoopDSize = N_SPLIT_SIZE;
@@ -92,8 +92,8 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube3ProcessKs
 // mm3 切 K 私有 partial 版（dense 数据源：isSmallS2，直接从 keyGm 连续读）
 template <typename T1>
 __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube3ProcessKsplitDense(
-    const int32_t blkCntOffset, const int64_t lastBlockSize, const bool isLastBasicBlock, const RunInfo &runInfo,
-    const GlobalTensor<float> &dqPartialGm)
+    const int32_t blkCntOffset, const int64_t lastBlockSize, const bool isLastBasicBlock, const RunInfo& runInfo,
+    const GlobalTensor<float>& dqPartialGm)
 {
     const int64_t keyGmOffset = runInfo.keyGmOffset;
 
@@ -168,7 +168,7 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube3ProcessKs
 template <typename T1>
 __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube3ProcessKsplit(
     const int64_t dsGmOffset, const int64_t keyGmOffset, const int32_t blkCntOffset, const int64_t lastBlockSize,
-    const bool isLastBasicBlock, const RunInfo &runInfo, const GlobalTensor<float> &dqPartialGm)
+    const bool isLastBasicBlock, const RunInfo& runInfo, const GlobalTensor<float>& dqPartialGm)
 {
     if (!runInfo.isSmallS2) {
         cube3ProcessKsplitSparse(dsGmOffset, keyGmOffset, blkCntOffset, lastBlockSize, isLastBasicBlock, dqPartialGm);
@@ -181,8 +181,8 @@ __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube3ProcessKs
 // 仅 mm3 改写本核私有 dq partial（dqPartialGm 已定位到本核本 parity 的 [G, Dtotal] 起点）。
 template <typename T1>
 __aicore__ inline __attribute__((always_inline)) void CubeOp<T1>::cube345ProcessKsplit(
-    const RunInfo &runInfo, const int32_t blkCntOffset, const int32_t mmPingPongIdx,
-    const GlobalTensor<float> &dqPartialGm)
+    const RunInfo& runInfo, const int32_t blkCntOffset, const int32_t mmPingPongIdx,
+    const GlobalTensor<float>& dqPartialGm)
 {
     selectedCntOffset = runInfo.actualSelCntOffset;
     cube5Process(runInfo.mm345GmOffset, runInfo.dyGmOffset, runInfo.indicesGmOffset, runInfo.mm5OutGmOffset,

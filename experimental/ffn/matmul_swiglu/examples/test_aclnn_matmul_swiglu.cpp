@@ -25,29 +25,35 @@
 #include <cstdio>
 #include <vector>
 
-#define PERF_FP32 0  // 0=fp16(默认), 1=fp32
+#define PERF_FP32 0 // 0=fp16(默认), 1=fp32
 
-#define CHECK_RET(cond, expr)                    \
-    do {                                         \
-        if (!(cond)) {                           \
-            expr;                                \
-        }                                        \
+#define CHECK_RET(cond, expr) \
+    do { \
+        if (!(cond)) { \
+            expr; \
+        } \
     } while (0)
 
-#define LOG(fmt, ...)               \
-    do {                            \
+#define LOG(fmt, ...) \
+    do { \
         printf(fmt, ##__VA_ARGS__); \
-        fflush(stdout);             \
+        fflush(stdout); \
     } while (0)
 
 namespace {
 #if PERF_FP32
 using XT = float;
 constexpr aclDataType kXDtype = ACL_FLOAT;
-inline XT MakeX(float v) { return v; }
-inline float XToFloat(XT v) { return v; }
+inline XT MakeX(float v)
+{
+    return v;
+}
+inline float XToFloat(XT v)
+{
+    return v;
+}
 #else
-using XT = uint16_t;  // fp16 存储
+using XT = uint16_t; // fp16 存储
 constexpr aclDataType kXDtype = ACL_FLOAT16;
 
 // float <-> IEEE754 half, 仅用于造输入 / 读输出以做 host 参考比对
@@ -95,8 +101,14 @@ float HalfToFloat(uint16_t h)
     return out;
 }
 
-inline XT MakeX(float v) { return FloatToHalf(v); }
-inline float XToFloat(XT v) { return HalfToFloat(v); }
+inline XT MakeX(float v)
+{
+    return FloatToHalf(v);
+}
+inline float XToFloat(XT v)
+{
+    return HalfToFloat(v);
+}
 #endif
 
 int64_t ShapeSize(const std::vector<int64_t>& s)
@@ -109,8 +121,8 @@ int64_t ShapeSize(const std::vector<int64_t>& s)
 }
 
 template <typename T>
-int CreateTensor(const std::vector<T>& host, const std::vector<int64_t>& shape, void** devAddr,
-                 aclDataType dtype, aclTensor** tensor)
+int CreateTensor(const std::vector<T>& host, const std::vector<int64_t>& shape, void** devAddr, aclDataType dtype,
+                 aclTensor** tensor)
 {
     auto bytes = ShapeSize(shape) * static_cast<int64_t>(sizeof(T));
     auto ret = aclrtMalloc(devAddr, bytes, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -121,8 +133,8 @@ int CreateTensor(const std::vector<T>& host, const std::vector<int64_t>& shape, 
     for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
         strides[i] = shape[i + 1] * strides[i + 1];
     }
-    *tensor = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND,
-                              shape.data(), shape.size(), *devAddr);
+    *tensor = aclCreateTensor(shape.data(), shape.size(), dtype, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
+                              shape.size(), *devAddr);
     CHECK_RET(*tensor != nullptr, LOG("aclCreateTensor null\n"); return -1);
     return 0;
 }
@@ -134,7 +146,7 @@ int RunCorrectness(aclrtStream stream)
     LOG("[正确性] M=%ld K=%ld N=%ld (%s)\n", M, K, N, PERF_FP32 ? "fp32" : "fp16");
 
     std::vector<XT> xH(M * K), wH(K * twoN);
-    std::vector<float> xf(M * K), wf(K * twoN);  // 设备实际看到的输入值(fp16 round-trip 后)
+    std::vector<float> xf(M * K), wf(K * twoN); // 设备实际看到的输入值(fp16 round-trip 后)
     for (int64_t i = 0; i < M; i++) {
         for (int64_t j = 0; j < K; j++) {
             float v = static_cast<float>((i + j) % 7) * 0.01f;
@@ -149,7 +161,7 @@ int RunCorrectness(aclrtStream stream)
             wf[j * twoN + c] = XToFloat(wH[j * twoN + c]);
         }
     }
-    std::vector<float> bH(twoN, 0.0f);  // bias 固定 fp32, 取 0
+    std::vector<float> bH(twoN, 0.0f); // bias 固定 fp32, 取 0
 
     // host 参考: acc[m,c] = sum_k xf*wf; y[m,cc] = SiLU(acc[m,cc]) * acc[m,cc+N]
     std::vector<float> ref(M * N, 0.0f);
@@ -203,13 +215,12 @@ int RunCorrectness(aclrtStream stream)
             worst = i;
         }
     }
-    const double tol = PERF_FP32 ? 1e-4 : 1e-2;  // fp16 容差 1%
+    const double tol = PERF_FP32 ? 1e-4 : 1e-2; // fp16 容差 1%
     bool pass = maxRel <= tol;
-    LOG("  y[0..3]=%.5f %.5f %.5f %.5f  ref[0..3]=%.5f %.5f %.5f %.5f\n",
-        XToFloat(yH[0]), XToFloat(yH[1]), XToFloat(yH[2]), XToFloat(yH[3]),
-        ref[0], ref[1], ref[2], ref[3]);
-    LOG("  max rel err = %.4e (@%ld, got=%.5f ref=%.5f), tol=%.1e -> %s\n",
-        maxRel, worst, XToFloat(yH[worst]), ref[worst], tol, pass ? "PASS" : "FAIL");
+    LOG("  y[0..3]=%.5f %.5f %.5f %.5f  ref[0..3]=%.5f %.5f %.5f %.5f\n", XToFloat(yH[0]), XToFloat(yH[1]),
+        XToFloat(yH[2]), XToFloat(yH[3]), ref[0], ref[1], ref[2], ref[3]);
+    LOG("  max rel err = %.4e (@%ld, got=%.5f ref=%.5f), tol=%.1e -> %s\n", maxRel, worst, XToFloat(yH[worst]),
+        ref[worst], tol, pass ? "PASS" : "FAIL");
 
     if (ws != nullptr) {
         aclrtFree(ws);
@@ -286,8 +297,8 @@ int RunPerfShape(const Shape& sp, int warmup, int iters, aclrtStream stream)
 
     double avgUs = std::chrono::duration<double, std::micro>(t1 - t0).count() / iters;
     double flops = 2.0 * static_cast<double>(sp.m) * (2.0 * static_cast<double>(sp.n)) * static_cast<double>(sp.k);
-    LOG("  M=%-5ld K=%-5ld N=%-6ld | avg %8.2f us | %8.1f GFLOPS\n",
-        sp.m, sp.k, sp.n, avgUs, flops / (avgUs * 1e-6) / 1e9);
+    LOG("  M=%-5ld K=%-5ld N=%-6ld | avg %8.2f us | %8.1f GFLOPS\n", sp.m, sp.k, sp.n, avgUs,
+        flops / (avgUs * 1e-6) / 1e9);
 
     if (ws != nullptr) {
         aclrtFree(ws);
@@ -302,7 +313,7 @@ int RunPerfShape(const Shape& sp, int warmup, int iters, aclrtStream stream)
     aclrtFree(yDev);
     return 0;
 }
-}  // namespace
+} // namespace
 
 int main()
 {

@@ -22,7 +22,7 @@
 
 #include "../../../op_kernel/rotary_position_embedding3d_tiling_data.h"
 
-inline void InitRotaryPositionEmbedding3dTilingData(uint8_t *tiling, RotaryPositionEmbedding3dTilingData *const_data)
+inline void InitRotaryPositionEmbedding3dTilingData(uint8_t* tiling, RotaryPositionEmbedding3dTilingData* const_data)
 {
     memcpy(const_data, tiling, sizeof(RotaryPositionEmbedding3dTilingData));
 }

@@ -15,28 +15,12 @@
 
 namespace l0op {
 const aclTensor* KvQuantSparseFlashAttentionMetadata(
-    const aclTensor* actualSeqLengthsQueryOptional,
-    const aclTensor* actualSeqLengthsKvOptional,
-    const aclTensor* sparseSeqLengthsKvOptional,
-    int64_t batchSize,
-    int64_t querySeqSize,
-    int64_t queryHeadNum,
-    int64_t kvSeqSize,
-    int64_t kvHeadNum,
-    int64_t headDim,
-    int64_t topkSize,
-    int64_t sparseBlockSize,
-    int64_t aicCoreNum,
-    int64_t aivCoreNum,
-    char* layoutQueryOptional,
-    char* layoutKvOptional,
-    int64_t sparseMode,
-    int64_t attentionMode,
-    int64_t ropeHeadDim,
-    int64_t sparseSharedSize,
-    const char* socVersionOptional,
-    const aclTensor* metaData,
-    aclOpExecutor* executor);
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKvOptional,
+    const aclTensor* sparseSeqLengthsKvOptional, int64_t batchSize, int64_t querySeqSize, int64_t queryHeadNum,
+    int64_t kvSeqSize, int64_t kvHeadNum, int64_t headDim, int64_t topkSize, int64_t sparseBlockSize,
+    int64_t aicCoreNum, int64_t aivCoreNum, char* layoutQueryOptional, char* layoutKvOptional, int64_t sparseMode,
+    int64_t attentionMode, int64_t ropeHeadDim, int64_t sparseSharedSize, const char* socVersionOptional,
+    const aclTensor* metaData, aclOpExecutor* executor);
 } // namespace l0op
 
 #endif

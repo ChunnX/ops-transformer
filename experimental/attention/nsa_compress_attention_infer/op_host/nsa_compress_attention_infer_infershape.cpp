@@ -32,25 +32,25 @@ static const uint64_t DIM_NUM_1 = 1;
 static const uint64_t DIM_NUM_2 = 2;
 static const uint64_t DIM_NUM_3 = 3;
 
-static ge::graphStatus InferShapeNsaCompressAttentionInfer(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeNsaCompressAttentionInfer(gert::InferShapeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
-    gert::Shape *outShape = context->GetOutputShape(ATTEN_OUTPUT_INDEX);
+    gert::Shape* outShape = context->GetOutputShape(ATTEN_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outShape);
-    const gert::Shape *valueShape = context->GetInputShape(VALUE_INPUT_INDEX);
+    const gert::Shape* valueShape = context->GetInputShape(VALUE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, valueShape);
-    
+
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const uint32_t *kvHeadNumsPtr = attrs->GetAttrPointer<uint32_t>(KV_NUM_HEADS_ATTR_INDEX);
+    const uint32_t* kvHeadNumsPtr = attrs->GetAttrPointer<uint32_t>(KV_NUM_HEADS_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kvHeadNumsPtr);
-    const int *selectBlockCountPtr = attrs->GetAttrPointer<int32_t>(SELECT_BLOCK_ATTR_INDEX);
+    const int* selectBlockCountPtr = attrs->GetAttrPointer<int32_t>(SELECT_BLOCK_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, selectBlockCountPtr);
-    const char *layOutPtr = attrs->GetAttrPointer<char>(LAYOUT_ATTR_INDEX);
+    const char* layOutPtr = attrs->GetAttrPointer<char>(LAYOUT_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, layOutPtr);
 
     auto kvHeadNums = *kvHeadNumsPtr;
@@ -64,7 +64,7 @@ static ge::graphStatus InferShapeNsaCompressAttentionInfer(gert::InferShapeConte
     auto shapeD2 = valueShape->GetDim(DIM_NUM_2);
     *outShape = *queryShape;
 
-    gert::Shape *topkIndicesOutShape = context->GetOutputShape(TOPK_OUTPUT_INDEX);
+    gert::Shape* topkIndicesOutShape = context->GetOutputShape(TOPK_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIndicesOutShape);
     *topkIndicesOutShape = *queryShape;
 
@@ -80,7 +80,7 @@ static ge::graphStatus InferShapeNsaCompressAttentionInfer(gert::InferShapeConte
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeNsaCompressAttentionInfer(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeNsaCompressAttentionInfer(gert::InferDataTypeContext* context)
 {
     const auto inputDataType = context->GetInputDataType(0);
     context->SetOutputDataType(0, inputDataType);

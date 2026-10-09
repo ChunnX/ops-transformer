@@ -33,79 +33,65 @@
 extern "C" {
 #endif
 
-static aclnnStatus ParamsCheck(const aclTensor* actualSeqLengthsKvOptional,
-                               int64_t batchSize,
-                               int64_t keySeqSize,
-                               int64_t keyHeadNum,
-                               int64_t headDim,
-                               int64_t sparseBlockSize,
-                               double sparseRatio,
-                               int64_t fixedTailCount,
-                               char* layoutKeyOptional,
-                               const aclTensor* metaData) {
-  if (headDim != 128) {
-    return ACLNN_ERR_PARAM_INVALID;
-  }
+static aclnnStatus ParamsCheck(const aclTensor* actualSeqLengthsKvOptional, int64_t batchSize, int64_t keySeqSize,
+                               int64_t keyHeadNum, int64_t headDim, int64_t sparseBlockSize, double sparseRatio,
+                               int64_t fixedTailCount, char* layoutKeyOptional, const aclTensor* metaData)
+{
+    if (headDim != 128) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
 
-  if (sparseBlockSize != 16) {
-    return ACLNN_ERR_PARAM_INVALID;
-  }
-  if (batchSize < 0 || keySeqSize < 0 || keyHeadNum < 0 || sparseBlockSize < 0 || fixedTailCount < 0) {
-    return ACLNN_ERR_PARAM_INVALID;
-  }
-  return ACLNN_SUCCESS;
+    if (sparseBlockSize != 16) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (batchSize < 0 || keySeqSize < 0 || keyHeadNum < 0 || sparseBlockSize < 0 || fixedTailCount < 0) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnQuantSalsIndexerMetadataGetWorkspaceSize(
-    const aclTensor* actualSeqLengthsKvOptional,
-    int64_t batchSize,
-    int64_t keySeqSize,
-    int64_t keyHeadNum,
-    int64_t headDim,
-    int64_t sparseBlockSize,
-    double sparseRatio,
-    int64_t fixedTailCount,
-    char* layoutKeyOptional,
-    const aclTensor* metaData,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor) {
-  L2_DFX_PHASE_1(
-      aclnnQuantSalsIndexerMetadata,
-      DFX_IN(actualSeqLengthsKvOptional, batchSize, keySeqSize, keyHeadNum, headDim,
-             sparseBlockSize, sparseRatio, fixedTailCount, layoutKeyOptional),
-      DFX_OUT(metaData));
+aclnnStatus aclnnQuantSalsIndexerMetadataGetWorkspaceSize(const aclTensor* actualSeqLengthsKvOptional,
+                                                          int64_t batchSize, int64_t keySeqSize, int64_t keyHeadNum,
+                                                          int64_t headDim, int64_t sparseBlockSize, double sparseRatio,
+                                                          int64_t fixedTailCount, char* layoutKeyOptional,
+                                                          const aclTensor* metaData, uint64_t* workspaceSize,
+                                                          aclOpExecutor** executor)
+{
+    L2_DFX_PHASE_1(aclnnQuantSalsIndexerMetadata,
+                   DFX_IN(actualSeqLengthsKvOptional, batchSize, keySeqSize, keyHeadNum, headDim, sparseBlockSize,
+                          sparseRatio, fixedTailCount, layoutKeyOptional),
+                   DFX_OUT(metaData));
 
-  auto uniqueExecutor = CREATE_EXECUTOR();
-  CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+    auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-  auto ret = ParamsCheck(actualSeqLengthsKvOptional, batchSize, keySeqSize, keyHeadNum, headDim,
-             sparseBlockSize, sparseRatio, fixedTailCount, layoutKeyOptional, metaData);
-  CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    auto ret = ParamsCheck(actualSeqLengthsKvOptional, batchSize, keySeqSize, keyHeadNum, headDim, sparseBlockSize,
+                           sparseRatio, fixedTailCount, layoutKeyOptional, metaData);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-  const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
-  uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
-  uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
-  std::string socVersionStr = npuInfo.GetSocLongVersion();
-  const char* socVersionOptional = socVersionStr.c_str();
+    const op::PlatformInfo& npuInfo = op::GetCurrentPlatformInfo();
+    uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
+    uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
+    std::string socVersionStr = npuInfo.GetSocLongVersion();
+    const char* socVersionOptional = socVersionStr.c_str();
 
-  auto output = l0op::QuantSalsIndexerMetadata(
-      actualSeqLengthsKvOptional, batchSize, keySeqSize, keyHeadNum, headDim, aicCoreNum, aivCoreNum,
-      sparseBlockSize, sparseRatio, fixedTailCount, layoutKeyOptional, socVersionOptional, metaData,
-      uniqueExecutor.get());
-  CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto output = l0op::QuantSalsIndexerMetadata(actualSeqLengthsKvOptional, batchSize, keySeqSize, keyHeadNum, headDim,
+                                                 aicCoreNum, aivCoreNum, sparseBlockSize, sparseRatio, fixedTailCount,
+                                                 layoutKeyOptional, socVersionOptional, metaData, uniqueExecutor.get());
+    CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
-  *workspaceSize = uniqueExecutor->GetWorkspaceSize();
-  uniqueExecutor.ReleaseTo(executor);
-  return ACLNN_SUCCESS;
+    *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+    uniqueExecutor.ReleaseTo(executor);
+    return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnQuantSalsIndexerMetadata(void* workspace,
-                              uint64_t workspaceSize,
-                              aclOpExecutor* executor,
-                              aclrtStream stream) {
-  L2_DFX_PHASE_2(aclnnQuantSalsIndexerMetadata);
-  return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantSalsIndexerMetadata(void* workspace,
+                                                                                 uint64_t workspaceSize,
+                                                                                 aclOpExecutor* executor,
+                                                                                 aclrtStream stream)
+{
+    L2_DFX_PHASE_2(aclnnQuantSalsIndexerMetadata);
+    return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

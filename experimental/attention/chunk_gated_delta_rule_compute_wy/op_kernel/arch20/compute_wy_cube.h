@@ -52,8 +52,8 @@ constexpr uint32_t WY_CUBE_SNAP_OFF = WY_CUBE_STAGING_A_BYTES + WY_CUBE_STAGING_
 
 class WyCubeGemm {
 public:
-    __aicore__ inline void Init(const TCubeTiling *attnTiling, const TCubeTiling *squareTiling,
-                                const TCubeTiling *applyUTiling, const TCubeTiling *applyWTiling, TPipe *pipe,
+    __aicore__ inline void Init(const TCubeTiling* attnTiling, const TCubeTiling* squareTiling,
+                                const TCubeTiling* applyUTiling, const TCubeTiling* applyWTiling, TPipe* pipe,
                                 LocalTensor<uint8_t> localWs, uint32_t localWsBytes, GM_ADDR workspace,
                                 uint64_t workspaceOffset, uint32_t perCoreBytes, uint32_t usedCoreNum,
                                 uint32_t kHeadDim, uint32_t vHeadDim)
@@ -95,9 +95,9 @@ public:
         const uint32_t blockIdx = GetBlockIdx() % usedCoreNum_;
         const uint64_t coreBase =
             workspaceOffset + static_cast<uint64_t>(blockIdx) * static_cast<uint64_t>(perCoreBytes_);
-        aGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(workspace + coreBase + WY_CUBE_STAGING_A_OFF));
-        bGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(workspace + coreBase + WY_CUBE_STAGING_B_OFF));
-        snapGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace + coreBase + WY_CUBE_SNAP_OFF));
+        aGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(workspace + coreBase + WY_CUBE_STAGING_A_OFF));
+        bGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(workspace + coreBase + WY_CUBE_STAGING_B_OFF));
+        snapGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(workspace + coreBase + WY_CUBE_SNAP_OFF));
     }
 
     // C[64,64] = A[64,K] @ B[64,K]^T
@@ -306,7 +306,7 @@ private:
         DataCopy(dst, src, params);
     }
 
-    TPipe *pipe_{nullptr};
+    TPipe* pipe_{nullptr};
     uint32_t perCoreBytes_{0};
     uint32_t usedCoreNum_{1};
     LocalTensor<uint8_t> localWs_;

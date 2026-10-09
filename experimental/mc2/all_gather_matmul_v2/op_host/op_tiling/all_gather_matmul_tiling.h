@@ -28,10 +28,10 @@ using namespace mc2_matmul_v3_advanced;
 
 class AllGatherMatmulTiling : public AllGatherMatmulTilingBase {
 public:
-    explicit AllGatherMatmulTiling(gert::TilingContext *context);
+    explicit AllGatherMatmulTiling(gert::TilingContext* context);
     ~AllGatherMatmulTiling() override = default;
-    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg, Mc2MMRegisterCfg &registerCfg,
-                                     Mc2MatMulV3TilingData &tilingData);
+    ge::graphStatus DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg, Mc2MMRegisterCfg& registerCfg,
+                                     Mc2MatMulV3TilingData& tilingData);
 
 protected:
     bool IsCapable() override;
@@ -40,31 +40,31 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::RCSTiling &MutableRCSTilingData()
+    Mc2Tiling::RCSTiling& MutableRCSTilingData()
     {
         return allGatherMatmulTilingData_->param;
     }
 
-    Mc2MatMulV3TilingData &MutableMC2MatmulV3LocalTilingData()
+    Mc2MatMulV3TilingData& MutableMC2MatmulV3LocalTilingData()
     {
         return allGatherMatmulTilingData_->mc2MmV3LocalTilingData;
     }
-    Mc2MatMulV3TilingData &MutableMC2MatmulV3TileTilingData()
+    Mc2MatMulV3TilingData& MutableMC2MatmulV3TileTilingData()
     {
         return allGatherMatmulTilingData_->mc2MmV3TileTilingData;
     }
-    Mc2MatMulV3TilingData &MutableMC2MatmulV3TailTilingData()
+    Mc2MatMulV3TilingData& MutableMC2MatmulV3TailTilingData()
     {
         return allGatherMatmulTilingData_->mc2MmV3TailTilingData;
     }
 
     ge::graphStatus DoVersion2Tiling();
-    ge::graphStatus SetMc2Hcomm(Mc2Tiling::RCSTiling &rcsCfg);
+    ge::graphStatus SetMc2Hcomm(Mc2Tiling::RCSTiling& rcsCfg);
     ge::graphStatus SetRawTilingData();
 
 private:
     Mc2Tiling::AllGatherMatmulTilingData allGatherMatmulTilingDataSelf_;
-    Mc2Tiling::AllGatherMatmulTilingData *allGatherMatmulTilingData_;
+    Mc2Tiling::AllGatherMatmulTilingData* allGatherMatmulTilingData_;
     uint64_t myWorkSpaceSize_{0U};
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo compileInfo_;

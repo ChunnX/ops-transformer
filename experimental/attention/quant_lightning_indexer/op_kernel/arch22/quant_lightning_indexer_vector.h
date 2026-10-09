@@ -40,7 +40,7 @@ constexpr int64_t MRG_BLOCK_3 = 3;
 constexpr int64_t MRG_BLOCK_4 = 4;
 
 template <typename T>
-__aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T> &srcUb, int64_t copyCount)
+__aicore__ inline void CopyOut(const GlobalTensor<T>& dstGm, const LocalTensor<T>& srcUb, int64_t copyCount)
 {
     AscendC::DataCopyParams dataCopyOutyParams;
     dataCopyOutyParams.blockCount = 1;
@@ -54,7 +54,7 @@ __aicore__ inline void CopyOut(const GlobalTensor<T> &dstGm, const LocalTensor<T
   src: 传入的初始化空间
   eleNum: 需要初始化的元素个数需为64整数倍，元素将被初始化为交错排布的-inf，-1
  */
-__aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t eleNum)
+__aicore__ inline void InitSortOutBuf(const LocalTensor<float>& src, int64_t eleNum)
 {
     uint64_t mask1[2] = {0x5555555555555555, 0};
     uint64_t mask0[2] = {0xaaaaaaaaaaaaaaaa, 0};
@@ -81,7 +81,7 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
   tmp: 计算使用到的临时空间，大小与src一致
   logitsNum: 排序的元素个数, 暂只支持[128,256,384,512,1024,2048]
  */
-__aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp, int64_t logitsNum)
+__aicore__ inline void SortAll(LocalTensor<float>& src, LocalTensor<float>& tmp, int64_t logitsNum)
 {
     int64_t sort32Repeats = logitsNum / BLOCK_BYTES;
     AscendC::Sort32(tmp, src, src[logitsNum].ReinterpretCast<uint32_t>(), sort32Repeats);
@@ -147,8 +147,8 @@ __aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp,
   mrgSrc: 待合并的Tensor
   tmpTensor：空间为mrgDst+mrgSrc
  */
-__aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDstNum, LocalTensor<float> &mrgSrc,
-                                 int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
+__aicore__ inline void MergeSort(const LocalTensor<float>& mrgDst, int32_t mrgDstNum, LocalTensor<float>& mrgSrc,
+                                 int32_t mrgSrcNum, LocalTensor<float>& tmpTensor)
 {
     AscendC::MrgSort4Info params;
     params.elementLengths[0] = mrgSrcNum;
@@ -167,7 +167,7 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
     AscendC::PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, const LocalTensor<uint32_t> &sortLocal,
+__aicore__ inline void ExtractIndex(const LocalTensor<uint32_t>& idxULocal, const LocalTensor<uint32_t>& sortLocal,
                                     int64_t extractNum)
 {
     AscendC::GatherMaskParams gatherMaskParams;
@@ -175,8 +175,8 @@ __aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, cons
     gatherMaskParams.src0BlockStride = 1;
     gatherMaskParams.src0RepeatStride = B32_VEC_REPEAT_STRIDE;
     gatherMaskParams.src1RepeatStride = 0;
-    uint64_t rsvdCnt = 0;     // 用于保存筛选后保留下来的元素个数
-    uint8_t src1Pattern = 2;  // 固定模式2,表示筛选出奇数索引的数
+    uint64_t rsvdCnt = 0;    // 用于保存筛选后保留下来的元素个数
+    uint8_t src1Pattern = 2; // 固定模式2,表示筛选出奇数索引的数
     AscendC::GatherMask(idxULocal, sortLocal, src1Pattern, false, static_cast<uint32_t>(0), gatherMaskParams, rsvdCnt);
     AscendC::PipeBarrier<PIPE_V>();
 }
@@ -189,5 +189,5 @@ __aicore__ inline void SetWaitFlag(HardEvent evt)
     AscendC::WaitFlag<event>(eventId);
 }
 
-}  // namespace QLIServiceVec
-#endif  // QUANT_LIGHTNING_INDEXER_VECTOR_H
+} // namespace QLIServiceVec
+#endif // QUANT_LIGHTNING_INDEXER_VECTOR_H

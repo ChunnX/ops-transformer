@@ -17,12 +17,12 @@
 namespace l0op {
 
 struct FusedGdnGatingOutput {
-    const aclTensor *g;
-    const aclTensor *beta_output;
+    const aclTensor* g;
+    const aclTensor* beta_output;
 };
 
-FusedGdnGatingOutput FusedGdnGating(const aclTensor *aLog, const aclTensor *a, const aclTensor *b,
-                                    const aclTensor *dtBias, float beta, float threshold, aclOpExecutor *executor);
+FusedGdnGatingOutput FusedGdnGating(const aclTensor* aLog, const aclTensor* a, const aclTensor* b,
+                                    const aclTensor* dtBias, float beta, float threshold, aclOpExecutor* executor);
 
 } // namespace l0op
 

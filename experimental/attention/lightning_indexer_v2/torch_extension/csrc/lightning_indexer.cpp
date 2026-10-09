@@ -29,11 +29,11 @@ const int DIM_3 = 3;
 constexpr int64_t LI_V2_METADATA_SIZE = 1024;
 
 at::Tensor LightningIndexerMetadata(int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t topk,
-                                    const c10::optional<at::Tensor> &cuSeqlensQ,
-                                    const c10::optional<at::Tensor> &cuSeqlensK,
-                                    const c10::optional<at::Tensor> &sequsedQ,
-                                    const c10::optional<at::Tensor> &sequsedK,
-                                    const c10::optional<at::Tensor> &cmpResidualK, int64_t batchSize,
+                                    const c10::optional<at::Tensor>& cuSeqlensQ,
+                                    const c10::optional<at::Tensor>& cuSeqlensK,
+                                    const c10::optional<at::Tensor>& sequsedQ,
+                                    const c10::optional<at::Tensor>& sequsedK,
+                                    const c10::optional<at::Tensor>& cmpResidualK, int64_t batchSize,
                                     int64_t maxSeqlenQ, int64_t maxSeqlenK, c10::string_view layoutQ,
                                     c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio)
 {
@@ -59,8 +59,8 @@ at::Tensor LightningIndexerMetadata(int64_t numHeadsQ, int64_t numHeadsK, int64_
 
     std::string layoutQStr = std::string(layoutQ);
     std::string layoutKStr = std::string(layoutK);
-    char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
-    char *layoutKPtr = const_cast<char *>(layoutKStr.c_str());
+    char* layoutQPtr = const_cast<char*>(layoutQStr.c_str());
+    char* layoutKPtr = const_cast<char*>(layoutKStr.c_str());
 
     ACLNN_CMD(aclnnLightningIndexerV2Metadata, cuSeqlensQVal, cuSeqlensKVal, sequsedQVal, sequsedKVal, cmpResidualKVal,
               numHeadsQ, numHeadsK, headDim, topk, batchSize, maxSeqlenQ, maxSeqlenK, layoutQPtr, layoutKPtr, maskMode,
@@ -69,7 +69,7 @@ at::Tensor LightningIndexerMetadata(int64_t numHeadsQ, int64_t numHeadsK, int64_
 }
 
 // 工具函数，推导输出shape
-std::tuple<at::Tensor, at::Tensor> ConstructLightningIndexerOutputTensor(const at::Tensor &query, const at::Tensor &key,
+std::tuple<at::Tensor, at::Tensor> ConstructLightningIndexerOutputTensor(const at::Tensor& query, const at::Tensor& key,
                                                                          int64_t topk, std::string queryLayoutStr,
                                                                          std::string keyLayoutStr, bool returnValue)
 {
@@ -108,7 +108,7 @@ std::tuple<at::Tensor, at::Tensor> ConstructLightningIndexerOutputTensor(const a
 
 // candidate (two-level topk) 输出构造：source on 时 candidate_topk_indices 为
 // [B,S1,N2,candBlocks]/[T,N2,candBlocks] int32；off 时 (0,) 占位；candidate_block_length 恒空 (0,)（预留）
-std::tuple<at::Tensor, at::Tensor> ConstructCandidateOutputTensor(const at::Tensor &query, const at::Tensor &key,
+std::tuple<at::Tensor, at::Tensor> ConstructCandidateOutputTensor(const at::Tensor& query, const at::Tensor& key,
                                                                   int64_t candTopkBlocks, std::string queryLayoutStr,
                                                                   std::string keyLayoutStr)
 {
@@ -131,11 +131,11 @@ std::tuple<at::Tensor, at::Tensor> ConstructCandidateOutputTensor(const at::Tens
 }
 
 std::tuple<at::Tensor, at::Tensor> LightningIndexer(
-    const at::Tensor &q, const at::Tensor &k, const at::Tensor &w, int64_t topk,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensK,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedK,
-    const c10::optional<at::Tensor> &cmpResidualK, const c10::optional<at::Tensor> &blockTable,
-    const c10::optional<at::Tensor> &outputIdxOffset, const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ,
+    const at::Tensor& q, const at::Tensor& k, const at::Tensor& w, int64_t topk,
+    const c10::optional<at::Tensor>& cuSeqlensQ, const c10::optional<at::Tensor>& cuSeqlensK,
+    const c10::optional<at::Tensor>& sequsedQ, const c10::optional<at::Tensor>& sequsedK,
+    const c10::optional<at::Tensor>& cmpResidualK, const c10::optional<at::Tensor>& blockTable,
+    const c10::optional<at::Tensor>& outputIdxOffset, const c10::optional<at::Tensor>& metadata, int64_t maxSeqlenQ,
     c10::string_view layoutQ, c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio, int64_t returnValue)
 {
     TORCH_CHECK(q.numel() > 0, "Tensor q is empty.")
@@ -156,8 +156,8 @@ std::tuple<at::Tensor, at::Tensor> LightningIndexer(
     at::Tensor candidateTopkIndicesOut = std::get<0>(candidateOutput);
     at::Tensor candidateBlockLengthOut = std::get<1>(candidateOutput);
     // convert str
-    char *queryLayoutPtr = const_cast<char *>(queryLayoutStr.c_str());
-    char *keyLayoutPtr = const_cast<char *>(keyLayoutStr.c_str());
+    char* queryLayoutPtr = const_cast<char*>(queryLayoutStr.c_str());
+    char* keyLayoutPtr = const_cast<char*>(keyLayoutStr.c_str());
     // candidate (two-level topk)：旧入口固定 off（-1/8 需为左值，ACLNN_CMD 的 DecodeDevice 按左值引用转发）
     int64_t candidateTopkBlocksOff = -1;
     int64_t candidateBlockSizeDefault = 8;
@@ -173,11 +173,11 @@ std::tuple<at::Tensor, at::Tensor> LightningIndexer(
 // 返回 (sparse_indices, sparse_values, candidate_topk_indices, candidate_block_length)；
 // candidate_block_length 为预留接口恒空 tensor；return_value 固定 0（与 candidate 互斥）。
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> LightningIndexerCandidate(
-    const at::Tensor &q, const at::Tensor &k, const at::Tensor &w, int64_t topk,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensK,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedK,
-    const c10::optional<at::Tensor> &cmpResidualK, const c10::optional<at::Tensor> &blockTable,
-    const c10::optional<at::Tensor> &outputIdxOffset, const c10::optional<at::Tensor> &metadata, int64_t maxSeqlenQ,
+    const at::Tensor& q, const at::Tensor& k, const at::Tensor& w, int64_t topk,
+    const c10::optional<at::Tensor>& cuSeqlensQ, const c10::optional<at::Tensor>& cuSeqlensK,
+    const c10::optional<at::Tensor>& sequsedQ, const c10::optional<at::Tensor>& sequsedK,
+    const c10::optional<at::Tensor>& cmpResidualK, const c10::optional<at::Tensor>& blockTable,
+    const c10::optional<at::Tensor>& outputIdxOffset, const c10::optional<at::Tensor>& metadata, int64_t maxSeqlenQ,
     c10::string_view layoutQ, c10::string_view layoutK, int64_t maskMode, int64_t cmpRatio, int64_t candidateTopkBlocks,
     int64_t candidateBlockSize)
 {
@@ -203,8 +203,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> LightningIndexerCandi
     at::Tensor candidateTopkIndicesOut = std::get<0>(candidateOutput);
     at::Tensor candidateBlockLengthOut = std::get<1>(candidateOutput);
     // convert str
-    char *queryLayoutPtr = const_cast<char *>(queryLayoutStr.c_str());
-    char *keyLayoutPtr = const_cast<char *>(keyLayoutStr.c_str());
+    char* queryLayoutPtr = const_cast<char*>(queryLayoutStr.c_str());
+    char* keyLayoutPtr = const_cast<char*>(keyLayoutStr.c_str());
     int64_t returnValueOff = 0; // candidate 与 return_value 互斥，本入口固定 0（左值供 ACLNN_CMD 转发）
 
     ACLNN_CMD(aclnnLightningIndexerV2, q, k, w, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blockTable,

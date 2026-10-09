@@ -19,21 +19,21 @@ extern "C" {
 #endif
 
 extern aclnnStatus aclnnInnerFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *relHOptional,
-    const aclTensor *relWOptional, const aclTensor *blockTableOptional, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional, const aclTensor *attnMaskOptional, const aclTensor *metadataOptional,
+    const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* relHOptional,
+    const aclTensor* relWOptional, const aclTensor* blockTableOptional, const aclTensor* cuSeqlensQOptional,
+    const aclTensor* cuSeqlensKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional,
+    const aclTensor* sinksOptional, const aclTensor* attnMaskOptional, const aclTensor* metadataOptional,
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut, int64_t returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const char* layoutQ, const char* layoutKv, const char* layoutOut, int64_t returnSoftmaxLse,
+    const aclTensor* attnOut, const aclTensor* softmaxLse, uint64_t* workspaceSize, aclOpExecutor** executor);
 
-extern aclnnStatus aclnnInnerFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+extern aclnnStatus aclnnInnerFlashAttn(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                        const aclrtStream stream);
 
-void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
-                                const aclTensor *&placeHolder);
+void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor* softmaxLse, const aclTensor*& tempTensor,
+                                const aclTensor*& placeHolder);
 
-void FlashAttnProcessSinks(const aclTensor *&sinksOptional);
+void FlashAttnProcessSinks(const aclTensor*& sinksOptional);
 
 #ifdef __cplusplus
 }

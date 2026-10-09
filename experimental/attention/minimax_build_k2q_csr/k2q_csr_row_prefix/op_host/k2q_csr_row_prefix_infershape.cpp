@@ -17,15 +17,15 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeK2qCsrRowPrefix(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeK2qCsrRowPrefix(gert::InferShapeContext* context)
 {
-    gert::Shape *rowPtrShape = context->GetOutputShape(0);
+    gert::Shape* rowPtrShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, rowPtrShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *totalRowsPtr = attrs->GetAttrPointer<int64_t>(0);
-    const int64_t *headsPtr = attrs->GetAttrPointer<int64_t>(3);
+    const int64_t* totalRowsPtr = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t* headsPtr = attrs->GetAttrPointer<int64_t>(3);
     OP_CHECK_NULL_WITH_CONTEXT(context, totalRowsPtr);
     OP_CHECK_NULL_WITH_CONTEXT(context, headsPtr);
     int64_t totalRows = *totalRowsPtr;

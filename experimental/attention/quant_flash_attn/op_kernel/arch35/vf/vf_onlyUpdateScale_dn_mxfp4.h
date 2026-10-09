@@ -29,8 +29,8 @@ using namespace Reg;
 
 // T: half
 template <bool clear_gmax, typename T, uint16_t m = 128>
-__simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T *umax1, __ubuf__ T *umax2, __ubuf__ T *ugmax_old,
-                                           __ubuf__ float *urs, uint16_t coreIndex)
+__simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T* umax1, __ubuf__ T* umax2, __ubuf__ T* ugmax_old,
+                                           __ubuf__ float* urs, uint16_t coreIndex)
 {
     MaskReg preg_all16 = CreateMask<uint16_t, MaskPattern::ALL>();
 
@@ -55,13 +55,13 @@ __simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T *umax1, __ubuf__ T *umax2,
         Sub(vreg_rs16, vreg_gmax_old, vreg_gmax, preg_all16);
         Adds(vreg_rs16, vreg_rs16, NUM_127, preg_all16);
         Maxs(vreg_rs16, vreg_rs16, ZERO_VALUE, preg_all16);
-        Cast<int32_t, T, h2iZero>((RegTensor<int32_t> &)vreg_rs1, vreg_rs16, preg_all16);
-        Cast<int32_t, T, h2iOne>((RegTensor<int32_t> &)vreg_rs2, vreg_rs16, preg_all16);
-        ShiftLefts((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs1, SHIFT_VALUE, preg_all16);
-        ShiftLefts((RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs2, SHIFT_VALUE, preg_all16);
+        Cast<int32_t, T, h2iZero>((RegTensor<int32_t>&)vreg_rs1, vreg_rs16, preg_all16);
+        Cast<int32_t, T, h2iOne>((RegTensor<int32_t>&)vreg_rs2, vreg_rs16, preg_all16);
+        ShiftLefts((RegTensor<int32_t>&)vreg_rs1, (RegTensor<int32_t>&)vreg_rs1, SHIFT_VALUE, preg_all16);
+        ShiftLefts((RegTensor<int32_t>&)vreg_rs2, (RegTensor<int32_t>&)vreg_rs2, SHIFT_VALUE, preg_all16);
 
-        Interleave((RegTensor<int32_t> &)vreg_rs1, (RegTensor<int32_t> &)vreg_rs2, (RegTensor<int32_t> &)vreg_rs1,
-                   (RegTensor<int32_t> &)vreg_rs2);
+        Interleave((RegTensor<int32_t>&)vreg_rs1, (RegTensor<int32_t>&)vreg_rs2, (RegTensor<int32_t>&)vreg_rs1,
+                   (RegTensor<int32_t>&)vreg_rs2);
         for (uint16_t i = 0; i < 1 - coreIndex; ++i) {
             StoreAlign(urs, vreg_rs1, preg_all16);
         }
@@ -73,14 +73,14 @@ __simd_vf__ inline void computeOnlyScaleVF(__ubuf__ T *umax1, __ubuf__ T *umax2,
 }
 
 template <bool clear_gmax, typename T, uint16_t S1Base = 128>
-__aicore__ inline void computeOnlyScale(const LocalTensor<T> &umax1, const LocalTensor<T> &umax2,
-                                        const LocalTensor<T> &ugmaxOld, const LocalTensor<float> &urs,
+__aicore__ inline void computeOnlyScale(const LocalTensor<T>& umax1, const LocalTensor<T>& umax2,
+                                        const LocalTensor<T>& ugmaxOld, const LocalTensor<float>& urs,
                                         uint16_t coreIndex)
 {
-    __ubuf__ T *umax1VF = (__ubuf__ T *)umax1.GetPhyAddr();
-    __ubuf__ T *umax2VF = (__ubuf__ T *)umax2.GetPhyAddr();
-    __ubuf__ T *ugmaxOldVF = (__ubuf__ T *)ugmaxOld.GetPhyAddr();
-    __ubuf__ float *ursVF = (__ubuf__ float *)urs.GetPhyAddr();
+    __ubuf__ T* umax1VF = (__ubuf__ T*)umax1.GetPhyAddr();
+    __ubuf__ T* umax2VF = (__ubuf__ T*)umax2.GetPhyAddr();
+    __ubuf__ T* ugmaxOldVF = (__ubuf__ T*)ugmaxOld.GetPhyAddr();
+    __ubuf__ float* ursVF = (__ubuf__ float*)urs.GetPhyAddr();
 
     computeOnlyScaleVF<clear_gmax, T, S1Base>(umax1VF, umax2VF, ugmaxOldVF, ursVF, coreIndex);
 }

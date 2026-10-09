@@ -23,7 +23,7 @@ class FusedQkvProjection {
 public:
     __aicore__ inline FusedQkvProjection() {}
     __aicore__ inline void Init(GM_ADDR hs, GM_ADDR wt, GM_ADDR bias, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR ws,
-                                const FusedQkvProjectionTilingData *td);
+                                const FusedQkvProjectionTilingData* td);
     __aicore__ inline void Process();
 
 private:
@@ -33,7 +33,7 @@ private:
     using biasType = MatmulType<TPosition::GM, CubeFormat::ND, T>;
 
     // ---- CopyOut ----
-    __aicore__ inline void CopyQkvOutputs(const LocalTensor<T> &cOut, int32_t computedRows, int32_t tileRows,
+    __aicore__ inline void CopyQkvOutputs(const LocalTensor<T>& cOut, int32_t computedRows, int32_t tileRows,
                                           int32_t matmulStride)
     {
         for (int32_t r = 0; r < tileRows; r++) {
@@ -79,7 +79,7 @@ private:
     GlobalTensor<T> qGm_, kGm_, vGm_;
     TBuf<> localWsBuf_;
     TBuf<> tileBuf_;
-    const FusedQkvProjectionTilingData *td_;
+    const FusedQkvProjectionTilingData* td_;
     int32_t qDim_, kDim_, vDim_, fusedDim_;
     bool hasBias_;
     int32_t realCoreM_;
@@ -87,7 +87,7 @@ private:
 
 template <typename T>
 __aicore__ inline void FusedQkvProjection<T>::Init(GM_ADDR hs, GM_ADDR wt, GM_ADDR bias, GM_ADDR q, GM_ADDR k,
-                                                   GM_ADDR v, GM_ADDR ws, const FusedQkvProjectionTilingData *td)
+                                                   GM_ADDR v, GM_ADDR ws, const FusedQkvProjectionTilingData* td)
 {
     td_ = td;
     SetSysWorkspace(ws);
@@ -114,16 +114,16 @@ __aicore__ inline void FusedQkvProjection<T>::Init(GM_ADDR hs, GM_ADDR wt, GM_AD
         return;
 
     // 本核只读自己分配到的 hidden states 片段
-    hsGm_.SetGlobalBuffer((__gm__ T *)hs + blkOff * td_->K, realCoreM_ * td_->K);
-    wtGm_.SetGlobalBuffer((__gm__ T *)wt, td_->K * td_->N);
+    hsGm_.SetGlobalBuffer((__gm__ T*)hs + blkOff * td_->K, realCoreM_ * td_->K);
+    wtGm_.SetGlobalBuffer((__gm__ T*)wt, td_->K * td_->N);
     if (hasBias_) {
-        biasGm_.SetGlobalBuffer((__gm__ T *)bias, td_->N);
+        biasGm_.SetGlobalBuffer((__gm__ T*)bias, td_->N);
     }
 
     // 写入对应的 Q K V 片段
-    qGm_.SetGlobalBuffer((__gm__ T *)q + blkOff * qDim_, realCoreM_ * qDim_);
-    kGm_.SetGlobalBuffer((__gm__ T *)k + blkOff * kDim_, realCoreM_ * kDim_);
-    vGm_.SetGlobalBuffer((__gm__ T *)v + blkOff * vDim_, realCoreM_ * vDim_);
+    qGm_.SetGlobalBuffer((__gm__ T*)q + blkOff * qDim_, realCoreM_ * qDim_);
+    kGm_.SetGlobalBuffer((__gm__ T*)k + blkOff * kDim_, realCoreM_ * kDim_);
+    vGm_.SetGlobalBuffer((__gm__ T*)v + blkOff * vDim_, realCoreM_ * vDim_);
 
     pipe.InitBuffer(tileBuf_, td_->baseM * td_->cubeTiling.N * sizeof(T));
     pipe.InitBuffer(localWsBuf_, 100 * 1024);

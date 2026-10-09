@@ -29,20 +29,20 @@ extern "C" {
 #endif
 
 struct ChunkGatedDeltaRuleComputeWyParams {
-    const aclTensor *q = nullptr;
-    const aclTensor *k = nullptr;
-    const aclTensor *v = nullptr;
-    const aclTensor *g = nullptr;
-    const aclTensor *beta = nullptr;
+    const aclTensor* q = nullptr;
+    const aclTensor* k = nullptr;
+    const aclTensor* v = nullptr;
+    const aclTensor* g = nullptr;
+    const aclTensor* beta = nullptr;
     int64_t chunkSize = 64;
-    const aclTensor *qKernelOut = nullptr;
-    const aclTensor *kKernelOut = nullptr;
-    const aclTensor *wKernelOut = nullptr;
-    const aclTensor *uKernelOut = nullptr;
-    const aclTensor *gKernelOut = nullptr;
+    const aclTensor* qKernelOut = nullptr;
+    const aclTensor* kKernelOut = nullptr;
+    const aclTensor* wKernelOut = nullptr;
+    const aclTensor* uKernelOut = nullptr;
+    const aclTensor* gKernelOut = nullptr;
 };
 
-static aclnnStatus CheckNotNull(const ChunkGatedDeltaRuleComputeWyParams &p)
+static aclnnStatus CheckNotNull(const ChunkGatedDeltaRuleComputeWyParams& p)
 {
     CHECK_COND(p.q != nullptr, ACLNN_ERR_PARAM_NULLPTR, "q must not be nullptr.");
     CHECK_COND(p.k != nullptr, ACLNN_ERR_PARAM_NULLPTR, "k must not be nullptr.");
@@ -69,7 +69,7 @@ static constexpr int64_t MAX_VALUE_HEADS = 64;
 static constexpr size_t QKV_RANK = 4;
 static constexpr size_t GATE_RANK = 3;
 
-static aclnnStatus CheckDtype(const ChunkGatedDeltaRuleComputeWyParams &p)
+static aclnnStatus CheckDtype(const ChunkGatedDeltaRuleComputeWyParams& p)
 {
     CHECK_COND(p.q->GetDataType() == op::DataType::DT_FLOAT16 && p.k->GetDataType() == op::DataType::DT_FLOAT16 &&
                    p.v->GetDataType() == op::DataType::DT_FLOAT16 && p.beta->GetDataType() == op::DataType::DT_FLOAT16,
@@ -78,13 +78,13 @@ static aclnnStatus CheckDtype(const ChunkGatedDeltaRuleComputeWyParams &p)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckShape(const ChunkGatedDeltaRuleComputeWyParams &p)
+static aclnnStatus CheckShape(const ChunkGatedDeltaRuleComputeWyParams& p)
 {
-    const auto &qShape = p.q->GetViewShape();
-    const auto &kShape = p.k->GetViewShape();
-    const auto &vShape = p.v->GetViewShape();
-    const auto &gShape = p.g->GetViewShape();
-    const auto &betaShape = p.beta->GetViewShape();
+    const auto& qShape = p.q->GetViewShape();
+    const auto& kShape = p.k->GetViewShape();
+    const auto& vShape = p.v->GetViewShape();
+    const auto& gShape = p.g->GetViewShape();
+    const auto& betaShape = p.beta->GetViewShape();
 
     CHECK_COND(qShape.GetDimNum() == QKV_RANK && vShape.GetDimNum() == QKV_RANK, ACLNN_ERR_PARAM_INVALID,
                "q must be [B, T, Hk, K] and v must be [B, T, Hv, V].");
@@ -114,11 +114,11 @@ static aclnnStatus CheckShape(const ChunkGatedDeltaRuleComputeWyParams &p)
 
     // Outputs are caller-allocated and written by ViewCopy, so a mismatch here is an
     // overflow of the user's buffer, not just a wrong result.
-    const auto &qKernelShape = p.qKernelOut->GetViewShape();
-    const auto &kKernelShape = p.kKernelOut->GetViewShape();
-    const auto &wKernelShape = p.wKernelOut->GetViewShape();
-    const auto &uKernelShape = p.uKernelOut->GetViewShape();
-    const auto &gKernelShape = p.gKernelOut->GetViewShape();
+    const auto& qKernelShape = p.qKernelOut->GetViewShape();
+    const auto& kKernelShape = p.kKernelOut->GetViewShape();
+    const auto& wKernelShape = p.wKernelOut->GetViewShape();
+    const auto& uKernelShape = p.uKernelOut->GetViewShape();
+    const auto& gKernelShape = p.gKernelOut->GetViewShape();
     CHECK_COND(qKernelShape.GetDimNum() == QKV_RANK && kKernelShape.GetDimNum() == QKV_RANK &&
                    wKernelShape.GetDimNum() == QKV_RANK && uKernelShape.GetDimNum() == QKV_RANK &&
                    gKernelShape.GetDimNum() == GATE_RANK,
@@ -137,7 +137,7 @@ static aclnnStatus CheckShape(const ChunkGatedDeltaRuleComputeWyParams &p)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckParams(const ChunkGatedDeltaRuleComputeWyParams &p)
+static aclnnStatus CheckParams(const ChunkGatedDeltaRuleComputeWyParams& p)
 {
     CHECK_RET(CheckNotNull(p) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_COND(p.chunkSize == FIXED_CHUNK, ACLNN_ERR_PARAM_INVALID, "chunk_size must be 64.");
@@ -146,14 +146,14 @@ static aclnnStatus CheckParams(const ChunkGatedDeltaRuleComputeWyParams &p)
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus DataContiguous(const aclTensor *&tensor, aclOpExecutor *executor)
+static aclnnStatus DataContiguous(const aclTensor*& tensor, aclOpExecutor* executor)
 {
     tensor = l0op::Contiguous(tensor, executor);
     CHECK_RET(tensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus MakeInputsContiguous(ChunkGatedDeltaRuleComputeWyParams &p, aclOpExecutor *executor)
+static aclnnStatus MakeInputsContiguous(ChunkGatedDeltaRuleComputeWyParams& p, aclOpExecutor* executor)
 {
     CHECK_COND(DataContiguous(p.q, executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "Contiguous q failed.");
     CHECK_COND(DataContiguous(p.k, executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "Contiguous k failed.");
@@ -164,9 +164,9 @@ static aclnnStatus MakeInputsContiguous(ChunkGatedDeltaRuleComputeWyParams &p, a
 }
 
 aclnnStatus aclnnChunkGatedDeltaRuleComputeWyGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *g, const aclTensor *beta,
-    int64_t chunkSize, const aclTensor *qKernelOut, const aclTensor *kKernelOut, const aclTensor *wKernelOut,
-    const aclTensor *uKernelOut, const aclTensor *gKernelOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* g, const aclTensor* beta,
+    int64_t chunkSize, const aclTensor* qKernelOut, const aclTensor* kKernelOut, const aclTensor* wKernelOut,
+    const aclTensor* uKernelOut, const aclTensor* gKernelOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     CHECK_COND(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR, "workspaceSize must not be nullptr.");
     CHECK_COND(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR, "executor must not be nullptr.");
@@ -201,7 +201,7 @@ aclnnStatus aclnnChunkGatedDeltaRuleComputeWyGetWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnChunkGatedDeltaRuleComputeWy(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnChunkGatedDeltaRuleComputeWy(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                               aclrtStream stream)
 {
     CHECK_COND(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR, "executor must not be nullptr.");

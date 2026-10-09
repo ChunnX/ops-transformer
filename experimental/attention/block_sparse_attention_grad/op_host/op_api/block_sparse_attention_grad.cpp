@@ -24,11 +24,11 @@ namespace l0op {
 
 OP_TYPE_REGISTER(BlockSparseAttentionGrad);
 
-static const aclTensor *ConvertIntArrayToTensor(const aclIntArray *intArray, aclOpExecutor *executor, DataType dtype)
+static const aclTensor* ConvertIntArrayToTensor(const aclIntArray* intArray, aclOpExecutor* executor, DataType dtype)
 {
     if (intArray != nullptr) {
-        const aclTensor *tensor = executor->ConvertToTensor(intArray, dtype);
-        auto mutableTensor = const_cast<aclTensor *>(tensor);
+        const aclTensor* tensor = executor->ConvertToTensor(intArray, dtype);
+        auto mutableTensor = const_cast<aclTensor*>(tensor);
         mutableTensor->SetStorageFormat(Format::FORMAT_ND);
         mutableTensor->SetViewFormat(Format::FORMAT_ND);
         mutableTensor->SetOriginalFormat(Format::FORMAT_ND);
@@ -37,25 +37,25 @@ static const aclTensor *ConvertIntArrayToTensor(const aclIntArray *intArray, acl
     return executor->AllocTensor(dtype, Format::FORMAT_ND, Format::FORMAT_ND);
 }
 
-const std::array<const aclTensor *, 3> BlockSparseAttentionGrad(
-    const aclTensor *dout, const aclTensor *query, const aclTensor *key, const aclTensor *value,
-    const aclTensor *attentionOut, const aclTensor *softmaxLse, const aclTensor *blockSparseMaskOptional,
-    const aclTensor *attenMaskOptional, const aclIntArray *blockShapeOptional,
-    const aclIntArray *actualSeqLengthsOptional, const aclIntArray *actualSeqLengthsKvOptional, char *qInputLayout,
-    char *kvInputLayout, int64_t numKeyValueHeads, int64_t maskType, double scaleValue, int64_t preTokens,
-    int64_t nextTokens, aclOpExecutor *executor)
+const std::array<const aclTensor*, 3> BlockSparseAttentionGrad(
+    const aclTensor* dout, const aclTensor* query, const aclTensor* key, const aclTensor* value,
+    const aclTensor* attentionOut, const aclTensor* softmaxLse, const aclTensor* blockSparseMaskOptional,
+    const aclTensor* attenMaskOptional, const aclIntArray* blockShapeOptional,
+    const aclIntArray* actualSeqLengthsOptional, const aclIntArray* actualSeqLengthsKvOptional, char* qInputLayout,
+    char* kvInputLayout, int64_t numKeyValueHeads, int64_t maskType, double scaleValue, int64_t preTokens,
+    int64_t nextTokens, aclOpExecutor* executor)
 {
-    const char *safeKvInputLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
+    const char* safeKvInputLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
 
     L0_DFX(BlockSparseAttentionGrad, dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional,
            attenMaskOptional, blockShapeOptional, actualSeqLengthsOptional, actualSeqLengthsKvOptional, qInputLayout,
            safeKvInputLayout, numKeyValueHeads, maskType, scaleValue, preTokens, nextTokens);
-    const aclTensor *attenMaskTensor =
+    const aclTensor* attenMaskTensor =
         (attenMaskOptional != nullptr) ? attenMaskOptional :
                                          executor->AllocTensor(DataType::DT_BOOL, Format::FORMAT_ND, Format::FORMAT_ND);
-    const aclTensor *blockShapeTensor = ConvertIntArrayToTensor(blockShapeOptional, executor, DataType::DT_INT64);
-    const aclTensor *actualSeqTensor = ConvertIntArrayToTensor(actualSeqLengthsOptional, executor, DataType::DT_INT64);
-    const aclTensor *actualSeqKvTensor =
+    const aclTensor* blockShapeTensor = ConvertIntArrayToTensor(blockShapeOptional, executor, DataType::DT_INT64);
+    const aclTensor* actualSeqTensor = ConvertIntArrayToTensor(actualSeqLengthsOptional, executor, DataType::DT_INT64);
+    const aclTensor* actualSeqKvTensor =
         ConvertIntArrayToTensor(actualSeqLengthsKvOptional, executor, DataType::DT_INT64);
 
     auto dqTensor = executor->AllocTensor(query->GetDataType(), Format::FORMAT_ND, Format::FORMAT_ND);

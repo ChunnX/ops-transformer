@@ -37,12 +37,12 @@ public:
     using QK_T = float32_t;
 
     __aicore__ inline SIMatmul(){};
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm, const GlobalTensor<K_T> &keyGm);
-    __aicore__ inline void InitParams(const ConstInfo &constInfo);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitMm1GlobalTensor(const GlobalTensor<Q_T>& queryGm, const GlobalTensor<K_T>& keyGm);
+    __aicore__ inline void InitParams(const ConstInfo& constInfo);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void ComputeMm1(const SICommon::RunInfo &runInfo);
+    __aicore__ inline void ComputeMm1(const SICommon::RunInfo& runInfo);
 
     static constexpr IsResetLoad3dConfig LOAD3DV2_CONFIG = {true, true}; // isSetFMatrix isSetPadding;
     static constexpr uint64_t KEY_BUF_NUM = 2;
@@ -84,14 +84,14 @@ public:
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gRealSize, uint64_t s2RealSize, uint32_t mm1BufferIdx, uint32_t l0cSlot);
-    __aicore__ inline void ComputeL0c(int64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
+    __aicore__ inline void ComputeL0c(int64_t l0cOffset, uint32_t l0Slot, const MmadParams& mmadParams,
                                       bool needMBarrier);
     __aicore__ inline void CopyQuerySegmentNd2Nz(LocalTensor<Q_T> queryL1Base, int64_t l1RowOffset, uint64_t l1RowAlign,
                                                  int64_t gmOffset, uint64_t nValue);
     __aicore__ inline void QueryNd2Nz(uint64_t s1gL1RealSize, int64_t s1gL1Offset, int64_t kGmOffset,
-                                      uint32_t queryL1Slot, const SICommon::RunInfo &runInfo);
+                                      uint32_t queryL1Slot, const SICommon::RunInfo& runInfo);
     __aicore__ inline void KeyNd2Nz(uint64_t s2L1RealSize, int64_t s2GmOffset, int64_t kGmOffset, uint32_t keyL1Slot,
-                                    const SICommon::RunInfo &runInfo);
+                                    const SICommon::RunInfo& runInfo);
     GlobalTensor<int32_t> blkTableGm_;
     GlobalTensor<K_T> keyGm_;
     GlobalTensor<Q_T> queryGm_;
@@ -123,13 +123,13 @@ private:
 };
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::InitParams(const ConstInfo &constInfo)
+__aicore__ inline void SIMatmul<SIT>::InitParams(const ConstInfo& constInfo)
 {
     constInfo_ = constInfo;
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe* pipe)
 {
     // 三缓冲，每槽32KB，对应每个AIV的64/2 * 256个float结果。
     pipe->InitBuffer(bufUB_, SICommon::MM1_RES_BUFFER_NUM * SICommon::MM1_RES_SLOT_BYTES);
@@ -149,15 +149,15 @@ __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm,
-                                                          const GlobalTensor<K_T> &keyGm)
+__aicore__ inline void SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<Q_T>& queryGm,
+                                                          const GlobalTensor<K_T>& keyGm)
 {
     queryGm_ = queryGm;
     keyGm_ = keyGm;
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInfo)
+__aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo& runInfo)
 {
     const uint32_t mm1BufferIdx = runInfo.loop % SICommon::MM1_RES_BUFFER_NUM;
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + mm1BufferIdx);
@@ -266,7 +266,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, int64_t s2GmOffset, int64_t kGmOffset,
-                                               uint32_t keyL1Slot, const SICommon::RunInfo &runInfo)
+                                               uint32_t keyL1Slot, const SICommon::RunInfo& runInfo)
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
@@ -302,7 +302,7 @@ __aicore__ inline void SIMatmul<SIT>::CopyQuerySegmentNd2Nz(LocalTensor<Q_T> que
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, int64_t s1gGmOffset, int64_t kGmOffset,
-                                                 uint32_t queryL1Slot, const SICommon::RunInfo &runInfo)
+                                                 uint32_t queryL1Slot, const SICommon::RunInfo& runInfo)
 {
     LocalTensor<Q_T> queryL1Base = queryL1_[static_cast<int64_t>(queryL1Slot) * QUERY_BUFFER_OFFSET];
     uint64_t l1RowAlign = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE);
@@ -333,7 +333,7 @@ __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, int64_t
 }
 
 template <typename SIT>
-__aicore__ inline void SIMatmul<SIT>::ComputeL0c(int64_t l0cOffset, uint32_t l0Slot, const MmadParams &mmadParams,
+__aicore__ inline void SIMatmul<SIT>::ComputeL0c(int64_t l0cOffset, uint32_t l0Slot, const MmadParams& mmadParams,
                                                  bool needMBarrier)
 {
     Mmad(cL0_[l0cOffset], queryL0_[static_cast<int64_t>(l0Slot) * L0A_BUFFER_OFFSET],

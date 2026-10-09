@@ -34,7 +34,7 @@ uint64_t AlignUp(uint64_t value, uint64_t alignment)
     return (value + alignment - 1U) / alignment * alignment;
 }
 
-ge::DataType GetInputDtype(gert::TilingContext *context, size_t index)
+ge::DataType GetInputDtype(gert::TilingContext* context, size_t index)
 {
     auto desc = context->GetInputDesc(index);
     return desc == nullptr ? ge::DT_UNDEFINED : desc->GetDataType();
@@ -61,7 +61,7 @@ uint64_t TilingKeyFor(ge::DataType type)
     return SCAS_TILING_KEY_FP16;
 }
 
-bool ScaleShapeMatches(const gert::Shape &scale, int64_t heads)
+bool ScaleShapeMatches(const gert::Shape& scale, int64_t heads)
 {
     if (scale.GetDimNum() == 1) {
         return scale.GetDim(0) == heads;
@@ -83,8 +83,8 @@ struct RuntimeParams {
     ge::DataType dtype = ge::DT_UNDEFINED;
 };
 
-ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascendc::PlatformAscendC &platform,
-                                   RuntimeParams &params)
+ge::graphStatus ParseRuntimeParams(gert::TilingContext* context, platform_ascendc::PlatformAscendC& platform,
+                                   RuntimeParams& params)
 {
     const auto queryShape = context->GetInputShape(IN_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
@@ -93,9 +93,9 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
     const auto scaleShape = context->GetInputShape(IN_SCALE);
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleShape);
 
-    const auto &query = queryShape->GetStorageShape();
-    const auto &key = keyShape->GetStorageShape();
-    const auto &scale = scaleShape->GetStorageShape();
+    const auto& query = queryShape->GetStorageShape();
+    const auto& key = keyShape->GetStorageShape();
+    const auto& scale = scaleShape->GetStorageShape();
     OP_CHECK_IF(query.GetDimNum() != 4 || key.GetDimNum() != 4, OP_LOGE(context, "query/key rank must be 4"),
                 return ge::GRAPH_FAILED);
     for (size_t i = 0; i < 4; ++i) {
@@ -116,8 +116,8 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
 
     const auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const float *clampMax = attrs->GetAttrPointer<float>(ATTR_CLAMP_MAX);
-    const float *eps = attrs->GetAttrPointer<float>(ATTR_EPS);
+    const float* clampMax = attrs->GetAttrPointer<float>(ATTR_CLAMP_MAX);
+    const float* eps = attrs->GetAttrPointer<float>(ATTR_EPS);
     OP_CHECK_IF(
         clampMax == nullptr || eps == nullptr || !std::isfinite(*clampMax) || !std::isfinite(*eps) || *eps <= 0.0F,
         OP_LOGE(context, "clamp_max must be finite and eps must be finite and positive"), return ge::GRAPH_FAILED);
@@ -135,10 +135,10 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
     params.alignedHeadDim =
         static_cast<uint32_t>(AlignUp(static_cast<uint64_t>(params.headDim) * inputBytes, ALIGN_BYTES) / inputBytes);
 
-    OP_CHECK_IF(params.batch > std::numeric_limits<uint64_t>::max() / params.heads ||
-                    static_cast<uint64_t>(params.batch) * params.heads >
-                        std::numeric_limits<uint64_t>::max() / params.seqLen,
-                OP_LOGE(context, "B*H*N overflows uint64"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        params.batch > std::numeric_limits<uint64_t>::max() / params.heads ||
+            static_cast<uint64_t>(params.batch) * params.heads > std::numeric_limits<uint64_t>::max() / params.seqLen,
+        OP_LOGE(context, "B*H*N overflows uint64"), return ge::GRAPH_FAILED);
     params.totalQueryRows = static_cast<uint64_t>(params.batch) * params.heads * params.seqLen;
     OP_CHECK_IF(params.totalQueryRows > std::numeric_limits<uint64_t>::max() / params.seqLen,
                 OP_LOGE(context, "output element count overflows uint64"), return ge::GRAPH_FAILED);
@@ -166,7 +166,7 @@ ge::graphStatus ParseRuntimeParams(gert::TilingContext *context, platform_ascend
 }
 } // namespace
 
-static ge::graphStatus ScaledCosineAttentionScoreTilingFunc(gert::TilingContext *context)
+static ge::graphStatus ScaledCosineAttentionScoreTilingFunc(gert::TilingContext* context)
 {
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
@@ -192,7 +192,7 @@ static ge::graphStatus ScaledCosineAttentionScoreTilingFunc(gert::TilingContext 
 
     context->SetBlockDim(params.usedCoreNum);
     context->SetTilingKey(TilingKeyFor(params.dtype));
-    size_t *workspace = context->GetWorkspaceSizes(1);
+    size_t* workspace = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, workspace);
     workspace[0] = 0;
 
@@ -201,7 +201,7 @@ static ge::graphStatus ScaledCosineAttentionScoreTilingFunc(gert::TilingContext 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingPrepareForScaledCosineAttentionScore(gert::TilingParseContext *context)
+static ge::graphStatus TilingPrepareForScaledCosineAttentionScore(gert::TilingParseContext* context)
 {
     auto compileInfo = context->GetCompiledInfo<ScaledCosineAttentionScoreCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);

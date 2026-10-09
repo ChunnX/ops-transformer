@@ -23,7 +23,7 @@ using namespace LIV2Kernel;
     do { \
         templateClass<LIV2Type<__VA_ARGS__>> op; \
         GET_TILING_DATA_WITH_STRUCT(LIV2TilingData, tiling_data_in, tiling); \
-        const LIV2TilingData *__restrict tiling_data = &tiling_data_in; \
+        const LIV2TilingData* __restrict tiling_data = &tiling_data_in; \
         op.Init(q, k, w, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK, blocktable, outputIdxOffset, \
                 metadata, sparseIndices, sparseValues, candidateTopkIndicesOut, candidateBlockLength, user, \
                 tiling_data, &tPipe); \
@@ -32,15 +32,15 @@ using namespace LIV2Kernel;
 
 template <int DT_Q, int DT_K, int DT_OUT, int PAGE_ATTENTION, int LAYOUT_T, int K_LAYOUT_T, int DT_W_FLAG>
 __global__ __aicore__ void lightning_indexer_v2(
-    __gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
-    __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK, __gm__ uint8_t *blocktable,
-    __gm__ uint8_t *outputIdxOffset, __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *sparseValues, __gm__ uint8_t *candidateTopkIndicesOut, __gm__ uint8_t *candidateBlockLength,
-    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t* q, __gm__ uint8_t* k, __gm__ uint8_t* w, __gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensK,
+    __gm__ uint8_t* sequsedQ, __gm__ uint8_t* sequsedK, __gm__ uint8_t* cmpResidualK, __gm__ uint8_t* blocktable,
+    __gm__ uint8_t* outputIdxOffset, __gm__ uint8_t* metadata, __gm__ uint8_t* sparseIndices,
+    __gm__ uint8_t* sparseValues, __gm__ uint8_t* candidateTopkIndicesOut, __gm__ uint8_t* candidateBlockLength,
+    __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 
 {
     TPipe tPipe;
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    __gm__ uint8_t* user = GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     if (ORIG_DTYPE_Q == DT_BF16) {

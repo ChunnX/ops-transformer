@@ -29,9 +29,7 @@ constexpr int BUFFER_NUM = 2;
 template <typename T>
 class bias_sigmoid {
 public:
-    __aicore__ inline bias_sigmoid()
-    {
-    }
+    __aicore__ inline bias_sigmoid() {}
     __aicore__ inline void Init(const GM_ADDR expertX, GM_ADDR sigmoidOut, GM_ADDR biasOut, GM_ADDR expertBias,
                                 int32_t ROWS, int32_t per_count, int32_t block_cnt)
     {
@@ -73,10 +71,10 @@ public:
         loop_count_ = loop_count;
         tail_count_ = tail_count;
 
-        expertX_Gm.SetGlobalBuffer((__gm__ T *)expertX, rows_per_core_per_loop_ * align_cnt);
-        sigmoidOut_Gm.SetGlobalBuffer((__gm__ T *)sigmoidOut, rows_per_core_per_loop_ * align_cnt);
-        biasOut_Gm.SetGlobalBuffer((__gm__ T *)biasOut, rows_per_core_per_loop_ * align_cnt);
-        expertBias_Gm.SetGlobalBuffer((__gm__ T *)expertBias, align_cnt);
+        expertX_Gm.SetGlobalBuffer((__gm__ T*)expertX, rows_per_core_per_loop_ * align_cnt);
+        sigmoidOut_Gm.SetGlobalBuffer((__gm__ T*)sigmoidOut, rows_per_core_per_loop_ * align_cnt);
+        biasOut_Gm.SetGlobalBuffer((__gm__ T*)biasOut, rows_per_core_per_loop_ * align_cnt);
+        expertBias_Gm.SetGlobalBuffer((__gm__ T*)expertBias, align_cnt);
 
         pipe.InitBuffer(inQueue_expertX, BUFFER_NUM, rows_per_core_per_loop_ * align_cnt * sizeof(T));
         pipe.InitBuffer(inQueue_expertBias, BUFFER_NUM, align_cnt * sizeof(T));
@@ -210,7 +208,6 @@ private:
     int32_t global_core_index_, core_rows_, rows_offset_;
 };
 
-
 extern "C" __global__ __aicore__ void compute_bias_sigmoid(GM_ADDR expertX, GM_ADDR sigmoidOut, GM_ADDR biasOut,
                                                            GM_ADDR expertBias, int32_t ROWS, int32_t per_count,
                                                            int32_t block_cnt, int32_t dtype)
@@ -222,16 +219,15 @@ extern "C" __global__ __aicore__ void compute_bias_sigmoid(GM_ADDR expertX, GM_A
     });
 }
 
-
-void bias_sigmoid_launch(uint8_t *expertX, uint8_t *sigmoidOut, uint8_t *biasOut, uint8_t *expertBias, int32_t ROWS,
-                         int32_t per_count, int32_t blockDim, void *stream, int32_t dtype)
+void bias_sigmoid_launch(uint8_t* expertX, uint8_t* sigmoidOut, uint8_t* biasOut, uint8_t* expertBias, int32_t ROWS,
+                         int32_t per_count, int32_t blockDim, void* stream, int32_t dtype)
 {
     int32_t real_blockDim = ROWS < blockDim ? ROWS : blockDim;
     compute_bias_sigmoid<<<real_blockDim, nullptr, stream>>>(expertX, sigmoidOut, biasOut, expertBias, ROWS, per_count,
                                                              real_blockDim, dtype);
 }
 
-void bias_sigmoid_npu(int64_t blockDim, torch::Tensor &expertX, torch::Tensor &expertBias, torch::Tensor &sigmoidOut,
+void bias_sigmoid_npu(int64_t blockDim, torch::Tensor& expertX, torch::Tensor& expertBias, torch::Tensor& sigmoidOut,
                       torch::Tensor biasOut)
 {
     TORCH_CHECK(torch_npu::utils::is_npu(expertX), "expertX tensor must be on NPU device");
@@ -241,9 +237,9 @@ void bias_sigmoid_npu(int64_t blockDim, torch::Tensor &expertX, torch::Tensor &e
 
     auto stream = c10_npu::getCurrentNPUStream().stream(false);
     auto acl_call = [=]() -> int {
-        bias_sigmoid_launch((uint8_t *)expertX.data_ptr(), (uint8_t *)sigmoidOut.data_ptr(),
-                            (uint8_t *)biasOut.data_ptr(), (uint8_t *)expertBias.data_ptr(), expertX.size(0),
-                            expertX.size(1), blockDim, stream, expertX.scalar_type() == at::kHalf ? 1 : 27);
+        bias_sigmoid_launch((uint8_t*)expertX.data_ptr(), (uint8_t*)sigmoidOut.data_ptr(), (uint8_t*)biasOut.data_ptr(),
+                            (uint8_t*)expertBias.data_ptr(), expertX.size(0), expertX.size(1), blockDim, stream,
+                            expertX.scalar_type() == at::kHalf ? 1 : 27);
         return 0;
     };
     at_npu::native::OpCommand::RunOpApi("BiasSigmoid", acl_call);

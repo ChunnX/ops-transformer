@@ -30,27 +30,27 @@
 
 using namespace AscendC;
 
-#define WG_MLP_STATIC_FLOAT16    1
-#define WG_MLP_STATIC_FLOAT32    2
-#define WG_MLP_STATIC_BF16       3
+#define WG_MLP_STATIC_FLOAT16 1
+#define WG_MLP_STATIC_FLOAT32 2
+#define WG_MLP_STATIC_BF16 3
 
-#define WG_MLP_DYNAMIC_FLOAT16   1
-#define WG_MLP_DYNAMIC_FLOAT32   2
-#define WG_MLP_DYNAMIC_BF16      3
+#define WG_MLP_DYNAMIC_FLOAT16 1
+#define WG_MLP_DYNAMIC_FLOAT32 2
+#define WG_MLP_DYNAMIC_BF16 3
 
-#define WG_MLP_EMPTY_TILING_KEY  100
-#define WG_MLP_ALIGN_UNIT        16U
+#define WG_MLP_EMPTY_TILING_KEY 100
+#define WG_MLP_ALIGN_UNIT 16U
 
-#define WG_MLP_KEY_FP16_MM1      1101
-#define WG_MLP_KEY_FP16_SWIGLU   1102
-#define WG_MLP_KEY_FP16_MM2      1103
-#define WG_MLP_KEY_FP32_MM1      2101
-#define WG_MLP_KEY_FP32_SWIGLU   2102
-#define WG_MLP_KEY_FP32_MM2      2103
-#define WG_MLP_KEY_FP32_FUSED    2104
-#define WG_MLP_KEY_BF16_MM1      3101
-#define WG_MLP_KEY_BF16_SWIGLU   3102
-#define WG_MLP_KEY_BF16_MM2      3103
+#define WG_MLP_KEY_FP16_MM1 1101
+#define WG_MLP_KEY_FP16_SWIGLU 1102
+#define WG_MLP_KEY_FP16_MM2 1103
+#define WG_MLP_KEY_FP32_MM1 2101
+#define WG_MLP_KEY_FP32_SWIGLU 2102
+#define WG_MLP_KEY_FP32_MM2 2103
+#define WG_MLP_KEY_FP32_FUSED 2104
+#define WG_MLP_KEY_BF16_MM1 3101
+#define WG_MLP_KEY_BF16_SWIGLU 3102
+#define WG_MLP_KEY_BF16_MM2 3103
 
 namespace swiglu_gated_mlp_kernel {
 
@@ -110,12 +110,12 @@ __aicore__ inline T AlignDown(T a, T b)
 struct GluTilingInfo {
     __aicore__ GluTilingInfo() = default;
 
-    __aicore__ explicit GluTilingInfo(const SwigluGatedMlpTilingData &tilingData)
+    __aicore__ explicit GluTilingInfo(const SwigluGatedMlpTilingData& tilingData)
     {
         Parse(tilingData);
     }
 
-    __aicore__ void Parse(const SwigluGatedMlpTilingData &tilingData)
+    __aicore__ void Parse(const SwigluGatedMlpTilingData& tilingData)
     {
         dtypeTag = tilingData.dtypeTag;
         stage = tilingData.stage;
@@ -155,8 +155,7 @@ struct GluTilingInfo {
     __aicore__ bool IsFp16() const
     {
         return dtypeTag == WG_MLP_STATIC_FLOAT16 || dtypeTag == WG_MLP_DYNAMIC_FLOAT16 ||
-               dtypeTag == WG_MLP_KEY_FP16_MM1 || dtypeTag == WG_MLP_KEY_FP16_SWIGLU ||
-               dtypeTag == WG_MLP_KEY_FP16_MM2;
+               dtypeTag == WG_MLP_KEY_FP16_MM1 || dtypeTag == WG_MLP_KEY_FP16_SWIGLU || dtypeTag == WG_MLP_KEY_FP16_MM2;
     }
 
     __aicore__ bool IsFp32() const
@@ -168,9 +167,8 @@ struct GluTilingInfo {
 
     __aicore__ bool IsBf16() const
     {
-        return dtypeTag == WG_MLP_STATIC_BF16 || dtypeTag == WG_MLP_DYNAMIC_BF16 ||
-               dtypeTag == WG_MLP_KEY_BF16_MM1 || dtypeTag == WG_MLP_KEY_BF16_SWIGLU ||
-               dtypeTag == WG_MLP_KEY_BF16_MM2;
+        return dtypeTag == WG_MLP_STATIC_BF16 || dtypeTag == WG_MLP_DYNAMIC_BF16 || dtypeTag == WG_MLP_KEY_BF16_MM1 ||
+               dtypeTag == WG_MLP_KEY_BF16_SWIGLU || dtypeTag == WG_MLP_KEY_BF16_MM2;
     }
 
     __aicore__ uint32_t GetRowsForCore(uint32_t blockIdx) const
@@ -186,10 +184,8 @@ struct GluTilingInfo {
         if (usedCoreNum == 0 || blockIdx >= usedCoreNum) {
             return 0;
         }
-        const uint64_t normalPart =
-            static_cast<uint64_t>(blockIdx) * static_cast<uint64_t>(baseRowsPerCore);
-        const uint64_t extraPart =
-            static_cast<uint64_t>((blockIdx < tailRows) ? blockIdx : tailRows);
+        const uint64_t normalPart = static_cast<uint64_t>(blockIdx) * static_cast<uint64_t>(baseRowsPerCore);
+        const uint64_t extraPart = static_cast<uint64_t>((blockIdx < tailRows) ? blockIdx : tailRows);
         return normalPart + extraPart;
     }
 
@@ -227,4 +223,4 @@ struct GluTilingInfo {
 
 using SwigluGatedMlpTilingData = swiglu_gated_mlp_kernel::SwigluGatedMlpTilingData;
 
-#endif  // OP_KERNEL_GLU_TILING_HPP_
+#endif // OP_KERNEL_GLU_TILING_HPP_

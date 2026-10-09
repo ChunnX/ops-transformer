@@ -20,13 +20,13 @@ using namespace AscendC;
 #define DTYPE_X half
 #endif
 
-extern "C" __global__ __aicore__ void matmul_swiglu(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
-                                                       GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void matmul_swiglu(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR y,
+                                                    GM_ADDR workspace, GM_ADDR tiling)
 {
     if (workspace == nullptr) {
         return;
     }
-    GM_ADDR userWs = GetUserWorkspace(workspace);  // 用户 workspace: 存 [M,2N] fp32 中间结果
+    GM_ADDR userWs = GetUserWorkspace(workspace); // 用户 workspace: 存 [M,2N] fp32 中间结果
     if (userWs == nullptr) {
         return;
     }

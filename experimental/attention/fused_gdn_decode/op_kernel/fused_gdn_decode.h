@@ -43,7 +43,7 @@ public:
 
     __aicore__ inline void Init(GM_ADDR mixedQkv, GM_ADDR a, GM_ADDR b, GM_ADDR aLog, GM_ADDR dtBias, GM_ADDR state,
                                 GM_ADDR stateIndices, GM_ADDR out, GM_ADDR stateOut,
-                                const FusedGdnDecodeTilingData *tilingData, TPipe *pipe)
+                                const FusedGdnDecodeTilingData* tilingData, TPipe* pipe)
     {
         pipe_ = pipe;
         td_ = tilingData;
@@ -53,15 +53,15 @@ public:
         alignBV_ = Ceil(td_->bv, BF16_NUM_PER_BLOCK) * BF16_NUM_PER_BLOCK;
         stateAuxOffset_ = alignK_ * alignBV_ * sizeof(StateType) / sizeof(InType);
 
-        mixedQkvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType *>(mixedQkv));
-        aGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType *>(a));
-        bGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType *>(b));
-        aLogGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(aLog));
-        dtBiasGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType *>(dtBias));
-        stateGm_.SetGlobalBuffer(reinterpret_cast<__gm__ StateType *>(state));
-        stateOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ StateType *>(stateOut));
-        stateIndicesGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(stateIndices));
-        outGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType *>(out));
+        mixedQkvGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType*>(mixedQkv));
+        aGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType*>(a));
+        bGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType*>(b));
+        aLogGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(aLog));
+        dtBiasGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType*>(dtBias));
+        stateGm_.SetGlobalBuffer(reinterpret_cast<__gm__ StateType*>(state));
+        stateOutGm_.SetGlobalBuffer(reinterpret_cast<__gm__ StateType*>(stateOut));
+        stateIndicesGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(stateIndices));
+        outGm_.SetGlobalBuffer(reinterpret_cast<__gm__ InType*>(out));
         InitLocalBuffers();
     }
 
@@ -239,8 +239,8 @@ private:
         return stateLocal;
     }
 
-    __aicore__ inline void MulBlockScalar(LocalTensor<float> &dst, const LocalTensor<float> &src,
-                                          const LocalTensor<float> &scalarBlock, uint32_t count)
+    __aicore__ inline void MulBlockScalar(LocalTensor<float>& dst, const LocalTensor<float>& src,
+                                          const LocalTensor<float>& scalarBlock, uint32_t count)
     {
         constexpr uint8_t repeatStride = REPEAT_LEN / FP32_NUM_PER_BLOCK;
         uint32_t offset = 0;
@@ -255,7 +255,7 @@ private:
         }
     }
 
-    __aicore__ inline void Normalize(LocalTensor<float> &x, uint32_t len)
+    __aicore__ inline void Normalize(LocalTensor<float>& x, uint32_t len)
     {
         Mul(reduceWorkUb_, x, x, len);
         PipeBarrier<PIPE_V>();
@@ -276,8 +276,8 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void MatVecMul(const LocalTensor<float> &matrix, const LocalTensor<float> &vec,
-                                     LocalTensor<float> &dst, uint32_t rows)
+    __aicore__ inline void MatVecMul(const LocalTensor<float>& matrix, const LocalTensor<float>& vec,
+                                     LocalTensor<float>& dst, uint32_t rows)
     {
         const uint8_t repeatStride = alignK_ / FP32_NUM_PER_BLOCK;
         const uint8_t repeatTime = static_cast<uint8_t>(rows);
@@ -287,8 +287,8 @@ private:
         }
     }
 
-    __aicore__ inline void RankOneUpdate(LocalTensor<float> &dst, const LocalTensor<float> &vec,
-                                         const LocalTensor<float> &rowScalars, uint32_t rows)
+    __aicore__ inline void RankOneUpdate(LocalTensor<float>& dst, const LocalTensor<float>& vec,
+                                         const LocalTensor<float>& rowScalars, uint32_t rows)
     {
         const uint8_t dstRepeatStride = alignK_ / FP32_NUM_PER_BLOCK;
         for (uint32_t i = 0; i < alignK_; i += REPEAT_LEN) {
@@ -297,7 +297,7 @@ private:
         }
     }
 
-    __aicore__ inline void ReduceRows(LocalTensor<float> &dst, LocalTensor<float> &src, uint32_t rows)
+    __aicore__ inline void ReduceRows(LocalTensor<float>& dst, LocalTensor<float>& src, uint32_t rows)
     {
         uint32_t shape[2] = {rows, alignK_};
         ReduceSum<float, Pattern::Reduce::AR, true>(dst, src, shape, true);
@@ -332,8 +332,8 @@ private:
         PipeBarrier<PIPE_V>();
     }
 
-    __aicore__ inline void ComputeTile(uint32_t curBV, const LocalTensor<float> &betaBlock,
-                                       const LocalTensor<float> &expGBlock)
+    __aicore__ inline void ComputeTile(uint32_t curBV, const LocalTensor<float>& betaBlock,
+                                       const LocalTensor<float>& expGBlock)
     {
         if constexpr (STATE_FP32) {
             MulBlockScalar(hUb_, hTmpUb_, expGBlock, alignK_ * curBV);
@@ -473,8 +473,8 @@ private:
     GlobalTensor<StateType> stateOutGm_;
     GlobalTensor<int32_t> stateIndicesGm_;
     GlobalTensor<InType> outGm_;
-    TPipe *pipe_;
-    const FusedGdnDecodeTilingData *td_;
+    TPipe* pipe_;
+    const FusedGdnDecodeTilingData* td_;
     uint32_t blockIdx_;
     uint32_t blockNum_;
     uint32_t alignK_;

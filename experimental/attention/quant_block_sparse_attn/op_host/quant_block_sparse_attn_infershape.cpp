@@ -20,22 +20,22 @@
 
 namespace ops {
 namespace {
-constexpr const char *kOpName = "QuantBlockSparseAttn";
+constexpr const char* kOpName = "QuantBlockSparseAttn";
 } // namespace
 
-ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
+ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext* context)
 {
     if (context == nullptr) {
         OP_LOGE(kOpName, "InferShape: context is nullptr");
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape *queryShape = context->GetInputShape(optiling::QBSA_QUERY_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(optiling::QBSA_QUERY_INDEX);
     if (queryShape == nullptr) {
         OP_LOGE(kOpName, "InferShape: query shape is nullptr");
         return ge::GRAPH_FAILED;
     }
 
-    gert::Shape *attentionOutShape = context->GetOutputShape(optiling::QBSA_ATTENTION_OUT_INDEX);
+    gert::Shape* attentionOutShape = context->GetOutputShape(optiling::QBSA_ATTENTION_OUT_INDEX);
     if (attentionOutShape == nullptr) {
         OP_LOGE(kOpName, "InferShape: attentionOut shape is nullptr");
         return ge::GRAPH_FAILED;
@@ -47,7 +47,7 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
     }
     const std::string layoutQ = optiling::QBSAGetStringAttr(attrs, optiling::QBSA_LAYOUT_Q_ATTR_INDEX, "TND");
     const bool padded = layoutQ == "BSND" || layoutQ == "BNSD";
-    const int64_t *mode = attrs->GetAttrPointer<int64_t>(optiling::QBSA_QUANT_MODE_ATTR_INDEX);
+    const int64_t* mode = attrs->GetAttrPointer<int64_t>(optiling::QBSA_QUANT_MODE_ATTR_INDEX);
     const std::string layoutOut = optiling::QBSAGetStringAttr(attrs, optiling::QBSA_LAYOUT_OUT_ATTR_INDEX, "TND");
     if (padded && (mode == nullptr || *mode != optiling::QBSA_QUANT_MODE_MXFP8_FULL_QUANT || layoutOut != layoutQ)) {
         OP_LOGE(kOpName, "BSND/BNSD require MXFP8 and matching layout_out");
@@ -60,7 +60,7 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
                                                  "3D TND/NTD or 4D BSND/BNSD");
         return ge::GRAPH_FAILED;
     }
-    const gert::Shape *valueShape = context->GetInputShape(optiling::QBSA_VALUE_INDEX);
+    const gert::Shape* valueShape = context->GetInputShape(optiling::QBSA_VALUE_INDEX);
     if (valueShape == nullptr || valueShape->GetDimNum() != 4U) {
         OP_LOGE(kOpName, "InferShape requires 4D PA_BNBD value");
         return ge::GRAPH_FAILED;
@@ -75,19 +75,19 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
 
     attentionOutShape->SetDim(attentionOutShape->GetDimNum() - 1, valueShape->GetDim(3)); // Dv
 
-    gert::Shape *softmaxLseShape = context->GetOutputShape(optiling::QBSA_SOFTMAX_LSE_INDEX);
+    gert::Shape* softmaxLseShape = context->GetOutputShape(optiling::QBSA_SOFTMAX_LSE_INDEX);
     if (softmaxLseShape == nullptr) {
         OP_LOGE(kOpName, "InferShape: softmaxLse shape is nullptr");
         return ge::GRAPH_FAILED;
     }
-    const bool *returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(optiling::QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX);
+    const bool* returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(optiling::QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX);
     const bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
     if (!returnSoftmaxLse) {
         softmaxLseShape->SetDimNum(1);
         softmaxLseShape->SetDim(0, 0);
         return ge::GRAPH_SUCCESS;
     }
-    const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(optiling::QBSA_QUANT_MODE_ATTR_INDEX);
+    const int64_t* quantModePtr = attrs->GetAttrPointer<int64_t>(optiling::QBSA_QUANT_MODE_ATTR_INDEX);
     const uint32_t quantMode =
         (quantModePtr != nullptr) ? static_cast<uint32_t>(*quantModePtr) : optiling::QBSA_QUANT_MODE_FP8;
 
@@ -112,7 +112,7 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeQuantBlockSparseAttn(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeQuantBlockSparseAttn(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         OP_LOGE(kOpName, "InferDataType: context is nullptr");

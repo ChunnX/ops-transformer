@@ -33,20 +33,20 @@
 using namespace std;
 using namespace AscendC;
 // 校验返回值
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 constexpr int64_t BLOCK_NUM = 64;
-constexpr const char *PATH_PREFIX = "./golden/quantallreduce_";
+constexpr const char* PATH_PREFIX = "./golden/quantallreduce_";
 int streamWithTimeout = 10000;
 // 外部输入默认值
 std::string input_tensor_type = "int8_t";                   // 输入数据类型
@@ -78,9 +78,9 @@ static const struct option kLongOptions[] = {{"rank_id", 1, 0, 'a'},
                                              {0, 0, 0, 0}};
 // 函数声明
 // hccl获取mc2context接口
-extern "C" HcclResult HcclAllocComResourceByTiling(HcclComm comm, void *stream, void *mc2Tiling, void **commContext);
+extern "C" HcclResult HcclAllocComResourceByTiling(HcclComm comm, void* stream, void* mc2Tiling, void** commContext);
 // 获取外部输入
-void GetOption(int argc, char **argv)
+void GetOption(int argc, char** argv)
 {
     int optionIndex = 0, c = 1;
     while (c != -1) {
@@ -123,7 +123,7 @@ void GetOption(int argc, char **argv)
     }
 }
 // 获取Shape对应的lengthSize
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shape_size = 1;
     for (auto i : shape) {
@@ -132,7 +132,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shape_size;
 }
 // 将filePath路径的文件将bufferSize大小的内容读出到buffer为起始的地址
-int ReadFile(const std::string &filePath, void *buffer, size_t bufferSize)
+int ReadFile(const std::string& filePath, void* buffer, size_t bufferSize)
 {
     // 定义文件状态结构体，用于存储stat获取的文件属性（大小、类型、权限等）
     struct stat sBuf;
@@ -158,7 +158,7 @@ int ReadFile(const std::string &filePath, void *buffer, size_t bufferSize)
         return -1;
     }
     // 获取文件流的底层文件缓冲区对象指针，用于精准控制文件读写/偏移
-    std::filebuf *buf = file.rdbuf();
+    std::filebuf* buf = file.rdbuf();
     // 将文件读指针移动到文件末尾，获取文件总字节数（pubseekoff：偏移操作）
     // 参数：0-偏移量，ios::end-偏移基准（文件末尾），ios::in-操作模式（读）
     size_t size = buf->pubseekoff(0, std::ios::end, std::ios::in);
@@ -179,13 +179,13 @@ int ReadFile(const std::string &filePath, void *buffer, size_t bufferSize)
     buf->pubseekpos(0, std::ios::in);
     // 从文件开头读取fileTotalSize字节数据到缓冲区
     // sgetn：二进制批量读取，强转char*是因为流操作默认基于字符类型，void*需显式转换
-    buf->sgetn(static_cast<char *>(buffer), size);
+    buf->sgetn(static_cast<char*>(buffer), size);
     // 关闭文件流：释放底层文件描述符和缓冲区资源，ifstream析构也会自动关闭，显式关闭更规范
     file.close();
     return ACL_SUCCESS;
 }
 // 将以buffer为起始地址size大小内容写入到filePath所在路径的文件
-int WriteFile(const std::string &filePath, const void *buffer, size_t size, size_t offset = 0)
+int WriteFile(const std::string& filePath, const void* buffer, size_t size, size_t offset = 0)
 {
     // 校验数据缓冲区指针：空指针直接返回写入失败
     if (buffer == nullptr) {
@@ -214,7 +214,7 @@ int WriteFile(const std::string &filePath, const void *buffer, size_t size, size
         return -1;
     }
     // 执行文件写入：将buffer中size字节数据写入fd，static_cast强转为char*（write要求字符指针）
-    if (write(fd, static_cast<const char *>(buffer), size) != static_cast<ssize_t>(size)) {
+    if (write(fd, static_cast<const char*>(buffer), size) != static_cast<ssize_t>(size)) {
         std::cerr << "Failed to write to file: " << std::system_error(errno, std::generic_category()).what()
                   << std::endl;
     }
@@ -226,16 +226,16 @@ int WriteFile(const std::string &filePath, const void *buffer, size_t size, size
 // 创建DeviceInput
 // shape: 输入的形状 deviceAddr: 设备侧地址 dataName: 输入名称
 template <typename T>
-int CreatDeviceInput(const std::vector<int64_t> &shape, void **deviceAddr, std::string dataName)
+int CreatDeviceInput(const std::vector<int64_t>& shape, void** deviceAddr, std::string dataName)
 {
     // 获取输入长度大小
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device内存
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret: %d\n", ret); return ret);
-    uint8_t *input_host;
+    uint8_t* input_host;
     // 调用aclrtMallocHost申请host内存
-    aclrtMallocHost(reinterpret_cast<void **>(&input_host), size);
+    aclrtMallocHost(reinterpret_cast<void**>(&input_host), size);
     std::string inputFile = std::string(PATH_PREFIX) + std::string(case_name) + "_" + std::to_string(gbs) + "_" +
                             std::to_string(ghiddenSize) + "/input_" + dataName + "_" + std::to_string(rankId) + ".bin";
     // 调用ReadFile读取目录下文件到input_host地址
@@ -251,10 +251,10 @@ int CreatDeviceInput(const std::vector<int64_t> &shape, void **deviceAddr, std::
 }
 // 初始化TilingData
 // QuantAllReduceTilingAddr: 待初始化的TilingData结构体 hcomName: 通信域名称
-int CreatTilingDataAndContext(const char *hcomName, aclrtStream stream, void **deviceTilingAddr,
-                              void **deviceContextAddr)
+int CreatTilingDataAndContext(const char* hcomName, aclrtStream stream, void** deviceTilingAddr,
+                              void** deviceContextAddr)
 {
-    QuantAllReduceTilingData *tilingData = new QuantAllReduceTilingData();
+    QuantAllReduceTilingData* tilingData = new QuantAllReduceTilingData();
     if (tilingData == nullptr) {
         LOG_PRINT("[ERROR] tilingData is nullptr\n");
         return -1;
@@ -289,7 +289,7 @@ int CreatTilingDataAndContext(const char *hcomName, aclrtStream stream, void **d
     // 使用HcomGetCommHandleByGroup接口获取commhandle
     ret = HcomGetCommHandleByGroup(hcomName, &commHandle);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcomGetCommHandleByGroup failed. ret = %d\n", ret); return ret);
-    void *mc2Context = nullptr;
+    void* mc2Context = nullptr;
     // 根据commhandle，stream，tilingData创建mc2Context
     ret = HcclAllocComResourceByTiling(commHandle, stream, tilingData, &mc2Context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclAllocComResourceByTiling failed. ret = %d\n", ret);
@@ -314,8 +314,8 @@ struct Args {
 };
 
 // 分配设备内存
-int AllocDeviceMemory(Args &args, const char *hcomName, void **xDevice, void **scalesDevice, void **workspace,
-                      void **tiling, void **mc2Context)
+int AllocDeviceMemory(Args& args, const char* hcomName, void** xDevice, void** scalesDevice, void** workspace,
+                      void** tiling, void** mc2Context)
 {
     // 构建TilingData与context
     int ret = CreatTilingDataAndContext(hcomName, args.stream, tiling, mc2Context);
@@ -345,8 +345,8 @@ int AllocDeviceMemory(Args &args, const char *hcomName, void **xDevice, void **s
     return ACL_SUCCESS;
 }
 
-int freeDeviceMemory(Args &args, void *xDeviceAddr, void *scalesDeviceAddr, void *workspaceAddr, void *tilingAddr,
-                     void *mc2ContextAddr, void *outputDeviceAddr)
+int freeDeviceMemory(Args& args, void* xDeviceAddr, void* scalesDeviceAddr, void* workspaceAddr, void* tilingAddr,
+                     void* mc2ContextAddr, void* outputDeviceAddr)
 {
     if (xDeviceAddr != nullptr)
         aclrtFree(xDeviceAddr);
@@ -371,7 +371,7 @@ int freeDeviceMemory(Args &args, void *xDeviceAddr, void *scalesDeviceAddr, void
     return ACL_SUCCESS;
 }
 
-int LaunchOneThreadQuantAllReduce(Args &args)
+int LaunchOneThreadQuantAllReduce(Args& args)
 {
     int ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret = %d\n", ret); return ret);
@@ -381,12 +381,12 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d\n", ret); return ret);
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p\n", args.rankId, hcomName, args.stream);
     // 定义Device地址
-    void *xDeviceAddr = nullptr;
-    void *scalesDeviceAddr = nullptr;
-    void *workspaceAddr = nullptr;
-    void *tilingAddr = nullptr;
-    void *mc2ContextAddr = nullptr;
-    void *outputDeviceAddr = nullptr;
+    void* xDeviceAddr = nullptr;
+    void* scalesDeviceAddr = nullptr;
+    void* workspaceAddr = nullptr;
+    void* tilingAddr = nullptr;
+    void* mc2ContextAddr = nullptr;
+    void* outputDeviceAddr = nullptr;
     ret = AllocDeviceMemory(args, hcomName, &xDeviceAddr, &scalesDeviceAddr, &workspaceAddr, &tilingAddr,
                             &mc2ContextAddr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] AllocDeviceMemory failed. ret = %d \n", ret); return ret);
@@ -399,16 +399,16 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     ret = aclrtMalloc(&outputDeviceAddr, outputShapeSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc outputDevice failed. ret: %d\n", ret); return ret);
     // <<<>>>调用入口
-    quant_all_reduce_demo(run_type, BLOCK_NUM, args.stream, (uint8_t *)xDeviceAddr, (uint8_t *)scalesDeviceAddr,
-                          (uint8_t *)outputDeviceAddr, (uint8_t *)workspaceAddr, (uint8_t *)mc2ContextAddr,
-                          (uint8_t *)tilingAddr);
+    quant_all_reduce_demo(run_type, BLOCK_NUM, args.stream, (uint8_t*)xDeviceAddr, (uint8_t*)scalesDeviceAddr,
+                          (uint8_t*)outputDeviceAddr, (uint8_t*)workspaceAddr, (uint8_t*)mc2ContextAddr,
+                          (uint8_t*)tilingAddr);
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, streamWithTimeout);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
               return ret);
     LOG_PRINT("[INFO] device_%d aclnnQuantAllReduce execute successfully.\n", args.rankId);
     // 写出Output
-    int16_t *output_host;
-    ret = aclrtMallocHost(reinterpret_cast<void **>(&output_host), outputShapeSize);
+    int16_t* output_host;
+    ret = aclrtMallocHost(reinterpret_cast<void**>(&output_host), outputShapeSize);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMallocHost output failed. ret: %d\n", ret); return ret);
     ret = aclrtMemcpy(output_host, outputShapeSize, outputDeviceAddr, outputShapeSize, ACL_MEMCPY_DEVICE_TO_HOST);
     std::string outputFile = std::string(PATH_PREFIX) + std::string(case_name) + "_" + std::to_string(gbs) + "_" +
@@ -424,7 +424,7 @@ int LaunchOneThreadQuantAllReduce(Args &args)
     return 0;
 }
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     GetOption(argc, argv);
     // aclInit
@@ -452,7 +452,7 @@ int main(int argc, char *argv[])
     ret = strcpy_s(config.hcclCommName, COMM_NAME_MAX_LENGTH - 1, "hccl_comm_test");
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] hcclCommName strcpy failed. ret = %d \n", ret); return ret);
     // 从环境变量获取rankTableFile
-    const char *rankTableFile = getenv("RANK_TABLE_FILE");
+    const char* rankTableFile = getenv("RANK_TABLE_FILE");
     CHECK_RET(rankTableFile != nullptr, LOG_PRINT("[ERROR] get rankTableFile failed.\n"); return -1);
     // 使用HcclCommInitClusterInfoConfig接口初始化通信域
     ret = HcclCommInitClusterInfoConfig(rankTableFile, rankId, &config, &comms);

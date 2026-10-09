@@ -25,32 +25,29 @@
 #include <algorithm>
 #include <chrono>
 
-extern "C" void mhc_post_do_fp32(
-    uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
+extern "C" void mhc_post_do_fp32(uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out, int64_t batch,
+                                 int64_t seq_len, int64_t dim, int64_t num_streams);
 
-extern "C" void mhc_post_do_fp16(
-    uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
+extern "C" void mhc_post_do_fp16(uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h, uint8_t* out, int64_t batch,
+                                 int64_t seq_len, int64_t dim, int64_t num_streams);
 
-extern "C" void mhc_post_do_bf16(
-    uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h_fp32, uint8_t* out,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
+extern "C" void mhc_post_do_bf16(uint32_t blockDim, void* stream, uint8_t* in, uint8_t* h_fp32, uint8_t* out,
+                                 int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-#define CHECK_ACL(x) do { \
-    aclError err = (x); \
-    if (err != ACL_SUCCESS) { \
-        printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
-        exit(1); \
-    } \
-} while(0)
+#define CHECK_ACL(x) \
+    do { \
+        aclError err = (x); \
+        if (err != ACL_SUCCESS) { \
+            printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
+            exit(1); \
+        } \
+    } while (0)
 
-using KernelFunc = void(*)(uint32_t, void*, uint8_t*, uint8_t*, uint8_t*, int64_t, int64_t, int64_t, int64_t);
+using KernelFunc = void (*)(uint32_t, void*, uint8_t*, uint8_t*, uint8_t*, int64_t, int64_t, int64_t, int64_t);
 
-double measure_time(KernelFunc kernel, uint32_t blockDim,
-                    void* d_in, void* d_w, void* d_out,
-                    int64_t b, int64_t s, int64_t d, int64_t n,
-                    int warmup = 5, int repeat = 20) {
+double measure_time(KernelFunc kernel, uint32_t blockDim, void* d_in, void* d_w, void* d_out, int64_t b, int64_t s,
+                    int64_t d, int64_t n, int warmup = 5, int repeat = 20)
+{
     aclrtStream stream;
     CHECK_ACL(aclrtCreateStream(&stream));
 
@@ -70,12 +67,11 @@ double measure_time(KernelFunc kernel, uint32_t blockDim,
 
     CHECK_ACL(aclrtDestroyStream(stream));
     std::sort(times.begin(), times.end());
-    return times[repeat / 2];  // median
+    return times[repeat / 2]; // median
 }
 
-void sweep(const char* dtype, KernelFunc kernel,
-           int64_t b, int64_t s, int64_t d, int64_t n,
-           int data_sz, int weight_sz) {
+void sweep(const char* dtype, KernelFunc kernel, int64_t b, int64_t s, int64_t d, int64_t n, int data_sz, int weight_sz)
+{
     printf("\n[%s] batch=%ld seq=%ld dim=%ld streams=%ld\n", dtype, b, s, d, n);
 
     int64_t in_sz = b * s * d;
@@ -104,15 +100,18 @@ void sweep(const char* dtype, KernelFunc kernel,
     if (heuristic_bd != total_tasks) {
         double h_time = measure_time(kernel, 0, d_in, d_w, d_out, b, s, d, n);
         double hr = h_time / maxblk_time;
-        printf("  | %8u | %8.1f | %6.2fx | heuristic%s\n",
-               heuristic_bd, h_time, hr, (h_time < best_time) ? " *" : "");
-        if (h_time < best_time) { best_time = h_time; best_bd = heuristic_bd; }
+        printf("  | %8u | %8.1f | %6.2fx | heuristic%s\n", heuristic_bd, h_time, hr, (h_time < best_time) ? " *" : "");
+        if (h_time < best_time) {
+            best_time = h_time;
+            best_bd = heuristic_bd;
+        }
     }
 
     // Test other candidates
     std::vector<uint32_t> candidates;
     for (uint32_t bd = 1; bd <= total_tasks && bd <= 64; ++bd) {
-        if (total_tasks % bd == 0) candidates.push_back(bd);
+        if (total_tasks % bd == 0)
+            candidates.push_back(bd);
     }
     for (uint32_t bd : {1u, 2u, 4u, 8u, 16u, 32u, 48u}) {
         if (bd < total_tasks && std::find(candidates.begin(), candidates.end(), bd) == candidates.end())
@@ -121,16 +120,20 @@ void sweep(const char* dtype, KernelFunc kernel,
     std::sort(candidates.begin(), candidates.end());
 
     for (uint32_t bd : candidates) {
-        if (bd == total_tasks || bd == heuristic_bd) continue;
+        if (bd == total_tasks || bd == heuristic_bd)
+            continue;
         double t = measure_time(kernel, bd, d_in, d_w, d_out, b, s, d, n);
         double ratio = t / maxblk_time;
         const char* mark = (t < best_time) ? " *" : "";
         printf("  | %8u | %8.1f | %6.2fx |%s\n", bd, t, ratio, mark);
-        if (t < best_time) { best_time = t; best_bd = bd; }
+        if (t < best_time) {
+            best_time = t;
+            best_bd = bd;
+        }
     }
 
     int64_t total_bytes = (in_sz + out_sz) * data_sz + n * weight_sz;
-    double bw = total_bytes / best_time / 1e3;  // GB/s
+    double bw = total_bytes / best_time / 1e3; // GB/s
     printf("  >> Best: blockDim=%u (%.1f us, %.0f GB/s)\n", best_bd, best_time, bw);
 
     CHECK_ACL(aclrtFree(d_in));
@@ -138,7 +141,8 @@ void sweep(const char* dtype, KernelFunc kernel,
     CHECK_ACL(aclrtFree(d_out));
 }
 
-void print_usage(const char* prog) {
+void print_usage(const char* prog)
+{
     printf("Usage: %s [batch seq dim streams] [dtype]\n", prog);
     printf("  dtype: fp32, fp16, bf16, all (default: all)\n");
     printf("Examples:\n");
@@ -147,7 +151,8 @@ void print_usage(const char* prog) {
     printf("  %s 16 64 4096 4 fp16  # custom shape, fp16 only\n", prog);
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(0));
 
@@ -159,7 +164,9 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    struct TC { int64_t b, s, d, n; };
+    struct TC {
+        int64_t b, s, d, n;
+    };
     std::vector<TC> cases;
     const char* dtype = "all";
 
@@ -167,14 +174,15 @@ int main(int argc, char** argv) {
         // Custom shape from args
         TC tc = {atol(argv[1]), atol(argv[2]), atol(argv[3]), atol(argv[4])};
         cases.push_back(tc);
-        if (argc >= 6) dtype = argv[5];
+        if (argc >= 6)
+            dtype = argv[5];
     } else {
         // Default test cases
         cases = {
-            {4, 128, 256, 4},   // total=16, small
-            {8, 128, 256, 4},   // total=32
-            {4, 512, 1024, 4},  // total=16, large data
-            {16, 64, 4096, 4},  // total=64, very large dim
+            {4, 128, 256, 4},  // total=16, small
+            {8, 128, 256, 4},  // total=32
+            {4, 512, 1024, 4}, // total=16, large data
+            {16, 64, 4096, 4}, // total=64, very large dim
         };
     }
 

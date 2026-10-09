@@ -95,7 +95,7 @@ aclnnStatus CheckSingleParamQsas(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
 aclnnStatus CheckExistenceQsas(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional,
                                const aclTensor* sequsedKvOptional, const aclTensor* metadata)
 {
-    int64_t *viewDims = nullptr;
+    int64_t* viewDims = nullptr;
     uint64_t viewDimsNum = 0;
     // cu_seqlens_q 存在性校验
     if (strcmp(layoutQOptional, "TND") == 0) {
@@ -130,7 +130,7 @@ int64_t GetQueryBatchSizeQsas(const aclTensor* sequsedQOptional, const aclTensor
                               char* layoutQOptional, int64_t batchSize)
 {
     // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BatchSize
-    int64_t *viewDims = nullptr;
+    int64_t* viewDims = nullptr;
     uint64_t viewDimsNum = 0;
     auto ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
@@ -157,7 +157,7 @@ int64_t GetKvBatchSizeQsas(const aclTensor* sequsedKvOptional, const aclTensor* 
                            char* layoutKvOptional, int64_t batchSize)
 {
     // 1. 如果sequsedKvOptional传了，使用sequsedKvOptional获取BatchSize
-    int64_t *viewDims = nullptr;
+    int64_t* viewDims = nullptr;
     uint64_t viewDimsNum = 0;
     auto ret = aclGetViewShape(sequsedKvOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
@@ -185,7 +185,7 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
                                  const aclTensor* sequsedKvOptional, char* layoutQOptional, char* layoutKvOptional,
                                  int64_t batchSize, const aclTensor* metadata)
 {
-    int64_t *viewDims = nullptr;
+    int64_t* viewDims = nullptr;
     uint64_t viewDimsNum = 0;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     // 校验 cu_seqlens_q
@@ -280,7 +280,7 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
         // 校验 metadata 元素数
         if (viewDims[0] != optiling::SAS_META_SIZE) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The element num of metadata must be %u, but got %ld",
-                optiling::SAS_META_SIZE, viewDims[0]);
+                    optiling::SAS_META_SIZE, viewDims[0]);
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -293,13 +293,13 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
         }
     }
     // 校验 q/kv 维度
-    int64_t queryBatchSize = GetQueryBatchSizeQsas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional,
-                                                   batchSize);
-    int64_t kvBatchSize = GetKvBatchSizeQsas(sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional,
-                                             batchSize);
+    int64_t queryBatchSize = GetQueryBatchSizeQsas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, batchSize);
+    int64_t kvBatchSize = GetKvBatchSizeQsas(sequsedKvOptional, cuSeqLensOriKvOptional, layoutKvOptional, batchSize);
     if (queryBatchSize != kvBatchSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size obtained from q Tensor should be the same as "
-                "that obtained from kv tensor, but got %ld and %ld", queryBatchSize, kvBatchSize);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "The batch_size obtained from q Tensor should be the same as "
+                "that obtained from kv tensor, but got %ld and %ld",
+                queryBatchSize, kvBatchSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
     delete[] viewDims;
@@ -317,8 +317,8 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
 {
     if (CheckSingleParamQsas(batchSize, maxSeqlenQ, numHeadsQ, numHeadsKv, cmpTopK, cmpRatio, oriMaskMode, oriWinLeft,
                              layoutQOptional, layoutKvOptional, hasCmpKv) == ACLNN_SUCCESS &&
-        CheckExistenceQsas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional,
-                           metadata) == ACLNN_SUCCESS &&
+        CheckExistenceQsas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedKvOptional, metadata) ==
+            ACLNN_SUCCESS &&
         CheckConsistencyQsas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional,
                              sequsedKvOptional, layoutQOptional, layoutKvOptional, batchSize,
                              metadata) == ACLNN_SUCCESS) {

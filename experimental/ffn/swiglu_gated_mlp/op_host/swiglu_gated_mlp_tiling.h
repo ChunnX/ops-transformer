@@ -29,8 +29,7 @@
 
 namespace optiling {
 
-struct SwigluGatedMlpCompileInfo {
-};
+struct SwigluGatedMlpCompileInfo {};
 
 constexpr uint64_t WG_MLP_STATIC_FLOAT16 = 1;
 constexpr uint64_t WG_MLP_STATIC_FLOAT32 = 2;
@@ -58,46 +57,46 @@ constexpr uint64_t WG_MLP_KEY_BF16_SWIGLU = 3102;
 constexpr uint64_t WG_MLP_KEY_BF16_MM2 = 3103;
 
 BEGIN_TILING_DATA_DEF(SwigluGatedMlpTilingData)
-    // basic flags
-    TILING_DATA_FIELD_DEF(uint32_t, dtypeTag);
-    TILING_DATA_FIELD_DEF(uint32_t, stage);
-    TILING_DATA_FIELD_DEF(uint32_t, isDynamicShape);
-    TILING_DATA_FIELD_DEF(uint32_t, is32BAligned);
-    TILING_DATA_FIELD_DEF(uint32_t, isDoubleBuffer);
-    TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
-    TILING_DATA_FIELD_DEF(uint32_t, dtypeSize);
+// basic flags
+TILING_DATA_FIELD_DEF(uint32_t, dtypeTag);
+TILING_DATA_FIELD_DEF(uint32_t, stage);
+TILING_DATA_FIELD_DEF(uint32_t, isDynamicShape);
+TILING_DATA_FIELD_DEF(uint32_t, is32BAligned);
+TILING_DATA_FIELD_DEF(uint32_t, isDoubleBuffer);
+TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);
+TILING_DATA_FIELD_DEF(uint32_t, dtypeSize);
 
-    // global problem size
-    TILING_DATA_FIELD_DEF(uint64_t, totalRows);         // flattened rows, M
-    TILING_DATA_FIELD_DEF(uint64_t, hiddenSize);        // H
-    TILING_DATA_FIELD_DEF(uint64_t, gateUpSize);        // 2I
-    TILING_DATA_FIELD_DEF(uint64_t, intermediateSize);  // I
-    TILING_DATA_FIELD_DEF(uint64_t, outSize);           // O
+// global problem size
+TILING_DATA_FIELD_DEF(uint64_t, totalRows);        // flattened rows, M
+TILING_DATA_FIELD_DEF(uint64_t, hiddenSize);       // H
+TILING_DATA_FIELD_DEF(uint64_t, gateUpSize);       // 2I
+TILING_DATA_FIELD_DEF(uint64_t, intermediateSize); // I
+TILING_DATA_FIELD_DEF(uint64_t, outSize);          // O
 
-    // row split
-    TILING_DATA_FIELD_DEF(uint32_t, baseRowsPerCore);
-    TILING_DATA_FIELD_DEF(uint32_t, tailRows);
-    TILING_DATA_FIELD_DEF(uint32_t, tileRows);
+// row split
+TILING_DATA_FIELD_DEF(uint32_t, baseRowsPerCore);
+TILING_DATA_FIELD_DEF(uint32_t, tailRows);
+TILING_DATA_FIELD_DEF(uint32_t, tileRows);
 
-    // first matmul tile
-    TILING_DATA_FIELD_DEF(uint32_t, mm1BaseM);
-    TILING_DATA_FIELD_DEF(uint32_t, mm1BaseN);
-    TILING_DATA_FIELD_DEF(uint32_t, mm1BaseK);
+// first matmul tile
+TILING_DATA_FIELD_DEF(uint32_t, mm1BaseM);
+TILING_DATA_FIELD_DEF(uint32_t, mm1BaseN);
+TILING_DATA_FIELD_DEF(uint32_t, mm1BaseK);
 
-    // swiglu tile
-    TILING_DATA_FIELD_DEF(uint32_t, swiBaseRows);
-    TILING_DATA_FIELD_DEF(uint32_t, swiBaseCols);
+// swiglu tile
+TILING_DATA_FIELD_DEF(uint32_t, swiBaseRows);
+TILING_DATA_FIELD_DEF(uint32_t, swiBaseCols);
 
-    // second matmul tile
-    TILING_DATA_FIELD_DEF(uint32_t, mm2BaseM);
-    TILING_DATA_FIELD_DEF(uint32_t, mm2BaseN);
-    TILING_DATA_FIELD_DEF(uint32_t, mm2BaseK);
+// second matmul tile
+TILING_DATA_FIELD_DEF(uint32_t, mm2BaseM);
+TILING_DATA_FIELD_DEF(uint32_t, mm2BaseN);
+TILING_DATA_FIELD_DEF(uint32_t, mm2BaseK);
 
-    TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
+TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, matmulTiling);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(SwigluGatedMlp, SwigluGatedMlpTilingData)
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // OP_HOST_SWIGLU_GATED_MLP_TILING_H_
+#endif // OP_HOST_SWIGLU_GATED_MLP_TILING_H_

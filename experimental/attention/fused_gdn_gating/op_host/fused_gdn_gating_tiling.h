@@ -28,9 +28,9 @@ struct FusedGdnGatingCompileInfo {
     uint64_t ubSizePlatForm;
 };
 
-ge::graphStatus FusedGdnGatingTilingFunc(gert::TilingContext *context);
+ge::graphStatus FusedGdnGatingTilingFunc(gert::TilingContext* context);
 
-ge::graphStatus TilingPrepareForFusedGdnGating(gert::TilingParseContext *context);
+ge::graphStatus TilingPrepareForFusedGdnGating(gert::TilingParseContext* context);
 
 } // namespace optiling
 

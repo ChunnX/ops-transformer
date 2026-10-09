@@ -21,16 +21,16 @@ constexpr int64_t DIM_FOUR = 4;
 constexpr int64_t MIN_SUPPORTED_K = 64;
 constexpr int64_t MAX_SUPPORTED_K = 2032;
 
-void check_positive_shape(const at::Tensor &tensor, const char *name)
+void check_positive_shape(const at::Tensor& tensor, const char* name)
 {
     for (int64_t i = 0; i < tensor.dim(); ++i) {
         TORCH_CHECK(tensor.size(i) > 0, name, " shape[", i, "] must be greater than 0, but got ", tensor.size(i), ".");
     }
 }
 
-void check_fused_gdn_decode_dtype(const at::Tensor &mixed_qkv, const at::Tensor &a, const at::Tensor &b,
-                                  const at::Tensor &a_log, const at::Tensor &dt_bias, const at::Tensor &state_ref,
-                                  const at::Tensor &ssm_state_indices)
+void check_fused_gdn_decode_dtype(const at::Tensor& mixed_qkv, const at::Tensor& a, const at::Tensor& b,
+                                  const at::Tensor& a_log, const at::Tensor& dt_bias, const at::Tensor& state_ref,
+                                  const at::Tensor& ssm_state_indices)
 {
     const auto mixed_dtype = mixed_qkv.scalar_type();
     TORCH_CHECK(mixed_dtype == at::ScalarType::BFloat16 || mixed_dtype == at::ScalarType::Half,
@@ -46,10 +46,10 @@ void check_fused_gdn_decode_dtype(const at::Tensor &mixed_qkv, const at::Tensor 
                 "ssm_state_indices dtype must be int32, but got ", ssm_state_indices.scalar_type(), ".");
 }
 
-at::Tensor construct_fused_gdn_decode_output_tensor(const at::Tensor &mixed_qkv, const at::Tensor &a,
-                                                    const at::Tensor &b, const at::Tensor &a_log,
-                                                    const at::Tensor &dt_bias, const at::Tensor &state_ref,
-                                                    const at::Tensor &ssm_state_indices)
+at::Tensor construct_fused_gdn_decode_output_tensor(const at::Tensor& mixed_qkv, const at::Tensor& a,
+                                                    const at::Tensor& b, const at::Tensor& a_log,
+                                                    const at::Tensor& dt_bias, const at::Tensor& state_ref,
+                                                    const at::Tensor& ssm_state_indices)
 {
     TORCH_CHECK(mixed_qkv.dim() == DIM_TWO, "mixed_qkv must be a 2D tensor [B, packed_dim], but got ", mixed_qkv.dim(),
                 "D.");
@@ -95,9 +95,9 @@ at::Tensor construct_fused_gdn_decode_output_tensor(const at::Tensor &mixed_qkv,
 }
 
 // step2, 为NPU设备实现前向接口（函数形参顺序 = schema 顺序）
-at::Tensor npu_fused_gdn_decode_npu(const at::Tensor &mixed_qkv, const at::Tensor &a, const at::Tensor &b,
-                                    const at::Tensor &a_log, const at::Tensor &dt_bias, at::Tensor &state_ref,
-                                    const at::Tensor &ssm_state_indices, double scale, double softplus_threshold)
+at::Tensor npu_fused_gdn_decode_npu(const at::Tensor& mixed_qkv, const at::Tensor& a, const at::Tensor& b,
+                                    const at::Tensor& a_log, const at::Tensor& dt_bias, at::Tensor& state_ref,
+                                    const at::Tensor& ssm_state_indices, double scale, double softplus_threshold)
 {
     TORCH_CHECK(std::isfinite(scale) && std::isfinite(softplus_threshold),
                 "scale and softplus_threshold must be finite.");
@@ -112,9 +112,9 @@ at::Tensor npu_fused_gdn_decode_npu(const at::Tensor &mixed_qkv, const at::Tenso
 }
 
 // step3, 为META设备实现前向接口
-at::Tensor npu_fused_gdn_decode_meta(const at::Tensor &mixed_qkv, const at::Tensor &a, const at::Tensor &b,
-                                     const at::Tensor &a_log, const at::Tensor &dt_bias, at::Tensor &state_ref,
-                                     const at::Tensor &ssm_state_indices, double scale, double softplus_threshold)
+at::Tensor npu_fused_gdn_decode_meta(const at::Tensor& mixed_qkv, const at::Tensor& a, const at::Tensor& b,
+                                     const at::Tensor& a_log, const at::Tensor& dt_bias, at::Tensor& state_ref,
+                                     const at::Tensor& ssm_state_indices, double scale, double softplus_threshold)
 {
     TORCH_CHECK(std::isfinite(scale) && std::isfinite(softplus_threshold),
                 "scale and softplus_threshold must be finite.");

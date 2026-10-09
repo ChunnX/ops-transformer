@@ -22,12 +22,12 @@ namespace l0op {
 OP_TYPE_REGISTER(FusedGdnDecode);
 
 namespace {
-void UseViewShapeForNdTensor(aclTensor *tensor)
+void UseViewShapeForNdTensor(aclTensor* tensor)
 {
     if (tensor == nullptr) {
         return;
     }
-    const auto &viewShape = tensor->GetViewShape();
+    const auto& viewShape = tensor->GetViewShape();
     tensor->SetStorageShape(viewShape);
     tensor->SetOriginalShape(viewShape);
     tensor->SetStorageFormat(Format::FORMAT_ND);
@@ -36,10 +36,10 @@ void UseViewShapeForNdTensor(aclTensor *tensor)
 }
 } // namespace
 
-const aclTensor *FusedGdnDecode(const aclTensor *mixedQkv, const aclTensor *a, const aclTensor *b,
-                                const aclTensor *aLog, const aclTensor *dtBias, aclTensor *stateRef,
-                                const aclTensor *ssmStateIndices, float scale, float softplusThreshold,
-                                aclOpExecutor *executor)
+const aclTensor* FusedGdnDecode(const aclTensor* mixedQkv, const aclTensor* a, const aclTensor* b,
+                                const aclTensor* aLog, const aclTensor* dtBias, aclTensor* stateRef,
+                                const aclTensor* ssmStateIndices, float scale, float softplusThreshold,
+                                aclOpExecutor* executor)
 {
     L0_DFX(FusedGdnDecode, mixedQkv, a, b, aLog, dtBias, stateRef, ssmStateIndices, scale, softplusThreshold);
     UseViewShapeForNdTensor(stateRef);

@@ -25,23 +25,16 @@
 extern "C" {
 #endif
 
-ACLNN_API aclnnStatus aclnnSwigluGatedMlpGetWorkspaceSize(
-    const aclTensor* x,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    int64_t cubeMathType,
-    aclTensor* y,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnSwigluGatedMlpGetWorkspaceSize(const aclTensor* x, const aclTensor* gateUpWeight,
+                                                          const aclTensor* downWeight, int64_t cubeMathType,
+                                                          aclTensor* y, uint64_t* workspaceSize,
+                                                          aclOpExecutor** executor);
 
-ACLNN_API aclnnStatus aclnnSwigluGatedMlp(
-    void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream stream);
+ACLNN_API aclnnStatus aclnnSwigluGatedMlp(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                          aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_LEVEL2_ACLNN_SWIGLU_GATED_MLP_H_
+#endif // OP_API_INC_LEVEL2_ACLNN_SWIGLU_GATED_MLP_H_

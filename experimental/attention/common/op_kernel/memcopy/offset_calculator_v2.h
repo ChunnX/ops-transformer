@@ -29,7 +29,7 @@ enum class FormatCategory {
     GM_KV_PA_BNBD = 4,
     GM_KV_PA_NZ = 5,
     GM_POST_QUANT_NGD = 6, // post_quant
-    GM_ANTIQ_ND = 7, // antiquant no PA
+    GM_ANTIQ_ND = 7,       // antiquant no PA
     GM_ANTIQ_BS = 8,
     GM_ANTIQ_BNS = 9,
     GM_ANTIQ_BnBs = 10, // antiquant PA
@@ -101,7 +101,6 @@ template <>
 struct GmLayoutParams<GmFormat::PA_BnBsND> {
     static constexpr FormatCategory CATEGORY = FormatCategory::GM_KV_PA_BNBD;
 };
-
 
 template <>
 struct GmLayoutParams<GmFormat::PA_BnNBsD> {
@@ -507,7 +506,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_V_SCALE_TND, ACTLEN_T> {
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
     }
 
-    __aicore__ inline void Init(uint32_t n2, uint32_t d, const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T>& parser)
+    __aicore__ inline void Init(uint32_t n2, uint32_t d,
+                                const ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T>& parser)
     {
         actualSeqLensKVParser = parser;
         gmLayout.MakeLayout(actualSeqLensKVParser.GetTSize(), n2, d);
@@ -1162,7 +1162,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_PSE_BN2GS1S2, ACTLEN_T> {
 };
 
 template <GmFormat FORMAT, typename ACTLEN_T = uint64_t, bool WITH_ZERO_HEAD = false>
-struct OffsetCalculator : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T, WITH_ZERO_HEAD> {
-};
+struct OffsetCalculator
+    : public OffsetCalculatorImpl<FORMAT, GmLayoutParams<FORMAT>::CATEGORY, ACTLEN_T, WITH_ZERO_HEAD> {};
 
 #endif

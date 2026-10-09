@@ -73,14 +73,14 @@ struct GDRStageOneInitParams {
 template <typename lowType, typename highType, bool hasG>
 class Stage1 {
 public:
-    __aicore__ inline Stage1(StageOneMm<lowType, lowType, highType> &mmBf16ToFp32,
-                             StageOneMm<highType, highType, highType> &mmFp32,
-                             StageOneMm<highType, highType, lowType> &mmFp32ToBf16)
+    __aicore__ inline Stage1(StageOneMm<lowType, lowType, highType>& mmBf16ToFp32,
+                             StageOneMm<highType, highType, highType>& mmFp32,
+                             StageOneMm<highType, highType, lowType>& mmFp32ToBf16)
         : mmBf16ToFp32_(mmBf16ToFp32),
           mmFp32_(mmFp32),
           mmFp32ToBf16_(mmFp32ToBf16)
     {}
-    __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams<lowType, highType> &initParams)
+    __aicore__ inline void SetGlobalTensors(const GDRStageOneInitParams<lowType, highType>& initParams)
     {
         queryGm_ = initParams.query;
         keyGm_ = initParams.key;
@@ -103,32 +103,32 @@ public:
         // 注意：host 侧 stageWorkspaceSz 已按 sizeof(float) 预留全部 buffer，混合精度布局总量仍在预留范围内。
         uint64_t workSpaceOffset = 0;
         // gBKWsGm_ : float32, ckOffset_
-        gBKWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(
+        gBKWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ highType*>(
             initParams.ws + workSpaceOffset + coreIdx_ * paraNum_ * ckOffset_ * sizeof(highType)));
         workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(highType);
 
         // queryConGm_ : bfloat16, ckOffset_
-        queryConGm_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(
+        queryConGm_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType*>(
             initParams.ws + workSpaceOffset + coreIdx_ * paraNum_ * ckOffset_ * sizeof(lowType)));
         workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(lowType);
 
         // keyConGm_ : bfloat16, ckOffset_
-        keyConGm_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType *>(
-            initParams.ws + workSpaceOffset + coreIdx_ * paraNum_ * ckOffset_ * sizeof(lowType)));
+        keyConGm_.SetGlobalBuffer(reinterpret_cast<__gm__ lowType*>(initParams.ws + workSpaceOffset +
+                                                                    coreIdx_ * paraNum_ * ckOffset_ * sizeof(lowType)));
         workSpaceOffset += coreNum_ * paraNum_ * ckOffset_ * sizeof(lowType);
 
         // kkWsGm_ : float32, ccOffset_
-        kkWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(
-            initParams.ws + workSpaceOffset + coreIdx_ * paraNum_ * ccOffset_ * sizeof(highType)));
+        kkWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ highType*>(initParams.ws + workSpaceOffset +
+                                                                   coreIdx_ * paraNum_ * ccOffset_ * sizeof(highType)));
         workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(highType);
 
         // attnWsGm_ : float32, ccOffset_
-        attnWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(
+        attnWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ highType*>(
             initParams.ws + workSpaceOffset + coreIdx_ * paraNum_ * ccOffset_ * sizeof(highType)));
         workSpaceOffset += coreNum_ * paraNum_ * ccOffset_ * sizeof(highType);
 
         // vBetaWsGm_ : float32, cvOffset_
-        vBetaWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ highType *>(
+        vBetaWsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ highType*>(
             initParams.ws + workSpaceOffset + coreIdx_ * paraNum_ * cvOffset_ * sizeof(highType)));
     }
 
@@ -212,8 +212,8 @@ public:
         WaitFlag<HardEvent::S_V>(eventID);
     }
 
-    __aicore__ inline void Init(const GDRStageOneInitParams<lowType, highType> &initParams, TPipe *pipe,
-                                const ChunkGatedDeltaRuleTilingData *tilingData)
+    __aicore__ inline void Init(const GDRStageOneInitParams<lowType, highType>& initParams, TPipe* pipe,
+                                const ChunkGatedDeltaRuleTilingData* tilingData)
     {
         pipe_ = pipe;
         tiling_ = tilingData;
@@ -417,8 +417,8 @@ private:
         }
         AscendC::CrossCoreWaitFlag(0xA); // 同步5
     }
-    __aicore__ inline void QKPreProcess(const GlobalTensor<lowType> &srcGm, const GlobalTensor<lowType> &dstGm,
-                                        const GlobalTensor<lowType> &outKgGm, uint32_t subValidRows,
+    __aicore__ inline void QKPreProcess(const GlobalTensor<lowType>& srcGm, const GlobalTensor<lowType>& dstGm,
+                                        const GlobalTensor<lowType>& outKgGm, uint32_t subValidRows,
                                         bool kgFlag = false)
     {
         // copyOut
@@ -838,8 +838,8 @@ private:
     //   - fp32,fp32 -> fp32 (attn @ v_beta)
     //   - fp32,fp32 -> bf16 (attn @ k_cumdecay)
     template <typename MMType, typename AType, typename BType, typename CType>
-    __aicore__ inline void AICProcess(MMType &mmObj, GlobalTensor<AType> x, GlobalTensor<BType> y,
-                                      GlobalTensor<CType> z, const MatmulShapeParams &shape, bool transB = false)
+    __aicore__ inline void AICProcess(MMType& mmObj, GlobalTensor<AType> x, GlobalTensor<BType> y,
+                                      GlobalTensor<CType> z, const MatmulShapeParams& shape, bool transB = false)
     {
         mmObj.SetOrgShape(shape.m, shape.n, shape.k);
         mmObj.SetSingleShape(shape.sm, shape.sn, shape.sk);
@@ -861,11 +861,11 @@ private:
         mmFp32_.End();
     }
 
-    TPipe *pipe_;
-    StageOneMm<lowType, lowType, highType> &mmBf16ToFp32_;
-    StageOneMm<highType, highType, highType> &mmFp32_;
-    StageOneMm<highType, highType, lowType> &mmFp32ToBf16_;
-    const ChunkGatedDeltaRuleTilingData *tiling_;
+    TPipe* pipe_;
+    StageOneMm<lowType, lowType, highType>& mmBf16ToFp32_;
+    StageOneMm<highType, highType, highType>& mmFp32_;
+    StageOneMm<highType, highType, lowType>& mmFp32ToBf16_;
+    const ChunkGatedDeltaRuleTilingData* tiling_;
     ChunkGroup cg_;
     uint32_t nk_;
     uint32_t nv_;

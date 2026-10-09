@@ -23,8 +23,8 @@ const int64_t DIM_THREE = 3;
 const int64_t MAX_DIM_SIZE = 8;
 const int64_t VALUE_0 = 0;
 
-at::Tensor ConstructCompressorOutputTensor(const at::Tensor &x, const at::Tensor &wkv,
-                                           const c10::optional<at::Tensor> &cuSeqlens, int64_t cmpRatio)
+at::Tensor ConstructCompressorOutputTensor(const at::Tensor& x, const at::Tensor& wkv,
+                                           const c10::optional<at::Tensor>& cuSeqlens, int64_t cmpRatio)
 {
     auto xDim = x.dim();
     at::SmallVector<int64_t, MAX_DIM_SIZE> cmpKvSize;
@@ -48,10 +48,10 @@ at::Tensor ConstructCompressorOutputTensor(const at::Tensor &x, const at::Tensor
     return cmpKv;
 }
 
-at::Tensor Compressor(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &stateCache,
-                      int64_t cmpRatio, const c10::optional<at::Tensor> &stateBlockTable,
-                      const c10::optional<at::Tensor> &cuSeqlens, const c10::optional<at::Tensor> &seqused,
-                      const c10::optional<at::Tensor> &startPos)
+at::Tensor Compressor(const at::Tensor& x, const at::Tensor& wkv, const at::Tensor& wgate, at::Tensor& stateCache,
+                      int64_t cmpRatio, const c10::optional<at::Tensor>& stateBlockTable,
+                      const c10::optional<at::Tensor>& cuSeqlens, const c10::optional<at::Tensor>& seqused,
+                      const c10::optional<at::Tensor>& startPos)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
     auto xDim = x.dim();

@@ -665,9 +665,9 @@ struct SLIRejectFixture {
               {"candidate_block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
           }
     {}
-    void SetAttr(const std::string &name, Ops::Transformer::AnyValue v)
+    void SetAttr(const std::string& name, Ops::Transformer::AnyValue v)
     {
-        for (auto &a : attrs) {
+        for (auto& a : attrs) {
             if (a.attrName_ == name) {
                 a.attr_ = v;
                 return;
@@ -748,6 +748,6 @@ TEST_F(SparseLightningIndexerTiling, SparseLightningIndexer_910b_tiling_reject_c
 // Tiling data classes are registered for the op
 TEST_F(SparseLightningIndexerTiling, SparseLightningIndexer_tiling_data_class_registered)
 {
-    auto &factory = optiling::CTilingDataClassFactory::GetInstance();
+    auto& factory = optiling::CTilingDataClassFactory::GetInstance();
     EXPECT_NE(factory.CreateTilingDataInstance("SparseLightningIndexer"), nullptr);
 }

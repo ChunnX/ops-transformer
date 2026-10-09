@@ -59,10 +59,10 @@ std::vector<OpAttr> Attrs()
             {"kv_quant_mode", AnyValue::CreateFrom<int64_t>(3)}};
 }
 
-std::vector<OpAttr> AttrsWith(const std::string &name, const AnyValue &value)
+std::vector<OpAttr> AttrsWith(const std::string& name, const AnyValue& value)
 {
     auto attrs = Attrs();
-    for (auto &attr : attrs) {
+    for (auto& attr : attrs) {
         if (attr.attrName_ == name) {
             attr.attr_ = value;
         }
@@ -70,8 +70,8 @@ std::vector<OpAttr> AttrsWith(const std::string &name, const AnyValue &value)
     return attrs;
 }
 
-bool RunTilingCaseWithOutputs(const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
-                              const std::vector<OpAttr> &attrs, TilingInfo &info)
+bool RunTilingCaseWithOutputs(const std::vector<TensorDesc>& inputs, const std::vector<TensorDesc>& outputs,
+                              const std::vector<OpAttr>& attrs, TilingInfo& info)
 {
     CompileInfo compileInfo;
     gert::TilingContextPara para("TurboQuantSparseAttnSharedkv", inputs, outputs, attrs, &compileInfo, "Ascend910B", 64,
@@ -79,7 +79,7 @@ bool RunTilingCaseWithOutputs(const std::vector<TensorDesc> &inputs, const std::
     return ExecuteTiling(para, info);
 }
 
-bool RunTilingCase(const std::vector<TensorDesc> &inputs, const std::vector<OpAttr> &attrs, TilingInfo &info)
+bool RunTilingCase(const std::vector<TensorDesc>& inputs, const std::vector<OpAttr>& attrs, TilingInfo& info)
 {
     return RunTilingCaseWithOutputs(inputs, Outputs(inputs[0].dtype_), attrs, info);
 }
@@ -115,7 +115,7 @@ TEST(TurboQuantSparseAttnSharedkvTiling, AcceptsSupportedCompressionRatios)
 
 TEST(TurboQuantSparseAttnSharedkvTiling, RejectsWrongTurboQuantContract)
 {
-    for (const auto &entry :
+    for (const auto& entry :
          std::vector<std::pair<std::string, AnyValue>>{{"cmp_ratio", AnyValue::CreateFrom<int64_t>(8)},
                                                        {"cmp_kv_stride", AnyValue::CreateFrom<int64_t>(0)},
                                                        {"kv_quant_mode", AnyValue::CreateFrom<int64_t>(1)},

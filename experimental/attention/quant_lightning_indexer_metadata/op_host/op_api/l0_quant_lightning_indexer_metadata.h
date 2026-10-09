@@ -23,4 +23,3 @@ const aclTensor* QuantLightningIndexerMetadata(
 } // namespace l0op
 
 #endif
-    

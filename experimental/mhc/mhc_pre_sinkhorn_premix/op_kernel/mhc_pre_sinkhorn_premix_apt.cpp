@@ -45,7 +45,7 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
 
     if (TILING_KEY_IS(1000)) {
         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornPremixRegbaseTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornPremixRegbaseTilingData *__restrict tilingData = &tiling_data_in;
+        const MhcPreSinkhornPremixRegbaseTilingData* __restrict tilingData = &tiling_data_in;
         MhcPreSinkhornPremixNs::MhcPreSinkhornPremixMKSplitCorePart1<DTYPE_X> op;
         op.Init(x, phi, userWs, tilingData, &pipe);
         op.Process();
@@ -58,14 +58,14 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
         pipeStage2.Destroy();
     } else if (TILING_KEY_IS(1001)) {
         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornPremixRegbaseTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornPremixRegbaseTilingData *__restrict tilingData = &tiling_data_in;
+        const MhcPreSinkhornPremixRegbaseTilingData* __restrict tilingData = &tiling_data_in;
         MhcPreSinkhornPremixNs::MhcPreSinkhornPremixMSplitCorePart1<DTYPE_X> op;
         op.Init(x, phi, alpha, bias, premix, hin, hPost, hRes, tilingData, &pipe);
         op.Process();
 
     } else if (TILING_KEY_IS(2000)) { // K分核，Gradout
         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornPremixRegbaseTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornPremixRegbaseTilingData *__restrict tilingData = &tiling_data_in;
+        const MhcPreSinkhornPremixRegbaseTilingData* __restrict tilingData = &tiling_data_in;
         MhcPreSinkhornPremixNs::MhcPreSinkhornPremixMKSplitCorePart1Gradout<DTYPE_X> op;
         op.Init(x, phi, userWs, tilingData, &pipe);
         op.Process();
@@ -80,7 +80,7 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
 
     } else if (TILING_KEY_IS(2001)) { // M分核，Gradout
         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornPremixRegbaseTilingData, tiling_data_in, tiling);
-        const MhcPreSinkhornPremixRegbaseTilingData *__restrict tilingData = &tiling_data_in;
+        const MhcPreSinkhornPremixRegbaseTilingData* __restrict tilingData = &tiling_data_in;
         MhcPreSinkhornPremixNs::MhcPreSinkhornPremixMSplitCorePart1Gradout<DTYPE_X> op;
         op.Init(x, phi, alpha, bias, premix, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, tilingData,
                 &pipe);

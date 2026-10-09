@@ -633,7 +633,7 @@ void QuantFlashAttnTilingInfoParser::GetSoftmaxScale()
 
 ge::graphStatus QuantFlashAttnTilingInfoParser::GetEmptyTensorFlag()
 {
-    auto checkEmptyTensor = [this](const gert::StorageShape *shape, const std::string &name) -> bool {
+    auto checkEmptyTensor = [this](const gert::StorageShape* shape, const std::string& name) -> bool {
         if (shape == nullptr) {
             return false;
         }

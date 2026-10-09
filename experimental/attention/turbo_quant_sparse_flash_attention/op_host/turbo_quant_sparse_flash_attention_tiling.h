@@ -108,13 +108,13 @@ enum class TQSFAAxis : uint32_t {
 // 需要按维度校验的走 ShapeParaInfo，需要取 gert::Tensor（如 ShapeSize）的走
 // TensorParaInfo。原名 Required / Optional 易被误解为输入的必选性。
 struct TQSFAShapeParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct TQSFATensorParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 // -----------算子Tiling入参结构体定义--------------
@@ -135,22 +135,22 @@ struct TQSFAParaInfo {
     TQSFATensorParaInfo valueDequantScale = {nullptr, nullptr};
     TQSFAShapeParaInfo attenOut = {nullptr, nullptr};
 
-    const char *layoutQuery = nullptr;
-    const char *layoutKV = nullptr;
-    const int64_t *sparseBlockSize = nullptr;
-    const uint32_t *sparseBlockCount = nullptr;
-    const uint32_t *blockSize = nullptr;
-    const float *scaleValue = nullptr;
-    const int64_t *sparseMode = nullptr;
-    const int64_t *attentionMode = nullptr;
-    const int64_t *keyQuantMode = nullptr;
-    const int64_t *valueQuantMode = nullptr;
-    const int64_t *quantScaleRepoMode = nullptr;
-    const int64_t *tileSize = nullptr;
-    const int64_t *ropeHeadDim = nullptr;
-    const int64_t *preTokens = nullptr;
-    const int64_t *nextTokens = nullptr;
-    const bool *returnSoftmaxLse = nullptr;
+    const char* layoutQuery = nullptr;
+    const char* layoutKV = nullptr;
+    const int64_t* sparseBlockSize = nullptr;
+    const uint32_t* sparseBlockCount = nullptr;
+    const uint32_t* blockSize = nullptr;
+    const float* scaleValue = nullptr;
+    const int64_t* sparseMode = nullptr;
+    const int64_t* attentionMode = nullptr;
+    const int64_t* keyQuantMode = nullptr;
+    const int64_t* valueQuantMode = nullptr;
+    const int64_t* quantScaleRepoMode = nullptr;
+    const int64_t* tileSize = nullptr;
+    const int64_t* ropeHeadDim = nullptr;
+    const int64_t* preTokens = nullptr;
+    const int64_t* nextTokens = nullptr;
+    const bool* returnSoftmaxLse = nullptr;
 };
 
 struct InnerSplitParams {
@@ -235,8 +235,8 @@ std::string TQSFALayoutToSerialString(TQSFALayout layout);
 
 // -----------算子Tiling入参信息定义--------------
 struct TQSFATilingInfo {
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     TQSFAParaInfo opParamInfo;
 
     // Base Param
@@ -303,17 +303,17 @@ struct TQSFATilingInfo {
 // ---------------算子Tiling类--------------
 class TQSFAMlaTiling {
 public:
-    explicit TQSFAMlaTiling(gert::TilingContext *context)
+    explicit TQSFAMlaTiling(gert::TilingContext* context)
         : context_(context)
     {}
-    ge::graphStatus DoOpTiling(TQSFATilingInfo *qsfaInfo);
+    ge::graphStatus DoOpTiling(TQSFATilingInfo* qsfaInfo);
 
 private:
     ge::graphStatus SetBlockDim(uint32_t blockDim) const;
     ge::graphStatus SetTilingKey(uint64_t tilingKey) const;
     ge::graphStatus SetWorkspaceSize(uint64_t workspaceSize) const;
-    ge::graphStatus SetTilingData(TilingDef &tilingData) const;
-    gert::TilingContext *context_ = nullptr;
+    ge::graphStatus SetTilingData(TilingDef& tilingData) const;
+    gert::TilingContext* context_ = nullptr;
     ge::graphStatus GetPlatformInfo();
     void GenTilingKey();
 
@@ -372,39 +372,39 @@ private:
     uint32_t mBaseSize_ = 128;
     uint32_t mFdBaseSize_ = 8;
 
-    TQSFATilingInfo *qsfaInfo_ = nullptr;
+    TQSFATilingInfo* qsfaInfo_ = nullptr;
 };
 
 // -----------算子Tiling入参信息解析及Check类--------------
 class TQSFATilingCheck {
 public:
-    explicit TQSFATilingCheck(const TQSFATilingInfo &qsfaInfo)
+    explicit TQSFATilingCheck(const TQSFATilingInfo& qsfaInfo)
         : qsfaInfo_(qsfaInfo) {};
     ~TQSFATilingCheck() = default;
     ge::graphStatus Process();
 
 private:
     void Init();
-    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
-                              const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *qsfaDesc, const std::string &name) const;
+    void LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList, const ge::DataType& actualDtype,
+                              const std::string& name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc* qsfaDesc, const std::string& name) const;
     template <typename T>
-    void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
+    void LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue, const std::string& name,
                                const std::string subName) const;
     template <typename T>
-    void LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                               const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::vector<size_t> &qsfaExpectDimNumList,
-                                       const std::string &name) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const TQSFALayout &layout, const gert::StorageShape *shape,
-                                               const std::string &name) const;
-    void LogErrorLayoutSupport(const std::vector<TQSFALayout> &expectLayoutList, const TQSFALayout &actualLayout,
-                               const std::string &name) const;
-    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const TQSFATilingShapeCompareParam &param,
-                                     const TQSFALayout &layout) const;
-    ge::graphStatus CompareShape(TQSFATilingShapeCompareParam &param, const gert::Shape &shape,
-                                 const TQSFALayout &layout, const std::string &name) const;
-    ge::graphStatus CheckLayoutSupport(const TQSFALayout &actualLayout, const std::string &name) const;
+    void LogErrorDimNumSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                               const std::string& name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape* shape, const std::vector<size_t>& qsfaExpectDimNumList,
+                                       const std::string& name) const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const TQSFALayout& layout, const gert::StorageShape* shape,
+                                               const std::string& name) const;
+    void LogErrorLayoutSupport(const std::vector<TQSFALayout>& expectLayoutList, const TQSFALayout& actualLayout,
+                               const std::string& name) const;
+    ge::graphStatus GetExpectedShape(gert::Shape& shapeExpected, const TQSFATilingShapeCompareParam& param,
+                                     const TQSFALayout& layout) const;
+    ge::graphStatus CompareShape(TQSFATilingShapeCompareParam& param, const gert::Shape& shape,
+                                 const TQSFALayout& layout, const std::string& name) const;
+    ge::graphStatus CheckLayoutSupport(const TQSFALayout& actualLayout, const std::string& name) const;
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaKey() const;
     ge::graphStatus CheckSingleParaSparseMode() const;
@@ -420,8 +420,8 @@ private:
     ge::graphStatus CheckTopK();
     ge::graphStatus CheckTopkShape();
     ge::graphStatus CheckBlockTable() const;
-    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
-                                          const std::string &name) const;
+    ge::graphStatus CheckDTypeConsistency(const ge::DataType& actualDtype, const ge::DataType& expectDtype,
+                                          const std::string& name) const;
 
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
@@ -445,10 +445,10 @@ private:
     ge::graphStatus CheckFeature() const;
 
 private:
-    const char *opName_;
-    fe::PlatFormInfos *platformInfo_;
+    const char* opName_;
+    fe::PlatFormInfos* platformInfo_;
     TQSFAParaInfo opParamInfo_;
-    const TQSFATilingInfo &qsfaInfo_;
+    const TQSFATilingInfo& qsfaInfo_;
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;
@@ -497,7 +497,7 @@ private:
 
 class TQSFAInfoParser {
 public:
-    explicit TQSFAInfoParser(const gert::TilingContext *context)
+    explicit TQSFAInfoParser(const gert::TilingContext* context)
         : context_(context)
     {}
     ~TQSFAInfoParser() = default;
@@ -506,7 +506,7 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
+    ge::graphStatus GetActualSeqLenQSize(uint32_t& size);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus GetOpName();
     void GetOptionalInputParaInfo();
@@ -538,14 +538,14 @@ public:
     ge::graphStatus GetSparseBlockCount();
     ge::graphStatus GetActualseqInfo();
     ge::graphStatus GetShapeAndSizeInfo();
-    void GenerateInfo(TQSFATilingInfo &qsfaInfo);
-    void FillTilingInfoAttrsAndLayouts(TQSFATilingInfo &qsfaInfo);
-    ge::graphStatus Parse(TQSFATilingInfo &qsfaInfo);
+    void GenerateInfo(TQSFATilingInfo& qsfaInfo);
+    void FillTilingInfoAttrsAndLayouts(TQSFATilingInfo& qsfaInfo);
+    ge::graphStatus Parse(TQSFATilingInfo& qsfaInfo);
 
-    const gert::TilingContext *context_ = nullptr;
+    const gert::TilingContext* context_ = nullptr;
 
-    const char *opName_;
-    fe::PlatFormInfos *platformInfo_;
+    const char* opName_;
+    fe::PlatFormInfos* platformInfo_;
     TQSFAParaInfo opParamInfo_;
 
     uint32_t bSize_ = 0;

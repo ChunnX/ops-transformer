@@ -42,14 +42,14 @@ class GMMProcess {
 private:
     __aicore__ inline void Process_();
 
-    ComputeType &computeOp; // inernal computation operator
-    const GmmAddTilingData &tilingData;
+    ComputeType& computeOp; // inernal computation operator
+    const GmmAddTilingData& tilingData;
     uint32_t coreIdx;
     MNConfig mnConfig;
 
 public:
     /** @brief constructor */
-    __aicore__ inline GMMProcess(ComputeType &computeOp_, const GmmAddTilingData &tilingData)
+    __aicore__ inline GMMProcess(ComputeType& computeOp_, const GmmAddTilingData& tilingData)
         : computeOp(computeOp_),
           tilingData(tilingData)
     {}
@@ -115,7 +115,7 @@ public:
     using BT = AT;
 
     /** @brief constructor */
-    __aicore__ inline GMMCompute(mmType &mm_, TPipe &pipe_, const GmmAddTilingData &tilingData_)
+    __aicore__ inline GMMCompute(mmType& mm_, TPipe& pipe_, const GmmAddTilingData& tilingData_)
         : mm(mm_),
           pipe(pipe_),
           tilingData(tilingData_)
@@ -124,7 +124,7 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR group, GM_ADDR weightGrad, GM_ADDR y,
                                 GM_ADDR workspace);
 
-    __aicore__ inline void MMCompute(uint32_t groupIdx, const MNConfig &mnConfig);
+    __aicore__ inline void MMCompute(uint32_t groupIdx, const MNConfig& mnConfig);
 
     __aicore__ inline int32_t CalcKForThisGroup(int group_id)
     {
@@ -156,7 +156,7 @@ public:
                     copyParams, padParams);
     }
 
-    __aicore__ inline void CopyInWeightGrad(const MNConfig &mnConfig)
+    __aicore__ inline void CopyInWeightGrad(const MNConfig& mnConfig)
     {
         // 从GM搬运real_rows * curSingleN到ub，inner轴对齐到curSingleN,右侧补零
         DataCopyExtParams copyParams;
@@ -181,7 +181,7 @@ public:
                     copyParams, padParams);
     }
 
-    __aicore__ inline void CopyOut(const MNConfig &mnConfig)
+    __aicore__ inline void CopyOut(const MNConfig& mnConfig)
     {
         // 从ub搬运real_rows * curSingleN到GM
         DataCopyExtParams copyParams;
@@ -201,11 +201,11 @@ public:
 
 private:
     // matmul operator
-    mmType &mm;
+    mmType& mm;
     // memory manager
-    TPipe &pipe;
+    TPipe& pipe;
     // tiling
-    const GmmAddTilingData &tilingData;
+    const GmmAddTilingData& tilingData;
 
     // inputs & workspace & outputs
     GlobalTensor<AT> xGm;
@@ -257,15 +257,15 @@ __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::Init(GM_AD
                                                                            GM_ADDR weightGrad, GM_ADDR y,
                                                                            GM_ADDR workspace)
 {
-    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ AT *>(x));
-    weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ BT *>(weight));
-    groupGm.SetGlobalBuffer(reinterpret_cast<__gm__ GT *>(group));
-    weightGradGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT *>(weightGrad));
-    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT *>(y));
+    xGm.SetGlobalBuffer(reinterpret_cast<__gm__ AT*>(x));
+    weightGm.SetGlobalBuffer(reinterpret_cast<__gm__ BT*>(weight));
+    groupGm.SetGlobalBuffer(reinterpret_cast<__gm__ GT*>(group));
+    weightGradGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT*>(weightGrad));
+    yGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT*>(y));
 
     // workspace offset: elements count
     const auto workspaceOffset = GetBlockIdx() * tilingData.gmmBaseParams.singleM * tilingData.gmmBaseParams.singleN;
-    workspaceGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT *>(workspace) + workspaceOffset);
+    workspaceGm.SetGlobalBuffer(reinterpret_cast<__gm__ CT*>(workspace) + workspaceOffset);
 
     pipe.InitBuffer(weightGradBuf, NUMS_PER_ADD * sizeof(CT));
     pipe.InitBuffer(matmulResBuf, NUMS_PER_ADD * sizeof(CT));
@@ -275,7 +275,7 @@ __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::Init(GM_AD
 
 template <typename mmType, typename AT, typename CT, typename GT, bool trans_a, bool sync>
 __aicore__ inline void GMMCompute<mmType, AT, CT, GT, trans_a, sync>::MMCompute(uint32_t groupIdx,
-                                                                                const MNConfig &mnConfig)
+                                                                                const MNConfig& mnConfig)
 {
     curSingleN = mnConfig.singleN;
     cuN = mnConfig.nIdx * mnConfig.singleN;

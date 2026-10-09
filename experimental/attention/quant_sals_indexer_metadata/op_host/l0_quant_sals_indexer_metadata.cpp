@@ -26,40 +26,29 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(QuantSalsIndexerMetadata);
 
-const aclTensor* QuantSalsIndexerMetadata(
-    const aclTensor* actualSeqLengthsKvOptional,
-    int64_t batchSize,
-    int64_t keySeqSize,
-    int64_t keyHeadNum,
-    int64_t headDim,
-    int64_t aicCoreNum,
-    int64_t aivCoreNum,
-    int64_t sparseBlockSize,
-    double sparseRatio,
-    int64_t fixedTailCount,
-    char* layoutKeyOptional,
-    const char* socVersionOptional,
-    const aclTensor* metaData,
-    aclOpExecutor* executor) {
-  L0_DFX(QuantSalsIndexerMetadata, actualSeqLengthsKvOptional, batchSize, 
-            keySeqSize, keyHeadNum, headDim, aicCoreNum, aivCoreNum,
-            sparseBlockSize, sparseRatio, fixedTailCount, layoutKeyOptional, socVersionOptional, metaData);
+const aclTensor* QuantSalsIndexerMetadata(const aclTensor* actualSeqLengthsKvOptional, int64_t batchSize,
+                                          int64_t keySeqSize, int64_t keyHeadNum, int64_t headDim, int64_t aicCoreNum,
+                                          int64_t aivCoreNum, int64_t sparseBlockSize, double sparseRatio,
+                                          int64_t fixedTailCount, char* layoutKeyOptional,
+                                          const char* socVersionOptional, const aclTensor* metaData,
+                                          aclOpExecutor* executor)
+{
+    L0_DFX(QuantSalsIndexerMetadata, actualSeqLengthsKvOptional, batchSize, keySeqSize, keyHeadNum, headDim, aicCoreNum,
+           aivCoreNum, sparseBlockSize, sparseRatio, fixedTailCount, layoutKeyOptional, socVersionOptional, metaData);
 
-  static internal::AicpuTaskSpace space("QuantSalsIndexerMetadata");
+    static internal::AicpuTaskSpace space("QuantSalsIndexerMetadata");
 
-  auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
-      QuantSalsIndexerMetadata,
-      OP_ATTR_NAMES({"batch_size", "key_seq_size", "key_head_num", "head_dim", "aic_core_num",
-                     "aiv_core_num", "sparse_block_size", "sparse_ratio", "fixed_tail_count",
-                     "layout_key", "soc_version"}),
-      OP_INPUT(actualSeqLengthsKvOptional), OP_OUTPUT(metaData),
-      OP_ATTR(batchSize, keySeqSize, keyHeadNum, headDim, aicCoreNum, aivCoreNum,
-            sparseBlockSize, sparseRatio, fixedTailCount, layoutKeyOptional, socVersionOptional));
-  OP_CHECK(ret == ACL_SUCCESS,
-           OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
-                   "QuantSalsIndexerMetadata"
-                   " ADD_TO_LAUNCHER_LIST_AICPU failed."),
-           return nullptr);
-  return metaData;
+    auto ret = ADD_TO_LAUNCHER_LIST_AICPU(
+        QuantSalsIndexerMetadata,
+        OP_ATTR_NAMES({"batch_size", "key_seq_size", "key_head_num", "head_dim", "aic_core_num", "aiv_core_num",
+                       "sparse_block_size", "sparse_ratio", "fixed_tail_count", "layout_key", "soc_version"}),
+        OP_INPUT(actualSeqLengthsKvOptional), OP_OUTPUT(metaData),
+        OP_ATTR(batchSize, keySeqSize, keyHeadNum, headDim, aicCoreNum, aivCoreNum, sparseBlockSize, sparseRatio,
+                fixedTailCount, layoutKeyOptional, socVersionOptional));
+    OP_CHECK(ret == ACL_SUCCESS,
+             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "QuantSalsIndexerMetadata"
+                                              " ADD_TO_LAUNCHER_LIST_AICPU failed."),
+             return nullptr);
+    return metaData;
 }
-}  // namespace l0op
+} // namespace l0op

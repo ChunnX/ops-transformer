@@ -61,7 +61,7 @@ inline uint32_t QBSACeilDiv(uint32_t value, uint32_t divisor)
     return divisor == 0U ? 0U : (value + divisor - 1U) / divisor;
 }
 
-inline bool QBSAGetDimAsU32(const gert::Shape &shape, size_t dimIndex, uint32_t &value)
+inline bool QBSAGetDimAsU32(const gert::Shape& shape, size_t dimIndex, uint32_t& value)
 {
     if (dimIndex >= shape.GetDimNum()) {
         return false;
@@ -74,9 +74,9 @@ inline bool QBSAGetDimAsU32(const gert::Shape &shape, size_t dimIndex, uint32_t 
     return true;
 }
 
-inline uint32_t QBSAGetPositiveAttr(const gert::RuntimeAttrs *attrs, uint32_t index, uint32_t defaultValue)
+inline uint32_t QBSAGetPositiveAttr(const gert::RuntimeAttrs* attrs, uint32_t index, uint32_t defaultValue)
 {
-    const int64_t *attrPtr = attrs->GetAttrPointer<int64_t>(index);
+    const int64_t* attrPtr = attrs->GetAttrPointer<int64_t>(index);
     if (attrPtr == nullptr || *attrPtr <= 0) {
         return defaultValue;
     }
@@ -86,9 +86,9 @@ inline uint32_t QBSAGetPositiveAttr(const gert::RuntimeAttrs *attrs, uint32_t in
     return static_cast<uint32_t>(*attrPtr);
 }
 
-inline uint32_t QBSAGetUintAttr(const gert::RuntimeAttrs *attrs, uint32_t index, uint32_t defaultValue)
+inline uint32_t QBSAGetUintAttr(const gert::RuntimeAttrs* attrs, uint32_t index, uint32_t defaultValue)
 {
-    const int64_t *attrPtr = attrs->GetAttrPointer<int64_t>(index);
+    const int64_t* attrPtr = attrs->GetAttrPointer<int64_t>(index);
     if (attrPtr == nullptr || *attrPtr < 0) {
         return defaultValue;
     }
@@ -98,21 +98,21 @@ inline uint32_t QBSAGetUintAttr(const gert::RuntimeAttrs *attrs, uint32_t index,
     return static_cast<uint32_t>(*attrPtr);
 }
 
-inline float QBSAGetFloatAttr(const gert::RuntimeAttrs *attrs, uint32_t index, float defaultValue)
+inline float QBSAGetFloatAttr(const gert::RuntimeAttrs* attrs, uint32_t index, float defaultValue)
 {
-    const float *attrPtr = attrs->GetAttrPointer<float>(index);
+    const float* attrPtr = attrs->GetAttrPointer<float>(index);
     return attrPtr == nullptr ? defaultValue : *attrPtr;
 }
 
-inline bool QBSAGetBoolAttr(const gert::RuntimeAttrs *attrs, uint32_t index, bool defaultValue)
+inline bool QBSAGetBoolAttr(const gert::RuntimeAttrs* attrs, uint32_t index, bool defaultValue)
 {
-    const bool *attrPtr = attrs->GetAttrPointer<bool>(index);
+    const bool* attrPtr = attrs->GetAttrPointer<bool>(index);
     return attrPtr == nullptr ? defaultValue : *attrPtr;
 }
 
-inline std::string QBSAGetStringAttr(const gert::RuntimeAttrs *attrs, uint32_t index, const char *defaultValue)
+inline std::string QBSAGetStringAttr(const gert::RuntimeAttrs* attrs, uint32_t index, const char* defaultValue)
 {
-    const char *attrPtr = attrs->GetAttrPointer<char>(index);
+    const char* attrPtr = attrs->GetAttrPointer<char>(index);
     return attrPtr == nullptr ? std::string(defaultValue) : std::string(attrPtr);
 }
 
@@ -191,14 +191,14 @@ TILING_DATA_FIELD_DEF_STRUCT(QuantBlockSparseAttnInitOutputParams, initOutputPar
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttn, QuantBlockSparseAttnTilingData)
 
-ge::graphStatus TilingQuantBlockSparseAttn(gert::TilingContext *context);
+ge::graphStatus TilingQuantBlockSparseAttn(gert::TilingContext* context);
 
 class QuantBlockSparseAttnTiling {
 public:
-    explicit QuantBlockSparseAttnTiling(gert::TilingContext *context);
+    explicit QuantBlockSparseAttnTiling(gert::TilingContext* context);
     ~QuantBlockSparseAttnTiling() = default;
 
-    ge::graphStatus DoOpTiling(QuantBlockSparseAttnTilingInfo *tilingInfo);
+    ge::graphStatus DoOpTiling(QuantBlockSparseAttnTilingInfo* tilingInfo);
 
 private:
     void FillPaParams();
@@ -213,8 +213,8 @@ private:
     void PrintMxTilingData();
     ge::graphStatus SaveTilingData();
 
-    gert::TilingContext *context_ = nullptr;
-    QuantBlockSparseAttnTilingInfo *tilingInfo_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
+    QuantBlockSparseAttnTilingInfo* tilingInfo_ = nullptr;
     QuantBlockSparseAttnTilingData tilingData_;
     QuantBlockSparseAttnMxTilingData mxTilingData_;
     uint32_t usedCoreNum_ = 0;

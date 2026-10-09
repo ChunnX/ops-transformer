@@ -79,7 +79,7 @@ struct BlockMmadQKSplitKvArch35 {
     __aicore__ inline BlockMmadQKSplitKvArch35() {}
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 4U) {
             uint16_t flagIdV0 = crossCoreFlag.id;
@@ -91,7 +91,7 @@ struct BlockMmadQKSplitKvArch35 {
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 4U) {
             uint16_t flagIdV0 = crossCoreFlag.id;
@@ -102,7 +102,7 @@ struct BlockMmadQKSplitKvArch35 {
         }
     }
 
-    __aicore__ inline void Init(Arch::Resource<ArchTag> &resource, uint32_t blockSize, uint32_t D)
+    __aicore__ inline void Init(Arch::Resource<ArchTag>& resource, uint32_t blockSize, uint32_t D)
     {
         uint32_t kBufBytes = blockSize * D * sizeof(ElementK);
         uint32_t qBufBytes = L0_TILE_M * D * sizeof(ElementQ);
@@ -120,7 +120,7 @@ struct BlockMmadQKSplitKvArch35 {
     }
 
     template <class TensorK>
-    __aicore__ inline void LoadKResident(TensorK &gmKTensor, uint32_t validSize, uint32_t D)
+    __aicore__ inline void LoadKResident(TensorK& gmKTensor, uint32_t validSize, uint32_t D)
     {
         using CopyGmToL1K = typename TileCopy::template CopyGmToL1B<TensorK>;
         CopyGmToL1K copyGmToL1K;
@@ -154,9 +154,9 @@ struct BlockMmadQKSplitKvArch35 {
     // TND/PA/BSND = D, BNSD = S * D. Layout shape uses that stride so Nd2Nz srcDValue gathers
     // the GQA group in one copy.
     template <class TensorQ, class TensorS>
-    __aicore__ inline void operator()(TensorQ &gQ, const uint64_t *qBases, uint32_t groupCount, uint32_t groupRows,
-                                      TensorS &ubSTensor, uint32_t validSize, uint32_t D, uint32_t qGmRowStride,
-                                      uint32_t numBatches, uint32_t bi, Arch::CrossCoreFlag &mm1ToSmFlag)
+    __aicore__ inline void operator()(TensorQ& gQ, const uint64_t* qBases, uint32_t groupCount, uint32_t groupRows,
+                                      TensorS& ubSTensor, uint32_t validSize, uint32_t D, uint32_t qGmRowStride,
+                                      uint32_t numBatches, uint32_t bi, Arch::CrossCoreFlag& mm1ToSmFlag)
     {
         uint32_t M = groupCount * groupRows;
         uint32_t N = validSize;

@@ -26,9 +26,9 @@ using namespace AscendC;
 using namespace Reg;
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2, uint16_t QsBase = 128>
-__simd_callee__ inline void softmax_with_group_max_qs64_chunk_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s,
-                                                                 __ubuf__ T *local_group_max, __ubuf__ T *global_max,
-                                                                 __ubuf__ uint8_t *indexes_ub, const T NEG_LOG2_CX,
+__simd_callee__ inline void softmax_with_group_max_qs64_chunk_vf(__ubuf__ T2* p_dest, __ubuf__ T* s,
+                                                                 __ubuf__ T* local_group_max, __ubuf__ T* global_max,
+                                                                 __ubuf__ uint8_t* indexes_ub, const T NEG_LOG2_CX,
                                                                  const uint16_t chunkY, const uint16_t effY,
                                                                  const bool bAllInvalid)
 {
@@ -151,16 +151,13 @@ __simd_callee__ inline void softmax_with_group_max_qs64_chunk_vf(__ubuf__ T2 *p_
             Cast<float4_e2m1x2_t, bfloat16_t, castTraitThree>(quant_3, src_bf16_3, preg_VL64_16bit);
 
             // 数据合并
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_2,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
+            Or((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_1, preg_all_8bit);
+            Or((RegTensor<uint8_t>&)quant_2, (RegTensor<uint8_t>&)quant_2, (RegTensor<uint8_t>&)quant_3, preg_all_8bit);
+            Or((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_2, preg_all_8bit);
+            Gather((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, idx_nd2nz);
 
             // 写入内存（偶数块：无+128偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256, (RegTensor<uint8_t> &)quant_0,
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256, (RegTensor<uint8_t>&)quant_0,
                        preg_vl128 // 低128字节掩码
             );
         }
@@ -208,17 +205,14 @@ __simd_callee__ inline void softmax_with_group_max_qs64_chunk_vf(__ubuf__ T2 *p_
             Cast<float4_e2m1x2_t, bfloat16_t, castTraitThree>(quant_3, src_bf16_3, preg_VL64_16bit);
 
             // 数据合并
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_1,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_2, (RegTensor<uint8_t> &)quant_3,
-               preg_all_8bit);
-            Or((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_2,
-               preg_all_8bit);
-            Gather((RegTensor<uint8_t> &)quant_0, (RegTensor<uint8_t> &)quant_0, idx_nd2nz);
+            Or((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_1, preg_all_8bit);
+            Or((RegTensor<uint8_t>&)quant_2, (RegTensor<uint8_t>&)quant_2, (RegTensor<uint8_t>&)quant_3, preg_all_8bit);
+            Or((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_2, preg_all_8bit);
+            Gather((RegTensor<uint8_t>&)quant_0, (RegTensor<uint8_t>&)quant_0, idx_nd2nz);
 
             // 奇数块：低128字节写入（基础地址 +128 偏移）
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256 + 128,
-                       (RegTensor<uint8_t> &)quant_0, preg_vl128);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256 + 128,
+                       (RegTensor<uint8_t>&)quant_0, preg_vl128);
         }
 
         // ====================== 全局/局部最大值更新 ======================
@@ -254,21 +248,21 @@ __simd_callee__ inline void softmax_with_group_max_qs64_chunk_vf(__ubuf__ T2 *p_
 
         // 偶数子块清零
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256, zero8, preg_vl128);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256, zero8, preg_vl128);
         }
 
         // 奇数子块清零
         for (uint16_t j = 0; j < ITER_PER_GROUP; j += 2) {
-            StoreAlign(((__ubuf__ uint8_t *&)p_dest) + (groupBase + g) * 2048 + j * 256 + 128, zero8, preg_vl128);
+            StoreAlign(((__ubuf__ uint8_t*&)p_dest) + (groupBase + g) * 2048 + j * 256 + 128, zero8, preg_vl128);
         }
     }
 }
 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2, uint16_t QsBase = 128,
           uint16_t chunkY = 0>
-__simd_vf__ inline void softmax_with_group_max_qs64_kvs256_chunk_vf(__ubuf__ T2 *p_dest, __ubuf__ T *s,
-                                                                    __ubuf__ T *local_group_max, __ubuf__ T *global_max,
-                                                                    __ubuf__ uint8_t *indexes_ub, const T NEG_LOG2_CX,
+__simd_vf__ inline void softmax_with_group_max_qs64_kvs256_chunk_vf(__ubuf__ T2* p_dest, __ubuf__ T* s,
+                                                                    __ubuf__ T* local_group_max, __ubuf__ T* global_max,
+                                                                    __ubuf__ uint8_t* indexes_ub, const T NEG_LOG2_CX,
                                                                     const uint16_t effY)
 {
     softmax_with_group_max_qs64_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase>(
@@ -278,14 +272,14 @@ __simd_vf__ inline void softmax_with_group_max_qs64_kvs256_chunk_vf(__ubuf__ T2 
 template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2, uint16_t QsBase = 128,
           uint16_t chunkY = 0>
 __aicore__ inline void SoftmaxWithGroupMaxQs64Kvs256ChunkCallVF(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &localGroupMax,
-    const LocalTensor<T> &globalMax, const LocalTensor<uint8_t> &indexesBuf, const T NEG_LOG2_CX, const uint16_t effY)
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& srcTensor, const LocalTensor<T>& localGroupMax,
+    const LocalTensor<T>& globalMax, const LocalTensor<uint8_t>& indexesBuf, const T NEG_LOG2_CX, const uint16_t effY)
 {
-    __ubuf__ T2 *p_dest = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ T *s_ub = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ T *local_group_max = (__ubuf__ T *)localGroupMax.GetPhyAddr();
-    __ubuf__ T *global_max = (__ubuf__ T *)globalMax.GetPhyAddr();
-    __ubuf__ uint8_t *indexes_ub = (__ubuf__ uint8_t *)indexesBuf.GetPhyAddr();
+    __ubuf__ T2* p_dest = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ T* s_ub = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ T* local_group_max = (__ubuf__ T*)localGroupMax.GetPhyAddr();
+    __ubuf__ T* global_max = (__ubuf__ T*)globalMax.GetPhyAddr();
+    __ubuf__ uint8_t* indexes_ub = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
     softmax_with_group_max_qs64_kvs256_chunk_vf<MX_QUANT_MODE, clear_gmax, T, T2, QsBase, chunkY>(
         p_dest, s_ub, local_group_max, global_max, indexes_ub, NEG_LOG2_CX, effY);

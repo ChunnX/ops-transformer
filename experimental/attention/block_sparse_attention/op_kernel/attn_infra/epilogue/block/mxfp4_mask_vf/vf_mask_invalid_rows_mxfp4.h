@@ -19,7 +19,7 @@ using namespace Reg;
 
 // 将validRows所在的32行以及下一个32行无效部分置为-inf，softmax无效行得到0。
 template <typename T, bool QS64 = false>
-__simd_vf__ inline void mask_invalid_rows_to_min_value_vf(__ubuf__ T *s, uint16_t chunkRowBase, uint16_t validRows,
+__simd_vf__ inline void mask_invalid_rows_to_min_value_vf(__ubuf__ T* s, uint16_t chunkRowBase, uint16_t validRows,
                                                           uint16_t rows)
 {
     constexpr uint16_t QsBase = 128;
@@ -39,10 +39,10 @@ __simd_vf__ inline void mask_invalid_rows_to_min_value_vf(__ubuf__ T *s, uint16_
 }
 
 template <typename T, bool QS64 = false>
-__aicore__ inline void MaskInvalidRowsToMinValueCallVF(const LocalTensor<T> &srcTensor, uint16_t chunkRowBase,
+__aicore__ inline void MaskInvalidRowsToMinValueCallVF(const LocalTensor<T>& srcTensor, uint16_t chunkRowBase,
                                                        uint16_t validRows, uint16_t rows)
 {
-    __ubuf__ T *s_ub = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T* s_ub = (__ubuf__ T*)srcTensor.GetPhyAddr();
 
     mask_invalid_rows_to_min_value_vf<T, QS64>(s_ub, chunkRowBase, validRows, rows);
 }

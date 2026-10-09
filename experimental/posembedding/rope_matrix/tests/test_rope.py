@@ -10,7 +10,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
-import numpy as np 
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -26,7 +26,7 @@ from torch.cuda.amp import autocast
 
 from einops import rearrange, repeat
 
-os.environ["COMBINED_ENABLE"] = "1"  # 
+os.environ["COMBINED_ENABLE"] = "1"  #
 os.environ["INF_NAN_MODE_ENABLE"] = "1"
 os.environ["PYTORCH_NPU_ALLOC_CONF"] = "expandable_segments:True"
 torch.manual_seed(0)
@@ -35,9 +35,9 @@ torch.set_printoptions(precision=16)
 torch_npu.npu.set_compile_mode(jit_compile=False)
 torch_npu.npu.config.allow_internal_format = False
 torch.npu.conv.allow_hf32 = False
-torch.npu.matmul.allow_hf32 = False 
+torch.npu.matmul.allow_hf32 = False
 
-device = torch.device('npu:6')
+device = torch.device("npu:6")
 
 
 def get_interleave_matrix(n):
@@ -62,18 +62,22 @@ def compose_3matrix(matrix_a, matrix_b, matrix_c):
 
     result = torch.zeros((total_rows, total_cols), dtype=torch.bfloat16)
 
-    result[:matrix_a.size(0), :matrix_a.size(1)] = matrix_a
+    result[: matrix_a.size(0), : matrix_a.size(1)] = matrix_a
 
     b_row_start = matrix_a.size(0)
     b_col_start = matrix_a.size(1)
-    result[b_row_start:b_row_start + matrix_b.size(0),
-           b_col_start:b_col_start + matrix_b.size(1)] = matrix_b
-    
+    result[
+        b_row_start : b_row_start + matrix_b.size(0),
+        b_col_start : b_col_start + matrix_b.size(1),
+    ] = matrix_b
+
     c_row_start = matrix_a.size(0) + matrix_b.size(0)
     c_col_start = matrix_a.size(1) + matrix_b.size(1)
-    result[c_row_start:c_row_start + matrix_c.size(0),
-           c_col_start:c_col_start + matrix_c.size(1)] = matrix_c
-    
+    result[
+        c_row_start : c_row_start + matrix_c.size(0),
+        c_col_start : c_col_start + matrix_c.size(1),
+    ] = matrix_c
+
     return result.to(device)
 
 
@@ -85,27 +89,29 @@ def rotate_half(x):
 
 # interleave
 def rotate_every_two(x: torch.Tensor) -> torch.Tensor:
-    x = rearrange(x, '... (d j) -> ... d j', j=2)
+    x = rearrange(x, "... (d j) -> ... d j", j=2)
     x1, x2 = x.chunk(2, dim=-1)
     x = torch.cat((-x2, x1), dim=-1)
     return x.flatten(-2)  # in einsum notation: rearrange(x, '... d j -> ... (d j)')
 
 
-def apply_rotary_pos_emb(tensor: torch.Tensor, sin: torch.Tensor, cos: torch.Tensor, mode: str) -> torch.Tensor:
+def apply_rotary_pos_emb(
+    tensor: torch.Tensor, sin: torch.Tensor, cos: torch.Tensor, mode: str
+) -> torch.Tensor:
     sin = sin.unsqueeze(0).unsqueeze(1)
     cos = cos.unsqueeze(0).unsqueeze(1)
-    if mode == 'interleave':
+    if mode == "interleave":
         return (tensor * cos) + (rotate_every_two(tensor) * sin)
-    elif mode == 'half':
+    elif mode == "half":
         return (tensor * cos) + (rotate_half(tensor) * sin)
     else:
         raise NotImplementedError("mode error, only support half or interleave")
-    
+
 
 def apply_3drotary_pos_v3(q, k, freqs_cis, mat, high_precision=None):
-    '''
+    """
     本方案:rope_matrix, matrix合一
-    '''
+    """
     sincos_h, sincos_w, sincos_t = freqs_cis
 
     sin_h, cos_h = sincos_h
@@ -114,7 +120,7 @@ def apply_3drotary_pos_v3(q, k, freqs_cis, mat, high_precision=None):
 
     sin = torch.cat((sin_h, sin_w, sin_t), dim=-1)
     cos = torch.cat((cos_h, cos_w, cos_t), dim=-1)
-    
+
     if high_precision:
         q = q.float() * cos.float() + (q @ mat).float() * sin.float()
         k = k.float() * cos.float() + (k @ mat).float() * sin.float()
@@ -122,15 +128,16 @@ def apply_3drotary_pos_v3(q, k, freqs_cis, mat, high_precision=None):
     else:
         q = q * cos + (q @ mat) * sin
         k = k * cos + (k @ mat) * sin
-    
+
     return q, k
 
 
 def apply_3drotary_pos_v5(q, k, freqs_cis, mat):
-    '''
+    """
     本方案:自定义融合算子实现
-    '''
+    """
     import npu_ops_transformer_ext
+
     sincos_h, sincos_w, sincos_t = freqs_cis
 
     sin_h, cos_h = sincos_h
@@ -150,12 +157,14 @@ def apply_3drotary_pos_v5(q, k, freqs_cis, mat):
 
 
 class ROPE3D(nn.Module):
-    def __init__(self, ):
+    def __init__(
+        self,
+    ):
         super().__init__()
 
     def forward(self, q, k, freqs_cis, mat):
         return apply_3drotary_pos_v3(q, k, freqs_cis, mat)
-    
+
 
 def main():
     # init
@@ -175,23 +184,25 @@ def main():
     half_mat_44 = get_half_matrix(44)
     half_mat_40 = get_half_matrix(40)
     half_mat_44_44_40 = compose_3matrix(half_mat_44, half_mat_44, half_mat_40)
-    
+
     # test precision
     with record_function("3d rope v5"):
         outq5, outk5 = apply_3drotary_pos_v5(q, k, freqs_cis_3d, half_mat_44_44_40)
         torch.cuda.synchronize()
-    
+
     with record_function("3d rope v3"):
-        outq3, outk3 = apply_3drotary_pos_v3(q, k, freqs_cis_3d, half_mat_44_44_40, high_precision=True)
+        outq3, outk3 = apply_3drotary_pos_v3(
+            q, k, freqs_cis_3d, half_mat_44_44_40, high_precision=True
+        )
         torch.cuda.synchronize()
-    
+
     # 精度验证
     denominator = torch.maximum(torch.abs(outq3), torch.abs(outq5))
     abs_error = torch.abs(torch.abs(outq3) - torch.abs(outq5))
-    print(f'max error: {abs_error.max()}')
+    print(f"max error: {abs_error.max()}")
     error = abs_error / (denominator + 1e-8)
-    assert ((torch.minimum(abs_error, error) > 0).sum() == 0)
+    assert (torch.minimum(abs_error, error) > 0).sum() == 0
 
-    
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

@@ -31,7 +31,7 @@ using namespace AscendC;
 using namespace arch35FIA;
 
 // CheckSinglePara
-ge::graphStatus MaskChecker::CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckDtypeAndFormat(const FiaTilingInfo& fiaInfo)
 {
     // AttentionMask data type must be int8/uint8/bool, and data format must be ND/NCHW/NHWC/NCDHW.
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.attenMask.desc, ATTEN_MASK_NAME)) {
@@ -45,7 +45,7 @@ ge::graphStatus MaskChecker::CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckSparseMode(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckSparseMode(const FiaTilingInfo& fiaInfo)
 {
     // SparseMode only supports 0/1/2/3/4/9. SparseMode 9 only support in ascend910B.
     const std::vector<int32_t> sparseModeList = {SPARSE_MODE_NO_MASK,    SPARSE_MODE_ALL_MASK, SPARSE_MODE_LEFT_UP,
@@ -58,7 +58,7 @@ ge::graphStatus MaskChecker::CheckSparseMode(const FiaTilingInfo &fiaInfo)
 }
 
 // CheckFeature
-ge::graphStatus MaskChecker::CheckAntiquantSparseMode(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckAntiquantSparseMode(const FiaTilingInfo& fiaInfo)
 {
     OP_CHECK_IF(
         fiaInfo.s1Size == 1U && fiaInfo.sparseMode != SPARSE_MODE_NO_MASK,
@@ -68,7 +68,7 @@ ge::graphStatus MaskChecker::CheckAntiquantSparseMode(const FiaTilingInfo &fiaIn
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckNoQuantIFAMLA(const FiaTilingInfo& fiaInfo)
 {
     // For IFA MLA, input sparse mode only supports 0/3/4.
     enableIFAMLA = (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512);
@@ -82,7 +82,7 @@ ge::graphStatus MaskChecker::CheckNoQuantIFAMLA(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo& fiaInfo)
 {
     // For IFA MLA, input sparse mode %d, sparse 0 without mask is supported only when sequence length is 1,
     // and sparse 3 with mask or sparse 0 without mask is supported only when sequence length > 1.
@@ -119,7 +119,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo& fiaInfo)
 {
     enableMXFP8 = (*fiaInfo.opParamInfo.queryQuantMode == PER_TOKEN_GROUP_MODE &&
                    *fiaInfo.opParamInfo.keyAntiquantMode == PER_TOKEN_GROUP_MODE &&
@@ -172,7 +172,7 @@ ge::graphStatus MaskChecker::CheckMXFP8FullQuant(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckQKVDDifferent(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckQKVDDifferent(const FiaTilingInfo& fiaInfo)
 {
     // Only support sparse mode 0/2/3 when query and key headdim is not equal to value headdim.
     OP_CHECK_IF(
@@ -184,7 +184,7 @@ ge::graphStatus MaskChecker::CheckQKVDDifferent(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo& fiaInfo)
 {
     int32_t sparseMode = fiaInfo.sparseMode;
     // sparse9 仅在rope分离场景下存在，不支持左padding、PSE、公共前缀、后量化等特性 拦截s2 >= s1
@@ -245,7 +245,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FiaTilingInfo& fiaInfo)
 {
     // In PFA mode, the values of pretoken and nexttoken must ensure the mask range remains valid.
     isIFAFlag = (enableAntiQuant_) && (fiaInfo.s1Size == 1);
@@ -269,11 +269,11 @@ ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FiaTilingInfo &fiaI
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo& fiaInfo)
 {
     uint32_t minAttenMaskSize = 0;
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
-    const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
+    const gert::Tensor* maskShape = fiaInfo.opParamInfo.attenMask.tensor;
     size_t attenMaskDim = maskShape->GetStorageShape().GetDimNum();
     uint32_t attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
     uint32_t attenMaskSize = maskShape->GetStorageShape().GetDim(maskShape->GetStorageShape().GetDimNum() - 1);
@@ -350,9 +350,9 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo &maskInfo)
+ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo& fiaInfo, MaskInfo& maskInfo)
 {
-    const gert::Tensor *maskShape = fiaInfo.opParamInfo.attenMask.tensor;
+    const gert::Tensor* maskShape = fiaInfo.opParamInfo.attenMask.tensor;
     size_t attenMaskDim = maskShape->GetStorageShape().GetDimNum();
     if (fiaInfo.sparseMode == SPARSE_MODE_TREE) {
         if (attenMaskDim != MASK_DIM_S && attenMaskDim != MASK_DIM_BSS) {
@@ -447,7 +447,7 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FiaTilingInfo &fiaInfo, MaskInfo 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo& fiaInfo)
 {
     // In PFA mode, the attenmask dimensions must be 2/3/4.
     // The allowed shape specifications for attenmask vary depending on the sparse mode.
@@ -516,7 +516,7 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckSinglePara(const FiaTilingInfo& fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckDtypeAndFormat(fiaInfo) || ge::GRAPH_SUCCESS != CheckSparseMode(fiaInfo)) {
         return ge::GRAPH_FAILED;
@@ -524,12 +524,12 @@ ge::graphStatus MaskChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckParaExistence(const FiaTilingInfo& fiaInfo)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckCrossFeature(const FiaTilingInfo& fiaInfo)
 {
     if (enableNonQuant_) {
         if (ge::GRAPH_SUCCESS != CheckNoQuantIFAMLA(fiaInfo) || ge::GRAPH_SUCCESS != CheckQKVDDifferent(fiaInfo)) {
@@ -559,7 +559,7 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
+ge::graphStatus MaskChecker::CheckMultiParaConsistency(const FiaTilingInfo& fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckPretokenAndNexttoken(fiaInfo) || ge::GRAPH_SUCCESS != CheckDimAndShape(fiaInfo)) {
         return ge::GRAPH_FAILED;

@@ -25,18 +25,16 @@ namespace npu_ops_transformer_ext {
 namespace RopeMatrix {
 
 template <typename T>
-__global__ __aicore__ void rope_matrix_kernel(
-    GM_ADDR x, GM_ADDR y, 
-    GM_ADDR sin, GM_ADDR cos, 
-    GM_ADDR out, GM_ADDR workspace, 
-    RopeMatrixTiling ropeTilingGm, TCubeTiling mmTilingDataGm) 
+__global__ __aicore__ void rope_matrix_kernel(GM_ADDR x, GM_ADDR y, GM_ADDR sin, GM_ADDR cos, GM_ADDR out,
+                                              GM_ADDR workspace, RopeMatrixTiling ropeTilingGm,
+                                              TCubeTiling mmTilingDataGm)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe tpipe;
     TCubeTiling cubeTiling;
     RopeMatrixTiling ropeTiling;
     CopyTiling(&cubeTiling, &ropeTiling, &mmTilingDataGm, &ropeTilingGm);
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    __gm__ uint8_t* user = GetUserWorkspace(workspace);
 
     if ASCEND_IS_AIC {
         // if not want compiler optmize this branch: add __asm__ volatile("NOP_BAR.MTE2")
@@ -57,10 +55,10 @@ __global__ __aicore__ void rope_matrix_kernel(
     }
 }
 
-void PackInputInfo(at::Tensor &x, uint32_t blockDim, RopeMatrixTiling *ropeTiling)
+void PackInputInfo(at::Tensor& x, uint32_t blockDim, RopeMatrixTiling* ropeTiling)
 {
     ropeTiling->blockDim = blockDim;
-    uint32_t *ropePtr = reinterpret_cast<uint32_t *>(ropeTiling);
+    uint32_t* ropePtr = reinterpret_cast<uint32_t*>(ropeTiling);
     ropePtr++; // skip blockDim
     for (uint32_t size : x.sizes()) {
         // set bnsd=size[0,4] value into ropeTiling
@@ -70,10 +68,11 @@ void PackInputInfo(at::Tensor &x, uint32_t blockDim, RopeMatrixTiling *ropeTilin
     return;
 }
 
-at::Tensor rope_matrix_npu(at::Tensor &x, at::Tensor &y, at::Tensor &sin, at::Tensor &cos){
+at::Tensor rope_matrix_npu(at::Tensor& x, at::Tensor& y, at::Tensor& sin, at::Tensor& cos)
+{
     auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
     uint32_t blockDims = 20;
-    //only support bnsd
+    // only support bnsd
     RopeMatrixTiling ropeTiling;
     PackInputInfo(x, blockDims, &ropeTiling);
     uint64_t len = x.numel();
@@ -89,13 +88,13 @@ at::Tensor rope_matrix_npu(at::Tensor &x, at::Tensor &y, at::Tensor &sin, at::Te
     auto userWorkspaceSize = len * 2; // need when need copy out and copy in tmp; x.numel() * sizeof(bf16)
     size_t systemWorkspaceSize = static_cast<size_t>(ascendcPlatform->GetLibApiWorkSpaceSize());
     int64_t workspaceSize = userWorkspaceSize + systemWorkspaceSize;
-    auto workspaceTensor = 
+    auto workspaceTensor =
         at::empty({workspaceSize}, at::TensorOptions().dtype(at::kByte).device(x.options().device()));
-    
+
     // mmtiling: notice TCubeTiling and optiling::TCubeTiling may be different, one maybe more
-    TCubeTiling mmTilingData; 
+    TCubeTiling mmTilingData;
     uint32_t mmSize = sizeof(TCubeTiling) / sizeof(uint32_t);
-    auto ret = GenerateTiling(&ropeTiling, reinterpret_cast<uint32_t *>(&mmTilingData), mmSize);
+    auto ret = GenerateTiling(&ropeTiling, reinterpret_cast<uint32_t*>(&mmTilingData), mmSize);
     if (ret == nullptr) {
         std::cout << "Error: generateTiling fail" << std::endl;
         return output;
@@ -103,22 +102,16 @@ at::Tensor rope_matrix_npu(at::Tensor &x, at::Tensor &y, at::Tensor &sin, at::Te
 
     auto acl_call = [=]() -> int {
         rope_matrix_kernel<bfloat16_t><<<blockDims, nullptr, aclstream>>>(
-            (GM_ADDR)(x.storage().data()),
-            (GM_ADDR)(y.storage().data()),
-            (GM_ADDR)(sin.storage().data()),
-            (GM_ADDR)(cos.storage().data()),
-            (GM_ADDR)(output.storage().data()),
-            (GM_ADDR)(workspaceTensor.storage().data()),
-            ropeTiling,
-            mmTilingData);
+            (GM_ADDR)(x.storage().data()), (GM_ADDR)(y.storage().data()), (GM_ADDR)(sin.storage().data()),
+            (GM_ADDR)(cos.storage().data()), (GM_ADDR)(output.storage().data()),
+            (GM_ADDR)(workspaceTensor.storage().data()), ropeTiling, mmTilingData);
         return 0;
     };
     at_npu::native::OpCommand::RunOpApiV2("RopeMatrix", acl_call);
     return output;
 }
 
-torch::Tensor rope_matrix_meta(torch::Tensor &x, torch::Tensor &y, torch::Tensor &sin,
-                               torch::Tensor &cos)
+torch::Tensor rope_matrix_meta(torch::Tensor& x, torch::Tensor& y, torch::Tensor& sin, torch::Tensor& cos)
 {
     TORCH_CHECK(x.defined(), "Input tensor must be defined");
     return x;

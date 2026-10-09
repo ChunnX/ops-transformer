@@ -50,7 +50,7 @@ using namespace optiling;
 #define QBSA_OP_IMPL(...) \
     do { \
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling); \
-        const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn; \
+        const QuantBlockSparseAttnTilingData* __restrict tilingData = &tilingDataIn; \
         QBSA_OP_IMPL_WITH_TILING(tilingData, __VA_ARGS__); \
     } while (0)
 
@@ -67,24 +67,24 @@ using namespace optiling;
 #define QBSA_MX_OP_IMPL(...) \
     do { \
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnMxTilingData, tilingDataIn, tiling); \
-        const QuantBlockSparseAttnMxTilingData *__restrict tilingData = &tilingDataIn; \
+        const QuantBlockSparseAttnMxTilingData* __restrict tilingData = &tilingDataIn; \
         QBSA_MX_OP_IMPL_WITH_TILING(tilingData, __VA_ARGS__); \
     } while (0)
 
 template <uint32_t QKV_DTYPE, uint32_t LAYOUT_T, uint32_t KV_LAYOUT_T, uint32_t MASK_MODE, bool RETURN_SOFTMAX_LSE,
           uint32_t Config, uint32_t QUANT_MODE>
 __global__ __aicore__ void quant_block_sparse_attn(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
-    __gm__ uint8_t *vScale, __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKv,
-    __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
-    __gm__ uint8_t *blockTable, __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
-    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* qScale, __gm__ uint8_t* kScale,
+    __gm__ uint8_t* vScale, __gm__ uint8_t* pScale, __gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensKv,
+    __gm__ uint8_t* seqUsedQ, __gm__ uint8_t* seqUsedKv, __gm__ uint8_t* sparseIndices, __gm__ uint8_t* sparseSeqLen,
+    __gm__ uint8_t* blockTable, __gm__ uint8_t* attenMask, __gm__ uint8_t* metadata, __gm__ uint8_t* attentionOut,
+    __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；LSE 已改为编译期模板参数。
     TPipe tPipe;
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    __gm__ uint8_t* user = GetUserWorkspace(workspace);
 
     constexpr QBSALayout layout = static_cast<QBSALayout>(LAYOUT_T);
     constexpr QBSALayout kvLayout = static_cast<QBSALayout>(KV_LAYOUT_T);

@@ -49,16 +49,16 @@ constexpr uint32_t MAX_SUPPORTED_K =
     (std::numeric_limits<uint8_t>::max() * FP32_ELEMS_PER_BLOCK / K_ALIGN_ELEMS) * K_ALIGN_ELEMS;
 
 struct Params {
-    const aclTensor *mixedQkv{nullptr};
-    const aclTensor *a{nullptr};
-    const aclTensor *b{nullptr};
-    const aclTensor *aLog{nullptr};
-    const aclTensor *dtBias{nullptr};
-    aclTensor *stateRef{nullptr};
-    const aclTensor *ssmStateIndices{nullptr};
+    const aclTensor* mixedQkv{nullptr};
+    const aclTensor* a{nullptr};
+    const aclTensor* b{nullptr};
+    const aclTensor* aLog{nullptr};
+    const aclTensor* dtBias{nullptr};
+    aclTensor* stateRef{nullptr};
+    const aclTensor* ssmStateIndices{nullptr};
     float scale{1.0f};
     float softplusThreshold{20.0f};
-    aclTensor *out{nullptr};
+    aclTensor* out{nullptr};
 };
 
 bool IsActivationType(DataType dtype)
@@ -71,7 +71,7 @@ bool IsPositiveU32(int64_t value)
     return value > 0 && static_cast<uint64_t>(value) <= std::numeric_limits<uint32_t>::max();
 }
 
-bool CheckNotNull(const Params &params)
+bool CheckNotNull(const Params& params)
 {
     OP_CHECK_NULL(params.mixedQkv, return false);
     OP_CHECK_NULL(params.a, return false);
@@ -84,7 +84,7 @@ bool CheckNotNull(const Params &params)
     return true;
 }
 
-bool CheckDtype(const Params &params)
+bool CheckDtype(const Params& params)
 {
     const DataType inputDtype = params.mixedQkv->GetDataType();
     const DataType stateDtype = params.stateRef->GetDataType();
@@ -104,16 +104,16 @@ bool CheckDtype(const Params &params)
     return true;
 }
 
-bool CheckShape(const Params &params)
+bool CheckShape(const Params& params)
 {
-    const auto &mixedShape = params.mixedQkv->GetViewShape();
-    const auto &aShape = params.a->GetViewShape();
-    const auto &bShape = params.b->GetViewShape();
-    const auto &aLogShape = params.aLog->GetViewShape();
-    const auto &dtBiasShape = params.dtBias->GetViewShape();
-    const auto &stateShape = params.stateRef->GetViewShape();
-    const auto &stateIndicesShape = params.ssmStateIndices->GetViewShape();
-    const auto &outShape = params.out->GetViewShape();
+    const auto& mixedShape = params.mixedQkv->GetViewShape();
+    const auto& aShape = params.a->GetViewShape();
+    const auto& bShape = params.b->GetViewShape();
+    const auto& aLogShape = params.aLog->GetViewShape();
+    const auto& dtBiasShape = params.dtBias->GetViewShape();
+    const auto& stateShape = params.stateRef->GetViewShape();
+    const auto& stateIndicesShape = params.ssmStateIndices->GetViewShape();
+    const auto& outShape = params.out->GetViewShape();
 
     OP_CHECK(mixedShape.GetDimNum() == MIXED_RANK && aShape.GetDimNum() == GATE_RANK &&
                  bShape.GetDimNum() == GATE_RANK && aLogShape.GetDimNum() == PARAM_RANK &&
@@ -166,7 +166,7 @@ bool CheckShape(const Params &params)
     return true;
 }
 
-aclnnStatus CheckParams(const Params &params)
+aclnnStatus CheckParams(const Params& params)
 {
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtype(params), ACLNN_ERR_PARAM_INVALID);
@@ -180,10 +180,10 @@ aclnnStatus CheckParams(const Params &params)
 }
 } // namespace
 
-aclnnStatus aclnnFusedGdnDecodeGetWorkspaceSize(const aclTensor *mixedQkv, const aclTensor *a, const aclTensor *b,
-                                                const aclTensor *aLog, const aclTensor *dtBias, aclTensor *stateRef,
-                                                const aclTensor *ssmStateIndices, float scale, float softplusThreshold,
-                                                aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnFusedGdnDecodeGetWorkspaceSize(const aclTensor* mixedQkv, const aclTensor* a, const aclTensor* b,
+                                                const aclTensor* aLog, const aclTensor* dtBias, aclTensor* stateRef,
+                                                const aclTensor* ssmStateIndices, float scale, float softplusThreshold,
+                                                aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnFusedGdnDecode,
                    DFX_IN(mixedQkv, a, b, aLog, dtBias, stateRef, ssmStateIndices, scale, softplusThreshold),
@@ -219,7 +219,7 @@ aclnnStatus aclnnFusedGdnDecodeGetWorkspaceSize(const aclTensor *mixedQkv, const
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnFusedGdnDecode(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnFusedGdnDecode(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnFusedGdnDecode);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

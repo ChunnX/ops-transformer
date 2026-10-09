@@ -144,7 +144,7 @@ public:
     // Per-head counts have shape [B, Nq, maxMaskBlocks, 2]: Q rows, then KV columns.
     __aicore__ inline uint32_t PerBlockPrefix(uint32_t batch, uint32_t head, uint32_t block, uint32_t component,
                                               uint32_t physical,
-                                              const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+                                              const __gm__ BlockSparseAttentionGradTilingData* tilingData,
                                               uint32_t prefixOffset = 0) const
     {
         if (tilingData->hasPerBlockMask == 0 || validCounts == nullptr)
@@ -159,28 +159,28 @@ public:
                    (static_cast<uint32_t>(remaining) < physical ? static_cast<uint32_t>(remaining) : physical);
     }
 
-    __aicore__ inline uint32_t GetKvBlockLimit(const Params &params, const TaskInfo &info, uint32_t kvBlockCount,
-                                               const __gm__ BlockSparseAttentionGradTilingData *tilingData) const
+    __aicore__ inline uint32_t GetKvBlockLimit(const Params& params, const TaskInfo& info, uint32_t kvBlockCount,
+                                               const __gm__ BlockSparseAttentionGradTilingData* tilingData) const
     {
         return info.curCalQSize == 0 ? 0 : kvBlockCount;
     }
 
     // Grouped tile offsets in the original (non-packed) GM inputs.
-    __aicore__ inline uint64_t GroupedQHeadOffset(const TaskInfo &info,
-                                                  const __gm__ BlockSparseAttentionGradTilingData *tilingData) const
+    __aicore__ inline uint64_t GroupedQHeadOffset(const TaskInfo& info,
+                                                  const __gm__ BlockSparseAttentionGradTilingData* tilingData) const
     {
         return info.qOffset;
     }
 
-    __aicore__ inline uint64_t GroupedKvHeadOffset(const TaskInfo &info,
-                                                   const __gm__ BlockSparseAttentionGradTilingData *tilingData) const
+    __aicore__ inline uint64_t GroupedKvHeadOffset(const TaskInfo& info,
+                                                   const __gm__ BlockSparseAttentionGradTilingData* tilingData) const
     {
         return info.kvOffset;
     }
 
-    __aicore__ inline bool ComputeBlockEnabled(const Params &params, uint64_t maskOffset) const
+    __aicore__ inline bool ComputeBlockEnabled(const Params& params, uint64_t maskOffset) const
     {
-        return ((__gm__ uint8_t *)params.blockSparseMask)[maskOffset] != 0;
+        return ((__gm__ uint8_t*)params.blockSparseMask)[maskOffset] != 0;
     }
 
     // Load up to eight consecutive entries from the original byte mask.
@@ -189,25 +189,25 @@ public:
     // bit mask. Typed loads are issued only when naturally aligned and
     // wholly contained in the same physical mask row; unaligned prefixes
     // and row tails fall back to smaller accesses.
-    __aicore__ inline uint64_t LoadMaskByteWindow(const Params &params, uint64_t absoluteOffset, uint32_t byteCount,
+    __aicore__ inline uint64_t LoadMaskByteWindow(const Params& params, uint64_t absoluteOffset, uint32_t byteCount,
                                                   uint64_t physicalRowEnd) const
     {
         if (byteCount == 0) {
             return 0;
         }
-        __gm__ uint8_t *mask = reinterpret_cast<__gm__ uint8_t *>(params.blockSparseMask);
+        __gm__ uint8_t* mask = reinterpret_cast<__gm__ uint8_t*>(params.blockSparseMask);
         uint64_t values = 0;
         uint32_t copiedBytes = 0;
         while (copiedBytes < byteCount) {
             const uint64_t offset = absoluteOffset + copiedBytes;
             const uint32_t remaining = byteCount - copiedBytes;
             if ((offset & 7ULL) == 0 && remaining >= sizeof(uint64_t) && offset + sizeof(uint64_t) <= physicalRowEnd) {
-                const uint64_t word = *reinterpret_cast<__gm__ uint64_t *>(mask + offset);
+                const uint64_t word = *reinterpret_cast<__gm__ uint64_t*>(mask + offset);
                 values |= word << (copiedBytes * 8U);
                 copiedBytes += sizeof(uint64_t);
             } else if ((offset & 3ULL) == 0 && remaining >= sizeof(uint32_t) &&
                        offset + sizeof(uint32_t) <= physicalRowEnd) {
-                const uint32_t word = *reinterpret_cast<__gm__ uint32_t *>(mask + offset);
+                const uint32_t word = *reinterpret_cast<__gm__ uint32_t*>(mask + offset);
                 values |= static_cast<uint64_t>(word) << (copiedBytes * 8U);
                 copiedBytes += sizeof(uint32_t);
             } else {
@@ -218,7 +218,7 @@ public:
         return values;
     }
 
-    __aicore__ inline MaskLayoutInfo GetMaskLayout(const __gm__ BlockSparseAttentionGradTilingData *tilingData) const
+    __aicore__ inline MaskLayoutInfo GetMaskLayout(const __gm__ BlockSparseAttentionGradTilingData* tilingData) const
     {
         const uint32_t qBlockCount = (tilingData->maxQSeqlen + tilingData->blockShapeX - 1) / tilingData->blockShapeX;
         const uint32_t kvBlockCount = (tilingData->maxKvSeqlen + tilingData->blockShapeY - 1) / tilingData->blockShapeY;
@@ -229,7 +229,7 @@ public:
         return layout;
     }
 
-    __aicore__ inline uint64_t GetMaskRowOffset(const TaskInfo &qInfo, const MaskLayoutInfo &layout) const
+    __aicore__ inline uint64_t GetMaskRowOffset(const TaskInfo& qInfo, const MaskLayoutInfo& layout) const
     {
         return static_cast<uint64_t>(qInfo.curBatchIdx) * layout.batchStride +
                static_cast<uint64_t>(qInfo.curHeadIdx) * layout.headStride +
@@ -240,11 +240,11 @@ public:
     // are fetched together only as a scalar load transaction; no packed
     // or persistent bit mask is produced.  The zero-word fast path is
     // especially useful for highly sparse masks.
-    __aicore__ inline void CollectEnabledMaskBlocks(const Params &params, uint64_t rowOffset, uint32_t limit,
-                                                    uint32_t capacity, uint32_t &cursor, uint32_t *selected,
-                                                    uint32_t &selectedCount) const
+    __aicore__ inline void CollectEnabledMaskBlocks(const Params& params, uint64_t rowOffset, uint32_t limit,
+                                                    uint32_t capacity, uint32_t& cursor, uint32_t* selected,
+                                                    uint32_t& selectedCount) const
     {
-        __gm__ uint8_t *mask = reinterpret_cast<__gm__ uint8_t *>(params.blockSparseMask);
+        __gm__ uint8_t* mask = reinterpret_cast<__gm__ uint8_t*>(params.blockSparseMask);
         while (cursor < limit && selectedCount < capacity && ((rowOffset + cursor) & 3U) != 0) {
             if (mask[rowOffset + cursor] != 0) {
                 selected[selectedCount++] = cursor;
@@ -253,7 +253,7 @@ public:
         }
         while (cursor + 4 <= limit && selectedCount < capacity) {
             const uint64_t offset = rowOffset + cursor;
-            const uint32_t values = *reinterpret_cast<__gm__ uint32_t *>(mask + offset);
+            const uint32_t values = *reinterpret_cast<__gm__ uint32_t*>(mask + offset);
             if (values == 0) {
                 cursor += 4;
                 continue;
@@ -336,7 +336,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID5);
     }
 
-    __aicore__ inline void UpdateTaskInfoCalQSize(uint32_t blockShapeX, uint32_t basicQBlockSize, TaskInfo &taskInfo)
+    __aicore__ inline void UpdateTaskInfoCalQSize(uint32_t blockShapeX, uint32_t basicQBlockSize, TaskInfo& taskInfo)
     {
         taskInfo.curQBlcokIdx = taskInfo.curQSeqIdx / blockShapeX;
         uint32_t curQBlcokSeqIdx = taskInfo.curQBlcokIdx * blockShapeX;
@@ -363,10 +363,10 @@ public:
 
     __aicore__ inline void initTaskInfo(AscendC::GlobalTensor<int64_t> gActualQseqlen,
                                         AscendC::GlobalTensor<int64_t> gActualKvseqlen,
-                                        __gm__ BlockSparseAttentionGradTilingData *tilingData, uint32_t numHeads,
+                                        __gm__ BlockSparseAttentionGradTilingData* tilingData, uint32_t numHeads,
                                         uint32_t kvHeads, uint32_t groupSize, uint32_t headDim, uint32_t maxQSeqlen,
                                         uint32_t maxKvSeqlen, uint32_t blockShapeX, uint32_t basicQBlockSize,
-                                        uint32_t inputLayout, uint32_t coreIdx, TaskInfo &taskInfo)
+                                        uint32_t inputLayout, uint32_t coreIdx, TaskInfo& taskInfo)
     {
         // BNSD:curBatch * numHeads * maxQSeqlen + curQSeqOffset; TND:cusum(gActualQseqlen[0:curBatch-1]) +
         // curQSeqOffset
@@ -396,7 +396,7 @@ public:
                                               AscendC::GlobalTensor<int64_t> gActualKvseqlen, uint32_t numHeads,
                                               uint32_t kvHeads, uint32_t groupSize, uint32_t headDim,
                                               uint32_t blockShapeX, uint32_t basicQBlockSize, uint32_t inputLayout,
-                                              const TaskInfo &taskInfo, TaskInfo &nextTask)
+                                              const TaskInfo& taskInfo, TaskInfo& nextTask)
     {
         nextTask = taskInfo;
         if (inputLayout == 0) { // TND, Traverse N-axis first
@@ -456,7 +456,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID7);
     }
 
-    __aicore__ inline TaskInfo MakeWideQTask(const TaskInfo &workInfo, const WideQInfo *qInfos, uint32_t qLocal) const
+    __aicore__ inline TaskInfo MakeWideQTask(const TaskInfo& workInfo, const WideQInfo* qInfos, uint32_t qLocal) const
     {
         TaskInfo task = workInfo;
         task.qOffset = qInfos[qLocal].qOffset;
@@ -466,9 +466,9 @@ public:
         return task;
     }
 
-    __aicore__ inline TaskInfo MakeWideTile(const TaskInfo &workInfo, const WideQInfo *qInfos,
-                                            const WidePacketInfo &packet, uint32_t edgeIndex,
-                                            const __gm__ BlockSparseAttentionGradTilingData *tilingData) const
+    __aicore__ inline TaskInfo MakeWideTile(const TaskInfo& workInfo, const WideQInfo* qInfos,
+                                            const WidePacketInfo& packet, uint32_t edgeIndex,
+                                            const __gm__ BlockSparseAttentionGradTilingData* tilingData) const
     {
         const uint32_t edgeCode = packet.edgeCode[edgeIndex];
         const uint32_t qLocal = WideEdgeQ(edgeCode);
@@ -498,19 +498,19 @@ public:
     __aicore__ inline BlockSparseAttentionGradKernel() {}
 
     template <int32_t CORE_TYPE = g_coreType>
-    __aicore__ inline void operator()(Params const &params);
+    __aicore__ inline void operator()(Params const& params);
 
     template <>
-    __aicore__ inline void operator()<AscendC::AIC>(Params const &params)
+    __aicore__ inline void operator()<AscendC::AIC>(Params const& params)
     {
-        auto *dispatchTiling = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+        auto* dispatchTiling = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tiling);
         validCounts =
-            dispatchTiling->hasPerBlockMask ? reinterpret_cast<__gm__ int32_t *>(params.attentionMask) : nullptr;
+            dispatchTiling->hasPerBlockMask ? reinterpret_cast<__gm__ int32_t*>(params.attentionMask) : nullptr;
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
 
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tiling);
         uint32_t batch = tilingData->batch;
         uint32_t numHeads = tilingData->numHeads;
         uint32_t kvHeads = tilingData->kvHeads;
@@ -550,33 +550,33 @@ public:
         }
         // Initialize global tensors
         AscendC::GlobalTensor<ElementA1> gDout;
-        gDout.SetGlobalBuffer((__gm__ ElementInput *)params.dout);
+        gDout.SetGlobalBuffer((__gm__ ElementInput*)params.dout);
         AscendC::GlobalTensor<ElementInput> gQ;
-        gQ.SetGlobalBuffer((__gm__ ElementInput *)params.q);
+        gQ.SetGlobalBuffer((__gm__ ElementInput*)params.q);
         AscendC::GlobalTensor<ElementInput> gK;
-        gK.SetGlobalBuffer((__gm__ ElementInput *)params.k);
+        gK.SetGlobalBuffer((__gm__ ElementInput*)params.k);
         AscendC::GlobalTensor<ElementInput> gV;
-        gV.SetGlobalBuffer((__gm__ ElementInput *)params.v);
+        gV.SetGlobalBuffer((__gm__ ElementInput*)params.v);
         AscendC::GlobalTensor<int64_t> gActualQseqlen;
-        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
+        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualQseqlen);
         AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
+        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualKvseqlen);
 
         AscendC::GlobalTensor<float> gS;
-        gS.SetGlobalBuffer((__gm__ float *)params.workspace);
+        gS.SetGlobalBuffer((__gm__ float*)params.workspace);
         AscendC::GlobalTensor<ElementInput> gP;
-        gP.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + WORKSPACE_P16_OFFSET));
+        gP.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + WORKSPACE_P16_OFFSET));
 
         AscendC::GlobalTensor<float> gDp;
-        gDp.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize));
+        gDp.SetGlobalBuffer((__gm__ float*)(params.workspace + sOutSize));
         AscendC::GlobalTensor<ElementInput> gDs;
-        gDs.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + sOutSize + WORKSPACE_P16_OFFSET));
+        gDs.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + sOutSize + WORKSPACE_P16_OFFSET));
         AscendC::GlobalTensor<float> gDq;
-        gDq.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize));
+        gDq.SetGlobalBuffer((__gm__ float*)(params.workspace + sOutSize + dPOutSize));
         AscendC::GlobalTensor<float> gDk;
-        gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
+        gDk.SetGlobalBuffer((__gm__ float*)(params.workspace + sOutSize + dPOutSize + dQOutSize));
         AscendC::GlobalTensor<float> gDv;
-        gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
+        gDv.SetGlobalBuffer((__gm__ float*)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
 #if 0 // Deterministic reduction is disabled.
             uint8_t deterministic = tilingData->deterministic;
             uint64_t gradSize = tilingData->gradSize;
@@ -796,14 +796,14 @@ public:
     }
 
     template <>
-    __aicore__ inline void operator()<AscendC::AIV>(Params const &params)
+    __aicore__ inline void operator()<AscendC::AIV>(Params const& params)
     {
         // Use the same per-head counts as AIC to preserve packet and handshake ordering.
-        validCounts = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling)->hasPerBlockMask ?
-                          reinterpret_cast<__gm__ int32_t *>(params.attentionMask) :
+        validCounts = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tiling)->hasPerBlockMask ?
+                          reinterpret_cast<__gm__ int32_t*>(params.attentionMask) :
                           nullptr;
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tiling);
         // InitOutput obtains its temporary UB stack and event IDs from
         // the active TPipe.  Keep this pre-stage pipe alive through the
         // mixed AIC/AIV barrier, exactly as FlashAttentionScoreGradPre.
@@ -845,14 +845,14 @@ public:
         VecPost(params);
     }
 
-    __aicore__ inline void VecOp(Params const &params)
+    __aicore__ inline void VecOp(Params const& params)
     {
         uint32_t vecCoreIdx = AscendC::GetBlockIdx(); // vecore 核数idx
         uint32_t coreIdx = vecCoreIdx / 2;            // cube 核数idx
         uint32_t subBlockIdx = vecCoreIdx % 2;
 
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tiling);
         uint32_t batch = tilingData->batch;
         uint32_t numHeads = tilingData->numHeads;
         uint32_t kvHeads = tilingData->kvHeads;
@@ -878,9 +878,9 @@ public:
 
         // Initialize global tensors
         AscendC::GlobalTensor<int64_t> gActualQseqlen;
-        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
+        gActualQseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualQseqlen);
         AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
+        gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualKvseqlen);
 
         TaskInfo taskInfoVec[2]; // 索引以及shape信息
         TaskInfo preTaskInfo;
@@ -994,10 +994,10 @@ public:
         }
     }
 
-    __aicore__ inline void VecPost(Params const &params)
+    __aicore__ inline void VecPost(Params const& params)
     {
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tiling);
 
         uint64_t sOutSize = tilingData->sOutSize;
         uint64_t dPOutSize = tilingData->dPOutSize;
@@ -1017,10 +1017,10 @@ public:
         vecPost();
     }
 
-    __aicore__ inline void VecPre(Params const &params)
+    __aicore__ inline void VecPre(Params const& params)
     {
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tiling);
 
         uint64_t sOutSize = tilingData->sOutSize;
         uint64_t dPOutSize = tilingData->dPOutSize;
@@ -1272,7 +1272,7 @@ public:
 #endif // Disabled deterministic reduction.
 
 private:
-    __gm__ int32_t *validCounts = nullptr;
+    __gm__ int32_t* validCounts = nullptr;
     NpuArch::Arch::Resource<ArchTag> resource;
 };
 

@@ -20,4 +20,4 @@
 
 // BF16 implementation is defined in swiglu_gated_mlp_impl.hpp as SwigluGatedMlpKernelBf16.
 
-#endif  // OP_KERNEL_SWIGLU_GATED_MLP_BF16_HPP_
+#endif // OP_KERNEL_SWIGLU_GATED_MLP_BF16_HPP_

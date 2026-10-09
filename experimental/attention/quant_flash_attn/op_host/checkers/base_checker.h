@@ -80,31 +80,31 @@ public:
     QfaBaseChecker() = default;
     virtual ~QfaBaseChecker() = default;
 
-    virtual ge::graphStatus CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo)
+    virtual ge::graphStatus CheckSinglePara(const QuantFlashAttnTilingInfo& qfaInfo)
     {
         (void)qfaInfo;
         return ge::GRAPH_SUCCESS;
     }
-    virtual ge::graphStatus CheckParaExistence(const QuantFlashAttnTilingInfo &qfaInfo)
+    virtual ge::graphStatus CheckParaExistence(const QuantFlashAttnTilingInfo& qfaInfo)
     {
         (void)qfaInfo;
         return ge::GRAPH_SUCCESS;
     }
-    virtual ge::graphStatus CheckFeature(const QuantFlashAttnTilingInfo &qfaInfo)
+    virtual ge::graphStatus CheckFeature(const QuantFlashAttnTilingInfo& qfaInfo)
     {
         (void)qfaInfo;
         return ge::GRAPH_SUCCESS;
     }
-    virtual ge::graphStatus CheckMultiPara(const QuantFlashAttnTilingInfo &qfaInfo)
+    virtual ge::graphStatus CheckMultiPara(const QuantFlashAttnTilingInfo& qfaInfo)
     {
         (void)qfaInfo;
         return ge::GRAPH_SUCCESS;
     }
 
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
-    ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc, const std::string& name) const;
+    ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc* desc, const std::string& name) const;
     template <typename T>
-    ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const
+    ge::graphStatus CheckValueSupport(const T value, const std::vector<T>& expectValList) const
     {
         if (std::find(expectValList.begin(), expectValList.end(), value) == expectValList.end()) {
             return ge::GRAPH_FAILED;

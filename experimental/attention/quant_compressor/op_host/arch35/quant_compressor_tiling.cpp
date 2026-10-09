@@ -27,8 +27,8 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
-void QuantCompressorTiling::ConvertRequiredParams(gert::TilingContext &context,
-                                                  QuantCompressorContext &quantCompressorContext)
+void QuantCompressorTiling::ConvertRequiredParams(gert::TilingContext& context,
+                                                  QuantCompressorContext& quantCompressorContext)
 {
     quantCompressorContext.x.desc = context.GetRequiredInputDesc(TOKEN_X_INPUT_INDEX);
     quantCompressorContext.x.shape = context.GetRequiredInputShape(TOKEN_X_INPUT_INDEX);
@@ -53,8 +53,8 @@ void QuantCompressorTiling::ConvertRequiredParams(gert::TilingContext &context,
     }
 }
 
-void QuantCompressorTiling::ConvertOptionalParams(gert::TilingContext &context,
-                                                  QuantCompressorContext &quantCompressorContext)
+void QuantCompressorTiling::ConvertOptionalParams(gert::TilingContext& context,
+                                                  QuantCompressorContext& quantCompressorContext)
 {
     quantCompressorContext.xDescale.desc = context.GetOptionalInputDesc(X_DESCALE_INPUT_INDEX);
     quantCompressorContext.xDescale.shape = context.GetOptionalInputShape(X_DESCALE_INPUT_INDEX);
@@ -72,8 +72,8 @@ void QuantCompressorTiling::ConvertOptionalParams(gert::TilingContext &context,
     quantCompressorContext.startPos.shape = context.GetOptionalInputShape(START_POS_INPUT_INDEX);
 }
 
-ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext &context,
-                                                      QuantCompressorContext &quantCompressorContext)
+ge::graphStatus QuantCompressorTiling::ConvertContext(gert::TilingContext& context,
+                                                      QuantCompressorContext& quantCompressorContext)
 {
     if (context.GetNodeName() == nullptr) {
         OP_LOGE("QuantCompressor", "opName got from TilingContext is nullptr");
@@ -293,7 +293,7 @@ ge::graphStatus QuantCompressorTiling::CheckEmptyTensor() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::RunBigKernelTiling(QuantCompressorTilingData *tilingData)
+ge::graphStatus QuantCompressorTiling::RunBigKernelTiling(QuantCompressorTilingData* tilingData)
 {
     this->baseParams_ = &tilingData->baseParams;
     this->pageAttentionParams_ = &tilingData->pageAttentionParams;
@@ -313,7 +313,7 @@ ge::graphStatus QuantCompressorTiling::RunBigKernelTiling(QuantCompressorTilingD
                                                     std::bind(&QuantCompressorTiling::SetInnerSplitInfo, this),
                                                     std::bind(&QuantCompressorTiling::SetWorkSpaceInfo, this),
                                                     std::bind(&QuantCompressorTiling::SetScenarioInfo, this)};
-    for (const auto &func : requiredTilingFuncs) {
+    for (const auto& func : requiredTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -330,7 +330,7 @@ ge::graphStatus QuantCompressorTiling::RunBigKernelTiling(QuantCompressorTilingD
     }
     std::vector<StatusFunction> optionalTilingFuncs{std::bind(&QuantCompressorTiling::CalcWorkSpace, this),
                                                     std::bind(&QuantCompressorTiling::GenTilingKey, this)};
-    for (const auto &func : optionalTilingFuncs) {
+    for (const auto& func : optionalTilingFuncs) {
         if (func() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -386,9 +386,9 @@ ge::graphStatus QuantCompressorTiling::CheckSinglePara() const
 }
 
 template <typename T>
-ge::graphStatus QuantCompressorTiling::CheckFeatureValueSupport(const T *featureValue,
-                                                                const std::vector<T> &expectFeatureValList,
-                                                                const std::string &name) const
+ge::graphStatus QuantCompressorTiling::CheckFeatureValueSupport(const T* featureValue,
+                                                                const std::vector<T>& expectFeatureValList,
+                                                                const std::string& name) const
 {
     if (std::find(expectFeatureValList.begin(), expectFeatureValList.end(), *featureValue) ==
         expectFeatureValList.end()) {
@@ -399,9 +399,9 @@ ge::graphStatus QuantCompressorTiling::CheckFeatureValueSupport(const T *feature
 }
 
 template <typename T>
-ge::graphStatus QuantCompressorTiling::CheckAttrValueSupport(const T *attrValue,
-                                                             const std::vector<T> &expectAttrValList,
-                                                             const std::string &name) const
+ge::graphStatus QuantCompressorTiling::CheckAttrValueSupport(const T* attrValue,
+                                                             const std::vector<T>& expectAttrValList,
+                                                             const std::string& name) const
 {
     if (attrValue == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -416,7 +416,7 @@ ge::graphStatus QuantCompressorTiling::CheckAttrValueSupport(const T *attrValue,
 }
 
 template <typename T>
-std::string to_string(const T &value)
+std::string to_string(const T& value)
 {
     if (std::is_same_v<T, bool>) {
         return value ? "true" : "false";
@@ -426,8 +426,8 @@ std::string to_string(const T &value)
 }
 
 template <typename T>
-void QuantCompressorTiling::LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                                  const std::string &name, const std::string subName) const
+void QuantCompressorTiling::LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                                  const std::string& name, const std::string subName) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
@@ -453,11 +453,11 @@ std::string LayoutTypeToStr(LayoutType layout)
     }
 }
 
-ge::graphStatus QuantCompressorTiling::CheckDimNumInLayoutSupport(const std::string &layout,
-                                                                  const gert::StorageShape *shape,
-                                                                  const std::string &name) const
+ge::graphStatus QuantCompressorTiling::CheckDimNumInLayoutSupport(const std::string& layout,
+                                                                  const gert::StorageShape* shape,
+                                                                  const std::string& name) const
 {
-    const auto &dimIt = LAYOUT_DIM_MAP.find(layout);
+    const auto& dimIt = LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
                 OP_LOGE(context_->opName, "When layout is %s, %s dimension should be %zu, but it's %zu", layout.c_str(),
                         name.c_str(), dimIt->second, shape->GetStorageShape().GetDimNum()),
@@ -465,16 +465,16 @@ ge::graphStatus QuantCompressorTiling::CheckDimNumInLayoutSupport(const std::str
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-                                                         const std::string &name) const
+ge::graphStatus QuantCompressorTiling::CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc,
+                                                         const std::string& name) const
 {
     if (desc != nullptr) {
-        const auto &it = DTYPE_SUPPORT_MAP.find(name);
+        const auto& it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(
             it == DTYPE_SUPPORT_MAP.end(),
             OP_LOGE(context_->opName, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
             return ge::GRAPH_FAILED);
-        auto &expectDtypeList = it->second;
+        auto& expectDtypeList = it->second;
         OP_CHECK_IF(
             std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end(),
             LogErrorDtypeSupport(expectDtypeList, desc->GetDataType(), name), return ge::GRAPH_FAILED);
@@ -482,8 +482,8 @@ ge::graphStatus QuantCompressorTiling::CheckDtypeSupport(const gert::CompileTime
     return ge::GRAPH_SUCCESS;
 }
 
-void QuantCompressorTiling::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-                                                 const ge::DataType &actualDtype, const std::string &name) const
+void QuantCompressorTiling::LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList,
+                                                 const ge::DataType& actualDtype, const std::string& name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -507,17 +507,17 @@ static std::string DataTypeToSerialString(ge::DataType type)
     }
 }
 
-ge::graphStatus QuantCompressorTiling::CheckDimNumSupport(const gert::StorageShape *shape,
-                                                          const std::string &name) const
+ge::graphStatus QuantCompressorTiling::CheckDimNumSupport(const gert::StorageShape* shape,
+                                                          const std::string& name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    const auto &it = DIM_NUM_MAP.find(name);
+    const auto& it = DIM_NUM_MAP.find(name);
     OP_CHECK_IF(it == DIM_NUM_MAP.end(),
                 OP_LOGE(context_->opName, "%s dim number support list should be specify in DIM_NUM_MAP", name.c_str()),
                 return ge::GRAPH_FAILED);
-    auto &expectDimNumList = it->second;
+    auto& expectDimNumList = it->second;
     OP_CHECK_IF(std::find(expectDimNumList.begin(), expectDimNumList.end(), shape->GetStorageShape().GetDimNum()) ==
                     expectDimNumList.end(),
                 LogErrorNumberSupport(expectDimNumList, static_cast<uint32_t>(shape->GetStorageShape().GetDimNum()),
@@ -810,10 +810,10 @@ ge::graphStatus QuantCompressorTiling::CheckFeature() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantCompressorTiling::LogErrorShapeConsistency(const std::string &name,
-                                                                const gert::StorageShape *shape, const uint32_t &dimNum,
-                                                                const std::string &subName,
-                                                                const uint32_t &expectNum) const
+ge::graphStatus QuantCompressorTiling::LogErrorShapeConsistency(const std::string& name,
+                                                                const gert::StorageShape* shape, const uint32_t& dimNum,
+                                                                const std::string& subName,
+                                                                const uint32_t& expectNum) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -922,7 +922,7 @@ ge::graphStatus QuantCompressorTiling::CheckMultiParaConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
+CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("QuantCompressor", "Context is nullptr."),
                 return ge::GRAPH_FAILED);
@@ -935,7 +935,7 @@ CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
     QuantCompressorTiling quantCompressorTiling(&quantCompressorContext);
-    QuantCompressorTilingData *tilingData = context->GetTilingData<QuantCompressorTilingData>();
+    QuantCompressorTilingData* tilingData = context->GetTilingData<QuantCompressorTilingData>();
     OP_CHECK_IF(tilingData == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(quantCompressorContext.opName, "TilingData is nullptr."),
                 return ge::GRAPH_FAILED);
@@ -950,7 +950,7 @@ CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForQuantCompressor(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForQuantCompressor(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

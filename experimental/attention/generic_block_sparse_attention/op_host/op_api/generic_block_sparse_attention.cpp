@@ -19,14 +19,14 @@ namespace l0op {
 
 OP_TYPE_REGISTER(GenericBlockSparseAttention);
 
-const std::array<const aclTensor *, 1> GenericBlockSparseAttention(
-    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparseBlockIdx,
-    const aclTensor *sparseBlockCount, const aclTensor *metadataOptional, const aclTensor *qDequantScaleOptional,
-    const aclTensor *kDequantScaleOptional, const aclTensor *vDequantScaleOptional,
-    const aclTensor *cuSeqLengthsQOptional, const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional, const aclIntArray *blockShape,
-    int64_t isPackedGQA, const char *layoutQ, const char *layoutKv, double scaleValue, int64_t maskType,
-    int64_t softmaxPrecision, const aclTensor *attentionOut, aclOpExecutor *executor)
+const std::array<const aclTensor*, 1> GenericBlockSparseAttention(
+    const aclTensor* query, const aclTensor* key, const aclTensor* value, const aclTensor* sparseBlockIdx,
+    const aclTensor* sparseBlockCount, const aclTensor* metadataOptional, const aclTensor* qDequantScaleOptional,
+    const aclTensor* kDequantScaleOptional, const aclTensor* vDequantScaleOptional,
+    const aclTensor* cuSeqLengthsQOptional, const aclTensor* cuSeqLengthsKvOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* sequsedKvOptional, const aclTensor* blockTableOptional, const aclIntArray* blockShape,
+    int64_t isPackedGQA, const char* layoutQ, const char* layoutKv, double scaleValue, int64_t maskType,
+    int64_t softmaxPrecision, const aclTensor* attentionOut, aclOpExecutor* executor)
 {
     L0_DFX(GenericBlockSparseAttention, query, key, value, sparseBlockIdx, sparseBlockCount, metadataOptional,
            qDequantScaleOptional, kDequantScaleOptional, vDequantScaleOptional, cuSeqLengthsQOptional,

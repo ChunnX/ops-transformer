@@ -18,4 +18,3 @@ from torch import Tensor
 
 # def dummy(x: Tensor) -> Tensor:
 #     return torch.ops.npu_ops_transformer_ext.dummy.default(x)
-

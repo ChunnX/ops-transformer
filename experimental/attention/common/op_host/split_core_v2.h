@@ -11,7 +11,7 @@
 /*!
  * \file split_core_v2.h
  * \brief
-*/
+ */
 
 #ifndef SPLIT_CORE_V2_H
 #define SPLIT_CORE_V2_H
@@ -94,7 +94,6 @@ struct SplitParam {
     bool streamK = true;
 };
 
-
 // 分核功能模块输出：FD信息，包含需要归约的数据索引及其分核信息
 struct FlashDecodeResult {
     // 1、归约任务的索引信息
@@ -112,10 +111,15 @@ struct FlashDecodeResult {
     std::vector<uint32_t> mLen{};    // 每个vector处理的归约任务的M轴行数
     // 3、每个core处理的第1个归约任务的数据应存放的workspace位置
     FlashDecodeResult(uint32_t coreNum, uint32_t vecCubeRatio)
-        : fdBN2Idx(coreNum), fdMIdx(coreNum), fdS2SplitNum(coreNum), fdWorkspaceIdx(coreNum), mSize(coreNum),
-          taskIdx(coreNum * vecCubeRatio), mStart(coreNum * vecCubeRatio), mLen(coreNum * vecCubeRatio)
-    {
-    }
+        : fdBN2Idx(coreNum),
+          fdMIdx(coreNum),
+          fdS2SplitNum(coreNum),
+          fdWorkspaceIdx(coreNum),
+          mSize(coreNum),
+          taskIdx(coreNum * vecCubeRatio),
+          mStart(coreNum * vecCubeRatio),
+          mLen(coreNum * vecCubeRatio)
+    {}
 };
 
 // 分核功能模块输出：FA阶段的核间分核信息
@@ -129,8 +133,12 @@ struct FAMetaData {
     std::vector<uint32_t> firstFdDataWorkspaceIdx{}; // 每个core处理的第1个归约任务的数据应存放的workspace位置,绝对偏移
     FlashDecodeResult fdRes{0U, 0U}; // FD信息
     FAMetaData(uint32_t coreNum, uint32_t ratio)
-        : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstFdDataWorkspaceIdx(coreNum),
-          fdRes(coreNum, ratio){};
+        : vecCubeRatio(ratio),
+          bN2End(coreNum),
+          mEnd(coreNum),
+          s2End(coreNum),
+          firstFdDataWorkspaceIdx(coreNum),
+          fdRes(coreNum, ratio) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
@@ -142,9 +150,11 @@ struct SplitInfo {
     bool isKvSeqAllZero{true};
 
     explicit SplitInfo(uint32_t batchSize)
-        : s1GBaseNum(batchSize), s2BaseNum(batchSize), s1GTailSize(batchSize), s2TailSize(batchSize)
-    {
-    }
+        : s1GBaseNum(batchSize),
+          s2BaseNum(batchSize),
+          s1GTailSize(batchSize),
+          s2TailSize(batchSize)
+    {}
 };
 
 // 分核功能模块内部使用：记录batch的开销信息
@@ -157,22 +167,25 @@ struct CostInfo {
     int64_t maxS1GCost{0};
 
     explicit CostInfo(uint32_t batchSize)
-        : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
-    {
-    }
+        : bN2CostOfEachBatch(batchSize),
+          bN2BlockOfEachBatch(batchSize),
+          bN2LastBlockCostOfEachBatch(batchSize)
+    {}
 };
 
 // 分核功能模块内部使用：分核过程中，case基本信息的上下文信息，组合以减少接口传参数量
 struct SplitContext {
-    const BaseInfo &baseInfo{0U};
+    const BaseInfo& baseInfo{0U};
     SplitParam splitParam{};
     SplitInfo splitInfo{0U};
     CostInfo costInfo{0U};
 
-    explicit SplitContext(const BaseInfo &info, SplitParam param)
-        : baseInfo(info), splitParam(param), splitInfo(info.bSize), costInfo(info.bSize)
-    {
-    }
+    explicit SplitContext(const BaseInfo& info, SplitParam param)
+        : baseInfo(info),
+          splitParam(param),
+          splitInfo(info.bSize),
+          costInfo(info.bSize)
+    {}
 };
 
 // 分核功能模块内部使用：记录batch相关的临时信息
@@ -225,41 +238,41 @@ struct AssignContext {
 };
 
 // util
-uint32_t GetS1SeqSize(uint32_t bIdx, const BaseInfo &baseInfo);
-uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo &baseInfo);
-int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo);
-int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo);
-Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const BaseInfo &baseInfo, const SplitParam &splitParam,
-                            const BatchCache &batchCache);
+uint32_t GetS1SeqSize(uint32_t bIdx, const BaseInfo& baseInfo);
+uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo& baseInfo);
+int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo& baseInfo);
+int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo& baseInfo);
+Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const BaseInfo& baseInfo, const SplitParam& splitParam,
+                            const BatchCache& batchCache);
 int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
 BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
                                  uint32_t s2TailSize);
 
 // cache calculation
-void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
-void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache);
-void CopyTmpResult(FAMetaData &tmpRes, FAMetaData &splitRes);
-void ClearTmpResult(FAMetaData &tmpResult);
+void CalcBatchCache(uint32_t bIdx, const SplitContext& splitContext, BatchCache& batchCache);
+void CalcS1GCache(uint32_t s1GIdx, const SplitContext& splitContext, const BatchCache& batchCache, S1GCache& s1GCache);
+void CopyTmpResult(FAMetaData& tmpRes, FAMetaData& splitRes);
+void ClearTmpResult(FAMetaData& tmpResult);
 
 // preprocess
-void CalcSplitInfo(SplitContext &splitContext);
-void CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo);
-void CalcCostInfo(SplitContext &splitContext);
+void CalcSplitInfo(SplitContext& splitContext);
+void CalcBatchCost(uint32_t bIdx, const SplitContext& splitContext, CostInfo& costInfo);
+void CalcCostInfo(SplitContext& splitContext);
 
 // assign
-void UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext);
-void AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext);
-void AssignByRow(const SplitContext &splitContext, AssignContext &assignContext);
-void AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext);
-void ForceAssign(const SplitContext &splitContext, AssignContext &assignContext);
+void UpdateCursor(const SplitContext& splitContext, AssignContext& assignContext);
+void AssignByBatch(const SplitContext& splitContext, AssignContext& assignContext);
+void AssignByRow(const SplitContext& splitContext, AssignContext& assignContext);
+void AssignByBlock(const SplitContext& splitContext, AssignContext& assignContext);
+void ForceAssign(const SplitContext& splitContext, AssignContext& assignContext);
 
 // FD
-bool IsNeedRecordFDInfo(const AssignContext &assignContext, const FAMetaData &splitRes);
-void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, FAMetaData &result);
+bool IsNeedRecordFDInfo(const AssignContext& assignContext, const FAMetaData& splitRes);
+void RecordFDInfo(const SplitContext& splitContext, const AssignContext& assignContext, FAMetaData& result);
 
 // main
-void SplitFD(FAMetaData &result);
-void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, FAMetaData &result);
-void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &splitParam, FAMetaData &result);
+void SplitFD(FAMetaData& result);
+void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext& splitContext, FAMetaData& result);
+void SplitCore(uint32_t coreNum, const BaseInfo& baseInfo, const SplitParam& splitParam, FAMetaData& result);
 } // namespace split_core_v2
 #endif

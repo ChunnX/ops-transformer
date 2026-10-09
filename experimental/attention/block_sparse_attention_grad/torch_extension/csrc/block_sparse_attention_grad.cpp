@@ -21,10 +21,10 @@ const int64_t MAX_HEAD_DIM = 128;
 const int64_t kDefaultBlockShape[2] = {128, 128};
 const int64_t kMaxWindow = 2147483647;
 
-static void check_params(const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
-                         const c10::optional<std::vector<int64_t>> &actual_seq_lengths,
-                         const c10::optional<std::vector<int64_t>> &actual_seq_lengths_kv,
-                         const std::string &q_input_layout, const std::string &kv_input_layout)
+static void check_params(const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+                         const c10::optional<std::vector<int64_t>>& actual_seq_lengths,
+                         const c10::optional<std::vector<int64_t>>& actual_seq_lengths_kv,
+                         const std::string& q_input_layout, const std::string& kv_input_layout)
 {
     TORCH_CHECK(query.scalar_type() == key.scalar_type() && key.scalar_type() == value.scalar_type(),
                 "query, key, value must have the same dtype, got query=", query.scalar_type(),
@@ -41,12 +41,12 @@ static void check_params(const at::Tensor &query, const at::Tensor &key, const a
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_block_sparse_attention_backward(
-    const at::Tensor &d_out, const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
-    const at::Tensor &attention_out, const at::Tensor &softmax_lse, const at::Tensor &block_sparse_mask,
-    const c10::optional<std::vector<int64_t>> &block_shape, c10::string_view q_input_layout,
+    const at::Tensor& d_out, const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    const at::Tensor& attention_out, const at::Tensor& softmax_lse, const at::Tensor& block_sparse_mask,
+    const c10::optional<std::vector<int64_t>>& block_shape, c10::string_view q_input_layout,
     c10::string_view kv_input_layout, int64_t num_key_value_heads, double scale_value,
-    const c10::optional<std::vector<int64_t>> &actual_seq_lengths,
-    const c10::optional<std::vector<int64_t>> &actual_seq_lengths_kv, const c10::optional<at::Tensor> &atten_mask,
+    const c10::optional<std::vector<int64_t>>& actual_seq_lengths,
+    const c10::optional<std::vector<int64_t>>& actual_seq_lengths_kv, const c10::optional<at::Tensor>& atten_mask,
     int64_t mask_type)
 {
     // mask_type 契约校验（只支持 0/1；0 ↔ 无 counts；1 ↔ 必传 counts）
@@ -84,8 +84,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_block_sparse_attention_backwa
         actual_kv_ref = at::IntArrayRef(*actual_seq_lengths_kv);
     }
 
-    char *q_layout_ptr = const_cast<char *>(q_layout.c_str());
-    char *kv_layout_ptr = const_cast<char *>(kv_layout.c_str());
+    char* q_layout_ptr = const_cast<char*>(q_layout.c_str());
+    char* kv_layout_ptr = const_cast<char*>(kv_layout.c_str());
 
     // 滑动窗口参数：当前不支持自定义，按参考实现填默认值
     const int64_t pre_tokens = kMaxWindow;

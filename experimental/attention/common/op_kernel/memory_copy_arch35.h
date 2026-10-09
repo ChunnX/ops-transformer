@@ -14,7 +14,6 @@
 #include "vector_common.h"
 #include "memory_copy_new.h"
 
-
 // 格式转换, 暂时放在这里
 template <LayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode()
@@ -71,8 +70,9 @@ __aicore__ inline constexpr GmFormat GetKVGmFormat()
     }
 }
 
-template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType=0, bool isPa=false>
-__aicore__ inline constexpr GmFormat GetKVGmFormat() {
+template <LayOutTypeEnum LAYOUT, uint8_t KvLayoutType = 0, bool isPa = false>
+__aicore__ inline constexpr GmFormat GetKVGmFormat()
+{
     if constexpr (KvLayoutType == 0) { // KvLayoutType_NO_PA
         if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) {
             return GmFormat::BSND;
@@ -124,7 +124,7 @@ __aicore__ inline constexpr GmFormat GetKeyScaleGmFormat()
             return GmFormat::TND;
         } else {
             return GmFormat::NTD;
-            }
+        }
     } else if constexpr (kvLayoutType == 1) { // KvLayoutType_PA_BBH
         return GmFormat::PA_BnBsND;
     } else if constexpr (kvLayoutType == 2) { // KvLayoutType_PA_BNBD
@@ -148,7 +148,7 @@ __aicore__ inline constexpr GmFormat GetValueScaleGmFormat()
             return GmFormat::TND2;
         } else {
             return GmFormat::NTD;
-            }
+        }
     } else if constexpr (kvLayoutType == 1) { // KvLayoutType_PA_BBH
         return GmFormat::PA_BnBsND;
     } else if constexpr (kvLayoutType == 2) { // KvLayoutType_PA_BNBD
@@ -194,13 +194,12 @@ __aicore__ inline constexpr UbFormat GetOutUbFormat()
     }
 }
 
-
 template <LayOutTypeEnum LAYOUT>
-__aicore__ inline uint64_t SeqLenFromTensorList(__gm__ uint8_t *keyPtr, uint32_t bIndex)
+__aicore__ inline uint64_t SeqLenFromTensorList(__gm__ uint8_t* keyPtr, uint32_t bIndex)
 {
     uint64_t dimInfo[4]; // this mem is used to set shapeinfo, BSH(3) or BNSD(4)
     AscendC::TensorDesc<__gm__ uint8_t> keyTensorDesc;
-    ListTensorDesc keyListTensorDesc((__gm__ void *)keyPtr);
+    ListTensorDesc keyListTensorDesc((__gm__ void*)keyPtr);
     keyTensorDesc.SetShapeAddr(&dimInfo[0]);
     keyListTensorDesc.GetDesc(keyTensorDesc, bIndex);
     if constexpr (LAYOUT == LayOutTypeEnum::LAYOUT_BSH) { // v100 没有bsnd
@@ -245,10 +244,10 @@ struct PostQuantInfo_V2 {
 };
 
 template <typename PARAM_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
-__aicore__ void CopyParamsGmToUb(LocalTensor<PARAM_T> &dstUb, FaGmTensor<PARAM_T, GM_FORMAT> &srcTensor,
-                                 PostQuantInfo_V2 &postQuantInfo)
+__aicore__ void CopyParamsGmToUb(LocalTensor<PARAM_T>& dstUb, FaGmTensor<PARAM_T, GM_FORMAT>& srcTensor,
+                                 PostQuantInfo_V2& postQuantInfo)
 {
-    OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
+    OffsetCalculator<GM_FORMAT>& offsetCalculator = srcTensor.offsetCalculator;
 
     if constexpr (UB_FORMAT == UbFormat::S1G) {
         uint32_t s1IdxStart = postQuantInfo.gS1Idx / offsetCalculator.GetDimG();
@@ -301,8 +300,8 @@ __aicore__ void CopyParamsGmToUb(LocalTensor<PARAM_T> &dstUb, FaGmTensor<PARAM_T
 // ----------------------------------------------Copy LSE UB To Gm arch35--------------------------------
 template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                 uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
-                                                 const CONST_INFO_T &constInfo, uint64_t s1LeftPaddingSize = 0)
+                                                    uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                                    const CONST_INFO_T& constInfo, uint64_t s1LeftPaddingSize = 0)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;
@@ -315,9 +314,8 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
         outOffset = bN2Offset + startGIdx * constInfo.s1Size + s1Idx + s1LeftPaddingSize;
         if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.gSize - startGIdx;
-        }
-        else {
+            curDealRowCount = constInfo.gSize - startGIdx;
+        } else {
             curDealRowCount = endGIdx + 1 - startGIdx;
         }
         DataCopyExtParams dataCopyParams;
@@ -333,9 +331,9 @@ __aicore__ inline void DataCopySoftmaxLseBSNDArch35(GlobalTensor<float> softmaxL
 
 template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                            uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                            const CONST_INFO_T &constInfo,
-                                            uint64_t qActSeqLens, uint64_t s1LeftPaddingSize = 0)
+                                                    uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                                    const CONST_INFO_T& constInfo, uint64_t qActSeqLens,
+                                                    uint64_t s1LeftPaddingSize = 0)
 {
     uint64_t gOffset = mOffset / qActSeqLens * constInfo.s1Size;
     uint64_t seqOffset = mOffset % qActSeqLens;
@@ -388,10 +386,10 @@ __aicore__ inline void DataCopySoftmaxLseBNSDArch35(GlobalTensor<float> softmaxL
     }
 }
 
-template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
-                                                const CONST_INFO_T &constInfo)
+template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
+__aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                   uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                                   const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;
@@ -404,9 +402,8 @@ __aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLs
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
         outOffset = bN2Offset + s1Idx * constInfo.n2Size * constInfo.gSize + startGIdx;
         if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.gSize - startGIdx;
-        }
-        else {
+            curDealRowCount = constInfo.gSize - startGIdx;
+        } else {
             curDealRowCount = endGIdx + 1 - startGIdx;
         }
         DataCopyExtParams dataCopyParams;
@@ -420,10 +417,10 @@ __aicore__ inline void DataCopySoftmaxLseTNDArch35(GlobalTensor<float> softmaxLs
     }
 }
 
-template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
+template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                const CONST_INFO_T &constInfo)
+                                                             uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                                             const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.realGSize;
     uint32_t startGIdx = mOffset % constInfo.realGSize;
@@ -436,9 +433,8 @@ __aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float>
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
         outOffset = bN2Offset + s1Idx * constInfo.realN2Size * constInfo.realGSize + startGIdx;
         if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.realGSize - startGIdx;
-        }
-        else {
+            curDealRowCount = constInfo.realGSize - startGIdx;
+        } else {
             curDealRowCount = endGIdx + 1 - startGIdx;
         }
         DataCopyExtParams dataCopyParams;
@@ -452,10 +448,10 @@ __aicore__ inline void DataCopySoftmaxLseTNDArch35NoGS1Merge(GlobalTensor<float>
     }
 }
 
-template <typename T,  typename CONST_INFO_T = AttentionCommon::ConstInfo>
-__aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc, 
-                                                uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount, 
-                                                const CONST_INFO_T &constInfo)
+template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
+__aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
+                                                       uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
+                                                       const CONST_INFO_T& constInfo)
 {
     uint32_t startS1Idx = mOffset / constInfo.gSize;
     uint32_t startGIdx = mOffset % constInfo.gSize;
@@ -468,9 +464,8 @@ __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softm
     for (uint32_t s1Idx = startS1Idx; s1Idx <= endS1Idx; s1Idx++) {
         outOffset = bN2Offset + startGIdx * constInfo.t1Size + s1Idx;
         if (s1Idx != endS1Idx) {
-            curDealRowCount =  constInfo.gSize - startGIdx;
-        }
-        else {
+            curDealRowCount = constInfo.gSize - startGIdx;
+        } else {
             curDealRowCount = endGIdx + 1 - startGIdx;
         }
         DataCopyExtParams dataCopyParams;
@@ -486,7 +481,7 @@ __aicore__ inline void DataCopySoftmaxLseTNDtoNTArch35(GlobalTensor<float> softm
 template <typename T, typename CONST_INFO_T = AttentionCommon::ConstInfo>
 __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLseGm, LocalTensor<T> lseSrc,
                                                    uint64_t bN2Offset, uint32_t mOffset, uint32_t dealCount,
-                                                   const CONST_INFO_T &constInfo, uint32_t s1Size)
+                                                   const CONST_INFO_T& constInfo, uint32_t s1Size)
 {
     uint32_t startS1Idx = mOffset % s1Size;
     uint32_t startGIdx = mOffset / s1Size;
@@ -499,9 +494,8 @@ __aicore__ inline void DataCopySoftmaxLseNTDArch35(GlobalTensor<float> softmaxLs
     for (uint32_t gIdx = startGIdx; gIdx <= endGIdx; gIdx++) {
         outOffset = bN2Offset + startS1Idx * constInfo.n2Size * constInfo.gSize + gIdx;
         if (gIdx != endGIdx) {
-            curDealRowCount =  s1Size - startS1Idx;
-        }
-        else {
+            curDealRowCount = s1Size - startS1Idx;
+        } else {
             curDealRowCount = endS1Idx + 1 - startS1Idx;
         }
         DataCopyExtParams dataCopyParams;

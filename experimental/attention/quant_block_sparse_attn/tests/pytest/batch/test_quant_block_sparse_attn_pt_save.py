@@ -37,7 +37,9 @@ def _parse_value(value):
 def _build_param_combinations(enabled_params):
     combinations = []
     for params in enabled_params:
-        normalized = {key: [_parse_value(item) for item in value] for key, value in params.items()}
+        normalized = {
+            key: [_parse_value(item) for item in value] for key, value in params.items()
+        }
         param_names = list(normalized.keys())
         param_values = list(normalized.values())
         for combo in itertools.product(*param_values):
@@ -72,10 +74,14 @@ def bsa(param_combinations, case_id, force_regenerate=False):
     if not force_regenerate and os.path.isfile(pt_filepath):
         pytest.skip(f"test case already exists, skip generation: {pt_filepath}")
 
-    quant_block_sparse_attn_golden.generate_and_save_testdata(params, save_pt=True, save_path=SAVE_PATH)
+    quant_block_sparse_attn_golden.generate_and_save_testdata(
+        params, save_pt=True, save_path=SAVE_PATH
+    )
 
 
 @pytest.mark.ci
-@pytest.mark.parametrize("case_id,param_combinations", list(enumerate(PARAM_COMBINATIONS)))
+@pytest.mark.parametrize(
+    "case_id,param_combinations", list(enumerate(PARAM_COMBINATIONS))
+)
 def test_quant_block_sparse_attn(case_id, param_combinations, force_regenerate):
     bsa(param_combinations, case_id, force_regenerate=force_regenerate)

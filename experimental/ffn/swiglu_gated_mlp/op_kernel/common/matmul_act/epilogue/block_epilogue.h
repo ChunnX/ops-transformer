@@ -127,8 +127,8 @@ public:
             }
             TPipeSetWaitFlag<AscendC::HardEvent::V_MTE3>();
             AscendC::DataCopyExtParams copyParams{static_cast<uint16_t>(stageSize / blockShapeNAlign),
-                                         static_cast<uint32_t>(blockShapeN * sizeof(DataTypeOut)), 0,
-                                         static_cast<uint32_t>((N - blockShapeN) * sizeof(DataTypeOut)), 0};
+                                                  static_cast<uint32_t>(blockShapeN * sizeof(DataTypeOut)), 0,
+                                                  static_cast<uint32_t>((N - blockShapeN) * sizeof(DataTypeOut)), 0};
             AscendC::DataCopyPad<DataTypeOut>(outputGlobal_[offset], outputLocal_, copyParams);
             stageOffset += stageSize;
             loop++;

@@ -17,15 +17,21 @@ namespace StemIndexerUT {
 
 class StemIndexerInferDTypeTest : public testing::TestWithParam<StemIndexerInferDTypeUtParam> {
 protected:
-    static void SetUpTestCase() { std::cout << "StemIndexer InferDTypeTest SetUp" << std::endl; }
-    static void TearDownTestCase() { std::cout << "StemIndexer InferDTypeTest TearDown" << std::endl; }
+    static void SetUpTestCase()
+    {
+        std::cout << "StemIndexer InferDTypeTest SetUp" << std::endl;
+    }
+    static void TearDownTestCase()
+    {
+        std::cout << "StemIndexer InferDTypeTest TearDown" << std::endl;
+    }
 };
 
 TEST_P(StemIndexerInferDTypeTest, param)
 {
     auto param = GetParam();
 
-    std::vector<void *> inputDataTypes;
+    std::vector<void*> inputDataTypes;
     if (param.inputInstance[0] == 1)
         inputDataTypes.emplace_back(&param.qflat_dtype);
     if (param.inputInstance[1] == 1)
@@ -41,7 +47,7 @@ TEST_P(StemIndexerInferDTypeTest, param)
     if (param.inputInstance[6] == 1)
         inputDataTypes.emplace_back(&param.metadata_dtype);
 
-    std::vector<void *> outputDataTypes;
+    std::vector<void*> outputDataTypes;
     if (param.outputInstance[0] == 1)
         outputDataTypes.emplace_back(&param.sparse_indices_dtype);
     if (param.outputInstance[1] == 1)

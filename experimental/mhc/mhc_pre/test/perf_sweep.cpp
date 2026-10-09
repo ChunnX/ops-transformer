@@ -21,27 +21,24 @@
 #include <vector>
 #include <algorithm>
 
-extern "C" void mhc_pre_do_fp32(
-    uint32_t blockDim, void* stream,
-    uint8_t* input, uint8_t* h_pre, uint8_t* output,
-    int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
-);
+extern "C" void mhc_pre_do_fp32(uint32_t blockDim, void* stream, uint8_t* input, uint8_t* h_pre, uint8_t* output,
+                                int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams);
 
-#define CHECK_ACL(x) do { \
-    aclError err = (x); \
-    if (err != ACL_SUCCESS) { \
-        printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
-        exit(1); \
-    } \
-} while(0)
+#define CHECK_ACL(x) \
+    do { \
+        aclError err = (x); \
+        if (err != ACL_SUCCESS) { \
+            printf("ACL Error %d at %s:%d\n", err, __FILE__, __LINE__); \
+            exit(1); \
+        } \
+    } while (0)
 
-double benchmark_with_blockdim(uint32_t blockDim, int64_t batch, int64_t seq_len,
-                                int64_t dim, int64_t num_streams,
-                                void* d_input, void* d_weight, void* d_output,
-                                aclrtStream stream, int iters = 50) {
+double benchmark_with_blockdim(uint32_t blockDim, int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams,
+                               void* d_input, void* d_weight, void* d_output, aclrtStream stream, int iters = 50)
+{
     for (int i = 0; i < 5; ++i) {
-        mhc_pre_do_fp32(blockDim, stream, (uint8_t*)d_input, (uint8_t*)d_weight,
-                        (uint8_t*)d_output, batch, seq_len, dim, num_streams);
+        mhc_pre_do_fp32(blockDim, stream, (uint8_t*)d_input, (uint8_t*)d_weight, (uint8_t*)d_output, batch, seq_len,
+                        dim, num_streams);
     }
     CHECK_ACL(aclrtSynchronizeStream(stream));
 
@@ -51,8 +48,8 @@ double benchmark_with_blockdim(uint32_t blockDim, int64_t batch, int64_t seq_len
         CHECK_ACL(aclrtCreateEvent(&start));
         CHECK_ACL(aclrtCreateEvent(&end));
         CHECK_ACL(aclrtRecordEvent(start, stream));
-        mhc_pre_do_fp32(blockDim, stream, (uint8_t*)d_input, (uint8_t*)d_weight,
-                        (uint8_t*)d_output, batch, seq_len, dim, num_streams);
+        mhc_pre_do_fp32(blockDim, stream, (uint8_t*)d_input, (uint8_t*)d_weight, (uint8_t*)d_output, batch, seq_len,
+                        dim, num_streams);
         CHECK_ACL(aclrtRecordEvent(end, stream));
         CHECK_ACL(aclrtSynchronizeStream(stream));
         float ms;
@@ -65,7 +62,8 @@ double benchmark_with_blockdim(uint32_t blockDim, int64_t batch, int64_t seq_len
     return times[iters / 2];
 }
 
-void sweep_blockdim(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams) {
+void sweep_blockdim(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams)
+{
     printf("\nSweeping blockDim for [B=%ld, S=%ld, D=%ld, N=%ld]\n", batch, seq_len, dim, num_streams);
     printf("Max logical blocks = %ld\n", batch);
 
@@ -96,8 +94,7 @@ void sweep_blockdim(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_str
     std::sort(test_dims.begin(), test_dims.end());
 
     for (uint32_t bd : test_dims) {
-        double t = benchmark_with_blockdim(bd, batch, seq_len, dim, num_streams,
-                                           d_input, d_weight, d_output, stream);
+        double t = benchmark_with_blockdim(bd, batch, seq_len, dim, num_streams, d_input, d_weight, d_output, stream);
         if (t < best_time) {
             best_time = t;
             best_blockdim = bd;
@@ -113,7 +110,8 @@ void sweep_blockdim(int64_t batch, int64_t seq_len, int64_t dim, int64_t num_str
     CHECK_ACL(aclrtDestroyStream(stream));
 }
 
-int main() {
+int main()
+{
     CHECK_ACL(aclInit(nullptr));
     CHECK_ACL(aclrtSetDevice(0));
 

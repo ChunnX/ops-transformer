@@ -41,28 +41,12 @@ extern "C" {
  * workspaceSize : size of workspace(output).
  * executor : executor context(output).
  */
-__attribute__((visibility("default"))) aclnnStatus
-aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
-    const aclTensor* actualSeqLengthsQueryOptional,
-    const aclTensor* actualSeqLengthsKvOptional,
-    const aclTensor* sparseSeqLengthsKvOptional,
-    int64_t batchSize,
-    int64_t querySeqSize,
-    int64_t queryHeadNum,
-    int64_t kvSeqSize,
-    int64_t kvHeadNum,
-    int64_t headDim,
-    int64_t topkSize,
-    int64_t sparseBlockSize,
-    char* layoutQueryOptional,
-    char* layoutKvOptional,
-    int64_t sparseMode,
-    int64_t attentionMode,
-    int64_t ropeHeadDim,
-    int64_t sparseShardSize,
-    const aclTensor* metaData,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+__attribute__((visibility("default"))) aclnnStatus aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKvOptional,
+    const aclTensor* sparseSeqLengthsKvOptional, int64_t batchSize, int64_t querySeqSize, int64_t queryHeadNum,
+    int64_t kvSeqSize, int64_t kvHeadNum, int64_t headDim, int64_t topkSize, int64_t sparseBlockSize,
+    char* layoutQueryOptional, char* layoutKvOptional, int64_t sparseMode, int64_t attentionMode, int64_t ropeHeadDim,
+    int64_t sparseShardSize, const aclTensor* metaData, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /* funtion: aclnnKvQuantSparseFlashAttentionMetadata
  * parameters :
@@ -71,11 +55,10 @@ aclnnKvQuantSparseFlashAttentionMetadataGetWorkspaceSize(
  * executor : executor context(input).
  * stream : acl stream.
  */
-__attribute__((visibility("default"))) aclnnStatus
-aclnnKvQuantSparseFlashAttentionMetadata(void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnKvQuantSparseFlashAttentionMetadata(void* workspace,
+                                                                                            uint64_t workspaceSize,
+                                                                                            aclOpExecutor* executor,
+                                                                                            aclrtStream stream);
 
 #ifdef __cplusplus
 }

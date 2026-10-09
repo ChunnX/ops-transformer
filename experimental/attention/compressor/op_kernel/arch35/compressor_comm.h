@@ -113,7 +113,9 @@ struct COMPType {
 struct CmpBlockInfo {
     __aicore__ inline CmpBlockInfo(){};
     __aicore__ inline CmpBlockInfo(uint32_t bIdx, uint32_t sIdx, bool needReset = false)
-        : bIdx(bIdx), sIdx(sIdx), needReset(needReset){};
+        : bIdx(bIdx),
+          sIdx(sIdx),
+          needReset(needReset){};
 
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
@@ -290,7 +292,9 @@ struct MSplitInfo {
 
 struct BlockInfo {
     __aicore__ inline BlockInfo(uint32_t bIdx, uint32_t sIdx, uint32_t dealSeqSize)
-        : bIdx(bIdx), sIdx(sIdx), dealSeqSize(dealSeqSize){};
+        : bIdx(bIdx),
+          sIdx(sIdx),
+          dealSeqSize(dealSeqSize){};
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
     uint32_t dealSeqSize = 0;
@@ -376,10 +380,10 @@ __aicore__ inline constexpr T RepeatElementNum()
     return REPEAT_BLOCK_BYTE / sizeof(T);
 }
 // BLOCK和REPEAT的FP32元素数
-inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float); // 8
+inline constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);         // 8
 inline constexpr uint32_t FP16_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(bfloat16_t);    // 16
 inline constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float); // 64
-inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK; // 8
+inline constexpr uint32_t REPEAT_STRIDE_NUM = REPEAT_BLOCK_BYTE / BYTE_BLOCK;          // 8
 inline constexpr uint32_t REPEAT_MAX_NUM = 255;
 inline constexpr uint32_t BRCB_NUM = 8;
 inline constexpr uint32_t MAX_R = 256;

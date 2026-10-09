@@ -27,7 +27,7 @@
     } while (0)
 
 namespace {
-int64_t Numel(const std::vector<int64_t> &shape)
+int64_t Numel(const std::vector<int64_t>& shape)
 {
     int64_t count = 1;
     for (int64_t dim : shape) {
@@ -36,8 +36,8 @@ int64_t Numel(const std::vector<int64_t> &shape)
     return count;
 }
 
-int CreateFloatTensor(const std::vector<float> &data, const std::vector<int64_t> &shape, void **device,
-                      aclTensor **tensor)
+int CreateFloatTensor(const std::vector<float>& data, const std::vector<int64_t>& shape, void** device,
+                      aclTensor** tensor)
 {
     const size_t bytes = data.size() * sizeof(float);
     CHECK_ACL(aclrtMalloc(device, bytes, ACL_MEM_MALLOC_HUGE_FIRST));
@@ -51,8 +51,8 @@ int CreateFloatTensor(const std::vector<float> &data, const std::vector<int64_t>
     return *tensor == nullptr ? -1 : ACL_SUCCESS;
 }
 
-std::vector<float> Golden(const std::vector<float> &query, const std::vector<float> &key,
-                          const std::vector<float> &scale, int64_t batch, int64_t heads, int64_t seqLen,
+std::vector<float> Golden(const std::vector<float>& query, const std::vector<float>& key,
+                          const std::vector<float>& scale, int64_t batch, int64_t heads, int64_t seqLen,
                           int64_t headDim, float clampMax, float eps)
 {
     std::vector<float> out(batch * heads * seqLen * seqLen, 0.0F);
@@ -108,24 +108,24 @@ int main()
     aclrtStream stream = nullptr;
     CHECK_ACL(aclrtCreateStream(&stream));
 
-    void *queryDev = nullptr;
-    void *keyDev = nullptr;
-    void *scaleDev = nullptr;
-    void *outDev = nullptr;
-    aclTensor *queryTensor = nullptr;
-    aclTensor *keyTensor = nullptr;
-    aclTensor *scaleTensor = nullptr;
-    aclTensor *outTensor = nullptr;
+    void* queryDev = nullptr;
+    void* keyDev = nullptr;
+    void* scaleDev = nullptr;
+    void* outDev = nullptr;
+    aclTensor* queryTensor = nullptr;
+    aclTensor* keyTensor = nullptr;
+    aclTensor* scaleTensor = nullptr;
+    aclTensor* outTensor = nullptr;
     CHECK_ACL(CreateFloatTensor(query, inputShape, &queryDev, &queryTensor));
     CHECK_ACL(CreateFloatTensor(key, inputShape, &keyDev, &keyTensor));
     CHECK_ACL(CreateFloatTensor(scale, scaleShape, &scaleDev, &scaleTensor));
     CHECK_ACL(CreateFloatTensor(output, outputShape, &outDev, &outTensor));
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     CHECK_ACL(aclnnScaledCosineAttentionScoreGetWorkspaceSize(queryTensor, keyTensor, scaleTensor, CLAMP_MAX, EPS,
                                                               outTensor, &workspaceSize, &executor));
-    void *workspace = nullptr;
+    void* workspace = nullptr;
     if (workspaceSize > 0) {
         CHECK_ACL(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST));
     }

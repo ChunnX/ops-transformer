@@ -36,33 +36,33 @@ constexpr uint32_t DIM_NUM_4 = 4;
 constexpr uint32_t OUTPUT_INDEX_1 = 1;
 constexpr uint32_t OUTPUT_INDEX_2 = 2;
 
-ge::graphStatus InferShapeTurboQuantSparseFlashAttention(gert::InferShapeContext *context)
+ge::graphStatus InferShapeTurboQuantSparseFlashAttention(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "InferShapeContext invalid"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
-    const gert::Shape *keyShape = context->GetInputShape(KEY_INPUT_INDEX);
+    const gert::Shape* keyShape = context->GetInputShape(KEY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
-    gert::Shape *attentionOutShape = context->GetOutputShape(0);
+    gert::Shape* attentionOutShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
-    gert::Shape *softmaxMaxShape = context->GetOutputShape(OUTPUT_INDEX_1);
+    gert::Shape* softmaxMaxShape = context->GetOutputShape(OUTPUT_INDEX_1);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxMaxShape);
-    gert::Shape *softmaxSumShape = context->GetOutputShape(OUTPUT_INDEX_2);
+    gert::Shape* softmaxSumShape = context->GetOutputShape(OUTPUT_INDEX_2);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxSumShape);
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const char *inputLayoutQueryPtr = attrs->GetAttrPointer<char>(LAYOUT_QUERY_ATTR_INDEX);
+    const char* inputLayoutQueryPtr = attrs->GetAttrPointer<char>(LAYOUT_QUERY_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutQueryPtr);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
-    const char *inputLayoutKvPtr = attrs->GetAttrPointer<char>(LAYOUT_KV_ATTR_INDEX);
+    const char* inputLayoutKvPtr = attrs->GetAttrPointer<char>(LAYOUT_KV_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayoutKvPtr);
     std::string inputLayoutKvPtrStr = std::string(inputLayoutKvPtr);
-    const int64_t *ropeHeadDimPtr = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    const int64_t* ropeHeadDimPtr = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, ropeHeadDimPtr);
     const int64_t ropeHeadDim = *ropeHeadDimPtr;
-    const bool *lse_flag = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
+    const bool* lse_flag = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
     bool return_softmax_lse = (lse_flag != nullptr) ? *lse_flag : false;
 
     // 图推导须与 host tiling 保持同一边界，否则非法配置会在推导阶段成功、
@@ -121,7 +121,7 @@ ge::graphStatus InferShapeTurboQuantSparseFlashAttention(gert::InferShapeContext
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeTurboQuantSparseFlashAttention(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeTurboQuantSparseFlashAttention(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseFlashAttention", "InferShapeContext invalid"),

@@ -19,9 +19,8 @@
 #include "lib/matmul_intf.h"
 using namespace AscendC;
 
-extern "C" __global__ __aicore__ void jacobi(__gm__ uint8_t * a,
-                                             __gm__ uint8_t * u, __gm__ uint8_t * s, __gm__ uint8_t * v,
-                                             __gm__ uint8_t * workspace, __gm__ uint8_t * tiling)
+extern "C" __global__ __aicore__ void jacobi(__gm__ uint8_t* a, __gm__ uint8_t* u, __gm__ uint8_t* s, __gm__ uint8_t* v,
+                                             __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     TPipe pipe;
     GET_TILING_DATA(tilingData, tiling);

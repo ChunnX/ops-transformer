@@ -42,26 +42,26 @@ public:
     using MM1_OUT_T = float;
 
     __aicore__ inline LIVector(){};
-    __aicore__ inline void ProcessVec(const LICommon::RunInfo &info);
+    __aicore__ inline void ProcessVec(const LICommon::RunInfo& info);
     __aicore__ inline void ProcessLD();
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitParams(const struct LICommon::ConstInfo &constInfo,
-                                      const LITilingData *__restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitParams(const struct LICommon::ConstInfo& constInfo,
+                                      const LITilingData* __restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
                                                 GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<float> weightsGm,
                                                 GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void InitLDBuffers(TPipe *pipe);
+    __aicore__ inline void InitLDBuffers(TPipe* pipe);
 
     // QS 辅助：拼接数据 + 执行 QS + 写回结果
-    __aicore__ inline void ExecuteQS(LocalTensor<float> &globScores, LocalTensor<int32_t> &globIndices,
-                                     LocalTensor<float> &ovfScores, LocalTensor<int32_t> &ovfIndices,
+    __aicore__ inline void ExecuteQS(LocalTensor<float>& globScores, LocalTensor<int32_t>& globIndices,
+                                     LocalTensor<float>& ovfScores, LocalTensor<int32_t>& ovfIndices,
                                      int32_t cacheScoreBase, int32_t cacheIdxBase, int32_t cachedLen,
-                                     LocalTensor<float> &extraScores, LocalTensor<int32_t> &extraIndices,
+                                     LocalTensor<float>& extraScores, LocalTensor<int32_t>& extraIndices,
                                      int32_t extraLen, float sugMax, int32_t innerS1Idx,
-                                     LocalTensor<float> &tmpSortBuf);
+                                     LocalTensor<float>& tmpSortBuf);
 
 protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
@@ -161,7 +161,7 @@ private:
     int32_t virTopK = 0;
 
     // max score
-    const float MAX_LOGITS = *((float *)&MAX_LOGITS_TMP);
+    const float MAX_LOGITS = *((float*)&MAX_LOGITS_TMP);
     const float SECOND_MAX_LOGITS = MAX_LOGITS / 2;
     const float CLIP_MAX_LOGITS = MAX_LOGITS / LOGITS_SCALE;
 
@@ -175,7 +175,7 @@ private:
 };
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void LIVector<LIT>::InitBuffers(TPipe* pipe)
 {
     uint32_t outNeedBufSize = (BASE_TOPK * 2) * 2 * sizeof(float);
     uint32_t reduceCacheSize = REDUCE_BANK_CONFLICT_OFFSETS + groupInner_ * s2BaseSize_ * sizeof(float);
@@ -238,7 +238,7 @@ __aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::InitLDBuffers(TPipe *pipe)
+__aicore__ inline void LIVector<LIT>::InitLDBuffers(TPipe* pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(ldToBeMrgBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float)); // 2：value + index
@@ -248,8 +248,8 @@ __aicore__ inline void LIVector<LIT>::InitLDBuffers(TPipe *pipe)
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::InitParams(const struct LICommon::ConstInfo &constInfo,
-                                                 const LITilingData *__restrict tilingData)
+__aicore__ inline void LIVector<LIT>::InitParams(const struct LICommon::ConstInfo& constInfo,
+                                                 const LITilingData* __restrict tilingData)
 {
     this->constInfo_ = constInfo;
     blockS2StartIdx_ = 0;
@@ -320,7 +320,7 @@ __aicore__ inline void LIVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
+__aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo& info)
 {
     /// ---- 预处理 ---- ///
     int32_t cuBaseS1Idx = info.gS1Idx * s1BaseSize_;
@@ -937,12 +937,12 @@ __aicore__ inline void LIVector<LIT>::ProcessLD()
 //   调 QuickSelectPartition 重选 top-virTopK；收敛则把新候选写回 glob/ovf，未收敛则保持候选不变。
 //   per-token 维护 lastThreshold_（下界）、sugMaxCarry_（上界）跨轮加速二分收敛。
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::ExecuteQS(LocalTensor<float> &globScores, LocalTensor<int32_t> &globIndices,
-                                                LocalTensor<float> &ovfScores, LocalTensor<int32_t> &ovfIndices,
+__aicore__ inline void LIVector<LIT>::ExecuteQS(LocalTensor<float>& globScores, LocalTensor<int32_t>& globIndices,
+                                                LocalTensor<float>& ovfScores, LocalTensor<int32_t>& ovfIndices,
                                                 int32_t cacheScoreBase, int32_t cacheIdxBase, int32_t cachedLen,
-                                                LocalTensor<float> &extraScores, LocalTensor<int32_t> &extraIndices,
+                                                LocalTensor<float>& extraScores, LocalTensor<int32_t>& extraIndices,
                                                 int32_t extraLen, float sugMax, int32_t innerS1Idx,
-                                                LocalTensor<float> &tmpSortBuf)
+                                                LocalTensor<float>& tmpSortBuf)
 {
     int32_t mergedLen = cachedLen + extraLen;
     int32_t maxNewData = numCacheSlots_ * (s2BaseSize_ / constInfo_.blockLen);

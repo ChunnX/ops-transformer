@@ -36,14 +36,14 @@ extern "C" {
  * @param [out] executor    : op executor handle.
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnFusedGdnGatingGetWorkspaceSize(
-    const aclTensor *aLog, const aclTensor *a, const aclTensor *b, const aclTensor *dtBias, float beta, float threshold,
-    aclTensor *g, aclTensor *betaOutput, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* aLog, const aclTensor* a, const aclTensor* b, const aclTensor* dtBias, float beta, float threshold,
+    aclTensor* g, aclTensor* betaOutput, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief FusedGdnGating phase-2: launch the kernel.
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnFusedGdnGating(void *workspace, uint64_t workspaceSize,
-                                                                       aclOpExecutor *executor, aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnFusedGdnGating(void* workspace, uint64_t workspaceSize,
+                                                                       aclOpExecutor* executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

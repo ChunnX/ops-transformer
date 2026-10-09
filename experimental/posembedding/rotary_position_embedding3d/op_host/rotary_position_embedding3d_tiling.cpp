@@ -25,7 +25,7 @@ constexpr float FREQ_BASE = 10000.0f;
 
 struct CompileInfo {};
 
-static void ComputeBandDims(int64_t headDim, int64_t &tBand, int64_t &hBand, int64_t &wBand)
+static void ComputeBandDims(int64_t headDim, int64_t& tBand, int64_t& hBand, int64_t& wBand)
 {
     // 2:1:1 ratio: T = D/2, H = D/4, W = D/4, all even
     int64_t unit = headDim / 4;
@@ -53,7 +53,7 @@ static void ComputeBandDims(int64_t headDim, int64_t &tBand, int64_t &hBand, int
     }
 }
 
-static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
+static void FactorVideoDims(int64_t seqLen, int64_t& T, int64_t& H, int64_t& W)
 {
     if (seqLen <= 1) {
         T = 1;
@@ -81,9 +81,9 @@ static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
     W = seqLen;
 }
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &ubSize, int64_t &coreNum)
+static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, uint64_t& ubSize, int64_t& coreNum)
 {
-    auto *platformInfo = context->GetPlatformInfo();
+    auto* platformInfo = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto plat = platform_ascendc::PlatformAscendC(platformInfo);
     coreNum = plat.GetCoreNumAiv();
@@ -93,8 +93,8 @@ static ge::graphStatus GetPlatformInfo(gert::TilingContext *context, uint64_t &u
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus ParseInputs(gert::TilingContext *context, int64_t &totalLength, int64_t &headDim,
-                                   int64_t &seqLen)
+static ge::graphStatus ParseInputs(gert::TilingContext* context, int64_t& totalLength, int64_t& headDim,
+                                   int64_t& seqLen)
 {
     auto inputShape = EnsureNotScalar(context->GetInputShape(0)->GetStorageShape());
     int64_t dimNum = inputShape.GetDimNum();
@@ -111,7 +111,7 @@ static ge::graphStatus ParseInputs(gert::TilingContext *context, int64_t &totalL
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext *context)
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     uint64_t ubSize;
     int64_t coreNum;
@@ -124,7 +124,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     OP_CHECK_IF(ParseInputs(context, totalLength, headDim, seqLen) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context, "ParseInputs error"), return ge::GRAPH_FAILED);
 
-    auto *td = context->GetTilingData<RotaryPositionEmbedding3dTilingData>();
+    auto* td = context->GetTilingData<RotaryPositionEmbedding3dTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context, td);
     memset_s(td, sizeof(RotaryPositionEmbedding3dTilingData), 0, sizeof(RotaryPositionEmbedding3dTilingData));
 
@@ -138,11 +138,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     int64_t H;
     int64_t W;
     bool useExplicitDims = false;
-    auto *attrs = context->GetAttrs();
+    auto* attrs = context->GetAttrs();
     if (attrs != nullptr) {
-        auto *tPtr = attrs->GetAttrPointer<int64_t>(0);
-        auto *hPtr = attrs->GetAttrPointer<int64_t>(1);
-        auto *wPtr = attrs->GetAttrPointer<int64_t>(2);
+        auto* tPtr = attrs->GetAttrPointer<int64_t>(0);
+        auto* hPtr = attrs->GetAttrPointer<int64_t>(1);
+        auto* wPtr = attrs->GetAttrPointer<int64_t>(2);
         int64_t tDim = (tPtr != nullptr) ? *tPtr : 0;
         int64_t hDim = (hPtr != nullptr) ? *hPtr : 0;
         int64_t wDim = (wPtr != nullptr) ? *wPtr : 0;
@@ -196,7 +196,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     td->rH = static_cast<float>(std::pow(FREQ_BASE, -2.0 / static_cast<double>(hBand)));
     td->rW = static_cast<float>(std::pow(FREQ_BASE, -2.0 / static_cast<double>(wBand)));
 
-    size_t *ws = context->GetWorkspaceSizes(1);
+    size_t* ws = context->GetWorkspaceSizes(1);
     ws[0] = 16U * 1024U * 1024U;
 
     context->SetBlockDim(BLOCK_DIM);
@@ -210,7 +210,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParse(gert::TilingParseContext *)
+static ge::graphStatus TilingParse(gert::TilingParseContext*)
 {
     return ge::GRAPH_SUCCESS;
 }

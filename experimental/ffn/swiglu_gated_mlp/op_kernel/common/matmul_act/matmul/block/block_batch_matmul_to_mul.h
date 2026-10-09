@@ -97,7 +97,7 @@ struct BlockMmad<BatchMatmulToMul<>, L1TileShape_, L0TileShape_, AType_, BType_,
     }
 
 public:
-    __aicore__ inline void Init(const TupleShape &shape, uint32_t batchNum, uint32_t alignNum)
+    __aicore__ inline void Init(const TupleShape& shape, uint32_t batchNum, uint32_t alignNum)
     {
         m_ = Get<DIMENSION_M>(shape);
         n_ = Get<DIMENSION_N>(shape);
@@ -109,7 +109,7 @@ public:
         alignN_ = AscendC::CeilAlign(n_, alignNum_);
     }
 
-    __aicore__ inline void CopyInA(const AscendC::GlobalTensor<A_T> &aGlobal, const AscendC::LocalTensor<A_T> &aubLocal,
+    __aicore__ inline void CopyInA(const AscendC::GlobalTensor<A_T>& aGlobal, const AscendC::LocalTensor<A_T>& aubLocal,
                                    const uint64_t batchAub)
     {
         if (batchAub > 0) {
@@ -122,8 +122,8 @@ public:
     }
 
     // 用于特殊优化场景的A Tensor对齐搬入
-    __aicore__ inline void CopyInAlignA(const AscendC::GlobalTensor<A_T> &aGlobal,
-                                        const AscendC::LocalTensor<A_T> &aubLocal, const uint64_t batchAub)
+    __aicore__ inline void CopyInAlignA(const AscendC::GlobalTensor<A_T>& aGlobal,
+                                        const AscendC::LocalTensor<A_T>& aubLocal, const uint64_t batchAub)
     {
         if (batchAub > 0) {
             uint16_t blockCount = static_cast<uint16_t>(batchAub);
@@ -135,7 +135,7 @@ public:
         }
     }
 
-    __aicore__ inline void CopyInB(const AscendC::GlobalTensor<B_T> &bGlobal, const AscendC::LocalTensor<B_T> &bubLocal,
+    __aicore__ inline void CopyInB(const AscendC::GlobalTensor<B_T>& bGlobal, const AscendC::LocalTensor<B_T>& bubLocal,
                                    const uint64_t batchBub)
     {
         if (batchBub > 0) {
@@ -148,7 +148,7 @@ public:
         }
     }
 
-    static __simd_vf__ inline void MulsVfSmallN(__ubuf__ A_T *dstPtr, __ubuf__ A_T *srcPtr, __ubuf__ A_T *aubPtr,
+    static __simd_vf__ inline void MulsVfSmallN(__ubuf__ A_T* dstPtr, __ubuf__ A_T* srcPtr, __ubuf__ A_T* aubPtr,
                                                 uint32_t oneRepeatSize, uint32_t countMPerVL, uint16_t repeatTimes,
                                                 uint64_t mAub, uint64_t alignM_, uint64_t nBub, uint64_t batchNum)
     {
@@ -176,7 +176,7 @@ public:
         }
     }
 
-    static __simd_vf__ inline void MulsVf(__ubuf__ A_T *dstPtr, __ubuf__ A_T *srcPtr, __ubuf__ A_T *aubPtr,
+    static __simd_vf__ inline void MulsVf(__ubuf__ A_T* dstPtr, __ubuf__ A_T* srcPtr, __ubuf__ A_T* aubPtr,
                                           uint32_t count, uint16_t repeatTimes, uint64_t mAub, uint64_t nBub,
                                           uint64_t batchNum, uint32_t oneRepeatSize)
     {
@@ -219,22 +219,22 @@ public:
         if (alignN_ <= alignNum_) {
             uint32_t countMPerVL = oneRepeatSize / alignN_;
             uint16_t repeatTimes = AscendC::CeilDiv(alignM_, countMPerVL);
-            __ubuf__ C_T *dstPtr = (__ubuf__ C_T *)cubLocal.GetPhyAddr();
-            __ubuf__ B_T *srcPtr = (__ubuf__ B_T *)bubLocal.GetPhyAddr();
-            __ubuf__ A_T *aubPtr = (__ubuf__ A_T *)aubLocal.GetPhyAddr();
+            __ubuf__ C_T* dstPtr = (__ubuf__ C_T*)cubLocal.GetPhyAddr();
+            __ubuf__ B_T* srcPtr = (__ubuf__ B_T*)bubLocal.GetPhyAddr();
+            __ubuf__ A_T* aubPtr = (__ubuf__ A_T*)aubLocal.GetPhyAddr();
             AscendC::VF_CALL<MulsVfSmallN>(dstPtr, srcPtr, aubPtr, oneRepeatSize, countMPerVL, repeatTimes, m_, alignM_,
                                            alignN_, batchNum);
         } else {
             uint32_t count = n_;
             uint16_t repeatTimes = AscendC::CeilDiv(count, oneRepeatSize);
-            __ubuf__ C_T *dstPtr = (__ubuf__ C_T *)cubLocal.GetPhyAddr();
-            __ubuf__ B_T *srcPtr = (__ubuf__ B_T *)bubLocal.GetPhyAddr();
-            __ubuf__ A_T *aubPtr = (__ubuf__ A_T *)aubLocal.GetPhyAddr();
+            __ubuf__ C_T* dstPtr = (__ubuf__ C_T*)cubLocal.GetPhyAddr();
+            __ubuf__ B_T* srcPtr = (__ubuf__ B_T*)bubLocal.GetPhyAddr();
+            __ubuf__ A_T* aubPtr = (__ubuf__ A_T*)aubLocal.GetPhyAddr();
             AscendC::VF_CALL<MulsVf>(dstPtr, srcPtr, aubPtr, count, repeatTimes, m_, alignN_, batchNum, oneRepeatSize);
         }
     }
 
-    __aicore__ inline void CopyOut(const AscendC::GlobalTensor<C_T> &cGlobal, const AscendC::LocalTensor<C_T> &cubLocal,
+    __aicore__ inline void CopyOut(const AscendC::GlobalTensor<C_T>& cGlobal, const AscendC::LocalTensor<C_T>& cubLocal,
                                    const uint64_t batchCub)
     {
         if (batchCub > 0) {
@@ -245,9 +245,9 @@ public:
         }
     }
 
-    __aicore__ inline void operator()(const AscendC::GlobalTensor<C_T> &cGlobal,
-                                      const AscendC::GlobalTensor<A_T> &aGlobal,
-                                      const AscendC::GlobalTensor<B_T> &bGlobal)
+    __aicore__ inline void operator()(const AscendC::GlobalTensor<C_T>& cGlobal,
+                                      const AscendC::GlobalTensor<A_T>& aGlobal,
+                                      const AscendC::GlobalTensor<B_T>& bGlobal)
     {
         uint64_t ubOffsetAPing = 0;
         uint64_t ubOffsetBPing = AscendC::CeilAlign(batchNumPing_ * m_, alignNum_) + ubOffsetAPing;

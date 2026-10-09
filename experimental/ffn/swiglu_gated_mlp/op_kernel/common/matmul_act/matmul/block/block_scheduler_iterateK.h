@@ -57,7 +57,8 @@ public:
 
 public:
     __aicore__ inline BlockSchedulerIterateK(ProblemShape shape, int64_t blockIdx, int64_t blockNum)
-        : blockIdx_(blockIdx), blockNum_(blockNum)
+        : blockIdx_(blockIdx),
+          blockNum_(blockNum)
     {
         m_ = shape.m;
         n_ = shape.n;

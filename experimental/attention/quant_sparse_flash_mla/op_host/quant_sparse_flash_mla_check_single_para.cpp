@@ -29,53 +29,49 @@ static constexpr uint32_t DIM_2 = 2;
 static constexpr uint32_t DIM_3 = 3;
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {QUERY_NAME,                     {ge::DT_HIFLOAT8}},
-    {ORI_KV_NAME,                    {ge::DT_HIFLOAT8}},
-    {CMP_KV_NAME,                    {ge::DT_HIFLOAT8}},
-    {ATTEN_OUT_NAME,                 {ge::DT_FLOAT16, ge::DT_BF16}},
-    {CMP_SPARSE_INDICES_NAME,        {ge::DT_INT32}},
-    {ORI_BLOCK_TABLE_NAME,           {ge::DT_INT32}},
-    {CMP_BLOCK_TABLE_NAME,           {ge::DT_INT32}},
-    {CU_SEQLENS_Q_NAME,              {ge::DT_INT32}},
-    {SEQUSED_ORI_KV_NAME,            {ge::DT_INT32}},
-    {SINKS_NAME,                     {ge::DT_FLOAT}},
+    {QUERY_NAME, {ge::DT_HIFLOAT8}},           {ORI_KV_NAME, {ge::DT_HIFLOAT8}},
+    {CMP_KV_NAME, {ge::DT_HIFLOAT8}},          {ATTEN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {CMP_SPARSE_INDICES_NAME, {ge::DT_INT32}}, {ORI_BLOCK_TABLE_NAME, {ge::DT_INT32}},
+    {CMP_BLOCK_TABLE_NAME, {ge::DT_INT32}},    {CU_SEQLENS_Q_NAME, {ge::DT_INT32}},
+    {SEQUSED_ORI_KV_NAME, {ge::DT_INT32}},     {SINKS_NAME, {ge::DT_FLOAT}},
 };
 
 const std::map<std::string, std::vector<QSMLALayout>> LAYOUT_SUPPORT_MAP = {
-    {QUERY_NAME,             {QSMLALayout::BSND, QSMLALayout::TND}},
-    {ORI_KV_NAME,            {QSMLALayout::PA_BBND, QSMLALayout::TND}},
-    {CMP_KV_NAME,            {QSMLALayout::PA_BBND, QSMLALayout::TND}},
-    {ATTEN_OUT_NAME,         {QSMLALayout::BSND, QSMLALayout::TND}},
+    {QUERY_NAME, {QSMLALayout::BSND, QSMLALayout::TND}},
+    {ORI_KV_NAME, {QSMLALayout::PA_BBND, QSMLALayout::TND}},
+    {CMP_KV_NAME, {QSMLALayout::PA_BBND, QSMLALayout::TND}},
+    {ATTEN_OUT_NAME, {QSMLALayout::BSND, QSMLALayout::TND}},
 };
 
 template <typename T>
-void QSMLATilingCheck::LogErrorDimNumSupport(const std::vector<T> &expectNumberList,
-    const T &actualValue, const std::string &name) const
+void QSMLATilingCheck::LogErrorDimNumSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                             const std::string& name) const
 {
     LogErrorNumberSupport(expectNumberList, actualValue, name, "dimension");
 }
 
-ge::graphStatus QSMLATilingCheck::CheckDimNumInLayoutSupport(const QSMLALayout &layout,
-    const gert::StorageShape *shape, const std::string &name) const
+ge::graphStatus QSMLATilingCheck::CheckDimNumInLayoutSupport(const QSMLALayout& layout, const gert::StorageShape* shape,
+                                                             const std::string& name) const
 {
     const auto& dimIt = QSMLA_LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
-        OP_LOGE(opName_, "When layout is %s, %s dimension should be %zu, but it's %zu",
-            QSMLALayoutToSerialString(layout).c_str(), name.c_str(), dimIt->second,
-            shape->GetStorageShape().GetDimNum()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "When layout is %s, %s dimension should be %zu, but it's %zu",
+                        QSMLALayoutToSerialString(layout).c_str(), name.c_str(), dimIt->second,
+                        shape->GetStorageShape().GetDimNum()),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckDimNumSupport(const gert::StorageShape *shape,
-    const std::vector<size_t> &expectDimNumList, const std::string &name) const
+ge::graphStatus QSMLATilingCheck::CheckDimNumSupport(const gert::StorageShape* shape,
+                                                     const std::vector<size_t>& expectDimNumList,
+                                                     const std::string& name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
 
-    if (std::find(expectDimNumList.begin(), expectDimNumList.end(),
-        shape->GetStorageShape().GetDimNum()) == expectDimNumList.end()) {
+    if (std::find(expectDimNumList.begin(), expectDimNumList.end(), shape->GetStorageShape().GetDimNum()) ==
+        expectDimNumList.end()) {
         LogErrorDimNumSupport(expectDimNumList, shape->GetStorageShape().GetDimNum(), name);
         return ge::GRAPH_FAILED;
     }
@@ -83,15 +79,16 @@ ge::graphStatus QSMLATilingCheck::CheckDimNumSupport(const gert::StorageShape *s
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckShapeNumSupport(const gert::StorageShape *shape,
-    const std::vector<int64_t> &expectShapeNumList, const std::string &name) const
+ge::graphStatus QSMLATilingCheck::CheckShapeNumSupport(const gert::StorageShape* shape,
+                                                       const std::vector<int64_t>& expectShapeNumList,
+                                                       const std::string& name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
 
-    if (std::find(expectShapeNumList.begin(), expectShapeNumList.end(),
-        shape->GetStorageShape().GetShapeSize()) == expectShapeNumList.end()) {
+    if (std::find(expectShapeNumList.begin(), expectShapeNumList.end(), shape->GetStorageShape().GetShapeSize()) ==
+        expectShapeNumList.end()) {
         LogErrorDimNumSupport(expectShapeNumList, shape->GetStorageShape().GetShapeSize(), name);
         return ge::GRAPH_FAILED;
     }
@@ -99,8 +96,8 @@ ge::graphStatus QSMLATilingCheck::CheckShapeNumSupport(const gert::StorageShape 
     return ge::GRAPH_SUCCESS;
 }
 
-void QSMLATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-    const ge::DataType &actualDtype, const std::string &name) const
+void QSMLATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList,
+                                            const ge::DataType& actualDtype, const std::string& name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -109,30 +106,29 @@ void QSMLATilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &exp
             oss << ", ";
         }
     }
-    OP_LOGE(opName_, "Tensor %s only support dtype %s, but got %s",
-        name.c_str(), oss.str().c_str(), QSMLADataTypeToSerialString(actualDtype).c_str());
+    OP_LOGE(opName_, "Tensor %s only support dtype %s, but got %s", name.c_str(), oss.str().c_str(),
+            QSMLADataTypeToSerialString(actualDtype).c_str());
 }
 
-ge::graphStatus QSMLATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-    const std::string &name) const
+ge::graphStatus QSMLATilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc,
+                                                    const std::string& name) const
 {
     if (desc != nullptr) {
         const auto& it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
-            OP_LOGE(opName_, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
-            return ge::GRAPH_FAILED);
-        auto &expectDtypeList = it->second;
-        OP_CHECK_IF(std::find(
-            expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end(),
-            LogErrorDtypeSupport(expectDtypeList, desc->GetDataType(), name),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
+                    return ge::GRAPH_FAILED);
+        auto& expectDtypeList = it->second;
+        OP_CHECK_IF(
+            std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end(),
+            LogErrorDtypeSupport(expectDtypeList, desc->GetDataType(), name), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
 
 template <typename T>
-void QSMLATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberList,
-    const T &actualValue, const std::string &name, const std::string subName) const
+void QSMLATilingCheck::LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                             const std::string& name, const std::string subName) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
@@ -141,13 +137,12 @@ void QSMLATilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberL
             oss << ", ";
         }
     }
-    OP_LOGE(opName_, "%s %s only support %s, but got %s",
-        name.c_str(), subName.c_str(), oss.str().c_str(), std::to_string(actualValue).c_str());
+    OP_LOGE(opName_, "%s %s only support %s, but got %s", name.c_str(), subName.c_str(), oss.str().c_str(),
+            std::to_string(actualValue).c_str());
 }
 
-
-void QSMLATilingCheck::LogErrorLayoutSupport(const std::vector<QSMLALayout> &expectLayoutList,
-    const QSMLALayout &actualLayout, const std::string &name) const
+void QSMLATilingCheck::LogErrorLayoutSupport(const std::vector<QSMLALayout>& expectLayoutList,
+                                             const QSMLALayout& actualLayout, const std::string& name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectLayoutList.size(); ++i) {
@@ -156,19 +151,17 @@ void QSMLATilingCheck::LogErrorLayoutSupport(const std::vector<QSMLALayout> &exp
             oss << ", ";
         }
     }
-    OP_LOGE(opName_, "Tensor %s only support layout %s, but got %s",
-        name.c_str(), oss.str().c_str(), QSMLALayoutToSerialString(actualLayout).c_str());
+    OP_LOGE(opName_, "Tensor %s only support layout %s, but got %s", name.c_str(), oss.str().c_str(),
+            QSMLALayoutToSerialString(actualLayout).c_str());
 }
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaQuery() const
 {
-    OP_CHECK_IF(opParamInfo_.q.desc == nullptr,
-        OP_LOGE(opName_, "Input q is required, but got nullptr."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.q.desc == nullptr, OP_LOGE(opName_, "Input q is required, but got nullptr."),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(opParamInfo_.q.shape->GetStorageShape().GetShapeSize() == 0,
-        OP_LOGE(opName_, "Any dim of input q cannot be 0 "),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Any dim of input q cannot be 0 "), return ge::GRAPH_FAILED);
 
     const std::vector<size_t> queryDimNumList = {DIM_NUM_THREE, DIM_NUM_FOUR};
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.q.desc, QUERY_NAME) ||
@@ -184,38 +177,37 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
 {
     const std::vector<size_t> keyDimNumList = {DIM_NUM_THREE, DIM_NUM_FOUR};
     OP_CHECK_IF(opParamInfo_.oriKv.tensor == nullptr,
-        OP_LOGE(opName_, "input oriKv can not be nullptr, but it's empty"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "input oriKv can not be nullptr, but it's empty"), return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor->GetShapeSize() == 0,
-        OP_LOGE(opName_, "Any dim of input oriKv cannot be 0 "),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.oriKv.tensor->GetShapeSize() == 0, OP_LOGE(opName_, "Any dim of input oriKv cannot be 0 "),
+                return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriKv.desc, ORI_KV_NAME) ||
         ge::GRAPH_SUCCESS != CheckLayoutSupport(kvLayout_, ORI_KV_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriKv.tensor->GetShape(), keyDimNumList, ORI_KV_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(kvLayout_,
-            &opParamInfo_.oriKv.tensor->GetShape(), ORI_KV_NAME)) {
+        ge::GRAPH_SUCCESS !=
+            CheckDimNumInLayoutSupport(kvLayout_, &opParamInfo_.oriKv.tensor->GetShape(), ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ == QSMLALayout::PA_BBND) {
         OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > 1024,
-            OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
-            oriBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be in range (0, %u].",
+                            oriBlockSize_, MAX_BLOCK_SIZE),
+                    return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(oriBlockSize_ % 16 > 0,
-            OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be 16-aligned.",
-            oriBlockSize_), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            oriBlockSize_ % 16 > 0,
+            OP_LOGE(opName_, "when page attention is enabled, ori_block_size(%u) should be 16-aligned.", oriBlockSize_),
+            return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(dSizeOriKvInput_ != 512,
-        OP_LOGE(opName_, "Dimension of OriKv only support 512, but got %u", dSizeOriKvInput_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Dimension of OriKv only support 512, but got %u", dSizeOriKvInput_),
+                return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cmpKv.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cmpKv.tensor->GetShapeSize() == 0,
-            OP_LOGE(opName_, "Any dim of input cmpKv cannot be 0 "),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "Any dim of input cmpKv cannot be 0 "), return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpKv.desc, CMP_KV_NAME) ||
             ge::GRAPH_SUCCESS != CheckLayoutSupport(kvLayout_, CMP_KV_NAME) ||
@@ -227,38 +219,38 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaKey() const
         }
 
         OP_CHECK_IF(dSizeCmpKvInput_ != 512,
-            OP_LOGE(opName_, "Dimension of CmpKv only support 512, but got %u", dSizeCmpKvInput_),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "Dimension of CmpKv only support 512, but got %u", dSizeCmpKvInput_),
+                    return ge::GRAPH_FAILED);
 
         uint32_t cmpKvN2Size_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), QSMLAAxis::N, kvLayout_);
-        OP_CHECK_IF(cmpKvN2Size_ != n2Size_,
-            OP_LOGE(opName_, "N2 size check failed! Expected cmpKvN2 == oriKvN2."),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(cmpKvN2Size_ != n2Size_, OP_LOGE(opName_, "N2 size check failed! Expected cmpKvN2 == oriKvN2."),
+                    return ge::GRAPH_FAILED);
 
         if (kvLayout_ == QSMLALayout::PA_BBND) {
-            OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > 1024,
+            OP_CHECK_IF(
+                cmpBlockSize_ <= 0 || cmpBlockSize_ > 1024,
                 OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%u) should be in range (0, %u].",
-                cmpBlockSize_, MAX_BLOCK_SIZE), return ge::GRAPH_FAILED);
+                        cmpBlockSize_, MAX_BLOCK_SIZE),
+                return ge::GRAPH_FAILED);
 
             OP_CHECK_IF(cmpBlockSize_ % 16 > 0,
-                OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%u) should be 16-aligned.",
-                cmpBlockSize_), return ge::GRAPH_FAILED);
+                        OP_LOGE(opName_, "when page attention is enabled, cmp_block_size(%u) should be 16-aligned.",
+                                cmpBlockSize_),
+                        return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckLayoutSupport(const QSMLALayout &actualLayout, const std::string &name) const
+ge::graphStatus QSMLATilingCheck::CheckLayoutSupport(const QSMLALayout& actualLayout, const std::string& name) const
 {
     const auto& it = LAYOUT_SUPPORT_MAP.find(name);
     OP_CHECK_IF(it == LAYOUT_SUPPORT_MAP.end(),
-        OP_LOGE(opName_, "%s layout support list should be specify in LAYOUT_SUPPORT_MAP", name.c_str()),
-        return ge::GRAPH_FAILED);
-    auto &expectLayoutList = it->second;
-    OP_CHECK_IF(std::find(
-        expectLayoutList.begin(), expectLayoutList.end(), actualLayout) == expectLayoutList.end(),
-        LogErrorLayoutSupport(expectLayoutList, actualLayout, name),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "%s layout support list should be specify in LAYOUT_SUPPORT_MAP", name.c_str()),
+                return ge::GRAPH_FAILED);
+    auto& expectLayoutList = it->second;
+    OP_CHECK_IF(std::find(expectLayoutList.begin(), expectLayoutList.end(), actualLayout) == expectLayoutList.end(),
+                LogErrorLayoutSupport(expectLayoutList, actualLayout, name), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -266,43 +258,38 @@ ge::graphStatus QSMLATilingCheck::CheckLayoutSupport(const QSMLALayout &actualLa
 ge::graphStatus QSMLATilingCheck::CheckSingleParaNumHeads() const
 {
     OP_CHECK_IF(n1Size_ != 64 && n1Size_ != 128,
-        OP_LOGE(opName_, "n1Size_ only support 64 and 128 now, but got %u.", n1Size_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "n1Size_ only support 64 and 128 now, but got %u.", n1Size_), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaKvHeadNums() const
 {
-    OP_CHECK_IF(n2Size_ != 1,
-        OP_LOGE(opName_, "n2Size_ only support 1 now, but got %u.", n2Size_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(n2Size_ != 1, OP_LOGE(opName_, "n2Size_ only support 1 now, but got %u.", n2Size_),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseMode() const
 {
     OP_CHECK_IF((*opParamInfo_.oriMaskMode != 4 || *opParamInfo_.cmpMaskMode != 3),
-        OP_LOGE(opName_, "oriMaskMode only support 4 and cmpMaskMode only support 3, but got %u and %u.",
-            *opParamInfo_.oriMaskMode, *opParamInfo_.cmpMaskMode),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "oriMaskMode only support 4 and cmpMaskMode only support 3, but got %u and %u.",
+                        *opParamInfo_.oriMaskMode, *opParamInfo_.cmpMaskMode),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseBlockSize() const
 {
     OP_CHECK_IF(sparseBlockSize_ != 1,
-        OP_LOGE(opName_, "sparseBlockSize_ only support 1, but got %u",
-            sparseBlockSize_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "sparseBlockSize_ only support 1, but got %u", sparseBlockSize_),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
-        opParamInfo_.cmpResidualKv.tensor == nullptr,
-        OP_LOGE(opName_, "cmp_residual_kv is required in SCFA and CFA mode "),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE && opParamInfo_.cmpResidualKv.tensor == nullptr,
+                OP_LOGE(opName_, "cmp_residual_kv is required in SCFA and CFA mode "), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -312,12 +299,11 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpSparseIndices() const
 
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cmpSparseIndices.tensor->GetShapeSize() == 0,
-            OP_LOGE(opName_, "Any dim of input cmpSparseIndices cannot be 0 "),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "Any dim of input cmpSparseIndices cannot be 0 "), return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpSparseIndices.desc, CMP_SPARSE_INDICES_NAME) ||
             ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpSparseIndices.tensor->GetShape(),
-                cmpSparseIndicesDimNumList, CMP_SPARSE_INDICES_NAME)) {
+                                                    cmpSparseIndicesDimNumList, CMP_SPARSE_INDICES_NAME)) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -330,24 +316,22 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaBlockTable() const
     const std::vector<size_t> BlockTableDimNumList = {DIM_NUM_TWO};
     if (opParamInfo_.oriBlockTable.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor->GetShapeSize() == 0,
-            OP_LOGE(opName_, "Any dim of input oriBlockTable cannot be 0 "),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "Any dim of input oriBlockTable cannot be 0 "), return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriBlockTable.desc, ORI_BLOCK_TABLE_NAME) ||
             ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.oriBlockTable.tensor->GetShape(),
-                BlockTableDimNumList, ORI_BLOCK_TABLE_NAME)) {
+                                                    BlockTableDimNumList, ORI_BLOCK_TABLE_NAME)) {
             return ge::GRAPH_FAILED;
         }
     }
 
     if (opParamInfo_.cmpBlockTable.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cmpBlockTable.tensor->GetShapeSize() == 0,
-            OP_LOGE(opName_, "Any dim of input cmpBlockTable cannot be 0 "),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "Any dim of input cmpBlockTable cannot be 0 "), return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cmpBlockTable.desc, CMP_BLOCK_TABLE_NAME) ||
             ge::GRAPH_SUCCESS != CheckDimNumSupport(&opParamInfo_.cmpBlockTable.tensor->GetShape(),
-                BlockTableDimNumList, CMP_BLOCK_TABLE_NAME)) {
+                                                    BlockTableDimNumList, CMP_BLOCK_TABLE_NAME)) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -361,22 +345,20 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCuSeqLensQ() const
     }
     const std::vector<int64_t> cuSeqLensQDimNumList = {bSize_ + 1};
     OP_CHECK_IF((qLayout_ == QSMLALayout::TND && opParamInfo_.cuSeqLensQ.tensor == nullptr),
-        OP_LOGE(opName_, "cuSeqLensQ can't be nullptr when layoutQ is TND"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "cuSeqLensQ can't be nullptr when layoutQ is TND"), return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cuSeqLensQ.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor->GetShapeSize() == 0,
-            OP_LOGE(opName_, "Any dim of input cuSeqLensQ cannot be 0 "),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "Any dim of input cuSeqLensQ cannot be 0 "), return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.cuSeqLensQ.desc, CU_SEQLENS_Q_NAME)) {
             return ge::GRAPH_FAILED;
         }
 
         OP_CHECK_IF((opParamInfo_.cuSeqLensQ.tensor->GetShapeSize() != bSize_ + 1),
-            OP_LOGE(opName_, "cuSeqLensQ's shapeSize should be equal to bSize_+1:%u, but got %ld",
-                bSize_ + 1, opParamInfo_.cuSeqLensQ.tensor->GetShapeSize()),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "cuSeqLensQ's shapeSize should be equal to bSize_+1:%u, but got %ld", bSize_ + 1,
+                            opParamInfo_.cuSeqLensQ.tensor->GetShapeSize()),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -384,17 +366,16 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCuSeqLensQ() const
 ge::graphStatus QSMLATilingCheck::CheckSingleParaSequsedKv() const
 {
     OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-        OP_LOGE(opName_, "input sequsedOriKv can not be nullptr, but it's empty"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "input sequsedOriKv can not be nullptr, but it's empty"), return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, SEQUSED_ORI_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
 
     OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_,
-        OP_LOGE(opName_, "input sequsedOriKv's shapeSize is not equal to B: %u, it is %ld",
-            bSize_, opParamInfo_.sequsedOriKv.tensor->GetShapeSize()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "input sequsedOriKv's shapeSize is not equal to B: %u, it is %ld", bSize_,
+                        opParamInfo_.sequsedOriKv.tensor->GetShapeSize()),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -402,17 +383,16 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSequsedKv() const
 ge::graphStatus QSMLATilingCheck::CheckSingleParaSinks() const
 {
     OP_CHECK_IF(opParamInfo_.sinks.tensor == nullptr,
-        OP_LOGE(opName_, "Input sinks is nullptr, which is not supported"),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Input sinks is nullptr, which is not supported"), return ge::GRAPH_FAILED);
 
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sinks.desc, SINKS_NAME)) {
         return ge::GRAPH_FAILED;
     }
 
     OP_CHECK_IF(opParamInfo_.sinks.tensor->GetShapeSize() != n1Size_,
-        OP_LOGE(opName_, "Input sinks's shapeSize is not equal to n1: %u, it is %ld.",
-            n1Size_, opParamInfo_.sinks.tensor->GetShapeSize()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Input sinks's shapeSize is not equal to n1: %u, it is %ld.", n1Size_,
+                        opParamInfo_.sinks.tensor->GetShapeSize()),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -420,26 +400,19 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSinks() const
 ge::graphStatus QSMLATilingCheck::CheckSingleParaMetadata() const
 {
     OP_CHECK_IF(opParamInfo_.metadata.tensor == nullptr,
-        OP_LOGE(opName_, "Input metadata is required, but got nullptr."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "Input metadata is required, but got nullptr."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::CheckSinglePara() const
 {
-    if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaKey() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCmpSparseIndices() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCmpResidualKv() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSparseBlockSize() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaBlockTable() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCuSeqLensQ() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSequsedKv() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaMetadata() ||
+    if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() || ge::GRAPH_SUCCESS != CheckSingleParaKey() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpSparseIndices() || ge::GRAPH_SUCCESS != CheckSingleParaCmpResidualKv() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() || ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() || ge::GRAPH_SUCCESS != CheckSingleParaSparseBlockSize() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaBlockTable() || ge::GRAPH_SUCCESS != CheckSingleParaCuSeqLensQ() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaSequsedKv() || ge::GRAPH_SUCCESS != CheckSingleParaMetadata() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSinks()) {
         return ge::GRAPH_FAILED;
     }
@@ -447,4 +420,4 @@ ge::graphStatus QSMLATilingCheck::CheckSinglePara() const
     return ge::GRAPH_SUCCESS;
 }
 
-}
+} // namespace optiling

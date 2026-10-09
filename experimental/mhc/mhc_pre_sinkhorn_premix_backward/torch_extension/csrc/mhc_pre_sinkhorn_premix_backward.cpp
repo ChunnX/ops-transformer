@@ -19,10 +19,10 @@
 namespace op_api {
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPreSinkhornPremixBackward(
-    const at::Tensor &gradHin, const at::Tensor &gradHPost, const at::Tensor &gradHRes, const at::Tensor &x,
-    const at::Tensor &phi, const at::Tensor &alpha, const at::Tensor &bias, const at::Tensor &hPre,
-    const at::Tensor &hcBeforeNorm, const at::Tensor &invRms, const at::Tensor &sumOut, const at::Tensor &normOut,
-    const c10::optional<at::Tensor> &preMix, const c10::optional<at::Tensor> &gradPre, double hcEps)
+    const at::Tensor& gradHin, const at::Tensor& gradHPost, const at::Tensor& gradHRes, const at::Tensor& x,
+    const at::Tensor& phi, const at::Tensor& alpha, const at::Tensor& bias, const at::Tensor& hPre,
+    const at::Tensor& hcBeforeNorm, const at::Tensor& invRms, const at::Tensor& sumOut, const at::Tensor& normOut,
+    const c10::optional<at::Tensor>& preMix, const c10::optional<at::Tensor>& gradPre, double hcEps)
 {
     at::Tensor gradX = at::empty_like(x);
     at::Tensor gradPhi = at::empty_like(phi);

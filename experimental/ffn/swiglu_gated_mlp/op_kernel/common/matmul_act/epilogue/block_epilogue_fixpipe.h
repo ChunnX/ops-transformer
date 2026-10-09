@@ -30,11 +30,10 @@ namespace Gemm {
 namespace Block {
 
 template <typename L0TileShape_, typename DataTypeOut_, typename DataTypeIn_,
-    typename FusionOp_ = DefaultFusionOp<DataTypeOut_, DataTypeIn_>>
+          typename FusionOp_ = DefaultFusionOp<DataTypeOut_, DataTypeIn_>>
 class BlockEpilogueFixpipe {
 public:
-    __aicore__ inline BlockEpilogueFixpipe()
-    {}
+    __aicore__ inline BlockEpilogueFixpipe() {}
 
     struct Arguments {
         GM_ADDR outGmAddr{nullptr};
@@ -62,23 +61,24 @@ public:
     // attribute
     ProblemShape problemShape_;
 
-    __aicore__ inline void Init(Params const &params, ProblemShape &problemShape)
+    __aicore__ inline void Init(Params const& params, ProblemShape& problemShape)
     {
         // init output global
-        outputGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut *>(params.outGmAddr));
+        outputGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ DataTypeOut*>(params.outGmAddr));
         problemShape_ = problemShape;
-        ASCENDC_ASSERT(sizeof(DataTypeIn) >= sizeof(DataTypeOut),
-            { KERNEL_LOG(KERNEL_EORROR, "Unsupport dtype size %zu, %zu!", sizeof(DataTypeIn), sizeof(DataTypeOut)); });
+        ASCENDC_ASSERT(sizeof(DataTypeIn) >= sizeof(DataTypeOut), {
+            KERNEL_LOG(KERNEL_EORROR, "Unsupport dtype size %zu, %zu!", sizeof(DataTypeIn), sizeof(DataTypeOut));
+        });
     }
 
-    __aicore__ inline void Run(BlockShape const &blockShape, int64_t dstOffset, bool splitM)
+    __aicore__ inline void Run(BlockShape const& blockShape, int64_t dstOffset, bool splitM)
     {
         int64_t blockShapeM = Get<MNK_M0>(blockShape);
         int64_t halfBlockShapeM = Act::Gemm::CeilDiv(blockShapeM, AscendC::GetTaskRation());
         if (splitM) {
-            blockShapeM = (static_cast<uint64_t>(blockShapeM) & 1UL) > 0UL
-                              ? (halfBlockShapeM - AscendC::GetSubBlockIdx())
-                              : halfBlockShapeM;
+            blockShapeM = (static_cast<uint64_t>(blockShapeM) & 1UL) > 0UL ?
+                              (halfBlockShapeM - AscendC::GetSubBlockIdx()) :
+                              halfBlockShapeM;
         }
         // // mL1, nL1, k, batch, mL0, nL0, 5 is nL0
         int64_t blockShapeN = Get<MNK_N0>(blockShape);
@@ -92,12 +92,10 @@ public:
         }
         // UB 0 offset: 0
         // UB 1 offset: halfBlockShapeM * N
-        int64_t offset = dstOffset + halfBlockShapeM * N * (AscendC::GetSubBlockIdx() & 0x1);  // subBlockIdx()
+        int64_t offset = dstOffset + halfBlockShapeM * N * (AscendC::GetSubBlockIdx() & 0x1); // subBlockIdx()
         DataCopyExtParams copyParams{static_cast<uint16_t>(blockShapeM),
-            static_cast<uint32_t>(blockShapeN * sizeof(DataTypeOut)),
-            0,
-            static_cast<int64_t>((N - blockShapeN) * sizeof(DataTypeOut)),
-            0};
+                                     static_cast<uint32_t>(blockShapeN * sizeof(DataTypeOut)), 0,
+                                     static_cast<int64_t>((N - blockShapeN) * sizeof(DataTypeOut)), 0};
         DataCopyPad<DataTypeOut>(outputGlobal_[offset], ubLocalTmp_, copyParams);
     }
 
@@ -109,13 +107,13 @@ public:
         return ubLocalTmp_;
     }
 
-    __aicore__ inline void operator()(BlockShape const &blockShape, int64_t dstOffset = 0, bool splitM = false)
+    __aicore__ inline void operator()(BlockShape const& blockShape, int64_t dstOffset = 0, bool splitM = false)
     {
         Run(blockShape, dstOffset, splitM);
         return;
     }
 
-    __host_aicore__ static Status CanImplement(Arguments const &args)
+    __host_aicore__ static Status CanImplement(Arguments const& args)
     {
         if (l0M * l0N * sizeof(DataTypeIn_) > TOTAL_UB_SIZE) {
             return Status::l1L0ErrorExceedsLimit;
@@ -125,6 +123,6 @@ public:
 };
 } // namespace Block
 } // namespace Gemm
-}  // namespace Act
-#endif  // ACT_INCLUDE_EPILOGUE_BLOCK_EPILOGUE_FIXPIPE_H
+} // namespace Act
+#endif // ACT_INCLUDE_EPILOGUE_BLOCK_EPILOGUE_FIXPIPE_H
 #endif

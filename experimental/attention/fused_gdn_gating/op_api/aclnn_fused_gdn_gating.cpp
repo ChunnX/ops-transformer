@@ -36,14 +36,14 @@ extern "C" {
 namespace {
 
 struct FusedGdnGatingParams {
-    const aclTensor *aLog{nullptr};
-    const aclTensor *a{nullptr};
-    const aclTensor *b{nullptr};
-    const aclTensor *dtBias{nullptr};
+    const aclTensor* aLog{nullptr};
+    const aclTensor* a{nullptr};
+    const aclTensor* b{nullptr};
+    const aclTensor* dtBias{nullptr};
     float beta{1.0f};
     float threshold{20.0f};
-    aclTensor *g{nullptr};
-    aclTensor *betaOutput{nullptr};
+    aclTensor* g{nullptr};
+    aclTensor* betaOutput{nullptr};
 };
 
 static const std::initializer_list<op::DataType> AB_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16,
@@ -52,7 +52,7 @@ static const std::initializer_list<op::DataType> FP32_TYPE_SUPPORT_LIST = {op::D
 static const std::initializer_list<op::DataType> PARAM_TYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT, op::DataType::DT_BF16, op::DataType::DT_FLOAT16};
 
-static inline bool CheckNotNull(const FusedGdnGatingParams &params)
+static inline bool CheckNotNull(const FusedGdnGatingParams& params)
 {
     OP_CHECK_NULL(params.aLog, return false);
     OP_CHECK_NULL(params.a, return false);
@@ -63,7 +63,7 @@ static inline bool CheckNotNull(const FusedGdnGatingParams &params)
     return true;
 }
 
-static inline bool CheckDtype(const FusedGdnGatingParams &params)
+static inline bool CheckDtype(const FusedGdnGatingParams& params)
 {
     OP_CHECK_DTYPE_NOT_SUPPORT(params.aLog, PARAM_TYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(params.dtBias, PARAM_TYPE_SUPPORT_LIST, return false);
@@ -80,7 +80,7 @@ static inline bool CheckDtype(const FusedGdnGatingParams &params)
     return true;
 }
 
-static aclnnStatus CheckParams(const FusedGdnGatingParams &params)
+static aclnnStatus CheckParams(const FusedGdnGatingParams& params)
 {
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtype(params), ACLNN_ERR_PARAM_INVALID);
@@ -89,10 +89,10 @@ static aclnnStatus CheckParams(const FusedGdnGatingParams &params)
 
 } // namespace
 
-aclnnStatus aclnnFusedGdnGatingGetWorkspaceSize(const aclTensor *aLog, const aclTensor *a, const aclTensor *b,
-                                                const aclTensor *dtBias, float beta, float threshold, aclTensor *g,
-                                                aclTensor *betaOutput, uint64_t *workspaceSize,
-                                                aclOpExecutor **executor)
+aclnnStatus aclnnFusedGdnGatingGetWorkspaceSize(const aclTensor* aLog, const aclTensor* a, const aclTensor* b,
+                                                const aclTensor* dtBias, float beta, float threshold, aclTensor* g,
+                                                aclTensor* betaOutput, uint64_t* workspaceSize,
+                                                aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnFusedGdnGating, DFX_IN(aLog, a, b, dtBias, beta, threshold), DFX_OUT(g, betaOutput));
 
@@ -127,7 +127,7 @@ aclnnStatus aclnnFusedGdnGatingGetWorkspaceSize(const aclTensor *aLog, const acl
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnFusedGdnGating(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnFusedGdnGating(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnFusedGdnGating);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);

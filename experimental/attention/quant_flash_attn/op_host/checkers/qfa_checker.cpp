@@ -49,16 +49,16 @@ void QfaChecker::RegisterCheckers()
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
 }
 
-ge::graphStatus QfaChecker::Init(const QuantFlashAttnTilingInfo &qfaInfo)
+ge::graphStatus QfaChecker::Init(const QuantFlashAttnTilingInfo& qfaInfo)
 {
     (void)qfaInfo;
     RegisterCheckers();
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaChecker::RunCheck(const CheckMethod &method, const QuantFlashAttnTilingInfo &qfaInfo)
+ge::graphStatus QfaChecker::RunCheck(const CheckMethod& method, const QuantFlashAttnTilingInfo& qfaInfo)
 {
-    for (const auto &checker : checkers_) {
+    for (const auto& checker : checkers_) {
         if (ge::GRAPH_SUCCESS != method(checker.get(), qfaInfo)) {
             return ge::GRAPH_FAILED;
         }
@@ -66,31 +66,31 @@ ge::graphStatus QfaChecker::RunCheck(const CheckMethod &method, const QuantFlash
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QfaChecker::CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo)
+ge::graphStatus QfaChecker::CheckSinglePara(const QuantFlashAttnTilingInfo& qfaInfo)
 {
-    return RunCheck([](QfaBaseChecker *c, const QuantFlashAttnTilingInfo &info) { return c->CheckSinglePara(info); },
+    return RunCheck([](QfaBaseChecker* c, const QuantFlashAttnTilingInfo& info) { return c->CheckSinglePara(info); },
                     qfaInfo);
 }
 
-ge::graphStatus QfaChecker::CheckParaExistence(const QuantFlashAttnTilingInfo &qfaInfo)
+ge::graphStatus QfaChecker::CheckParaExistence(const QuantFlashAttnTilingInfo& qfaInfo)
 {
-    return RunCheck([](QfaBaseChecker *c, const QuantFlashAttnTilingInfo &info) { return c->CheckParaExistence(info); },
+    return RunCheck([](QfaBaseChecker* c, const QuantFlashAttnTilingInfo& info) { return c->CheckParaExistence(info); },
                     qfaInfo);
 }
 
-ge::graphStatus QfaChecker::CheckFeature(const QuantFlashAttnTilingInfo &qfaInfo)
+ge::graphStatus QfaChecker::CheckFeature(const QuantFlashAttnTilingInfo& qfaInfo)
 {
-    return RunCheck([](QfaBaseChecker *c, const QuantFlashAttnTilingInfo &info) { return c->CheckFeature(info); },
+    return RunCheck([](QfaBaseChecker* c, const QuantFlashAttnTilingInfo& info) { return c->CheckFeature(info); },
                     qfaInfo);
 }
 
-ge::graphStatus QfaChecker::CheckMultiPara(const QuantFlashAttnTilingInfo &qfaInfo)
+ge::graphStatus QfaChecker::CheckMultiPara(const QuantFlashAttnTilingInfo& qfaInfo)
 {
-    return RunCheck([](QfaBaseChecker *c, const QuantFlashAttnTilingInfo &info) { return c->CheckMultiPara(info); },
+    return RunCheck([](QfaBaseChecker* c, const QuantFlashAttnTilingInfo& info) { return c->CheckMultiPara(info); },
                     qfaInfo);
 }
 
-ge::graphStatus QfaChecker::Process(const QuantFlashAttnTilingInfo &qfaInfo)
+ge::graphStatus QfaChecker::Process(const QuantFlashAttnTilingInfo& qfaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckSinglePara(qfaInfo)) {
         return ge::GRAPH_FAILED;

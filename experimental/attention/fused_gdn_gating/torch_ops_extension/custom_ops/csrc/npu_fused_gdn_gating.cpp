@@ -25,7 +25,7 @@ const int64_t A_HEADS_DIM = 1;
 // 工具函数，推导输出 g / beta_output 的 shape 与 dtype
 //   - g:           FLOAT [1, batch, num_heads]
 //   - beta_output: 与 b 同 dtype [1, batch, num_heads]
-std::tuple<at::Tensor, at::Tensor> construct_fused_gdn_gating_output_tensors(const at::Tensor &a, const at::Tensor &b)
+std::tuple<at::Tensor, at::Tensor> construct_fused_gdn_gating_output_tensors(const at::Tensor& a, const at::Tensor& b)
 {
     for (auto i = 0; i < a.sizes().size(); i++) {
         TORCH_CHECK(a.size(i) > 0, "All values within a's shape should be greater than 0, but shape[", i, "] is ",
@@ -43,8 +43,8 @@ std::tuple<at::Tensor, at::Tensor> construct_fused_gdn_gating_output_tensors(con
 }
 
 // step2, 为NPU设备实现前向接口（函数形参顺序 = schema 顺序）
-std::tuple<at::Tensor, at::Tensor> npu_fused_gdn_gating_npu(const at::Tensor &A_log, const at::Tensor &a,
-                                                            const at::Tensor &b, const at::Tensor &dt_bias, double beta,
+std::tuple<at::Tensor, at::Tensor> npu_fused_gdn_gating_npu(const at::Tensor& A_log, const at::Tensor& a,
+                                                            const at::Tensor& b, const at::Tensor& dt_bias, double beta,
                                                             double threshold)
 {
     TORCH_CHECK(A_log.dim() == DIM_ONE, "A_log should be 1-D [num_heads], got ", A_log.dim(), "D.");
@@ -80,8 +80,8 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_gdn_gating_npu(const at::Tensor &A_
 }
 
 // step3, 为META设备实现前向接口
-std::tuple<at::Tensor, at::Tensor> npu_fused_gdn_gating_meta(const at::Tensor &A_log, const at::Tensor &a,
-                                                             const at::Tensor &b, const at::Tensor &dt_bias,
+std::tuple<at::Tensor, at::Tensor> npu_fused_gdn_gating_meta(const at::Tensor& A_log, const at::Tensor& a,
+                                                             const at::Tensor& b, const at::Tensor& dt_bias,
                                                              double beta, double threshold)
 {
     return construct_fused_gdn_gating_output_tensors(a, b);

@@ -32,12 +32,8 @@
 using namespace op;
 
 namespace Ops::NN {
-const aclTensor* ExecMmOp(
-    const aclTensor* self,
-    const aclTensor* mat2,
-    int8_t cubeMathType,
-    aclOpExecutor* executor);
-}  // namespace Ops::NN
+const aclTensor* ExecMmOp(const aclTensor* self, const aclTensor* mat2, int8_t cubeMathType, aclOpExecutor* executor);
+} // namespace Ops::NN
 
 namespace l0op {
 
@@ -72,59 +68,36 @@ int64_t MakeStageAttr(int64_t stage, op::DataType dtype)
     return stage;
 }
 
-const aclTensor* AddSelfKernelStage(
-    const aclTensor* x,
-    const aclTensor* weight,
-    const aclTensor* auxWeight,
-    aclTensor* out,
-    int64_t stage,
-    aclOpExecutor* executor)
+const aclTensor* AddSelfKernelStage(const aclTensor* x, const aclTensor* weight, const aclTensor* auxWeight,
+                                    aclTensor* out, int64_t stage, aclOpExecutor* executor)
 {
     if (out == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "SwigluGatedMlp stage output is null.");
         return nullptr;
     }
 
-    auto ret = INFER_SHAPE(
-        SwigluGatedMlp,
-        OP_INPUT(x, weight, auxWeight),
-        OP_OUTPUT(out),
-        OP_ATTR(stage));
+    auto ret = INFER_SHAPE(SwigluGatedMlp, OP_INPUT(x, weight, auxWeight), OP_OUTPUT(out), OP_ATTR(stage));
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER_INFERSHAPE_ERROR, "SwigluGatedMlp stage infer failed, stage=%ld ret=%d.",
-                stage, ret);
+        OP_LOGE(ACLNN_ERR_INNER_INFERSHAPE_ERROR, "SwigluGatedMlp stage infer failed, stage=%ld ret=%d.", stage, ret);
         return nullptr;
     }
 
-    ret = ADD_TO_LAUNCHER_LIST_AICORE(
-        SwigluGatedMlp,
-        OP_INPUT(x, weight, auxWeight),
-        OP_OUTPUT(out),
-        OP_ATTR(stage));
-    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(
-        ret != ACLNN_SUCCESS, return nullptr, "SwigluGatedMlp stage add to launcher list failed.");
+    ret = ADD_TO_LAUNCHER_LIST_AICORE(SwigluGatedMlp, OP_INPUT(x, weight, auxWeight), OP_OUTPUT(out), OP_ATTR(stage));
+    OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
+                                         "SwigluGatedMlp stage add to launcher list failed.");
     return out;
 }
 
-const aclTensor* AddSwigluStage(
-    const aclTensor* gateUp,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    aclTensor* hidden,
-    op::DataType dtype,
-    aclOpExecutor* executor)
+const aclTensor* AddSwigluStage(const aclTensor* gateUp, const aclTensor* gateUpWeight, const aclTensor* downWeight,
+                                aclTensor* hidden, op::DataType dtype, aclOpExecutor* executor)
 {
-    return AddSelfKernelStage(
-        gateUp, gateUpWeight, downWeight, hidden, MakeStageAttr(WG_MLP_STAGE_SWIGLU, dtype), executor);
+    return AddSelfKernelStage(gateUp, gateUpWeight, downWeight, hidden, MakeStageAttr(WG_MLP_STAGE_SWIGLU, dtype),
+                              executor);
 }
-}  // namespace
+} // namespace
 
-const aclTensor* SwigluGatedMlp(
-    const aclTensor* x,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    int64_t cubeMathType,
-    aclOpExecutor* executor)
+const aclTensor* SwigluGatedMlp(const aclTensor* x, const aclTensor* gateUpWeight, const aclTensor* downWeight,
+                                int64_t cubeMathType, aclOpExecutor* executor)
 {
     L0_DFX(SwigluGatedMlp, x, gateUpWeight, downWeight, cubeMathType);
     const auto& xShape = x->GetViewShape();
@@ -161,4 +134,4 @@ const aclTensor* SwigluGatedMlp(
     return nativeOut;
 }
 
-}  // namespace l0op
+} // namespace l0op

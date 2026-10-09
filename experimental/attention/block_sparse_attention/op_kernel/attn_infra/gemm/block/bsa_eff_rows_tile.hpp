@@ -21,8 +21,8 @@ struct EffRowsCtx {
     AscendC::GlobalTensor<int32_t> gBlockEffRows;
     uint64_t gmOffset = 0;
     bool enabled = false;
-    uint32_t *curBlockIdx = nullptr;
-    uint32_t *curBlockCopied = nullptr;
+    uint32_t* curBlockIdx = nullptr;
+    uint32_t* curBlockCopied = nullptr;
     bool gatherAcrossBlocks = true; // per-head 跨块 gather 填充; per-tile 只拷贝块内一段。
     int64_t oriSeqOffset = 0;       // per-tile 片段在原始 kv 序列中的起始行偏移。
 };
@@ -51,8 +51,8 @@ struct EffRowsTile {
 template <class SparseTensor, class RowsTensor>
 __aicore__ inline EffRowsTile NextEffRowsTile(SparseTensor gSparseBlockIdx, RowsTensor gBlockEffRows,
                                               uint64_t effRowsBase, uint32_t yBlockNumRsvd, uint32_t blockShapeY,
-                                              int64_t kvSeqlen, uint32_t tileMaxRows, uint32_t &curBlockIdx,
-                                              uint32_t &curBlockCopied)
+                                              int64_t kvSeqlen, uint32_t tileMaxRows, uint32_t& curBlockIdx,
+                                              uint32_t& curBlockCopied)
 {
     while (curBlockIdx < yBlockNumRsvd) {
         uint32_t oriBlockIdx = gSparseBlockIdx.GetValue(curBlockIdx);

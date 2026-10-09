@@ -36,7 +36,7 @@ using namespace std;
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -45,7 +45,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     // 固定写法，AscendCL初始化
     auto ret = aclInit(nullptr);
@@ -58,8 +58,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     // 检查shape是否有效
     if (shape.empty()) {
@@ -186,12 +186,12 @@ int main()
 
     // 6. 创建 aclIntArray 属性参数 (BlockShape & ActualSeqLengths)
     std::vector<int64_t> blockShapeVec = {blockShapeX, blockShapeY};
-    aclIntArray *blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
+    aclIntArray* blockShapeArr = aclCreateIntArray(blockShapeVec.data(), blockShapeVec.size());
 
     std::vector<int64_t> qSeqLenVec(batch, static_cast<int64_t>(qSeqlen));
     std::vector<int64_t> kvSeqLenVec(batch, static_cast<int64_t>(kvSeqlen));
-    aclIntArray *qSeqLenArr = aclCreateIntArray(qSeqLenVec.data(), batch);
-    aclIntArray *kvSeqLenArr = aclCreateIntArray(kvSeqLenVec.data(), batch);
+    aclIntArray* qSeqLenArr = aclCreateIntArray(qSeqLenVec.data(), batch);
+    aclIntArray* kvSeqLenArr = aclCreateIntArray(kvSeqLenVec.data(), batch);
 
     // 7. 标量与字符串参数配置
     char qLayoutBuffer[16] = "BNSD";
@@ -204,7 +204,7 @@ int main()
 
     // 8. 调用第一段接口: GetWorkspaceSize
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
 
     LOG_PRINT("Calling aclnnBlockSparseAttentionGradGetWorkspaceSize...\n");
     ret = aclnnBlockSparseAttentionGradGetWorkspaceSize(
@@ -219,7 +219,7 @@ int main()
     LOG_PRINT("Workspace size required: %lu bytes\n", workspaceSize);
 
     // 9. 分配 workspace
-    void *workspaceAddr = nullptr;
+    void* workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);

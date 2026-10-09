@@ -41,13 +41,13 @@ struct FaTilingKeyInfo {
 
 class QuantFlashAttnTilingDn : public FiaTilingBase {
 public:
-    explicit QuantFlashAttnTilingDn(gert::TilingContext *context) : FiaTilingBase(context)
-    {
-    }
+    explicit QuantFlashAttnTilingDn(gert::TilingContext* context)
+        : FiaTilingBase(context)
+    {}
     ~QuantFlashAttnTilingDn() override = default;
 
 protected:
-    void InitTilingInfo(TilingInfo *tilingInfo) override;
+    void InitTilingInfo(TilingInfo* tilingInfo) override;
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
 
@@ -60,7 +60,7 @@ private:
     void CalcScheduleMode();
     void CalcNumBlocks(uint32_t coreNum);
     void FillTiling();
-    ge::graphStatus SetTilingData(QuantFlashAttnTilingData &tilingData);
+    ge::graphStatus SetTilingData(QuantFlashAttnTilingData& tilingData);
 
     QuantFlashAttnTilingData tilingData_;
     QfaPlatFormInfo platformInfo_;
@@ -72,7 +72,7 @@ private:
     int32_t numBlocks_ = 0;
 
     // Tiling Info
-    QuantFlashAttnTilingInfo *tilingInfo_ = nullptr;
+    QuantFlashAttnTilingInfo* tilingInfo_ = nullptr;
 };
 
 } // namespace optiling

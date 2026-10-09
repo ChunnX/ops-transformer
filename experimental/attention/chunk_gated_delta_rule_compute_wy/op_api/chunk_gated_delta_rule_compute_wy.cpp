@@ -19,10 +19,10 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(ChunkGatedDeltaRuleComputeWy);
 
-const std::array<const aclTensor *, 5> ChunkGatedDeltaRuleComputeWy(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *g, const aclTensor *beta,
-    int64_t chunkSize, const aclTensor *qKernelOut, const aclTensor *kKernelOut, const aclTensor *wKernelOut,
-    const aclTensor *uKernelOut, const aclTensor *gKernelOut, aclOpExecutor *executor)
+const std::array<const aclTensor*, 5> ChunkGatedDeltaRuleComputeWy(
+    const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* g, const aclTensor* beta,
+    int64_t chunkSize, const aclTensor* qKernelOut, const aclTensor* kKernelOut, const aclTensor* wKernelOut,
+    const aclTensor* uKernelOut, const aclTensor* gKernelOut, aclOpExecutor* executor)
 {
     L0_DFX(ChunkGatedDeltaRuleComputeWy, q, k, v, g, beta, chunkSize, qKernelOut, kKernelOut, wKernelOut, uKernelOut,
            gKernelOut);

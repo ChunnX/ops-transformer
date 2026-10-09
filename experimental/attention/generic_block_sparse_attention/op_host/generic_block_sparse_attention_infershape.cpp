@@ -29,7 +29,7 @@ static constexpr uint32_t TND_DIM_NUM = 3;
 
 static constexpr int32_t UNKNOWN_DIMS = -2;
 
-static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeContext* context)
 {
     if (context == nullptr) {
         OP_LOGE("GenericBlockSparseAttention", "context is nullptr!");
@@ -38,16 +38,16 @@ static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeCon
 
     OP_LOGD(context->GetNodeName(), "Enter GenericBlockSparseAttention InferShape impl.");
 
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
 
-    const gert::Shape *keyShape = context->GetInputShape(KEY_INDEX);
+    const gert::Shape* keyShape = context->GetInputShape(KEY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
 
-    const gert::Shape *valueShape = context->GetInputShape(VALUE_INDEX);
+    const gert::Shape* valueShape = context->GetInputShape(VALUE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, valueShape);
 
-    gert::Shape *attentionOutShape = context->GetOutputShape(ATTENTION_OUT_INDEX);
+    gert::Shape* attentionOutShape = context->GetOutputShape(ATTENTION_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
 
     if (queryShape->GetDimNum() == 1 && queryShape->GetDim(0) == UNKNOWN_DIMS) {
@@ -69,7 +69,7 @@ static ge::graphStatus InferShapeGenericBlockSparseAttention(gert::InferShapeCon
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeGenericBlockSparseAttention(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeGenericBlockSparseAttention(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

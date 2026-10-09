@@ -24,31 +24,29 @@ using namespace AscendC;
 using namespace optiling::detail;
 using namespace SASKernel;
 
-#define SAS_OP_IMPL(templateClass, tilingdataClass, ...)                                                               \
-    do {                                                                                                               \
-        templateClass<SASType<__VA_ARGS__>> op;                                                                        \
-        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
-        const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
-        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,                       \
-                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedKV,                                                   \
-                sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe);                                     \
-        op.Process();                                                                                                  \
+#define SAS_OP_IMPL(templateClass, tilingdataClass, ...) \
+    do { \
+        templateClass<SASType<__VA_ARGS__>> op; \
+        GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling); \
+        const tilingdataClass* __restrict tiling_data = &tiling_data_in; \
+        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, \
+                cuSeqlensCmpKv, seqUsedQ, seqUsedKV, sinks, metadata, attentionOut, softmaxLse, user, tiling_data, \
+                tiling, &tPipe); \
+        op.Process(); \
     } while (0)
 
-
 template <int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE>
-__global__ __aicore__ void
-sparse_attn_sharedkv(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
-                     __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
-                     __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
-                     __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV,
-                     __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
-                     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__global__ __aicore__ void sparse_attn_sharedkv(
+    __gm__ uint8_t* query, __gm__ uint8_t* oriKV, __gm__ uint8_t* cmpKV, __gm__ uint8_t* oriSparseIndices,
+    __gm__ uint8_t* cmpSparseIndices, __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable,
+    __gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensOriKv, __gm__ uint8_t* cuSeqlensCmpKv,
+    __gm__ uint8_t* seqUsedQ, __gm__ uint8_t* seqUsedKV, __gm__ uint8_t* sinks, __gm__ uint8_t* metadata,
+    __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     TPipe tPipe;
-    __gm__ uint8_t *user = GetUserWorkspace(workspace);
+    __gm__ uint8_t* user = GetUserWorkspace(workspace);
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
         if constexpr (TEMPLATE_MODE == SCFA_TEMPLATE) {
             SAS_OP_IMPL(SparseAttnSharedkvScfa, SparseAttnSharedkvTilingData, half, half, half, FLASH_DECODE,

@@ -30,11 +30,9 @@ struct ToolsParams {
 template <typename COMP>
 class QuantCompressorTools {
 public:
-    __aicore__ inline QuantCompressorTools()
-    {
-    }
+    __aicore__ inline QuantCompressorTools() {}
 
-    __aicore__ inline void Init(__gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos);
+    __aicore__ inline void Init(__gm__ uint8_t* cuSeqlens, __gm__ uint8_t* seqUsed, __gm__ uint8_t* startPos);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
     __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
@@ -53,21 +51,21 @@ private:
 };
 
 template <typename COMP>
-__aicore__ inline void QuantCompressorTools<COMP>::Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
-                                                        __gm__ uint8_t *cuSeqlens)
+__aicore__ inline void QuantCompressorTools<COMP>::Init(__gm__ uint8_t* startPos, __gm__ uint8_t* seqUsed,
+                                                        __gm__ uint8_t* cuSeqlens)
 {
     isExistStartPos_ = (startPos != nullptr);
     if (isExistStartPos_) {
-        startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
+        startPosGm_.SetGlobalBuffer((__gm__ int32_t*)startPos);
     }
 
     isExistSeqUsed_ = (seqUsed != nullptr);
     if (isExistSeqUsed_) {
-        sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
+        sequsedGm_.SetGlobalBuffer((__gm__ int32_t*)seqUsed);
     }
 
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t*)cuSeqlens);
     }
 }
 
@@ -118,7 +116,9 @@ __aicore__ inline uint32_t QuantCompressorTools<COMP>::GetTIdxByBatch(uint32_t b
 // iterator
 struct SliceInfo {
     __aicore__ inline SliceInfo(){};
-    __aicore__ inline SliceInfo(uint32_t bIdx, uint32_t sIdx) : bIdx(bIdx), sIdx(sIdx){};
+    __aicore__ inline SliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : bIdx(bIdx),
+          sIdx(sIdx){};
 
     uint32_t bIdx = 0U;
     uint32_t sIdx = 0U;
@@ -137,23 +137,23 @@ struct SliceInfo {
 template <typename COMP>
 class QuantCompressorSliceIterator {
 public:
-    __aicore__ inline QuantCompressorSliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline QuantCompressorSliceIterator(QuantCompressorTools<COMP>& tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
     __aicore__ inline void SetMaxDealSeqCnt(uint32_t maxDealSeqCnt);
     __aicore__ inline bool IsEnd();
     __aicore__ inline void IteratorSlice();
-    __aicore__ inline SliceInfo &GetSlice();
-    __aicore__ inline SliceInfo &GetSliceByCmp();
+    __aicore__ inline SliceInfo& GetSlice();
+    __aicore__ inline SliceInfo& GetSliceByCmp();
 
     bool isFirst_ = true;
     SliceInfo sliceInfo_{};
 
 private:
-    QuantCompressorTools<COMP> &tools_;
+    QuantCompressorTools<COMP>& tools_;
 
     // iterator
     uint32_t maxDealSeqCnt_ = 0;
@@ -222,7 +222,7 @@ __aicore__ inline void QuantCompressorSliceIterator<COMP>::IteratorSlice()
 }
 
 template <typename COMP>
-__aicore__ inline SliceInfo &QuantCompressorSliceIterator<COMP>::GetSliceByCmp()
+__aicore__ inline SliceInfo& QuantCompressorSliceIterator<COMP>::GetSliceByCmp()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (isFirst_) {
@@ -267,7 +267,7 @@ __aicore__ inline SliceInfo &QuantCompressorSliceIterator<COMP>::GetSliceByCmp()
 }
 
 template <typename COMP>
-__aicore__ inline SliceInfo &QuantCompressorSliceIterator<COMP>::GetSlice()
+__aicore__ inline SliceInfo& QuantCompressorSliceIterator<COMP>::GetSlice()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (isFirst_) {
@@ -302,7 +302,8 @@ __aicore__ inline SliceInfo &QuantCompressorSliceIterator<COMP>::GetSlice()
 
 struct SplitCoreSliceInfo : public SliceInfo {
     __aicore__ inline SplitCoreSliceInfo(){};
-    __aicore__ inline SplitCoreSliceInfo(uint32_t bIdx, uint32_t sIdx) : SliceInfo(bIdx, sIdx){};
+    __aicore__ inline SplitCoreSliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : SliceInfo(bIdx, sIdx){};
 
     uint32_t preFirstSeqCnt = 0U; // 左边每次迭代基本块的第一个seqCnt大小
 };
@@ -310,20 +311,20 @@ struct SplitCoreSliceInfo : public SliceInfo {
 template <typename COMP>
 class QuantCompressorSplitCoreSliceIterator {
 public:
-    __aicore__ inline QuantCompressorSplitCoreSliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline QuantCompressorSplitCoreSliceIterator(QuantCompressorTools<COMP>& tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void SetMaxBatchSize(uint32_t batch_size);
     __aicore__ inline void SetMaxDealSeqCnt(uint32_t maxDealSeqCnt);
     __aicore__ inline bool IsEnd();
     __aicore__ inline void IteratorSlice();
-    __aicore__ inline SplitCoreSliceInfo &GetSlice();
-    __aicore__ inline SplitCoreSliceInfo &GetSliceByCmp();
+    __aicore__ inline SplitCoreSliceInfo& GetSlice();
+    __aicore__ inline SplitCoreSliceInfo& GetSliceByCmp();
     __aicore__ inline uint32_t GetBIdx();
-    __aicore__ inline SplitCoreSliceInfo &GetLeftNextCmpSeqCnt();
-    __aicore__ inline SplitCoreSliceInfo &GetRightNextCmpSeqCnt();
+    __aicore__ inline SplitCoreSliceInfo& GetLeftNextCmpSeqCnt();
+    __aicore__ inline SplitCoreSliceInfo& GetRightNextCmpSeqCnt();
 
     bool isFirst_ = true;
     bool isLeftFirstBath = false;
@@ -332,7 +333,7 @@ public:
     SplitCoreSliceInfo sliceInfo_{};
 
 private:
-    QuantCompressorTools<COMP> &tools_;
+    QuantCompressorTools<COMP>& tools_;
 
     // iterator
     uint32_t maxDealSeqCnt_ = 0;
@@ -416,7 +417,7 @@ __aicore__ inline void QuantCompressorSplitCoreSliceIterator<COMP>::IteratorSlic
 }
 
 template <typename COMP>
-__aicore__ inline SplitCoreSliceInfo &QuantCompressorSplitCoreSliceIterator<COMP>::GetLeftNextCmpSeqCnt()
+__aicore__ inline SplitCoreSliceInfo& QuantCompressorSplitCoreSliceIterator<COMP>::GetLeftNextCmpSeqCnt()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (isFirst_) {
@@ -478,7 +479,7 @@ __aicore__ inline SplitCoreSliceInfo &QuantCompressorSplitCoreSliceIterator<COMP
 }
 
 template <typename COMP>
-__aicore__ inline SplitCoreSliceInfo &QuantCompressorSplitCoreSliceIterator<COMP>::GetRightNextCmpSeqCnt()
+__aicore__ inline SplitCoreSliceInfo& QuantCompressorSplitCoreSliceIterator<COMP>::GetRightNextCmpSeqCnt()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (isFirst_) {
@@ -524,9 +525,11 @@ __aicore__ inline SplitCoreSliceInfo &QuantCompressorSplitCoreSliceIterator<COMP
 
 struct Vec1SliceInfo : public SliceInfo {
     __aicore__ inline Vec1SliceInfo(){};
-    __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx) : SliceInfo(bIdx, sIdx){};
+    __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx)
+        : SliceInfo(bIdx, sIdx){};
     __aicore__ inline Vec1SliceInfo(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt)
-        : SliceInfo(bIdx, sIdx), dealedSeqCnt(dealedSeqCnt){};
+        : SliceInfo(bIdx, sIdx),
+          dealedSeqCnt(dealedSeqCnt){};
 
     uint32_t dealedSeqCnt = 0U;
     uint32_t dealedTcCnt = 0U;
@@ -539,7 +542,9 @@ struct Vec1SliceInfo : public SliceInfo {
 struct StatisticInfo {
     __aicore__ inline StatisticInfo(){};
     __aicore__ inline StatisticInfo(uint32_t actualTcCnt, uint32_t dealSeqCnt, uint32_t compressorScCnt)
-        : actualTcCnt(actualTcCnt), dealSeqCnt(dealSeqCnt), compressorScCnt(compressorScCnt){};
+        : actualTcCnt(actualTcCnt),
+          dealSeqCnt(dealSeqCnt),
+          compressorScCnt(compressorScCnt){};
 
     uint32_t actualTcCnt = 0U;
     uint32_t dealSeqCnt = 0U;
@@ -549,9 +554,9 @@ struct StatisticInfo {
 template <typename COMP>
 class QuantCompressorVec1SliceIterator {
 public:
-    __aicore__ inline QuantCompressorVec1SliceIterator(QuantCompressorTools<COMP> &tools) : tools_(tools)
-    {
-    }
+    __aicore__ inline QuantCompressorVec1SliceIterator(QuantCompressorTools<COMP>& tools)
+        : tools_(tools)
+    {}
 
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx);
     __aicore__ inline void Reset(uint32_t bIdx, uint32_t sIdx, uint32_t dealedSeqCnt, uint32_t compressoredScCnt);
@@ -565,12 +570,12 @@ public:
     __aicore__ inline bool IsEnd();
     template <bool IS_STATISTIC = false>
     __aicore__ inline void IteratorSlice();
-    __aicore__ inline Vec1SliceInfo &GetSlice();
+    __aicore__ inline Vec1SliceInfo& GetSlice();
     template <bool IS_STATISTIC = false>
-    __aicore__ inline StatisticInfo &FullIteratorSlice();
+    __aicore__ inline StatisticInfo& FullIteratorSlice();
 
 private:
-    QuantCompressorTools<COMP> &tools_;
+    QuantCompressorTools<COMP>& tools_;
 
     bool isFirst_ = true;
     Vec1SliceInfo sliceInfo_{};
@@ -691,7 +696,6 @@ __aicore__ inline uint32_t QuantCompressorVec1SliceIterator<COMP>::GetNeedDealTc
     return needDealTcSize_;
 }
 
-
 template <typename COMP>
 __aicore__ inline bool QuantCompressorVec1SliceIterator<COMP>::IsEnd()
 {
@@ -699,7 +703,7 @@ __aicore__ inline bool QuantCompressorVec1SliceIterator<COMP>::IsEnd()
 }
 
 template <typename COMP>
-__aicore__ inline Vec1SliceInfo &QuantCompressorVec1SliceIterator<COMP>::GetSlice()
+__aicore__ inline Vec1SliceInfo& QuantCompressorVec1SliceIterator<COMP>::GetSlice()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
     if (sliceInfo_.bSeqUsed < sliceInfo_.sIdx) {
@@ -737,7 +741,7 @@ __aicore__ inline Vec1SliceInfo &QuantCompressorVec1SliceIterator<COMP>::GetSlic
 
 template <typename COMP>
 template <bool IS_STATISTIC>
-__aicore__ inline StatisticInfo &QuantCompressorVec1SliceIterator<COMP>::FullIteratorSlice()
+__aicore__ inline StatisticInfo& QuantCompressorVec1SliceIterator<COMP>::FullIteratorSlice()
 {
     if constexpr (IS_STATISTIC) {
         statisticInfo_ = {0U, 0U, 0U};
@@ -756,7 +760,6 @@ __aicore__ inline StatisticInfo &QuantCompressorVec1SliceIterator<COMP>::FullIte
     }
     return statisticInfo_;
 }
-
 
 } // namespace QuantCompressor
 

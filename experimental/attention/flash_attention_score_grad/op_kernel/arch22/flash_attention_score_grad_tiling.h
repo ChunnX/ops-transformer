@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H 
+#ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_H
 
 #pragma once
@@ -835,7 +835,6 @@ public:
         reserved = 0;
     }
 };
-
 
 class PreSfmgParams {
 public:
@@ -1927,7 +1926,6 @@ public:
     }
 };
 
-
 class FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParams {
 public:
     int64_t s1Outer = 0;
@@ -2113,13 +2111,12 @@ public:
     }
 };
 
-
 class BlockNumListParams {
 public:
     int64_t blockStarts[50] = {};
     int64_t blockEnds[50] = {};
 
-    const int64_t *get_blockStarts() const
+    const int64_t* get_blockStarts() const
     {
         return blockStarts;
     }
@@ -2130,7 +2127,7 @@ public:
         }
     }
 
-    const int64_t *get_blockEnds() const
+    const int64_t* get_blockEnds() const
     {
         return blockEnds;
     }
@@ -2730,7 +2727,7 @@ public:
     int64_t bN2idxStarts[50] = {};
     int64_t bN2idxEnds[50] = {};
 
-    const int64_t *get_bN2idxStarts() const
+    const int64_t* get_bN2idxStarts() const
     {
         return bN2idxStarts;
     }
@@ -2741,7 +2738,7 @@ public:
         }
     }
 
-    const int64_t *get_bN2idxEnds() const
+    const int64_t* get_bN2idxEnds() const
     {
         return bN2idxEnds;
     }
@@ -3221,7 +3218,6 @@ public:
     }
 };
 
-
 class SplitNSplitCoreParams {
 public:
     int64_t totalBatch = 0;
@@ -3295,7 +3291,6 @@ public:
         reserved = 0;
     }
 };
-
 
 class SplitNSingleCoreParams {
 public:
@@ -4353,7 +4348,6 @@ public:
         tailCoreDpseNum = 0;
     }
 };
-
 
 class MLATensorTilingData {
 public:

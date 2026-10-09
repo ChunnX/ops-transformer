@@ -79,21 +79,21 @@ constexpr const char* GetStatusString(Status status)
     }
 }
 
-#define CHECK_AND_RETURN(status)                                                                                       \
-    do {                                                                                                               \
-        Status ret = status;                                                                                           \
-        if (ret != Status::success) {                                                                                  \
-            return ret;                                                                                                \
-        }                                                                                                              \
+#define CHECK_AND_RETURN(status) \
+    do { \
+        Status ret = status; \
+        if (ret != Status::success) { \
+            return ret; \
+        } \
     } while (0)
 
-#define ACT_CHECK(status)                                                                                              \
-    do {                                                                                                               \
-        Status ret = status;                                                                                           \
-        if (ret != Status::success) {                                                                                  \
-            std::cerr << "Got act error: " << GetStatusString(ret) << std::endl;                                       \
-            return;                                                                                                    \
-        }                                                                                                              \
+#define ACT_CHECK(status) \
+    do { \
+        Status ret = status; \
+        if (ret != Status::success) { \
+            std::cerr << "Got act error: " << GetStatusString(ret) << std::endl; \
+            return; \
+        } \
     } while (0)
 
 } // namespace Gemm

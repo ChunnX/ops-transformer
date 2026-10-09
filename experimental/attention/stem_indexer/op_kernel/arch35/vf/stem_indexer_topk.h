@@ -45,9 +45,9 @@ public:
     static constexpr uint64_t REUSE_SCORE_OUT_OFFSET_U32 = REUSE_INDICES_OUT_OFFSET + INDICES_OUT_SIZE_U32;
     static constexpr uint64_t REUSE_SCORE_OUT_OFFSET = REUSE_SCORE_OUT_OFFSET_U32 * sizeof(uint32_t) / sizeof(SCORE_T);
 
-    __aicore__ inline void InitBuffers(const LocalTensor<uint32_t> &reuseMm1ResLocal,
-                                       const LocalTensor<uint32_t> &histogramLocal,
-                                       const LocalTensor<uint32_t> &reuseGlobalIndexLocal)
+    __aicore__ inline void InitBuffers(const LocalTensor<uint32_t>& reuseMm1ResLocal,
+                                       const LocalTensor<uint32_t>& histogramLocal,
+                                       const LocalTensor<uint32_t>& reuseGlobalIndexLocal)
     {
         // reuseMm1ResLocal按idx -> nk -> tmpIndex -> indicesOut -> scoreOut排布；histogram独立申请。
         idx0Local = reuseMm1ResLocal;
@@ -67,11 +67,11 @@ public:
         hisIndexLocal[1] = indicesOutLocal;
     }
 
-    __aicore__ inline void Batch4Rows(const LocalTensor<SCORE_T> &mrgValueLocal,
-                                      const LocalTensor<uint32_t> &reuseMm1ResLocal,
-                                      const LocalTensor<uint32_t> &histogramLocal,
-                                      const LocalTensor<uint32_t> &reuseGlobalIndexLocal,
-                                      const SICommon::RowIdx4 &rowIdx4, const SICommon::TopkNum4 &topkNum4,
+    __aicore__ inline void Batch4Rows(const LocalTensor<SCORE_T>& mrgValueLocal,
+                                      const LocalTensor<uint32_t>& reuseMm1ResLocal,
+                                      const LocalTensor<uint32_t>& histogramLocal,
+                                      const LocalTensor<uint32_t>& reuseGlobalIndexLocal,
+                                      const SICommon::RowIdx4& rowIdx4, const SICommon::TopkNum4& topkNum4,
                                       uint32_t batchRowNum, uint32_t mrgRowStride, uint32_t inputOffset,
                                       uint32_t validLen, uint32_t loopIdx, uint32_t s2LoopNum)
     {

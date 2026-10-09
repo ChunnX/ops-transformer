@@ -47,12 +47,12 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGradGetWorkspaceSize(
-    const aclTensor *dout, const aclTensor *query, const aclTensor *key, const aclTensor *value,
-    const aclTensor *attentionOut, const aclTensor *softmaxLse, const aclTensor *blockSparseMaskOptional,
-    const aclTensor *attenMaskOptional, const aclIntArray *blockShapeOptional,
-    const aclIntArray *actualSeqLengthsOptional, const aclIntArray *actualSeqLengthsKvOptional, char *qInputLayout,
-    char *kvInputLayout, int64_t numKeyValueHeads, int64_t maskType, double scaleValue, int64_t preTokens,
-    int64_t nextTokens, aclTensor *dq, aclTensor *dk, aclTensor *dv, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* dout, const aclTensor* query, const aclTensor* key, const aclTensor* value,
+    const aclTensor* attentionOut, const aclTensor* softmaxLse, const aclTensor* blockSparseMaskOptional,
+    const aclTensor* attenMaskOptional, const aclIntArray* blockShapeOptional,
+    const aclIntArray* actualSeqLengthsOptional, const aclIntArray* actualSeqLengthsKvOptional, char* qInputLayout,
+    char* kvInputLayout, int64_t numKeyValueHeads, int64_t maskType, double scaleValue, int64_t preTokens,
+    int64_t nextTokens, aclTensor* dq, aclTensor* dk, aclTensor* dv, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnBlockSparseAttentionGrad的第二段接口,用于执行计算
@@ -63,9 +63,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
  * @param [in] stream: acl stream流
  * @return aclnnStatus: 返回状态码
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad(void *workspace,
+__attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad(void* workspace,
                                                                                  uint64_t workspaceSize,
-                                                                                 aclOpExecutor *executor,
+                                                                                 aclOpExecutor* executor,
                                                                                  const aclrtStream stream);
 
 #ifdef __cplusplus

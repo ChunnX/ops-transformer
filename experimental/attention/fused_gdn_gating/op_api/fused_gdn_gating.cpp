@@ -30,8 +30,8 @@ OP_TYPE_REGISTER(FusedGdnGating);
 
 static constexpr FusedGdnGatingOutput kNullOutput{nullptr, nullptr};
 
-FusedGdnGatingOutput FusedGdnGating(const aclTensor *aLog, const aclTensor *a, const aclTensor *b,
-                                    const aclTensor *dtBias, float beta, float threshold, aclOpExecutor *executor)
+FusedGdnGatingOutput FusedGdnGating(const aclTensor* aLog, const aclTensor* a, const aclTensor* b,
+                                    const aclTensor* dtBias, float beta, float threshold, aclOpExecutor* executor)
 {
     L0_DFX(FusedGdnGating, aLog, a, b, dtBias, beta, threshold);
 

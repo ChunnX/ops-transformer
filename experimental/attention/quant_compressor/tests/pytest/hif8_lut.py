@@ -5,6 +5,7 @@ Companion to hif8_utils.py — provides optimized decode path.
 Usage:
     from hif8_lut import hif8_to_fp32_lut, get_valid_hif8_codes
 """
+
 import numpy as np
 from hif8_utils import hif8_to_fp32_numpy
 
@@ -58,6 +59,7 @@ def get_valid_hif8_codes(min_val, max_val):
     _VALID_CACHE[key] = valid
     return valid.copy()
 
+
 _VU_CACHE = {}
 
 # LUT size: 1MB (2^20 entries). Every valid code gets at least 1 entry
@@ -74,8 +76,12 @@ def _build_sampling_lut(codes, vals, min_val, max_val):
     n = len(sorted_codes)
 
     mids = (sorted_vals[:-1] + sorted_vals[1:]) * 0.5
-    lo = np.empty(n, dtype=np.float64); hi = np.empty(n, dtype=np.float64)
-    lo[0] = min_val; lo[1:] = mids; hi[:-1] = mids; hi[-1] = max_val
+    lo = np.empty(n, dtype=np.float64)
+    hi = np.empty(n, dtype=np.float64)
+    lo[0] = min_val
+    lo[1:] = mids
+    hi[:-1] = mids
+    hi[-1] = max_val
     widths = np.maximum(hi - lo, 0.0)
     total = widths.sum()
 
@@ -92,12 +98,14 @@ def _build_sampling_lut(codes, vals, min_val, max_val):
     if frac_sum > 0:
         extra = (fractional / frac_sum * remaining).astype(np.int32)
         remainder = fractional / frac_sum * remaining - extra.astype(np.float64)
-        extra[np.argsort(-remainder)[:remaining - extra.sum()]] += 1
+        extra[np.argsort(-remainder)[: remaining - extra.sum()]] += 1
         counts += extra
 
     lut = np.repeat(sorted_codes.astype(np.uint8), counts)
     if len(lut) < _SAMPLE_LUT_SIZE:
-        lut = np.pad(lut, (0, _SAMPLE_LUT_SIZE - len(lut)), constant_values=sorted_codes[-1])
+        lut = np.pad(
+            lut, (0, _SAMPLE_LUT_SIZE - len(lut)), constant_values=sorted_codes[-1]
+        )
     return lut[:_SAMPLE_LUT_SIZE]
 
 

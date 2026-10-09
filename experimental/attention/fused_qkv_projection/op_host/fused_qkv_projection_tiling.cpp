@@ -27,9 +27,9 @@ inline int64_t CeilDiv(int64_t x, int64_t y)
 
 struct CompileInfo {};
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext *ctx, uint64_t &ubSize, int64_t &coreNum)
+static ge::graphStatus GetPlatformInfo(gert::TilingContext* ctx, uint64_t& ubSize, int64_t& coreNum)
 {
-    auto *pi = ctx->GetPlatformInfo();
+    auto* pi = ctx->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(ctx, pi);
     auto plat = platform_ascendc::PlatformAscendC(pi);
     coreNum = plat.GetCoreNumAiv();
@@ -46,7 +46,7 @@ struct TilingInput {
     int32_t dtype; // ge::DT_FLOAT=0, ge::DT_FLOAT16=1
 };
 
-static ge::graphStatus ParseTilingInputs(gert::TilingContext *context, TilingInput *in)
+static ge::graphStatus ParseTilingInputs(gert::TilingContext* context, TilingInput* in)
 {
     auto hsShape = EnsureNotScalar(context->GetInputShape(0)->GetStorageShape());
     int64_t batch = hsShape.GetDim(0);
@@ -56,7 +56,7 @@ static ge::graphStatus ParseTilingInputs(gert::TilingContext *context, TilingInp
     auto wtShape = EnsureNotScalar(context->GetInputShape(1)->GetStorageShape());
     int64_t fusedDim = wtShape.GetDim(1);
 
-    auto *attrs = context->GetAttrs();
+    auto* attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     in->qDim = *attrs->GetAttrPointer<int64_t>(0);
@@ -71,7 +71,7 @@ static ge::graphStatus ParseTilingInputs(gert::TilingContext *context, TilingInp
     return ge::GRAPH_SUCCESS;
 }
 
-static void ConfigCubeTiling(matmul_tiling::MultiCoreMatmulTiling *ct, const TilingInput &in, int64_t coreNum)
+static void ConfigCubeTiling(matmul_tiling::MultiCoreMatmulTiling* ct, const TilingInput& in, int64_t coreNum)
 {
     matmul_tiling::DataType dt = matmul_tiling::DataType::DT_FLOAT;
     if (in.dtype == static_cast<int32_t>(ge::DT_FLOAT16)) {
@@ -103,8 +103,8 @@ static void ConfigCubeTiling(matmul_tiling::MultiCoreMatmulTiling *ct, const Til
     ct->SetDim(1); // 强制 Matmul 内部为单核 Tiling
 }
 
-static ge::graphStatus DoCubeTiling(gert::TilingContext *context, matmul_tiling::MultiCoreMatmulTiling *ct,
-                                    FusedQkvProjectionTilingData *td, int32_t N)
+static ge::graphStatus DoCubeTiling(gert::TilingContext* context, matmul_tiling::MultiCoreMatmulTiling* ct,
+                                    FusedQkvProjectionTilingData* td, int32_t N)
 {
     memset_s(td, sizeof(FusedQkvProjectionTilingData), 0, sizeof(FusedQkvProjectionTilingData));
     if (ct->GetTiling(td->cubeTiling) != 0) {
@@ -114,10 +114,10 @@ static ge::graphStatus DoCubeTiling(gert::TilingContext *context, matmul_tiling:
     return ge::GRAPH_SUCCESS;
 }
 
-static void FillTilingOutputs(gert::TilingContext *context, FusedQkvProjectionTilingData *td, const TilingInput &in,
-                              platform_ascendc::PlatformAscendC &plat, int64_t coreNum)
+static void FillTilingOutputs(gert::TilingContext* context, FusedQkvProjectionTilingData* td, const TilingInput& in,
+                              platform_ascendc::PlatformAscendC& plat, int64_t coreNum)
 {
-    size_t *ws = context->GetWorkspaceSizes(1);
+    size_t* ws = context->GetWorkspaceSizes(1);
     ws[0] = plat.GetLibApiWorkSpaceSize();
 
     td->M = static_cast<int32_t>(in.M);
@@ -151,7 +151,7 @@ static void FillTilingOutputs(gert::TilingContext *context, FusedQkvProjectionTi
     context->SetTilingKey(GET_TPL_TILING_KEY(ELEMENTWISE_TPL_SCH_MODE_0, dtypeVal));
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext *context)
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     uint64_t ubSize;
     int64_t coreNum;
@@ -166,7 +166,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     matmul_tiling::MultiCoreMatmulTiling cubeTiling(plat);
     ConfigCubeTiling(&cubeTiling, in, coreNum);
 
-    auto *td = context->GetTilingData<FusedQkvProjectionTilingData>();
+    auto* td = context->GetTilingData<FusedQkvProjectionTilingData>();
     OP_CHECK_IF(DoCubeTiling(context, &cubeTiling, td, static_cast<int32_t>(in.N)) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context, "DoCubeTiling error"), return ge::GRAPH_FAILED);
 
@@ -174,7 +174,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingParse(gert::TilingParseContext *)
+static ge::graphStatus TilingParse(gert::TilingParseContext*)
 {
     return ge::GRAPH_SUCCESS;
 }

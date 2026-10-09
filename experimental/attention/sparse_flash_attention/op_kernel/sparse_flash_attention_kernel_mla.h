@@ -61,13 +61,13 @@ public:
     using MM1_OUT_T = T;
     using MM2_OUT_T = T;
     __aicore__ inline SparseFlashAttentionMla(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *curSeqLengthsQ,
-                                __gm__ uint8_t *curSeqLengthsKV, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope,
-                                __gm__ uint8_t *keyRope, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
-                                __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
-                                const SparseFlashAttentionTilingDataMla *__restrict tiling, __gm__ uint8_t *gmTiling,
-                                TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                                __gm__ uint8_t* sparseIndices, __gm__ uint8_t* curSeqLengthsQ,
+                                __gm__ uint8_t* curSeqLengthsKV, __gm__ uint8_t* blockTable, __gm__ uint8_t* queryRope,
+                                __gm__ uint8_t* keyRope, __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxMax,
+                                __gm__ uint8_t* softmaxSum, __gm__ uint8_t* workspace,
+                                const SparseFlashAttentionTilingDataMla* __restrict tiling, __gm__ uint8_t* gmTiling,
+                                TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -95,8 +95,8 @@ private:
     static constexpr uint64_t headDimRope = 64ULL;
     static constexpr uint32_t msdIterNum = 2U;
     static constexpr uint32_t dbWorkspaceRatio = PRELOAD_NUM;
-    const SparseFlashAttentionTilingDataMla *__restrict tilingData = nullptr;
-    TPipe *pipe = nullptr;
+    const SparseFlashAttentionTilingDataMla* __restrict tilingData = nullptr;
+    TPipe* pipe = nullptr;
     uint64_t mSizeVStart = 0ULL;
     int64_t threshold = 0;
     uint64_t topKBaseOffset = 0ULL;
@@ -110,8 +110,8 @@ private:
     uint32_t tmpBlockIdx = 0U;
     uint32_t aiCoreIdx = 0U;
     uint32_t usedCoreNum = 0U;
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
+    __gm__ uint8_t* keyPtr = nullptr;
+    __gm__ uint8_t* valuePtr = nullptr;
     ConstInfo constInfo{};
     TempLoopInfo tempLoopInfo{};
     SFAMatmulService<SFAT> matmulService;
@@ -145,31 +145,31 @@ private:
     __aicore__ inline void InitTilingData();
     __aicore__ inline void InitCalcParamsEach();
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *curSeqLengthsQ, __gm__ uint8_t *curSeqLengthsKV);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t* curSeqLengthsQ, __gm__ uint8_t* curSeqLengthsKV);
     __aicore__ inline void InitOutputSingleCore();
     // ================================Process functions================================
     __aicore__ inline void ProcessBalance();
     __aicore__ inline void PreloadPipeline(uint32_t loop, uint64_t s2Start, uint64_t s2LoopIdx,
-                                           RunInfo extraInfo[SFA_PRELOAD_TASK_CACHE_SIZE], uint32_t &curTopKIdx,
-                                           uint64_t &curOffsetInSparseBlock);
+                                           RunInfo extraInfo[SFA_PRELOAD_TASK_CACHE_SIZE], uint32_t& curTopKIdx,
+                                           uint64_t& curOffsetInSparseBlock);
     // ================================Offset Calc=====================================
     __aicore__ inline void GetActualSeqLen(uint32_t bIdx, uint32_t s1Idx = 0);
     __aicore__ inline void GetSparseActualSeqLen(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
-    __aicore__ inline void CalcSinnerTopKBegin(RunInfo &info, uint32_t &curTopKIdx, uint64_t &curOffsetInSparseBlock);
+    __aicore__ inline void CalcSinnerTopKBegin(RunInfo& info, uint32_t& curTopKIdx, uint64_t& curOffsetInSparseBlock);
     __aicore__ inline void UpdateInnerLoopCond();
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
-    __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info);
+    __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo& info);
     __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t gS1EndPrev, uint32_t s2EndPrev);
-    __aicore__ inline int64_t GetBalanceActualSeqLengths(GlobalTensor<int64_t> &curSeqLengths, uint32_t bIdx);
+    __aicore__ inline int64_t GetBalanceActualSeqLengths(GlobalTensor<int64_t>& curSeqLengths, uint32_t bIdx);
     __aicore__ inline int64_t GetActualSeqLenKV(uint32_t bIdx);
-    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, TempLoopInfo &tempLoopInfo);
-    __aicore__ inline void UpdateInner(uint32_t &s2End, uint32_t &curS2End, uint32_t s1Idx, bool isEnd);
+    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, TempLoopInfo& tempLoopInfo);
+    __aicore__ inline void UpdateInner(uint32_t& s2End, uint32_t& curS2End, uint32_t s1Idx, bool isEnd);
     __aicore__ inline void GetPreNextTokensLeftUp();
     // ================================Mm1==============================================
-    __aicore__ inline void ComputeMm1(const RunInfo &info);
+    __aicore__ inline void ComputeMm1(const RunInfo& info);
     // ================================Mm2==============================================
-    __aicore__ inline void ComputeMm2(const RunInfo &info);
-    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
+    __aicore__ inline void ComputeMm2(const RunInfo& info);
+    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T>& attenOutUb, uint32_t startRow,
                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
 };
@@ -219,16 +219,16 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::InitBuffers()
     }
 }
 template <typename SFAT>
-__aicore__ inline void SparseFlashAttentionMla<SFAT>::InitActualSeqLen(__gm__ uint8_t *curSeqLengthsQ,
-                                                                       __gm__ uint8_t *curSeqLengthsKV)
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::InitActualSeqLen(__gm__ uint8_t* curSeqLengthsQ,
+                                                                       __gm__ uint8_t* curSeqLengthsKV)
 {
     constInfo.actualLenDimsQ = tilingData->baseParams.actualLenDimsQ;
     constInfo.actualLenDimsKV = tilingData->baseParams.actualLenDimsKV;
     if (constInfo.actualLenDimsKV != 0) {
-        curSeqLengthsKVGm.SetGlobalBuffer((__gm__ int64_t *)curSeqLengthsKV, constInfo.actualLenDimsKV);
+        curSeqLengthsKVGm.SetGlobalBuffer((__gm__ int64_t*)curSeqLengthsKV, constInfo.actualLenDimsKV);
     }
     if (constInfo.actualLenDimsQ != 0) {
-        curSeqLengthsQGm.SetGlobalBuffer((__gm__ int64_t *)curSeqLengthsQ, constInfo.actualLenDimsQ);
+        curSeqLengthsQGm.SetGlobalBuffer((__gm__ int64_t*)curSeqLengthsQ, constInfo.actualLenDimsQ);
     }
 }
 template <typename SFAT>
@@ -347,7 +347,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::UpdateInnerLoopCond()
     tempLoopInfo.s2LoopTimes = 0;
 }
 template <typename SFAT>
-__aicore__ inline void SparseFlashAttentionMla<SFAT>::UpdateInner(uint32_t &s2End, uint32_t &curS2End, uint32_t s1Idx,
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::UpdateInner(uint32_t& s2End, uint32_t& curS2End, uint32_t s1Idx,
                                                                   bool isEnd)
 {
     uint32_t s1BaseSize = 1;
@@ -359,11 +359,11 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::UpdateInner(uint32_t &s2En
 }
 template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *curSeqLengthsQ, __gm__ uint8_t *curSeqLengthsKV, __gm__ uint8_t *blockTable,
-    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
-    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling,
-    __gm__ uint8_t *gmTiling, TPipe *tPipe)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* sparseIndices,
+    __gm__ uint8_t* curSeqLengthsQ, __gm__ uint8_t* curSeqLengthsKV, __gm__ uint8_t* blockTable,
+    __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope, __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxMax,
+    __gm__ uint8_t* softmaxSum, __gm__ uint8_t* workspace, const SparseFlashAttentionTilingDataMla* __restrict tiling,
+    __gm__ uint8_t* gmTiling, TPipe* tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -382,51 +382,51 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Init(
     keyPtr = key;
     valuePtr = value;
     // init global buffer
-    queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
-    keyGm.SetGlobalBuffer((__gm__ KV_T *)keyPtr);
-    valueGm.SetGlobalBuffer((__gm__ KV_T *)valuePtr);
-    qRopeGm.SetGlobalBuffer((__gm__ Q_ROPE_T *)queryRope);
-    kRopeGm.SetGlobalBuffer((__gm__ K_ROPE_T *)keyRope);
-    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
-    softmaxMaxGm.SetGlobalBuffer((__gm__ T *)softmaxMax);
-    softmaxSumGm.SetGlobalBuffer((__gm__ T *)softmaxSum);
+    queryGm.SetGlobalBuffer((__gm__ Q_T*)query);
+    keyGm.SetGlobalBuffer((__gm__ KV_T*)keyPtr);
+    valueGm.SetGlobalBuffer((__gm__ KV_T*)valuePtr);
+    qRopeGm.SetGlobalBuffer((__gm__ Q_ROPE_T*)queryRope);
+    kRopeGm.SetGlobalBuffer((__gm__ K_ROPE_T*)keyRope);
+    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)attentionOut);
+    softmaxMaxGm.SetGlobalBuffer((__gm__ T*)softmaxMax);
+    softmaxSumGm.SetGlobalBuffer((__gm__ T*)softmaxSum);
     if ASCEND_IS_AIV {
         if (constInfo.needInit && LAYOUT_T != SFA_LAYOUT::TND) {
             InitOutputSingleCore();
         }
     }
     if constexpr (PAGE_ATTENTION) {
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
     }
-    topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    topKGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
     // workspace 内存排布
     // |Q--|mm1ResGm(存S)|vec1ResGm(存A1,A2)|mm2ResGm(存O)|vec2ResGm
     // |Core0_Q1-Core0_Q2-Core1_Q1-Core1_Q2....Core32_Q1-Core32_Q2|Core0_mmRes
     uint64_t offset = 0;
     mm1ResGm.SetGlobalBuffer(
-        (__gm__ MM1_OUT_T *)(workspace + offset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
+        (__gm__ MM1_OUT_T*)(workspace + offset +
+                            aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T);
     vec1ResGm.SetGlobalBuffer(
-        (__gm__ KV_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(KV_T)));
+        (__gm__ KV_T*)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(KV_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(KV_T);
     mm2ResGm.SetGlobalBuffer(
-        (__gm__ MM2_OUT_T *)(workspace + offset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
+        (__gm__ MM2_OUT_T*)(workspace + offset +
+                            aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
-    mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(mm2ResGm.GetPhyAddr(0)));
+    mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(mm2ResGm.GetPhyAddr(0)));
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         // s2  d+rope bufNum
-        kvMergeGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + aiCoreIdx * 512 * 576 * 4 * sizeof(KV_T)));
+        kvMergeGm_.SetGlobalBuffer((__gm__ KV_T*)(workspace + offset + aiCoreIdx * 512 * 576 * 4 * sizeof(KV_T)));
         offset += GetBlockNum() * 512 * 576 * 4 * sizeof(KV_T);
         kvValidSizeGm_.SetGlobalBuffer(
-            (__gm__ int32_t *)(workspace + offset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
+            (__gm__ int32_t*)(workspace + offset + (aiCoreIdx * 2) * 128 * 4 * sizeof(int32_t)));
     }
     if constexpr (FLASH_DECODE) {
-        accumOutGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
+        accumOutGm.SetGlobalBuffer((__gm__ float*)(workspace + offset));
         offset = offset + tilingData->splitKVParams.accumOutSize * sizeof(float);
-        lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
-        lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset) + tilingData->splitKVParams.logSumExpSize / 2);
+        lseSumFdGm.SetGlobalBuffer((__gm__ float*)(workspace + offset));
+        lseMaxFdGm.SetGlobalBuffer((__gm__ float*)(workspace + offset) + tilingData->splitKVParams.logSumExpSize / 2);
         offset = offset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
     }
     if ASCEND_IS_AIV {
@@ -541,7 +541,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::InitCalcParamsEach()
 }
 template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::Bmm2DataCopyOut(uint64_t attenOutOffset,
-                                                                      LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
+                                                                      LocalTensor<OUT_T>& attenOutUb, uint32_t startRow,
                                                                       uint32_t dealRowCount, uint32_t columnCount,
                                                                       uint32_t actualColumnCount)
 {
@@ -555,7 +555,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Bmm2DataCopyOut(uint64_t a
 }
 template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx,
-                                                                 RunInfo &info)
+                                                                 RunInfo& info)
 {
     info.loop = loop;
     info.bIdx = tempLoopInfo.bIdx;
@@ -645,7 +645,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcParams(uint32_t loop, 
     }
 }
 template <typename SFAT>
-__aicore__ inline void SparseFlashAttentionMla<SFAT>::ComputeMm1(const RunInfo &info)
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::ComputeMm1(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -658,7 +658,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::ComputeMm1(const RunInfo &
     }
 }
 template <typename SFAT>
-__aicore__ inline void SparseFlashAttentionMla<SFAT>::ComputeMm2(const RunInfo &info)
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::ComputeMm2(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -691,7 +691,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::Process()
     }
 }
 template <typename SFAT>
-__aicore__ inline void SparseFlashAttentionMla<SFAT>::GetBN2Idx(uint32_t bN2Idx, TempLoopInfo &tempLoopInfo)
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::GetBN2Idx(uint32_t bN2Idx, TempLoopInfo& tempLoopInfo)
 {
     tempLoopInfo.bIdx = bN2Idx / kvHeadNum;
     tempLoopInfo.n2Idx = bN2Idx % kvHeadNum;
@@ -790,12 +790,12 @@ template <typename SFAT>
 __aicore__ inline void SparseFlashAttentionMla<SFAT>::PreloadPipeline(uint32_t loop, uint64_t s2Start,
                                                                       uint64_t s2LoopIdx,
                                                                       RunInfo extraInfo[SFA_PRELOAD_TASK_CACHE_SIZE],
-                                                                      uint32_t &curTopKIdx,
-                                                                      uint64_t &curOffsetInSparseBlock)
+                                                                      uint32_t& curTopKIdx,
+                                                                      uint64_t& curOffsetInSparseBlock)
 {
-    RunInfo &extraInfo0 = extraInfo[loop % SFA_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
-    RunInfo &extraInfo2 = extraInfo[(loop + 2) % SFA_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
-    RunInfo &extraInfo1 = extraInfo[(loop + 1) % SFA_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
+    RunInfo& extraInfo0 = extraInfo[loop % SFA_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
+    RunInfo& extraInfo2 = extraInfo[(loop + 2) % SFA_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
+    RunInfo& extraInfo1 = extraInfo[(loop + 1) % SFA_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
     CalcParams(loop, s2Start, s2LoopIdx, extraInfo0);
     CalcSinnerTopKBegin(extraInfo0, curTopKIdx, curOffsetInSparseBlock);
     if (extraInfo0.isValid) {
@@ -832,7 +832,7 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::PreloadPipeline(uint32_t l
 }
 template <typename SFAT>
 __aicore__ inline int64_t SparseFlashAttentionMla<SFAT>::GetBalanceActualSeqLengths(
-    GlobalTensor<int64_t> &curSeqLengths, uint32_t bIdx)
+    GlobalTensor<int64_t>& curSeqLengths, uint32_t bIdx)
 {
     if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         return curSeqLengths.GetValue(bIdx + 1) - curSeqLengths.GetValue(bIdx);
@@ -862,8 +862,8 @@ __aicore__ inline void SparseFlashAttentionMla<SFAT>::GetAxisStartIdx(uint32_t b
     }
 }
 template <typename SFAT>
-__aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcSinnerTopKBegin(RunInfo &info, uint32_t &curTopKIdx,
-                                                                          uint64_t &curOffsetInSparseBlock)
+__aicore__ inline void SparseFlashAttentionMla<SFAT>::CalcSinnerTopKBegin(RunInfo& info, uint32_t& curTopKIdx,
+                                                                          uint64_t& curOffsetInSparseBlock)
 {
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         return;

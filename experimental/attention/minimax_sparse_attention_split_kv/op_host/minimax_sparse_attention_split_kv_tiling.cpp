@@ -46,7 +46,7 @@ namespace optiling {
 // A2 (ascend910b): IsRegbaseSocVersion returns false
 // =================================================================================
 
-ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::TilingContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::TilingContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -76,7 +76,7 @@ ASCENDC_EXTERN_C ge::graphStatus TilingMinimaxSparseAttentionSplitKv(gert::Tilin
     return ge::GRAPH_FAILED;
 }
 
-ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMinimaxSparseAttentionSplitKv(gert::TilingParseContext *context)
+ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForMinimaxSparseAttentionSplitKv(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

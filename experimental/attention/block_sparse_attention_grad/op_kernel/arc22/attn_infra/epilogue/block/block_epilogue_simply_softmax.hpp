@@ -259,8 +259,8 @@ public:
         // Cache core-invariant values once; pipeline stages update only tile coordinates.
         vecCoreIdx = GetBlockIdx();
         cBlockIdx = vecCoreIdx;
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(tilingData_);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(tilingData_);
         usedVecCoreNums = tilingData->usedVecCoreNum;
         maxQSeqlen = tilingData->maxQSeqlen;
         maxKvSeqlen = tilingData->maxKvSeqlen;
@@ -271,8 +271,8 @@ public:
         if constexpr (INPUT_LAYOUT == TND) {
             transpseStride = (n1 - 1) * sizeof(float);
         }
-        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse_);
-        softGradworkspaceGm.SetGlobalBuffer((__gm__ float *)softGradworkspace_);
+        softmaxLseGm.SetGlobalBuffer((__gm__ float*)softmaxLse_);
+        softGradworkspaceGm.SetGlobalBuffer((__gm__ float*)softGradworkspace_);
         // P and dS have distinct UB output buffers.  Guard their reuse from
         // Vector while allowing the next tile's independent GM->UB reads to
         // overlap the previous tile's MTE3 writes.
@@ -356,11 +356,11 @@ public:
         groupedOutputBuffersReady = true;
     }
 
-    __aicore__ inline void PrefetchGrouped(Params const &params, uint32_t stage)
+    __aicore__ inline void PrefetchGrouped(Params const& params, uint32_t stage)
     {
         SetGroupedTileState(params);
-        sGm.SetGlobalBuffer((__gm__ float *)params.s);
-        dpGm.SetGlobalBuffer((__gm__ float *)params.dp);
+        sGm.SetGlobalBuffer((__gm__ float*)params.s);
+        dpGm.SetGlobalBuffer((__gm__ float*)params.dp);
         const auto eventId = stage == 0 ? EVENT_ID6 : EVENT_ID7;
         wait_flag(PIPE_V, PIPE_MTE2, eventId);
         if (groupedRawNz) {
@@ -402,11 +402,11 @@ public:
         set_flag(PIPE_MTE2, PIPE_V, eventId);
     }
 
-    __aicore__ inline void ComputeGrouped(Params const &params, uint32_t stage)
+    __aicore__ inline void ComputeGrouped(Params const& params, uint32_t stage)
     {
         SetGroupedTileState(params);
-        pWorkspaceGm.SetGlobalBuffer((__gm__ InputDType *)params.pWorkspace);
-        dsWorkspaceGm.SetGlobalBuffer((__gm__ InputDType *)params.dsWorkspace);
+        pWorkspaceGm.SetGlobalBuffer((__gm__ InputDType*)params.pWorkspace);
+        dsWorkspaceGm.SetGlobalBuffer((__gm__ InputDType*)params.dsWorkspace);
         const auto eventId = stage == 0 ? EVENT_ID6 : EVENT_ID7;
         wait_flag(PIPE_MTE2, PIPE_V, eventId);
         PrepareGroupedNz(stage);
@@ -587,7 +587,7 @@ public:
         set_flag(PIPE_MTE3, PIPE_MTE2, outputEventId);
     }
 
-    __aicore__ inline void SetGroupedTileState(Params const &params)
+    __aicore__ inline void SetGroupedTileState(Params const& params)
     {
         col = params.actualCol;
         align32Col = (col + BLOCK_FP32_NUM - 1) / BLOCK_FP32_NUM * BLOCK_FP32_NUM;
@@ -605,18 +605,18 @@ public:
     }
 
     template <int32_t CORE_TYPE = g_coreType>
-    __aicore__ inline void operator()(Params const &params);
+    __aicore__ inline void operator()(Params const& params);
 
     template <>
-    __aicore__ inline void operator()<AscendC::AIC>(Params const &params)
+    __aicore__ inline void operator()<AscendC::AIC>(Params const& params)
     {}
 
-    __aicore__ inline void Init(Params const &params)
+    __aicore__ inline void Init(Params const& params)
     {
         vecCoreIdx = GetBlockIdx();
         cBlockIdx = vecCoreIdx;
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tilingData);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tilingData);
         usedVecCoreNums = tilingData->usedVecCoreNum;
 
         if (cBlockIdx >= usedVecCoreNums) {
@@ -649,16 +649,16 @@ public:
         }
 
         // 初始化 GM
-        sGm.SetGlobalBuffer((__gm__ float *)params.s);
-        softmaxLseGm.SetGlobalBuffer((__gm__ float *)params.softmaxLse);
-        dpGm.SetGlobalBuffer((__gm__ float *)params.dp);
-        pWorkspaceGm.SetGlobalBuffer((__gm__ InputDType *)params.pWorkspace);
-        softGradworkspaceGm.SetGlobalBuffer((__gm__ float *)params.softGradworkspace);
-        dsWorkspaceGm.SetGlobalBuffer((__gm__ InputDType *)params.dsWorkspace);
+        sGm.SetGlobalBuffer((__gm__ float*)params.s);
+        softmaxLseGm.SetGlobalBuffer((__gm__ float*)params.softmaxLse);
+        dpGm.SetGlobalBuffer((__gm__ float*)params.dp);
+        pWorkspaceGm.SetGlobalBuffer((__gm__ InputDType*)params.pWorkspace);
+        softGradworkspaceGm.SetGlobalBuffer((__gm__ float*)params.softGradworkspace);
+        dsWorkspaceGm.SetGlobalBuffer((__gm__ InputDType*)params.dsWorkspace);
     }
 
     template <>
-    __aicore__ inline void operator()<AscendC::AIV>(Params const &params)
+    __aicore__ inline void operator()<AscendC::AIV>(Params const& params)
     {
         Init(params);
 
@@ -719,11 +719,11 @@ public:
     __aicore__ inline void CalSimplySoft(struct SimplySoftMaxInfo<InputDType> runSftInfo, uint64_t row, uint64_t col,
                                          uint64_t curS1Idx, uint64_t ping)
     {
-        LocalTensor<float> &sLocal = runSftInfo.sTensor;
-        LocalTensor<float> &lse = runSftInfo.lseTensor;
-        LocalTensor<float> &lseFp32Brc = runSftInfo.lseBrocTensor;
-        LocalTensor<float> &p32Local = runSftInfo.pFp32Tensor;
-        LocalTensor<InputDType> &p16Local = runSftInfo.pFp16Tensor;
+        LocalTensor<float>& sLocal = runSftInfo.sTensor;
+        LocalTensor<float>& lse = runSftInfo.lseTensor;
+        LocalTensor<float>& lseFp32Brc = runSftInfo.lseBrocTensor;
+        LocalTensor<float>& p32Local = runSftInfo.pFp32Tensor;
+        LocalTensor<InputDType>& p16Local = runSftInfo.pFp16Tensor;
 
         GlobalTensor<float> s = runSftInfo.sGm;
         GlobalTensor<float> lseGm = runSftInfo.lseGm;
@@ -800,7 +800,7 @@ public:
         LocalTensor<float> dpLocal = runDsInfo.dpFp32Tensor;
         LocalTensor<float> dLocal = runDsInfo.softmaxGradTensor;
         LocalTensor<InputDType> ds16Tensor = runDsInfo.dsFp16Tensor;
-        LocalTensor<float> &p32Local = runDsInfo.pFp32Tensor;
+        LocalTensor<float>& p32Local = runDsInfo.pFp32Tensor;
 
         GlobalTensor<float> dp = runDsInfo.dpGm;
         GlobalTensor<float> d = runDsInfo.softmaxGradGm;
@@ -853,7 +853,7 @@ public:
     }
 
     // TND gathers strided LSE values into eight-lane rows; BNSD loads contiguous values.
-    __aicore__ inline void LseCopy(GlobalTensor<float> &LseGm, LocalTensor<float> &lse, LocalTensor<float> &lseFp32Brc,
+    __aicore__ inline void LseCopy(GlobalTensor<float>& LseGm, LocalTensor<float>& lse, LocalTensor<float>& lseFp32Brc,
                                    uint64_t count, uint64_t curS1Idx)
     {
         uint64_t startOffset = 0;
@@ -861,7 +861,7 @@ public:
         if constexpr (INPUT_LAYOUT == TND) {
             uint64_t prefixSum = 0;
             for (uint64_t b = 0; b < curCoreBatch; b++) {
-                prefixSum += ((__gm__ int64_t *)actualQSeqlen)[b];
+                prefixSum += ((__gm__ int64_t*)actualQSeqlen)[b];
             }
             uint64_t bOffset = n1 * prefixSum;
             startOffset = bOffset + curS1Idx * n1 + curCoreN1Idx;
@@ -880,8 +880,8 @@ public:
     }
 
     // Subtract row-broadcast ubIn1 [row, 8] from ubIn0 [row, col].
-    __aicore__ inline void SubBrcb(LocalTensor<float> const &ubOut, LocalTensor<float> const &ubIn0,
-                                   LocalTensor<float> const &ubIn1, uint64_t row, uint64_t col)
+    __aicore__ inline void SubBrcb(LocalTensor<float> const& ubOut, LocalTensor<float> const& ubIn0,
+                                   LocalTensor<float> const& ubIn1, uint64_t row, uint64_t col)
     {
         // Each vector repeat handles 64 FP32 columns; repeats advance across rows.
         uint32_t countEachRepeat = REAPTE_BYTE / sizeof(float);
@@ -907,7 +907,7 @@ public:
     }
 
     // D stores eight FP32 lanes per logical query row.
-    __aicore__ inline void CopyDIn(GlobalTensor<float> &d, LocalTensor<float> &dLocal, uint64_t count,
+    __aicore__ inline void CopyDIn(GlobalTensor<float>& d, LocalTensor<float>& dLocal, uint64_t count,
                                    uint64_t curS1Idx)
     {
         uint64_t startOffset = 0;
@@ -915,7 +915,7 @@ public:
         if constexpr (INPUT_LAYOUT == TND) {
             uint64_t prefixSum = 0;
             for (uint64_t b = 0; b < curCoreBatch; b++) {
-                prefixSum += ((__gm__ int64_t *)actualQSeqlen)[b];
+                prefixSum += ((__gm__ int64_t*)actualQSeqlen)[b];
             }
             uint64_t bOffset = prefixSum * n1 * BRCB_BASE_NUM;
             startOffset = bOffset + curS1Idx * n1 * BRCB_BASE_NUM + curCoreN1Idx * BRCB_BASE_NUM;

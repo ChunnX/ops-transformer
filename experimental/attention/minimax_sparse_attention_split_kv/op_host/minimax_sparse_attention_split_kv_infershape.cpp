@@ -36,7 +36,7 @@ static constexpr uint32_t LAYOUT_TND = 0;  // TND [T, N, D]
 static constexpr uint32_t LAYOUT_BNSD = 1; // BNSD [B, N, S, D]
 static constexpr uint32_t LAYOUT_BSND = 2; // BSND [B, S, N, D]
 
-static bool ParseInputLayout(const char *layoutStr, uint32_t &layoutType)
+static bool ParseInputLayout(const char* layoutStr, uint32_t& layoutType)
 {
     if (layoutStr == nullptr || layoutStr[0] == '\0') {
         layoutType = LAYOUT_TND;
@@ -61,7 +61,7 @@ static bool ParseInputLayout(const char *layoutStr, uint32_t &layoutType)
 // 推断规则：输出 attentionOut 的形状等于输入 query 的形状（TND 布局: [total_q_tokens, num_q_heads, D]）。
 // 特殊处理：当 query 为未知维度（UNKNOWN_DIMS, 即 -2）时，输出也设为单维未知，用于图编译期的动态形状场景。
 // 校验：query 必须为 3 维（TND_DIM_NUM），否则返回 GRAPH_FAILED。
-static ge::graphStatus InferShapeMinimaxSparseAttentionSplitKv(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeMinimaxSparseAttentionSplitKv(gert::InferShapeContext* context)
 {
     if (context == nullptr) {
         OP_LOGE("MinimaxSparseAttentionSplitKv", "context is nullptr!");
@@ -69,12 +69,12 @@ static ge::graphStatus InferShapeMinimaxSparseAttentionSplitKv(gert::InferShapeC
     }
 
     // 获取输入 query 的形状，作为输出形状推断的依据。
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     // 获取输出 attentionOut 的形状对象，待填充。
-    gert::Shape *attentionOutShape = context->GetOutputShape(ATTENTION_OUT_INDEX);
+    gert::Shape* attentionOutShape = context->GetOutputShape(ATTENTION_OUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
-    gert::Shape *softmaxLseShape = context->GetOutputShape(SOFTMAX_LSE_INDEX);
+    gert::Shape* softmaxLseShape = context->GetOutputShape(SOFTMAX_LSE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
 
     // 动态形状场景：query 整体未知时，输出同样标记为未知维度，直接返回成功。
@@ -108,7 +108,7 @@ static ge::graphStatus InferShapeMinimaxSparseAttentionSplitKv(gert::InferShapeC
     // 输出形状直接等于 query 形状（TND）。
     *attentionOutShape = *queryShape;
 
-    const bool *softmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
+    const bool* softmaxLsePtr = attrs->GetAttrPointer<bool>(ATTR_SOFTMAX_LSE_FLAG_INDEX);
     bool softmaxLseFlag = (softmaxLsePtr != nullptr) ? *softmaxLsePtr : false;
     if (softmaxLseFlag) {
         if (layoutType == LAYOUT_BNSD) {
@@ -133,7 +133,7 @@ static ge::graphStatus InferShapeMinimaxSparseAttentionSplitKv(gert::InferShapeC
 
 // InferDataTypeMinimaxSparseAttentionSplitKv: 输出数据类型推断函数。
 // 推断规则：输出 attentionOut 的数据类型等于输入 query 的数据类型（bf16）。
-static ge::graphStatus InferDataTypeMinimaxSparseAttentionSplitKv(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeMinimaxSparseAttentionSplitKv(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

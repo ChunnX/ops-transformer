@@ -30,16 +30,16 @@ Where:
 def depth_connection(self, branch_output, residuals, *, beta):
     # beta is h_post, shape [num_streams]
     # branch_output shape: [batch, seq, dim]
-    
+
     # Step 1: "b ... d, s -> b ... s d"
     # Broadcast multiply: [B, S, D] × [N] -> [B, S, N, D]
     # out[b,seq,s,d] = branch_output[b,seq,d] × beta[s]
     output = einsum(branch_output, beta, "b ... d, s -> b ... s d")
-    
+
     # Step 2: "b ... s d -> (b s) ... d"
     # Reshape: [B, S, N, D] -> [B×N, S, D]
     output = rearrange(output, "b ... s d -> (b s) ... d")
-    
+
     return output
 ```
 
@@ -55,12 +55,12 @@ void cpu_reference_fp32(
     int64_t batch, int64_t seq_len, int64_t dim, int64_t num_streams
 ) {
     int64_t E = seq_len * dim;  // elements per batch
-    
+
     for (int64_t b = 0; b < batch; ++b) {
         for (int64_t s = 0; s < num_streams; ++s) {
             float weight = h_post[s];
             int64_t out_batch = b * num_streams + s;  // output[b×N+s, ...]
-            
+
             for (int64_t i = 0; i < E; ++i) {
                 // output[b×N+s, i] = branch_output[b, i] × h_post[s]
                 output[out_batch * E + i] = branch_output[b * E + i] * weight;
@@ -78,12 +78,12 @@ __aicore__ inline void ProcessOne(int64_t batch_idx, int64_t stream_idx) {
     int64_t in_off = batch_idx * batch_elements;
     // out_off = (b × N + s) × E  ← output[b×N+s, ...]
     int64_t out_off = (batch_idx * num_streams + stream_idx) * batch_elements;
-    
+
     gm_in.SetGlobalBuffer(gm_branch + in_off, batch_elements);
     gm_out.SetGlobalBuffer(gm_output + out_off, batch_elements);
-    
+
     T weight = gm_h.GetValue(stream_idx);  // h_post[s]
-    
+
     for (int64_t i = 0; i < tiles; ++i) {
         CopyIn(off, len);
         Compute(len, weight);  // Muls(out, in, weight)

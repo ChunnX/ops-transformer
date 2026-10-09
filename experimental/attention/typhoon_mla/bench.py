@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -8,10 +8,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import logging 
-import pytest 
+import logging
+import pytest
 
-import torch 
+import torch
 import torch_npu
 import numpy as np
 
@@ -22,7 +22,7 @@ from tests.test_torchnpu_absorb import TorchNPUPagedMLA
 from tests.utils import convert_absorb_to_naive, kv_to_paged, convert_to_dense
 
 torch.set_printoptions(sci_mode=False)
-logging.basicConfig(level=logging.INFO) # Specifies the log file path, etc.
+logging.basicConfig(level=logging.INFO)  # Specifies the log file path, etc.
 
 if __name__ == "__main__":
     qk_nope_head_dim = 128
@@ -40,28 +40,46 @@ if __name__ == "__main__":
             for shared_seqlen in [4 * 1024, 8 * 1024, 16 * 1024]:
                 for nonshared_seqlen in [256, 1024, 4096]:
                     seqlens = [shared_seqlen] + [nonshared_seqlen] * bsz
-                    
+
                     test_typhoon_mla = TyphoonMLA(
-                        bsz, seqlens, n_heads, qk_nope_head_dim, qk_rope_head_dim, 
-                        kv_lora_rank, v_head_dim, softmax_scale, 
-                        device, dtype
+                        bsz,
+                        seqlens,
+                        n_heads,
+                        qk_nope_head_dim,
+                        qk_rope_head_dim,
+                        kv_lora_rank,
+                        v_head_dim,
+                        softmax_scale,
+                        device,
+                        dtype,
                     )
-                    
+
                     typhoonmla_elapsed = test_typhoon_mla.perf(warm_up=25, n_repeat=100)
-                    typhoonmla_tgr = bsz / (typhoonmla_elapsed * 1e-3) * 1e-3 # ktoken/s
+                    typhoonmla_tgr = (
+                        bsz / (typhoonmla_elapsed * 1e-3) * 1e-3
+                    )  # ktoken/s
 
                     seqlens = [shared_seqlen + nonshared_seqlen] * bsz
-                    
+
                     test_torchnpu_paged_mla = TorchNPUPagedMLA(
-                        bsz, seqlens, n_heads, qk_nope_head_dim, qk_rope_head_dim, 
-                        kv_lora_rank, v_head_dim, softmax_scale, 
-                        device, dtype
+                        bsz,
+                        seqlens,
+                        n_heads,
+                        qk_nope_head_dim,
+                        qk_rope_head_dim,
+                        kv_lora_rank,
+                        v_head_dim,
+                        softmax_scale,
+                        device,
+                        dtype,
                     )
-                    torchnpu_elapsed = test_torchnpu_paged_mla.perf(warm_up=25, n_repeat=100)
-                    torchnpu_tgr = bsz / (torchnpu_elapsed * 1e-3) * 1e-3 # ktoken/s
+                    torchnpu_elapsed = test_torchnpu_paged_mla.perf(
+                        warm_up=25, n_repeat=100
+                    )
+                    torchnpu_tgr = bsz / (torchnpu_elapsed * 1e-3) * 1e-3  # ktoken/s
 
                     speedup = typhoonmla_tgr / torchnpu_tgr
-                    
+
                     logging.info(
                         f"batch: {bsz:<5}  "
                         f"shared_seqlen: {shared_seqlen:<5}  "

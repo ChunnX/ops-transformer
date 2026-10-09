@@ -77,13 +77,13 @@ extern "C" {
  * @return aclnnStatus 执行状态。ACLNN_SUCCESS表示成功。
  */
 aclnnStatus aclnnFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *relHOptional,
-    const aclTensor *relWOptional, const aclTensor *blockTableOptional, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional, const aclTensor *attnMaskOptional, const aclTensor *metadataOptional,
+    const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* relHOptional,
+    const aclTensor* relWOptional, const aclTensor* blockTableOptional, const aclTensor* cuSeqlensQOptional,
+    const aclTensor* cuSeqlensKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional,
+    const aclTensor* sinksOptional, const aclTensor* attnMaskOptional, const aclTensor* metadataOptional,
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut, int64_t returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const char* layoutQ, const char* layoutKv, const char* layoutOut, int64_t returnSoftmaxLse,
+    const aclTensor* attnOut, const aclTensor* softmaxLseOptional, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnFlashAttn的第二段接口，用于执行计算。
@@ -93,7 +93,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
  * @param stream          [IN] 用于执行计算的acl stream。
  * @return aclnnStatus 执行状态。
  */
-aclnnStatus aclnnFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream);
+aclnnStatus aclnnFlashAttn(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 
 #ifdef __cplusplus
 }

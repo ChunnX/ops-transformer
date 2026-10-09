@@ -25,7 +25,7 @@
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t size = 1;
     for (int64_t dim : shape) {
@@ -34,7 +34,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return size;
 }
 
-void PrintTensorDataFloat(const std::vector<int64_t> &shape, void *device_addr)
+void PrintTensorDataFloat(const std::vector<int64_t>& shape, void* device_addr)
 {
     int64_t size = GetShapeSize(shape);
     std::vector<float> host_data(size, 0.0f);
@@ -50,7 +50,7 @@ void PrintTensorDataFloat(const std::vector<int64_t> &shape, void *device_addr)
     LOG_PRINT("\n");
 }
 
-void PrintTensorDataBfloat16(const std::vector<int64_t> &shape, void *device_addr)
+void PrintTensorDataBfloat16(const std::vector<int64_t>& shape, void* device_addr)
 {
     int64_t size = GetShapeSize(shape);
     std::vector<uint16_t> host_bf16(size);
@@ -66,7 +66,7 @@ void PrintTensorDataBfloat16(const std::vector<int64_t> &shape, void *device_add
     LOG_PRINT("\n");
 }
 
-int InitAcl(int32_t device_id, aclrtContext &context, aclrtStream &stream)
+int InitAcl(int32_t device_id, aclrtContext& context, aclrtStream& stream)
 {
     aclError ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed, error: %d\n", ret); return -1);
@@ -86,8 +86,8 @@ int InitAcl(int32_t device_id, aclrtContext &context, aclrtStream &stream)
     return 0;
 }
 
-int CreateAclTensorFloat32(const std::vector<float> &host_data, const std::vector<int64_t> &shape, void *&device_addr,
-                           aclTensor *&tensor)
+int CreateAclTensorFloat32(const std::vector<float>& host_data, const std::vector<int64_t>& shape, void*& device_addr,
+                           aclTensor*& tensor)
 {
     int64_t size = GetShapeSize(shape) * sizeof(float);
 
@@ -109,8 +109,8 @@ int CreateAclTensorFloat32(const std::vector<float> &host_data, const std::vecto
     return 0;
 }
 
-int CreateAclTensorBfloat16(const std::vector<float> &host_data, const std::vector<int64_t> &shape, void *&device_addr,
-                            aclTensor *&tensor)
+int CreateAclTensorBfloat16(const std::vector<float>& host_data, const std::vector<int64_t>& shape, void*& device_addr,
+                            aclTensor*& tensor)
 {
     int64_t size = GetShapeSize(shape);
     std::vector<uint16_t> host_data_bf16(size);
@@ -138,7 +138,7 @@ int CreateAclTensorBfloat16(const std::vector<float> &host_data, const std::vect
     return 0;
 }
 
-int CreateAclTensorBfloat16Output(const std::vector<int64_t> &shape, void *&device_addr, aclTensor *&tensor)
+int CreateAclTensorBfloat16Output(const std::vector<int64_t>& shape, void*& device_addr, aclTensor*& tensor)
 {
     int64_t size = GetShapeSize(shape);
     int64_t byte_size = size * sizeof(uint16_t);
@@ -153,7 +153,7 @@ int CreateAclTensorBfloat16Output(const std::vector<int64_t> &shape, void *&devi
     return 0;
 }
 
-int CreateAclTensorFloat32Output(const std::vector<int64_t> &shape, void *&device_addr, aclTensor *&tensor)
+int CreateAclTensorFloat32Output(const std::vector<int64_t>& shape, void*& device_addr, aclTensor*& tensor)
 {
     int64_t size = GetShapeSize(shape);
     int64_t byte_size = size * sizeof(float);
@@ -173,16 +173,16 @@ struct Tensors {
     void *hin_addr = nullptr, *h_post_addr = nullptr, *h_res_addr = nullptr;
     void *h_pre_addr = nullptr, *hc_before_norm_addr = nullptr, *inv_rms_addr = nullptr;
     void *sum_out_addr = nullptr, *norm_out_addr = nullptr;
-    void *premix_addr = nullptr;
+    void* premix_addr = nullptr;
     aclTensor *x = nullptr, *phi = nullptr, *alpha = nullptr, *bias = nullptr, *premix = nullptr;
     aclTensor *hin = nullptr, *h_post = nullptr, *h_res = nullptr;
     aclTensor *h_pre = nullptr, *hc_before_norm = nullptr, *inv_rms = nullptr;
     aclTensor *sum_out = nullptr, *norm_out = nullptr;
 };
 
-int CreateInputTensors(const std::vector<int64_t> &x_shape, const std::vector<int64_t> &phi_shape,
-                       const std::vector<int64_t> &alpha_shape, const std::vector<int64_t> &bias_shape,
-                       const std::vector<int64_t> &premix_shape, Tensors &tensors)
+int CreateInputTensors(const std::vector<int64_t>& x_shape, const std::vector<int64_t>& phi_shape,
+                       const std::vector<int64_t>& alpha_shape, const std::vector<int64_t>& bias_shape,
+                       const std::vector<int64_t>& premix_shape, Tensors& tensors)
 {
     std::vector<float> x_host_data(GetShapeSize(x_shape), 1.0f);
     std::vector<float> phi_host_data(GetShapeSize(phi_shape), 1.0f);
@@ -204,11 +204,11 @@ int CreateInputTensors(const std::vector<int64_t> &x_shape, const std::vector<in
     return 0;
 }
 
-int CreateOutputTensors(const std::vector<int64_t> &hin_shape, const std::vector<int64_t> &h_post_shape,
-                        const std::vector<int64_t> &h_res_shape, const std::vector<int64_t> &h_pre_shape,
-                        const std::vector<int64_t> &hc_before_norm_shape, const std::vector<int64_t> &inv_rms_shape,
-                        const std::vector<int64_t> &sum_out_shape, const std::vector<int64_t> &norm_out_shape,
-                        Tensors &tensors)
+int CreateOutputTensors(const std::vector<int64_t>& hin_shape, const std::vector<int64_t>& h_post_shape,
+                        const std::vector<int64_t>& h_res_shape, const std::vector<int64_t>& h_pre_shape,
+                        const std::vector<int64_t>& hc_before_norm_shape, const std::vector<int64_t>& inv_rms_shape,
+                        const std::vector<int64_t>& sum_out_shape, const std::vector<int64_t>& norm_out_shape,
+                        Tensors& tensors)
 {
     int ret = CreateAclTensorBfloat16Output(hin_shape, tensors.hin_addr, tensors.hin);
     CHECK_RET(ret == 0, LOG_PRINT("Create hin_tensor failed\n"); return -1);
@@ -229,7 +229,7 @@ int CreateOutputTensors(const std::vector<int64_t> &hin_shape, const std::vector
     return 0;
 }
 
-void DestroyTensors(Tensors &tensors)
+void DestroyTensors(Tensors& tensors)
 {
     aclDestroyTensor(tensors.x);
     aclDestroyTensor(tensors.phi);
@@ -246,7 +246,7 @@ void DestroyTensors(Tensors &tensors)
     aclDestroyTensor(tensors.norm_out);
 }
 
-void FreeDeviceMemory(Tensors &tensors)
+void FreeDeviceMemory(Tensors& tensors)
 {
     aclrtFree(tensors.x_addr);
     aclrtFree(tensors.phi_addr);
@@ -303,7 +303,7 @@ int main()
     CHECK_RET(ret == 0, return -1);
 
     uint64_t workspace_size = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
 
     aclnnStatus aclnn_ret = aclnnMhcPreSinkhornPremixGetWorkspaceSize(
         tensors.x, tensors.phi, tensors.alpha, tensors.bias, tensors.premix, hc_mult, num_iters, hc_eps, norm_eps,
@@ -313,7 +313,7 @@ int main()
               LOG_PRINT("aclnnMhcPreSinkhornPremixGetWorkspaceSize failed, error: %d\n", aclnn_ret);
               return -1);
 
-    void *workspace_addr = nullptr;
+    void* workspace_addr = nullptr;
     if (workspace_size > 0) {
         ret = aclrtMalloc(&workspace_addr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc workspace failed, error: %d\n", ret); return -1);

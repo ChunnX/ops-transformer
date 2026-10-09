@@ -38,7 +38,10 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         df = df.replace({np.nan: None, pd.NA: None})
         missing_cols = [col for col in REQUIRED_EXCEL_COLUMNS if col not in df.columns]
         if missing_cols:
-            pytest.skip(f"Missing required columns in Excel: {missing_cols}", allow_module_level=True)
+            pytest.skip(
+                f"Missing required columns in Excel: {missing_cols}",
+                allow_module_level=True,
+            )
         return [row.to_dict() for _, row in df.iterrows()]
     except Exception as error:
         pytest.skip(f"Failed to read Excel file: {error}", allow_module_level=True)
@@ -108,9 +111,15 @@ def _append_result_row(existing_df, row_data):
 
     df = existing_df.rename(columns=LEGACY_RESULT_COLUMN_RENAMES)
     if set(df.columns) != set(current_columns):
-        missing_columns = [column for column in current_columns if column not in df.columns]
-        extra_columns = [column for column in df.columns if column not in current_columns]
-        print("warning: result columns do not match current case fields, merging columns")
+        missing_columns = [
+            column for column in current_columns if column not in df.columns
+        ]
+        extra_columns = [
+            column for column in df.columns if column not in current_columns
+        ]
+        print(
+            "warning: result columns do not match current case fields, merging columns"
+        )
         print(f"Missing columns: {missing_columns}")
         print(f"Extra columns: {extra_columns}")
         for column in missing_columns:
@@ -119,7 +128,9 @@ def _append_result_row(existing_df, row_data):
             row_data[column] = None
         current_columns.extend(extra_columns)
     df = df.reindex(columns=current_columns)
-    return pd.concat([df, pd.DataFrame([row_data], columns=current_columns)], ignore_index=True)
+    return pd.concat(
+        [df, pd.DataFrame([row_data], columns=current_columns)], ignore_index=True
+    )
 
 
 def _save_result_csv_fallback(row_data, result_path, error):
@@ -127,7 +138,9 @@ def _save_result_csv_fallback(row_data, result_path, error):
     existing_df = pd.read_csv(csv_path) if csv_path.exists() else None
     df = _append_result_row(existing_df, row_data)
     df.to_csv(csv_path, index=False)
-    print(f"warning: Excel result requires optional dependency ({error}); wrote {csv_path}")
+    print(
+        f"warning: Excel result requires optional dependency ({error}); wrote {csv_path}"
+    )
     return True
 
 

@@ -60,7 +60,8 @@ struct TempLoopInfoGqa {
     uint32_t sparseBlockActualSeqSizeKv = 0U;
 };
 
-template <typename SFAAT> class SparseFlashAttentionAntiquantGqa {
+template <typename SFAAT>
+class SparseFlashAttentionAntiquantGqa {
 public:
     // 中间计算数据类型为float，高精度模式
     using T = float;
@@ -74,14 +75,13 @@ public:
     using MM2_OUT_T = typename AscendC::Conditional<SFAAT::isMsdDD, half, T>::type;
 
     __aicore__ inline SparseFlashAttentionAntiquantGqa(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
-                                __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-                                __gm__ uint8_t *sparseSeqLengthsKv, SfaMetaData *metaData,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                const SparseFlashAttentionAntiquantTilingDataMla *__restrict tiling,
-				                __gm__ uint8_t *gmTiling, TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                                __gm__ uint8_t* sparseIndices, __gm__ uint8_t* keyScale, __gm__ uint8_t* valueScale,
+                                __gm__ uint8_t* blockTable, __gm__ uint8_t* actualSeqLengthsQ,
+                                __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* sparseSeqLengthsKv,
+                                SfaMetaData* metaData, __gm__ uint8_t* attentionOut, __gm__ uint8_t* workspace,
+                                const SparseFlashAttentionAntiquantTilingDataMla* __restrict tiling,
+                                __gm__ uint8_t* gmTiling, TPipe* tPipe);
 
     __aicore__ inline void Process();
 
@@ -114,9 +114,9 @@ private:
 
     static constexpr uint32_t dbWorkspaceRatio = PRELOAD_NUM;
 
-    const SparseFlashAttentionAntiquantTilingDataMla *__restrict tilingData = nullptr;
+    const SparseFlashAttentionAntiquantTilingDataMla* __restrict tilingData = nullptr;
 
-    TPipe *pipe = nullptr;
+    TPipe* pipe = nullptr;
 
     uint64_t mSizeVStart = 0ULL;
     int64_t threshold = 0;
@@ -130,9 +130,9 @@ private:
     uint32_t aiCoreIdx = 0U;
     uint32_t usedCoreNum = 0U;
 
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
-    SfaMetaData *metaDataPtr = nullptr;
+    __gm__ uint8_t* keyPtr = nullptr;
+    __gm__ uint8_t* valuePtr = nullptr;
+    SfaMetaData* metaDataPtr = nullptr;
 
     ConstInfo constInfo{};
     TempLoopInfoGqa tempLoopInfo{};
@@ -181,8 +181,8 @@ private:
     __aicore__ inline void InitMetaData();
     __aicore__ inline void InitCalcParamsEach();
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-                                            __gm__ uint8_t *sparseSeqLengthsKv);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths,
+                                            __gm__ uint8_t* sparseSeqLengthsKv);
     __aicore__ inline void InitOutputSingleCore();
     // ================================Process functions================================
     __aicore__ inline void ProcessBalance();
@@ -194,24 +194,25 @@ private:
     __aicore__ inline void GetSparseActualSeqLen(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
     __aicore__ inline void UpdateInnerLoopCond();
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t s1StartIdx, uint32_t s1Size, uint32_t n2Idx);
-    __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info);
+    __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo& info);
     __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t gS1EndPrev, uint32_t s2EndPrev);
-    __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths, uint32_t bIdx);
+    __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t>& actualSeqLengths, uint32_t bIdx);
     __aicore__ inline uint32_t GetActualSeqLenKV(uint32_t bIdx);
     __aicore__ inline void GetSparseBlockCountAndActualSeqKv(uint32_t bIdx);
-    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx, uint32_t &n2Idx);
-    __aicore__ inline void UpdateInner(uint32_t &s2End, uint32_t &curS2End, uint32_t s1Idx, bool isEnd);
+    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, uint32_t& bIdx, uint32_t& n2Idx);
+    __aicore__ inline void UpdateInner(uint32_t& s2End, uint32_t& curS2End, uint32_t s1Idx, bool isEnd);
     __aicore__ inline void GetPreNextTokensLeftUp();
     // ================================Mm1==============================================
-    __aicore__ inline void ComputeMm1(const RunInfo &info);
+    __aicore__ inline void ComputeMm1(const RunInfo& info);
     // ================================Mm2==============================================
-    __aicore__ inline void ComputeMm2(const RunInfo &info);
-    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
+    __aicore__ inline void ComputeMm2(const RunInfo& info);
+    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T>& attenOutUb, uint32_t startRow,
                                            uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
 };
 
-template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitTilingData()
+template <typename SFAAT>
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitTilingData()
 {
     usedCoreNum = tilingData->singleCoreParams.usedCoreNum;
     constInfo.splitKVNum = tilingData->splitKVParams.s2;
@@ -239,12 +240,13 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
     constInfo.quantScaleRepoMode = static_cast<QUANT_SCALE_REPO_MODE>(tilingData->baseParams.quantScaleRepoMode);
     constInfo.combineHeadDim = tilingData->baseParams.qkHeadDim;
     constInfo.headDimRope = tilingData->baseParams.ropeHeadDim;
-    constInfo.headDim = (constInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::COMBINE) ? 
-                        constInfo.combineHeadDim - constInfo.headDimRope : constInfo.combineHeadDim;
+    constInfo.headDim = (constInfo.quantScaleRepoMode == QUANT_SCALE_REPO_MODE::COMBINE) ?
+                            constInfo.combineHeadDim - constInfo.headDimRope :
+                            constInfo.combineHeadDim;
     constInfo.headDimAlign = Align(constInfo.headDim, (uint64_t)BYTE_BLOCK);
 
     constInfo.s2BaseSize = SALSK_S2BASEIZE;
-    constInfo.mBaseSize = constInfo.gSize * constInfo.sparseShardSize; 
+    constInfo.mBaseSize = constInfo.gSize * constInfo.sparseShardSize;
 
     constInfo.preLoadNum = PRELOAD_NUM;
     constInfo.nBufferMBaseSize = N_BUFFER_M_BASIC_SIZE; // 256
@@ -256,15 +258,17 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
     constInfo.syncV1NupdateC2 = SYNC_V1_NUPDATE_C2_FLAG;
 }
 
-template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitMetaData()
+template <typename SFAAT>
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitMetaData()
 {
     FLASH_DECODE = metaDataPtr->numOfFdHead > 0U;
     usedCoreNum = metaDataPtr->usedCoreNum;
     constInfo.s2BaseSize = SALSK_S2BASEIZE;
-    constInfo.mBaseSize = metaDataPtr->mBaseSize; 
+    constInfo.mBaseSize = metaDataPtr->mBaseSize;
 }
 
-template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitBuffers()
+template <typename SFAAT>
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitBuffers()
 {
     if constexpr (SFAAT::isMsdDD) {
         if ASCEND_IS_AIV {
@@ -276,22 +280,21 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SparseFlashAttentionAntiquantGqa<SFAAT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
-                                                          __gm__ uint8_t *actualSeqLengths,
-                                                          __gm__ uint8_t *sparseSeqLengthsKv)
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitActualSeqLen(__gm__ uint8_t* actualSeqLengthsQ,
+                                                                                 __gm__ uint8_t* actualSeqLengths,
+                                                                                 __gm__ uint8_t* sparseSeqLengthsKv)
 {
     constInfo.actualLenDimsQ = tilingData->baseParams.actualLenDimsQ;
     constInfo.actualLenDimsKV = tilingData->baseParams.actualLenDimsKV;
     constInfo.sparseLenDimsKV = tilingData->baseParams.sparseLenDimsKV;
     if (constInfo.actualLenDimsKV != 0) {
-        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths, constInfo.actualLenDimsKV);
+        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengths, constInfo.actualLenDimsKV);
     }
     if (constInfo.actualLenDimsQ != 0) {
-        actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ, constInfo.actualLenDimsQ);
+        actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsQ, constInfo.actualLenDimsQ);
     }
     if (constInfo.sparseLenDimsKV != 0) {
-        sparseSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLengthsKv, constInfo.sparseLenDimsKV);
+        sparseSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t*)sparseSeqLengthsKv, constInfo.sparseLenDimsKV);
     }
 }
 
@@ -303,13 +306,15 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitAllZeroOutpu
         uint32_t tBase = bIdx == 0 ? 0 : actualSeqLengthsQGm.GetValue(bIdx - 1);
         uint32_t s1Count = tempLoopInfo.actS1Size;
 
-        uint64_t attenOutOffset = (tBase + s1Idx) * constInfo.kvHeadNum * constInfo.gSize * constInfo.headDim +   // T轴、s1轴偏移
-                                    n2Idx * constInfo.gSize * constInfo.headDim;                        // N2轴偏移
+        uint64_t attenOutOffset =
+            (tBase + s1Idx) * constInfo.kvHeadNum * constInfo.gSize * constInfo.headDim + // T轴、s1轴偏移
+            n2Idx * constInfo.gSize * constInfo.headDim;                                  // N2轴偏移
         matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * constInfo.headDim, 0);
     } else if (constInfo.outputLayout == SFAA_LAYOUT::BSND) {
-        uint64_t attenOutOffset = bIdx * constInfo.qSeqSize * constInfo.kvHeadNum  * constInfo.gSize * constInfo.headDim +
-                                    s1Idx * constInfo.kvHeadNum  * constInfo.gSize * constInfo.headDim + // B轴、S1轴偏移
-                                    n2Idx * constInfo.gSize * constInfo.headDim;              // N2轴偏移
+        uint64_t attenOutOffset =
+            bIdx * constInfo.qSeqSize * constInfo.kvHeadNum * constInfo.gSize * constInfo.headDim +
+            s1Idx * constInfo.kvHeadNum * constInfo.gSize * constInfo.headDim + // B轴、S1轴偏移
+            n2Idx * constInfo.gSize * constInfo.headDim;                        // N2轴偏移
         matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], constInfo.gSize * constInfo.headDim, 0);
     }
 }
@@ -320,7 +325,7 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitOutputSingle
     uint32_t coreNum = GetBlockNum();
     if (coreNum != 0) {
         uint64_t totalOutputSize = constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.headDim;
-        uint64_t singleCoreSize = (totalOutputSize + (2 * coreNum) - 1) / (2 * coreNum);  // 2 means c:v = 1:2
+        uint64_t singleCoreSize = (totalOutputSize + (2 * coreNum) - 1) / (2 * coreNum); // 2 means c:v = 1:2
         uint64_t tailSize = totalOutputSize - tmpBlockIdx * singleCoreSize;
         uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
         if (singleInitOutputSize > 0) {
@@ -351,7 +356,8 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::GetSparseActualS
         tempLoopInfo.threshold = static_cast<int64_t>(tempLoopInfo.nextTokensPerBatch) + s1Idx + 1;
     }
     tempLoopInfo.curActualSeqLen = (tempLoopInfo.sparseBlockActualSeqSizeKv > tempLoopInfo.threshold) ?
-                                tempLoopInfo.threshold : tempLoopInfo.sparseBlockActualSeqSizeKv;
+                                       tempLoopInfo.threshold :
+                                       tempLoopInfo.sparseBlockActualSeqSizeKv;
 }
 
 template <typename SFAAT>
@@ -362,7 +368,8 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::GetSparseBlockCo
         tempLoopInfo.sparseBlockActualSeqSizeKv = constInfo.sparseBlockCount * constInfo.sparseBlockSize;
     } else {
         tempLoopInfo.sparseBlockActualSeqSizeKv = sparseSeqLengthsKVGm.GetValue(bIdx);
-        tempLoopInfo.sparseBlockCount = (tempLoopInfo.sparseBlockActualSeqSizeKv + constInfo.sparseBlockSize - 1) / constInfo.sparseBlockSize;
+        tempLoopInfo.sparseBlockCount =
+            (tempLoopInfo.sparseBlockActualSeqSizeKv + constInfo.sparseBlockSize - 1) / constInfo.sparseBlockSize;
     }
 }
 
@@ -398,7 +405,8 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::GetPreNextTokens
     }
 }
 
-template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::UpdateInnerLoopCond()
+template <typename SFAAT>
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::UpdateInnerLoopCond()
 {
     if ((tempLoopInfo.curActualSeqLen == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
@@ -406,8 +414,7 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
     }
     tempLoopInfo.curActSeqLenIsZero = false;
     tempLoopInfo.s2BasicSizeTail = tempLoopInfo.curActualSeqLen & (SALSK_S2BASEIZE_1);
-    tempLoopInfo.s2BasicSizeTail =
-        (tempLoopInfo.s2BasicSizeTail == 0) ? SALSK_S2BASEIZE : tempLoopInfo.s2BasicSizeTail;
+    tempLoopInfo.s2BasicSizeTail = (tempLoopInfo.s2BasicSizeTail == 0) ? SALSK_S2BASEIZE : tempLoopInfo.s2BasicSizeTail;
     tempLoopInfo.mBasicSizeTail = (tempLoopInfo.actS1Size * constInfo.gSize) % constInfo.mBaseSize;
     tempLoopInfo.mBasicSizeTail =
         (tempLoopInfo.mBasicSizeTail == 0) ? constInfo.mBaseSize : tempLoopInfo.mBasicSizeTail;
@@ -415,7 +422,7 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
 }
 
 template <typename SFAAT>
-__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::UpdateInner(uint32_t &s2End, uint32_t &curS2End,
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::UpdateInner(uint32_t& s2End, uint32_t& curS2End,
                                                                             uint32_t s1Idx, bool isEnd)
 {
     uint32_t s1BaseSize = 1;
@@ -427,13 +434,12 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::UpdateInner(uint
 }
 
 template <typename SFAAT>
-__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Init(__gm__ uint8_t *query,
-    __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
-    __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, 
-    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *sparseSeqLengthsKv, SfaMetaData *metaData, 
-    __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-    const SparseFlashAttentionAntiquantTilingDataMla *__restrict tiling,
-    __gm__ uint8_t *gmTiling, TPipe *tPipe)
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Init(
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* sparseIndices,
+    __gm__ uint8_t* keyScale, __gm__ uint8_t* valueScale, __gm__ uint8_t* blockTable, __gm__ uint8_t* actualSeqLengthsQ,
+    __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* sparseSeqLengthsKv, SfaMetaData* metaData,
+    __gm__ uint8_t* attentionOut, __gm__ uint8_t* workspace,
+    const SparseFlashAttentionAntiquantTilingDataMla* __restrict tiling, __gm__ uint8_t* gmTiling, TPipe* tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -461,15 +467,15 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Init(__gm__ uint
     valuePtr = value;
 
     // init global buffer
-    queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
-    keyGm.SetGlobalBuffer((__gm__ KV_T *)keyPtr);
-    valueGm.SetGlobalBuffer((__gm__ KV_T *)valuePtr);
-    keyDequantScaleGm.SetGlobalBuffer((__gm__ T *)keyScale);
-    valueDequantScaleGm.SetGlobalBuffer((__gm__ T *)valueScale);
+    queryGm.SetGlobalBuffer((__gm__ Q_T*)query);
+    keyGm.SetGlobalBuffer((__gm__ KV_T*)keyPtr);
+    valueGm.SetGlobalBuffer((__gm__ KV_T*)valuePtr);
+    keyDequantScaleGm.SetGlobalBuffer((__gm__ T*)keyScale);
+    valueDequantScaleGm.SetGlobalBuffer((__gm__ T*)valueScale);
     keyGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     valueGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
 
-    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
+    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)attentionOut);
 
     if ASCEND_IS_AIV {
         if (constInfo.needInit && LAYOUT_T != SFAA_LAYOUT::TND) {
@@ -478,74 +484,73 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Init(__gm__ uint
     }
 
     if constexpr (PAGE_ATTENTION) {
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
     }
-    topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    topKGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
 
     // workspace 内存排布
     // |Q--|mm1ResGm(存S)|vec1ResGm(存A1,A2)|mm2ResGm(存O)|vec2ResGm
     // |Core0_Q1-Core0_Q2-Core1_Q1-Core1_Q2....Core32_Q1-Core32_Q2|Core0_mmRes
     uint64_t offset = 0;
     queryPreProcessResGm.SetGlobalBuffer(
-        (__gm__ KV_T *)(workspace + offset +
-                        aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * 2 * sizeof(KV_T)));
+        (__gm__ KV_T*)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * 2 * sizeof(KV_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * 2 * sizeof(KV_T);
 
     mm1ResGm.SetGlobalBuffer(
-        (__gm__ MM1_OUT_T *)(workspace + offset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
+        (__gm__ MM1_OUT_T*)(workspace + offset +
+                            aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T);
 
     vec1ResGm.SetGlobalBuffer(
-        (__gm__ K_ROPE_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * 2 *
-                            sizeof(K_ROPE_T)));
+        (__gm__ K_ROPE_T*)(workspace + offset +
+                           aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * 2 * sizeof(K_ROPE_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(K_ROPE_T) * 2;
 
     mm2ResGm.SetGlobalBuffer(
-        (__gm__ MM2_OUT_T *)(workspace + offset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
+        (__gm__ MM2_OUT_T*)(workspace + offset +
+                            aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
-    mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(mm2ResGm.GetPhyAddr(0)));
+    mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(mm2ResGm.GetPhyAddr(0)));
 
-    vec2ResGm.SetGlobalBuffer((__gm__ T *)(workspace + offset +
-                              aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
+    vec2ResGm.SetGlobalBuffer(
+        (__gm__ T*)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
 
     // s2  d bufNum
     // 384 is mergesize
     // 128 is headdim
     // 4 is buffernum
-    keyMergeGm_.SetGlobalBuffer((__gm__ K_ROPE_T *)(workspace + offset + aiCoreIdx * 384 * 128 * 4 *
-                                sizeof(K_ROPE_T)));
+    keyMergeGm_.SetGlobalBuffer((__gm__ K_ROPE_T*)(workspace + offset + aiCoreIdx * 384 * 128 * 4 * sizeof(K_ROPE_T)));
     offset += GetBlockNum() * 384 * 128 * 4 * sizeof(K_ROPE_T);
-    valueMergeGm_.SetGlobalBuffer((__gm__ K_ROPE_T *)(workspace + offset + aiCoreIdx * 384 * 128 * 4 *
-                        sizeof(K_ROPE_T)));
+    valueMergeGm_.SetGlobalBuffer(
+        (__gm__ K_ROPE_T*)(workspace + offset + aiCoreIdx * 384 * 128 * 4 * sizeof(K_ROPE_T)));
     offset += GetBlockNum() * 384 * 128 * 4 * sizeof(K_ROPE_T);
 
     if constexpr (IS_META) {
         if (FLASH_DECODE) {
-            accumOutGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
+            accumOutGm.SetGlobalBuffer((__gm__ float*)(workspace + offset));
             offset = offset + tilingData->splitKVParams.accumOutSize * sizeof(float);
-            lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
-            lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + offset) + tilingData->splitKVParams.logSumExpSize / 2);
+            lseSumFdGm.SetGlobalBuffer((__gm__ float*)(workspace + offset));
+            lseMaxFdGm.SetGlobalBuffer((__gm__ float*)(workspace + offset) +
+                                       tilingData->splitKVParams.logSumExpSize / 2);
             offset = offset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
         }
     }
 
-    if ASCEND_IS_AIV {        
+    if ASCEND_IS_AIV {
         if constexpr (SFAAT::isMsdDD) {
             vectorServiceMsd.InitParams(constInfo, tilingData, metaDataPtr);
-            vectorServiceMsd.InitVec0GlobalTensor(keyMergeGm_, valueMergeGm_, queryPreProcessResGm, queryGm,
-                                           keyGm, valueGm, blockTableGm, keyDequantScaleGm);
-            vectorServiceMsd.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm,
-                                            actualSeqLengthsKVGm, lseMaxFdGm, lseSumFdGm, topKGm);
+            vectorServiceMsd.InitVec0GlobalTensor(keyMergeGm_, valueMergeGm_, queryPreProcessResGm, queryGm, keyGm,
+                                                  valueGm, blockTableGm, keyDequantScaleGm);
+            vectorServiceMsd.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm,
+                                                  lseMaxFdGm, lseSumFdGm, topKGm);
             vectorServiceMsd.InitVec2GlobalTensor(valueDequantScaleGm, accumOutGm, mm2ResGm, attentionOutGm);
         }
         if constexpr (IS_META) {
             if (FLASH_DECODE) {
                 fdService.InitParams(constInfo);
-                fdService.InitGlobalTensor(lseMaxFdGm, lseSumFdGm, accumOutGm, attentionOutGm, 
-                                        actualSeqLengthsQGm, sparseSeqLengthsKVGm);
+                fdService.InitGlobalTensor(lseMaxFdGm, lseSumFdGm, accumOutGm, attentionOutGm, actualSeqLengthsQGm,
+                                           sparseSeqLengthsKVGm);
             }
         }
     }
@@ -555,8 +560,8 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Init(__gm__ uint
             matmulServiceMsd.InitParams(constInfo);
             matmulServiceMsd.InitMm1GlobalTensor(queryGm, keyGm, mm1ResGm);
             matmulServiceMsd.InitMm2GlobalTensor(vec1ResGm, valueGm, mm2ResGm, attentionOutGm);
-            matmulServiceMsd.InitPageAttentionInfo(keyMergeGm_, valueMergeGm_, queryPreProcessResGm, blockTableGm, topKGm,
-                                                constInfo.kvCacheBlockSize, constInfo.maxBlockNumPerBatch);
+            matmulServiceMsd.InitPageAttentionInfo(keyMergeGm_, valueMergeGm_, queryPreProcessResGm, blockTableGm,
+                                                   topKGm, constInfo.kvCacheBlockSize, constInfo.maxBlockNumPerBatch);
         }
     }
     // 要在InitParams之后执行
@@ -565,13 +570,14 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Init(__gm__ uint
     }
 }
 
-template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitCalcParamsEach()
+template <typename SFAAT>
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::InitCalcParamsEach()
 {
     if constexpr (IS_META) {
-        const uint32_t *bN2End = metaDataPtr->bN2End;
-        const uint32_t *gS1End = metaDataPtr->gS1End;
-        const uint32_t *s2End = metaDataPtr->s2End;
-        const uint32_t *s2SplitStartIdxOfCore = metaDataPtr->fdRes.s2SplitStartIdxOfCore;
+        const uint32_t* bN2End = metaDataPtr->bN2End;
+        const uint32_t* gS1End = metaDataPtr->gS1End;
+        const uint32_t* s2End = metaDataPtr->s2End;
+        const uint32_t* s2SplitStartIdxOfCore = metaDataPtr->fdRes.s2SplitStartIdxOfCore;
         constInfo.bN2End = bN2End[aiCoreIdx];
         constInfo.gS1End = gS1End[aiCoreIdx];
         constInfo.s2End = s2End[aiCoreIdx];
@@ -581,16 +587,16 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
         constInfo.coreStartKVSplitPos = s2SplitStartIdxOfCore[aiCoreIdx];
     } else {
 #ifdef ASCENDC_CPU_DEBUG
-        const uint32_t *bN2End = tilingData->outerSplitParams.bN2End;
-        const uint32_t *gS1End = tilingData->outerSplitParams.gS1End;
-        const uint32_t *s2End = tilingData->outerSplitParams.s2End;
+        const uint32_t* bN2End = tilingData->outerSplitParams.bN2End;
+        const uint32_t* gS1End = tilingData->outerSplitParams.gS1End;
+        const uint32_t* s2End = tilingData->outerSplitParams.s2End;
 #else
         uint32_t bN2End[ARRAY_SIZE(tilingData->outerSplitParams.bN2End)];
         uint32_t gS1End[ARRAY_SIZE(tilingData->outerSplitParams.gS1End)];
         uint32_t s2End[ARRAY_SIZE(tilingData->outerSplitParams.s2End)];
-        copy_data_align64((uint8_t *)bN2End, (uint8_t *)(tilingData->outerSplitParams.bN2End), sizeof(bN2End));
-        copy_data_align64((uint8_t *)gS1End, (uint8_t *)(tilingData->outerSplitParams.gS1End), sizeof(gS1End));
-        copy_data_align64((uint8_t *)s2End, (uint8_t *)(tilingData->outerSplitParams.s2End), sizeof(s2End));
+        copy_data_align64((uint8_t*)bN2End, (uint8_t*)(tilingData->outerSplitParams.bN2End), sizeof(bN2End));
+        copy_data_align64((uint8_t*)gS1End, (uint8_t*)(tilingData->outerSplitParams.gS1End), sizeof(gS1End));
+        copy_data_align64((uint8_t*)s2End, (uint8_t*)(tilingData->outerSplitParams.s2End), sizeof(s2End));
 #endif
         // TND分核信息
         constInfo.bN2End = bN2End[aiCoreIdx];
@@ -603,25 +609,23 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SparseFlashAttentionAntiquantGqa<SFAAT>::Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb,
-                                                         uint32_t startRow, uint32_t dealRowCount,
-                                                         uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Bmm2DataCopyOut(
+    uint64_t attenOutOffset, LocalTensor<OUT_T>& attenOutUb, uint32_t startRow, uint32_t dealRowCount,
+    uint32_t columnCount, uint32_t actualColumnCount)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (SFAAVectorServiceGqa<SFAAT>::BYTE_BLOCK /
-        sizeof(OUT_T));
+    dataCopyParams.srcStride =
+        (columnCount - actualColumnCount) / (SFAAVectorServiceGqa<SFAAT>::BYTE_BLOCK / sizeof(OUT_T));
     dataCopyParams.dstStride = 0;
     DataCopyPad(attentionOutGm[attenOutOffset + (mSizeVStart + startRow) * actualColumnCount], attenOutUb,
                 dataCopyParams);
 }
 
-
 template <typename SFAAT>
 __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::CalcParams(uint32_t loop, uint64_t s2Start,
-                                                                           uint32_t s2LoopIdx, RunInfo &info)
+                                                                           uint32_t s2LoopIdx, RunInfo& info)
 {
     info.loop = loop;
     info.bN2Idx = tempLoopInfo.bN2Idx;
@@ -639,9 +643,8 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::CalcParams(uint3
 
     info.actS1Size = tempLoopInfo.actS1Size;
     info.actS2Size = tempLoopInfo.curActualSeqLen;
-    info.nextTokensPerBatch =
-        static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size);
-    
+    info.nextTokensPerBatch = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size);
+
     info.actMBaseSize = constInfo.mBaseSize;
     uint32_t remainedGS1Size = tempLoopInfo.actS1Size * constInfo.gSize - tempLoopInfo.gS1Idx;
     if (remainedGS1Size <= constInfo.mBaseSize && remainedGS1Size > 0) {
@@ -680,13 +683,14 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::CalcParams(uint3
     info.tndBIdxOffsetKV = actualSeqKvSum * constInfo.kvHeadNum * constInfo.combineHeadDim;
     if (info.isFirstSInnerLoop) {
         // 支持BSND/TND
-        tensorACoreOffset = info.tndBIdxOffsetQ + info.gS1Idx * constInfo.kvHeadNum * constInfo.combineHeadDim
-                            + info.n2Idx * constInfo.gSize * constInfo.combineHeadDim; // info.gS1Idx：前提是不切G，否则会有向下取整的问题
+        tensorACoreOffset =
+            info.tndBIdxOffsetQ + info.gS1Idx * constInfo.kvHeadNum * constInfo.combineHeadDim +
+            info.n2Idx * constInfo.gSize * constInfo.combineHeadDim; // info.gS1Idx：前提是不切G，否则会有向下取整的问题
         tensorBCoreOffset = info.tndBIdxOffsetKV + info.n2Idx * constInfo.gSize * constInfo.combineHeadDim;
-        topkGmBaseOffset = actualSeqQPrefixSum / constInfo.sparseShardSize * constInfo.kvHeadNum *
-                            constInfo.sparseBlockCount + info.gS1Idx / constInfo.mBaseSize *
-                            constInfo.sparseBlockCount * constInfo.kvHeadNum +
-                            info.n2Idx * constInfo.sparseBlockCount;
+        topkGmBaseOffset =
+            actualSeqQPrefixSum / constInfo.sparseShardSize * constInfo.kvHeadNum * constInfo.sparseBlockCount +
+            info.gS1Idx / constInfo.mBaseSize * constInfo.sparseBlockCount * constInfo.kvHeadNum +
+            info.n2Idx * constInfo.sparseBlockCount;
     }
     info.topkGmBaseOffset = topkGmBaseOffset;
     info.tensorAOffset = tensorACoreOffset;
@@ -701,8 +705,8 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::CalcParams(uint3
     // 计算实际基本块size
     if (tempLoopInfo.curActualSeqLen > info.curS2BaseOffset) {
         info.actualSingleProcessSInnerSize = tempLoopInfo.curActualSeqLen - info.curS2BaseOffset;
-        info.actualSingleProcessSInnerSize = info.actualSingleProcessSInnerSize > SALSK_S2BASEIZE ?
-                                             SALSK_S2BASEIZE : info.actualSingleProcessSInnerSize;
+        info.actualSingleProcessSInnerSize =
+            info.actualSingleProcessSInnerSize > SALSK_S2BASEIZE ? SALSK_S2BASEIZE : info.actualSingleProcessSInnerSize;
     } else {
         info.actualSingleProcessSInnerSize = 0;
     }
@@ -710,13 +714,14 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::CalcParams(uint3
     info.aivS2AccessSize = info.actualSingleProcessSInnerSize - info.aicS2AccessSize;
     info.actualSingleProcessSInnerSizeAlign =
         SFAAAlign((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)SFAAVectorServiceGqa<SFAAT>::BYTE_BLOCK);
-    info.maskEnd = tempLoopInfo.sparseBlockActualSeqSizeKv - (info.actS1Size - info.gS1Idx / constInfo.mBaseSize * constInfo.sparseShardSize) +
- 	         constInfo.sparseShardSize;
+    info.maskEnd = tempLoopInfo.sparseBlockActualSeqSizeKv -
+                   (info.actS1Size - info.gS1Idx / constInfo.mBaseSize * constInfo.sparseShardSize) +
+                   constInfo.sparseShardSize;
     info.maskStart = info.maskEnd - constInfo.sparseShardSize + 1;
 }
 
 template <typename SFAAT>
-__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::ComputeMm1(const RunInfo &info)
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::ComputeMm1(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -732,7 +737,7 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::ComputeMm1(const
 }
 
 template <typename SFAAT>
-__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::ComputeMm2(const RunInfo &info)
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::ComputeMm2(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -756,57 +761,68 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::FlashDecode()
     SyncAll();
     if ASCEND_IS_AIV {
         if constexpr (IS_META) {
-            uint32_t *bN2IdxOfFdHead = metaDataPtr->fdRes.bN2IdxOfFdHead;
-            uint32_t *gS1IdxOfFdHead = metaDataPtr->fdRes.gS1IdxOfFdHead;
-            uint32_t *s2SplitNumOfFdHead = metaDataPtr->fdRes.s2SplitNumOfFdHead;
-            uint32_t *gS1IdxEndOfFdHead = metaDataPtr->fdRes.gS1IdxEndOfFdHead;
-            uint32_t *gS1IdxEndOfFdHeadSplit = metaDataPtr->fdRes.gS1IdxEndOfFdHeadSplit;
-            uint32_t *gS1SplitNumOfFdHead = metaDataPtr->fdRes.gS1SplitNumOfFdHead;
-            uint32_t *gS1LastPartSizeOfFdHead = metaDataPtr->fdRes.gS1LastPartSizeOfFdHead;
-            FDparams fdParams = {bN2IdxOfFdHead, gS1IdxOfFdHead, s2SplitNumOfFdHead, gS1SplitNumOfFdHead, gS1LastPartSizeOfFdHead,
-                    gS1IdxEndOfFdHead, gS1IdxEndOfFdHeadSplit, metaDataPtr->usedVecNumOfFd,
-                    metaDataPtr->gS1BaseSizeOfFd};
+            uint32_t* bN2IdxOfFdHead = metaDataPtr->fdRes.bN2IdxOfFdHead;
+            uint32_t* gS1IdxOfFdHead = metaDataPtr->fdRes.gS1IdxOfFdHead;
+            uint32_t* s2SplitNumOfFdHead = metaDataPtr->fdRes.s2SplitNumOfFdHead;
+            uint32_t* gS1IdxEndOfFdHead = metaDataPtr->fdRes.gS1IdxEndOfFdHead;
+            uint32_t* gS1IdxEndOfFdHeadSplit = metaDataPtr->fdRes.gS1IdxEndOfFdHeadSplit;
+            uint32_t* gS1SplitNumOfFdHead = metaDataPtr->fdRes.gS1SplitNumOfFdHead;
+            uint32_t* gS1LastPartSizeOfFdHead = metaDataPtr->fdRes.gS1LastPartSizeOfFdHead;
+            FDparams fdParams = {bN2IdxOfFdHead,
+                                 gS1IdxOfFdHead,
+                                 s2SplitNumOfFdHead,
+                                 gS1SplitNumOfFdHead,
+                                 gS1LastPartSizeOfFdHead,
+                                 gS1IdxEndOfFdHead,
+                                 gS1IdxEndOfFdHeadSplit,
+                                 metaDataPtr->usedVecNumOfFd,
+                                 metaDataPtr->gS1BaseSizeOfFd};
             fdService.AllocEventID();
             fdService.InitDecodeParams();
             fdService.FlashDecode(fdParams);
             fdService.FreeEventID();
         } else {
 #ifdef ASCENDC_CPU_DEBUG
-                const uint32_t *bN2IdxOfFdHead = tilingData->fdParams.bN2IdxOfFdHead;
-                const uint32_t *gS1IdxOfFdHead = tilingData->fdParams.gS1IdxOfFdHead;
-                const uint32_t *s2SplitNumOfFdHead = tilingData->fdParams.s2SplitNumOfFdHead;
-                const uint32_t *gS1IdxEndOfFdHead = tilingData->fdParams.gS1IdxEndOfFdHead;
-                const uint32_t *gS1IdxEndOfFdHeadSplit = tilingData->fdParams.gS1IdxEndOfFdHeadSplit;
-                const uint32_t *gS1SplitNumOfFdHead = tilingData->fdParams.gS1SplitNumOfFdHead;
-                const uint32_t *gS1LastPartSizeOfFdHead = tilingData->fdParams.gS1LastPartSizeOfFdHead;
+            const uint32_t* bN2IdxOfFdHead = tilingData->fdParams.bN2IdxOfFdHead;
+            const uint32_t* gS1IdxOfFdHead = tilingData->fdParams.gS1IdxOfFdHead;
+            const uint32_t* s2SplitNumOfFdHead = tilingData->fdParams.s2SplitNumOfFdHead;
+            const uint32_t* gS1IdxEndOfFdHead = tilingData->fdParams.gS1IdxEndOfFdHead;
+            const uint32_t* gS1IdxEndOfFdHeadSplit = tilingData->fdParams.gS1IdxEndOfFdHeadSplit;
+            const uint32_t* gS1SplitNumOfFdHead = tilingData->fdParams.gS1SplitNumOfFdHead;
+            const uint32_t* gS1LastPartSizeOfFdHead = tilingData->fdParams.gS1LastPartSizeOfFdHead;
 #else
-                uint32_t bN2IdxOfFdHead[ARRAY_SIZE(tilingData->fdParams.bN2IdxOfFdHead)];
-                uint32_t gS1IdxOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1IdxOfFdHead)];
-                uint32_t s2SplitNumOfFdHead[ARRAY_SIZE(tilingData->fdParams.s2SplitNumOfFdHead)];
-                uint32_t gS1IdxEndOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1IdxEndOfFdHead)];
-                uint32_t gS1IdxEndOfFdHeadSplit[ARRAY_SIZE(tilingData->fdParams.gS1IdxEndOfFdHeadSplit)];
-                uint32_t gS1SplitNumOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1SplitNumOfFdHead)];
-                uint32_t gS1LastPartSizeOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1LastPartSizeOfFdHead)];
-                copy_data_align64((uint8_t *)bN2IdxOfFdHead, (uint8_t *)(tilingData->fdParams.bN2IdxOfFdHead),
-                            sizeof(bN2IdxOfFdHead));
-                copy_data_align64((uint8_t *)gS1IdxOfFdHead, (uint8_t *)(tilingData->fdParams.gS1IdxOfFdHead),
-                            sizeof(gS1IdxOfFdHead));
-                copy_data_align64((uint8_t *)s2SplitNumOfFdHead, (uint8_t *)(tilingData->fdParams.s2SplitNumOfFdHead),
-                            sizeof(s2SplitNumOfFdHead));
-                copy_data_align64((uint8_t *)gS1IdxEndOfFdHead, (uint8_t *)(tilingData->fdParams.gS1IdxEndOfFdHead),
-                            sizeof(gS1IdxEndOfFdHead));
-                copy_data_align64((uint8_t *)gS1IdxEndOfFdHeadSplit,
-                            (uint8_t *)(tilingData->fdParams.gS1IdxEndOfFdHeadSplit),
-                            sizeof(gS1IdxEndOfFdHeadSplit));
-                copy_data_align64((uint8_t *)gS1SplitNumOfFdHead, (uint8_t *)(tilingData->fdParams.gS1SplitNumOfFdHead),
-                            sizeof(gS1SplitNumOfFdHead));
-                copy_data_align64((uint8_t *)gS1LastPartSizeOfFdHead,
-                            (uint8_t *)(tilingData->fdParams.gS1LastPartSizeOfFdHead),
-                            sizeof(gS1LastPartSizeOfFdHead));
+            uint32_t bN2IdxOfFdHead[ARRAY_SIZE(tilingData->fdParams.bN2IdxOfFdHead)];
+            uint32_t gS1IdxOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1IdxOfFdHead)];
+            uint32_t s2SplitNumOfFdHead[ARRAY_SIZE(tilingData->fdParams.s2SplitNumOfFdHead)];
+            uint32_t gS1IdxEndOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1IdxEndOfFdHead)];
+            uint32_t gS1IdxEndOfFdHeadSplit[ARRAY_SIZE(tilingData->fdParams.gS1IdxEndOfFdHeadSplit)];
+            uint32_t gS1SplitNumOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1SplitNumOfFdHead)];
+            uint32_t gS1LastPartSizeOfFdHead[ARRAY_SIZE(tilingData->fdParams.gS1LastPartSizeOfFdHead)];
+            copy_data_align64((uint8_t*)bN2IdxOfFdHead, (uint8_t*)(tilingData->fdParams.bN2IdxOfFdHead),
+                              sizeof(bN2IdxOfFdHead));
+            copy_data_align64((uint8_t*)gS1IdxOfFdHead, (uint8_t*)(tilingData->fdParams.gS1IdxOfFdHead),
+                              sizeof(gS1IdxOfFdHead));
+            copy_data_align64((uint8_t*)s2SplitNumOfFdHead, (uint8_t*)(tilingData->fdParams.s2SplitNumOfFdHead),
+                              sizeof(s2SplitNumOfFdHead));
+            copy_data_align64((uint8_t*)gS1IdxEndOfFdHead, (uint8_t*)(tilingData->fdParams.gS1IdxEndOfFdHead),
+                              sizeof(gS1IdxEndOfFdHead));
+            copy_data_align64((uint8_t*)gS1IdxEndOfFdHeadSplit, (uint8_t*)(tilingData->fdParams.gS1IdxEndOfFdHeadSplit),
+                              sizeof(gS1IdxEndOfFdHeadSplit));
+            copy_data_align64((uint8_t*)gS1SplitNumOfFdHead, (uint8_t*)(tilingData->fdParams.gS1SplitNumOfFdHead),
+                              sizeof(gS1SplitNumOfFdHead));
+            copy_data_align64((uint8_t*)gS1LastPartSizeOfFdHead,
+                              (uint8_t*)(tilingData->fdParams.gS1LastPartSizeOfFdHead),
+                              sizeof(gS1LastPartSizeOfFdHead));
 #endif
-            FDparams fdParams = {bN2IdxOfFdHead, gS1IdxOfFdHead, s2SplitNumOfFdHead, gS1SplitNumOfFdHead, gS1LastPartSizeOfFdHead,
-                    gS1IdxEndOfFdHead, gS1IdxEndOfFdHeadSplit, tilingData->fdParams.usedVecNumOfFd,
-                    tilingData->fdParams.gS1BaseSizeOfFd};
+            FDparams fdParams = {bN2IdxOfFdHead,
+                                 gS1IdxOfFdHead,
+                                 s2SplitNumOfFdHead,
+                                 gS1SplitNumOfFdHead,
+                                 gS1LastPartSizeOfFdHead,
+                                 gS1IdxEndOfFdHead,
+                                 gS1IdxEndOfFdHeadSplit,
+                                 tilingData->fdParams.usedVecNumOfFd,
+                                 tilingData->fdParams.gS1BaseSizeOfFd};
             fdService.AllocEventID();
             fdService.InitDecodeParams();
             fdService.FlashDecode(fdParams);
@@ -815,7 +831,8 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::FlashDecode()
     }
 }
 
-template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Process()
+template <typename SFAAT>
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::Process()
 {
     if (aiCoreIdx < usedCoreNum) {
         if constexpr (SFAAT::isMsdDD) {
@@ -826,7 +843,7 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
                 matmulServiceMsd.AllocEventID();
             }
         }
-        
+
         ProcessBalance();
 
         if constexpr (SFAAT::isMsdDD) {
@@ -845,14 +862,15 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
 }
 
 template <typename SFAAT>
-__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx,
-                                                                          uint32_t &n2Idx)
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::GetBN2Idx(uint32_t bN2Idx, uint32_t& bIdx,
+                                                                          uint32_t& n2Idx)
 {
-    bIdx = bN2Idx / constInfo.kvHeadNum ;
-    n2Idx = bN2Idx % constInfo.kvHeadNum ;
+    bIdx = bN2Idx / constInfo.kvHeadNum;
+    n2Idx = bN2Idx % constInfo.kvHeadNum;
 }
 
-template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::ProcessBalance()
+template <typename SFAAT>
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::ProcessBalance()
 {
     RunInfo extraInfo[SFAA_PRELOAD_TASK_CACHE_SIZE];
     uint32_t gloop = 0;
@@ -899,11 +917,13 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
             if (tempLoopInfo.curActSeqLenIsZero) {
                 DealActSeqLenIsZero(tempLoopInfo.bIdx, s1StartIdx, s1Size, tempLoopInfo.n2Idx);
             }
-            int s2SplitNum =
-                (tempLoopInfo.curActualSeqLen + SALSK_S2BASEIZE - 1) / SALSK_S2BASEIZE; // S2切分份数
+            int s2SplitNum = (tempLoopInfo.curActualSeqLen + SALSK_S2BASEIZE - 1) / SALSK_S2BASEIZE; // S2切分份数
             bool isEnd = (bN2LoopIdx == constInfo.bN2End) && (gS1LoopIdx == constInfo.gS1End);
             if constexpr (IS_META) {
-                tempLoopInfo.s2LoopTimes = (bN2LoopIdx == constInfo.bN2End && gS1LoopIdx == constInfo.gS1End && !tempLoopInfo.curActSeqLenIsZero) ? constInfo.s2End + 1 : s2SplitNum;
+                tempLoopInfo.s2LoopTimes = (bN2LoopIdx == constInfo.bN2End && gS1LoopIdx == constInfo.gS1End &&
+                                            !tempLoopInfo.curActSeqLenIsZero) ?
+                                               constInfo.s2End + 1 :
+                                               s2SplitNum;
             } else {
                 tempLoopInfo.s2LoopTimes = s2SplitNum;
             }
@@ -932,13 +952,12 @@ template <typename SFAAT> __aicore__ inline void SparseFlashAttentionAntiquantGq
 }
 
 template <typename SFAAT>
-__aicore__ inline void
-SparseFlashAttentionAntiquantGqa<SFAAT>::PreloadPipeline(uint32_t loop, uint64_t s2Start, uint64_t s2LoopIdx,
-                                                         RunInfo extraInfo[SFAA_PRELOAD_TASK_CACHE_SIZE])
+__aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::PreloadPipeline(
+    uint32_t loop, uint64_t s2Start, uint64_t s2LoopIdx, RunInfo extraInfo[SFAA_PRELOAD_TASK_CACHE_SIZE])
 {
-    RunInfo &extraInfo0 = extraInfo[loop % SFAA_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
-    RunInfo &extraInfo2 = extraInfo[(loop + 2) % SFAA_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
-    RunInfo &extraInfo1 = extraInfo[(loop + 1) % SFAA_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
+    RunInfo& extraInfo0 = extraInfo[loop % SFAA_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
+    RunInfo& extraInfo2 = extraInfo[(loop + 2) % SFAA_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
+    RunInfo& extraInfo1 = extraInfo[(loop + 1) % SFAA_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
 
     CalcParams(loop, s2Start, s2LoopIdx, extraInfo0);
 
@@ -974,9 +993,8 @@ SparseFlashAttentionAntiquantGqa<SFAAT>::PreloadPipeline(uint32_t loop, uint64_t
 }
 
 template <typename SFAAT>
-__aicore__ inline uint64_t
-SparseFlashAttentionAntiquantGqa<SFAAT>::GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths,
-                                                                    uint32_t bIdx)
+__aicore__ inline uint64_t SparseFlashAttentionAntiquantGqa<SFAAT>::GetBalanceActualSeqLengths(
+    GlobalTensor<int32_t>& actualSeqLengths, uint32_t bIdx)
 {
     if constexpr (LAYOUT_T == SFAA_LAYOUT::TND) {
         if (bIdx > 0) {
@@ -999,14 +1017,13 @@ SparseFlashAttentionAntiquantGqa<SFAAT>::GetBalanceActualSeqLengths(GlobalTensor
 
 template <typename SFAAT>
 __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::GetAxisStartIdx(uint32_t bN2EndPrev,
-                                                                                uint32_t s1GEndPrev,
-                                                                                uint32_t s2EndPrev)
+                                                                                uint32_t s1GEndPrev, uint32_t s2EndPrev)
 {
     if constexpr (IS_META) {
-        uint32_t bEndPrev = bN2EndPrev / constInfo.kvHeadNum ;
+        uint32_t bEndPrev = bN2EndPrev / constInfo.kvHeadNum;
         uint32_t actualSeqQPrev = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bEndPrev);
         uint32_t s1GPrevBaseNum = (actualSeqQPrev * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
-        
+
         // get s2PrevBaseNum
         uint32_t actualSeqKVPrev = GetActualSeqLenKV(bEndPrev);
 
@@ -1016,7 +1033,8 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::GetAxisStartIdx(
         } else {
             sparseBlockActualSeqSizeKv = sparseSeqLengthsKVGm.GetValue(bEndPrev);
         }
-        uint32_t curActualSeqLen = (sparseBlockActualSeqSizeKv > actualSeqKVPrev) ? actualSeqKVPrev : sparseBlockActualSeqSizeKv;
+        uint32_t curActualSeqLen =
+            (sparseBlockActualSeqSizeKv > actualSeqKVPrev) ? actualSeqKVPrev : sparseBlockActualSeqSizeKv;
         uint32_t s2PrevBaseNum = (curActualSeqLen + SALSK_S2BASEIZE - 1) / SALSK_S2BASEIZE;
 
         constInfo.bN2Start = bN2EndPrev;
@@ -1032,12 +1050,12 @@ __aicore__ inline void SparseFlashAttentionAntiquantGqa<SFAAT>::GetAxisStartIdx(
             constInfo.gS1Start = 0;
         }
     } else {
-        uint32_t bEndPrev = bN2EndPrev / constInfo.kvHeadNum ;
+        uint32_t bEndPrev = bN2EndPrev / constInfo.kvHeadNum;
         uint32_t actualSeqQPrev = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bEndPrev);
         uint32_t s1GPrevBaseNum = (actualSeqQPrev * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
         constInfo.bN2Start = bN2EndPrev;
         constInfo.gS1Start = s1GEndPrev;
-        
+
         constInfo.s2Start = 0;
         if (s1GEndPrev >= s1GPrevBaseNum - 1) { // 上个核把S1G处理完了
             constInfo.gS1Start = 0;

@@ -73,7 +73,7 @@ struct BlockMmadPVSplitKvArch35 {
     CopyL1ToL0B copyL1ToL0B;
     TileMmad tileMmad;
 
-    Arch::Resource<ArchTag> *resourcePtr_;
+    Arch::Resource<ArchTag>* resourcePtr_;
     uint32_t l1BaseAddr_;
     uint32_t vBufBytes_;
     uint32_t l1PStageBytes_;
@@ -94,7 +94,7 @@ struct BlockMmadPVSplitKvArch35 {
     {}
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 4U) {
             uint16_t flagIdV0 = crossCoreFlag.id;
@@ -106,7 +106,7 @@ struct BlockMmadPVSplitKvArch35 {
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 4U) {
             uint16_t flagIdV0 = crossCoreFlag.id;
@@ -117,7 +117,7 @@ struct BlockMmadPVSplitKvArch35 {
         }
     }
 
-    __aicore__ inline void Init(Arch::Resource<ArchTag> &resource, uint32_t l1StartAddr, uint32_t blockSize, uint32_t D,
+    __aicore__ inline void Init(Arch::Resource<ArchTag>& resource, uint32_t l1StartAddr, uint32_t blockSize, uint32_t D,
                                 uint32_t groupSize)
     {
         vBufBytes_ = blockSize * D * sizeof(ElementV);
@@ -142,7 +142,7 @@ struct BlockMmadPVSplitKvArch35 {
     }
 
     template <class TensorV>
-    __aicore__ inline void LoadVResident(TensorV &gmVTensor, uint32_t validSize, uint32_t D)
+    __aicore__ inline void LoadVResident(TensorV& gmVTensor, uint32_t validSize, uint32_t D)
     {
         residentValidSize_ = validSize;
         using CopyGmToL1V = typename TileCopy::template CopyGmToL1B<TensorV>;
@@ -184,10 +184,10 @@ struct BlockMmadPVSplitKvArch35 {
     // constant within a kvHead, so no wsOOff array is marshalled. M is derived from
     // groupCount*groupRows (groupRows runtime constant), matching BlockMmadQK.
     template <class TensorO>
-    __aicore__ inline void operator()(TensorO &gAccumOut, const uint32_t *qTokens, const uint32_t *slotKs,
+    __aicore__ inline void operator()(TensorO& gAccumOut, const uint32_t* qTokens, const uint32_t* slotKs,
                                       uint32_t groupCount, uint32_t groupRows, uint32_t D, uint64_t perQTokenStride,
                                       uint64_t kvHeadBase, uint64_t slotOElems, uint32_t numBatches, uint32_t bDe,
-                                      Arch::CrossCoreFlag &smToMm2Flag)
+                                      Arch::CrossCoreFlag& smToMm2Flag)
     {
         uint32_t M = groupCount * groupRows;
         uint32_t N = D;

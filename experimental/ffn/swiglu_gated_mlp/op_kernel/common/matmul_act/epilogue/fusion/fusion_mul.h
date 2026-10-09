@@ -74,8 +74,8 @@ public:
         int64_t curAivNAlign = AlignBlock<DataTypeIn>(curAivN);
         TPipeSetWaitFlag<AscendC::HardEvent::MTE3_MTE2>();
         AscendC::DataCopyExtParams copyParams{static_cast<uint16_t>(stageSize / curAivNAlign),
-                                     static_cast<uint32_t>(curAivN * sizeof(DataTypeOut)),
-                                     static_cast<uint32_t>((strideN - curAivN) * sizeof(DataTypeIn)), 0, 0};
+                                              static_cast<uint32_t>(curAivN * sizeof(DataTypeOut)),
+                                              static_cast<uint32_t>((strideN - curAivN) * sizeof(DataTypeIn)), 0, 0};
         AscendC::DataCopyPadExtParams<DataTypeIn> padParams{true, 0, 0, 0};
         AscendC::DataCopyPad(inputLocal_, inputGlobal_[offset], copyParams, padParams);
         TPipeSetWaitFlag<AscendC::HardEvent::MTE2_V>();

@@ -53,7 +53,7 @@ constexpr int64_t NUM_ITERS = 20;
 struct TestCase {
     DataType xDtype;
     bool needBackward;
-    const char *name;
+    const char* name;
 };
 } // namespace
 
@@ -83,7 +83,7 @@ uint32_t GetDataTypeSize(DataType dtype)
     return sizeof(uint8_t);
 }
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t size = 1;
     for (auto dim : shape) {
@@ -92,24 +92,24 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return size;
 }
 
-int GenTensorData(const std::vector<int64_t> &shape, Tensor &tensor, TensorDesc &desc, DataType dtype)
+int GenTensorData(const std::vector<int64_t>& shape, Tensor& tensor, TensorDesc& desc, DataType dtype)
 {
     desc.SetRealDimCnt(shape.size());
     const int64_t elem_num = GetShapeSize(shape);
     const uint32_t dtype_size = GetDataTypeSize(dtype);
     const uint32_t byte_len = static_cast<uint32_t>(elem_num * dtype_size);
-    uint8_t *data = new (std::nothrow) uint8_t[byte_len];
+    uint8_t* data = new (std::nothrow) uint8_t[byte_len];
     if (data == nullptr) {
         return FAILED;
     }
 
     if (dtype == ge::DT_FLOAT) {
-        auto *float_data = reinterpret_cast<float *>(data);
+        auto* float_data = reinterpret_cast<float*>(data);
         for (int64_t i = 0; i < elem_num; ++i) {
             float_data[i] = 0.01f * static_cast<float>((i % 17) - 8);
         }
     } else {
-        auto *half_data = reinterpret_cast<uint16_t *>(data);
+        auto* half_data = reinterpret_cast<uint16_t*>(data);
         for (int64_t i = 0; i < elem_num; ++i) {
             half_data[i] = static_cast<uint16_t>(0x3f80 + (i % 7));
         }
@@ -119,9 +119,9 @@ int GenTensorData(const std::vector<int64_t> &shape, Tensor &tensor, TensorDesc 
     return SUCCESS;
 }
 
-int AddDataInput(const std::string &name, uint32_t index, DataType dtype, const std::vector<int64_t> &shape,
-                 Graph &graph, std::vector<Tensor> &input_tensors, std::vector<Operator> &input_ops,
-                 ge::op::MhcPreSinkhornPremix &op)
+int AddDataInput(const std::string& name, uint32_t index, DataType dtype, const std::vector<int64_t>& shape,
+                 Graph& graph, std::vector<Tensor>& input_tensors, std::vector<Operator>& input_ops,
+                 ge::op::MhcPreSinkhornPremix& op)
 {
     auto data = ge::op::Data(name).set_attr_index(index);
     TensorDesc desc(ge::Shape(shape), FORMAT_ND, dtype);
@@ -152,7 +152,7 @@ int AddDataInput(const std::string &name, uint32_t index, DataType dtype, const 
     return SUCCESS;
 }
 
-void SetOutputDesc(ge::op::MhcPreSinkhornPremix &op, DataType xDtype, bool needBackward)
+void SetOutputDesc(ge::op::MhcPreSinkhornPremix& op, DataType xDtype, bool needBackward)
 {
     op.update_output_desc_hin(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HIDDEN_DIM}), FORMAT_ND, xDtype));
     op.update_output_desc_hPost(TensorDesc(ge::Shape({BATCH, SEQ_LEN, HC_MULT}), FORMAT_ND, ge::DT_FLOAT));
@@ -175,8 +175,8 @@ void SetOutputDesc(ge::op::MhcPreSinkhornPremix &op, DataType xDtype, bool needB
     }
 }
 
-int CreateGraph(std::vector<Tensor> &input_tensors, std::vector<Operator> &input_ops, std::vector<Operator> &outputs,
-                Graph &graph, const TestCase &testCase)
+int CreateGraph(std::vector<Tensor>& input_tensors, std::vector<Operator>& input_ops, std::vector<Operator>& outputs,
+                Graph& graph, const TestCase& testCase)
 {
     auto mhc_pre_sinkhorn_premix = ge::op::MhcPreSinkhornPremix(testCase.name);
 
@@ -208,7 +208,7 @@ int CreateGraph(std::vector<Tensor> &input_tensors, std::vector<Operator> &input
     return SUCCESS;
 }
 
-int RunCase(Session &session, uint32_t graphId, const TestCase &testCase)
+int RunCase(Session& session, uint32_t graphId, const TestCase& testCase)
 {
     Graph graph(testCase.name);
     std::vector<Tensor> input_tensors;

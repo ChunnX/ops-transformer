@@ -125,7 +125,9 @@ class GeneralizedSFAQuant:
             )
             for i_N2 in range(self.N2):
                 print(f"    i_N2 = {i_N2}/{self.N2}")
-                cur_sinks = sinks[i_N2 * G : (i_N2 + 1) * G] if sinks is not None else None
+                cur_sinks = (
+                    sinks[i_N2 * G : (i_N2 + 1) * G] if sinks is not None else None
+                )
                 for i_S1 in range(cur_act_q):
                     milestones = [
                         int(cur_act_q * pct / 100) for pct in range(10, 101, 10)
@@ -190,7 +192,11 @@ class GeneralizedSFAQuant:
                     # hifp8FullQuant: online softmax with hif8 quantized attention scores
                     hifp8_max_value = 16.0
                     score_max_pre = torch.ones((G,)).to(torch.float) * (-torch.inf)
-                    score_max = cur_sinks.clone() if cur_sinks is not None else torch.ones((G,)).to(torch.float) * (-torch.inf)
+                    score_max = (
+                        cur_sinks.clone()
+                        if cur_sinks is not None
+                        else torch.ones((G,)).to(torch.float) * (-torch.inf)
+                    )
                     acc_o = torch.zeros((G, self.D)).to(torch.float32)
                     sumexp = torch.ones((G,)).to(torch.float32)
 
@@ -205,8 +211,9 @@ class GeneralizedSFAQuant:
                         else:  # cmp_kv
                             if i_S2 < total_s2_loop_time - 1:
                                 k_tile = cur_cmp_k_fp32[
-                                    (i_S2 - ori_s2_loop_time)
-                                    * s2_base_size : (i_S2 - ori_s2_loop_time + 1)
+                                    (i_S2 - ori_s2_loop_time) * s2_base_size : (
+                                        i_S2 - ori_s2_loop_time + 1
+                                    )
                                     * s2_base_size,
                                     :,
                                 ]
@@ -230,7 +237,6 @@ class GeneralizedSFAQuant:
                         acc_s = torch.exp(scale_res - score_max.unsqueeze(1))
                         sumexp_i = acc_s.sum(dim=-1)
                         sumexp = sumexp * score_max_pre + sumexp_i
-
 
                         acc_s_cast = acc_s * hifp8_max_value
                         acc_s_cast = trans_float_tensor_to_hifuint8(acc_s_cast)
@@ -813,7 +819,9 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         if seqused_cmp_kv is not None
         else None
     )
-    assert qkv_quant_mode == 1, f"qkv_quant_mode only support 1, but got {qkv_quant_mode}"
+    assert qkv_quant_mode == 1, (
+        f"qkv_quant_mode only support 1, but got {qkv_quant_mode}"
+    )
     # generate q (hifp8FullQuant)
     if layout_q == "BSND":
         q, q_npu, q_descale = _gen_hif8_q_tensor((B, S1, N1, D))

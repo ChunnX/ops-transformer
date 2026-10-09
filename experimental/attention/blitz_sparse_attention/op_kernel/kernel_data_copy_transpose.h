@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -37,8 +37,8 @@ enum class CopyTransposeType {
     TRANSPOSE_ND_UB_GM,            //  [B, N, S, H/N] -> [B, S, H]
 };
 
-__aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<half> &dstGlobal, const LocalTensor<half> &srcLocal,
-    uint16_t nBurst, uint32_t lenBurst, uint8_t srcGap, uint8_t dstGap)
+__aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<half>& dstGlobal, const LocalTensor<half>& srcLocal,
+                                          uint16_t nBurst, uint32_t lenBurst, uint8_t srcGap, uint8_t dstGap)
 {
     if (g_coreType == AIV) {
         DataCopyPad(dstGlobal, srcLocal, DataCopyExtParams(nBurst, lenBurst, srcGap, dstGap, 0));
@@ -46,28 +46,29 @@ __aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<half> &dstGlobal, c
 }
 
 #if (__CCE_AICORE__ > 200)
-__aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<bfloat16_t> &dstGlobal, const LocalTensor<bfloat16_t> &srcLocal,
-    uint16_t nBurst, uint32_t lenBurst, uint8_t srcGap, uint8_t dstGap)
+__aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<bfloat16_t>& dstGlobal,
+                                          const LocalTensor<bfloat16_t>& srcLocal, uint16_t nBurst, uint32_t lenBurst,
+                                          uint8_t srcGap, uint8_t dstGap)
 {
     if (g_coreType == AIV) {
-        DataCopyPad(dstGlobal, srcLocal, DataCopyExtParams(nBurst, lenBurst, srcGap, dstGap, 0));                            
+        DataCopyPad(dstGlobal, srcLocal, DataCopyExtParams(nBurst, lenBurst, srcGap, dstGap, 0));
     }
 }
 #endif
 
-__aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<float> &dstGlobal, const LocalTensor<float> &srcLocal,
-    uint16_t nBurst, uint32_t lenBurst, uint8_t srcGap, uint8_t dstGap)
+__aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<float>& dstGlobal, const LocalTensor<float>& srcLocal,
+                                          uint16_t nBurst, uint32_t lenBurst, uint8_t srcGap, uint8_t dstGap)
 {
     if (g_coreType == AIV) {
         DataCopyPad(dstGlobal, srcLocal, DataCopyExtParams(nBurst, lenBurst, srcGap, dstGap, 0));
     }
 }
 
-__aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<int8_t> &dstGlobal, const LocalTensor<int8_t> &srcLocal,
-    uint16_t nBurst, uint32_t lenBurst, uint8_t srcGap, uint8_t dstGap)
+__aicore__ inline void DataCopyUB2GMAlign(const GlobalTensor<int8_t>& dstGlobal, const LocalTensor<int8_t>& srcLocal,
+                                          uint16_t nBurst, uint32_t lenBurst, uint8_t srcGap, uint8_t dstGap)
 {
     if (g_coreType == AIV) {
-        DataCopyPad(dstGlobal, srcLocal, DataCopyExtParams(nBurst, lenBurst, srcGap, dstGap, 0));                            
+        DataCopyPad(dstGlobal, srcLocal, DataCopyExtParams(nBurst, lenBurst, srcGap, dstGap, 0));
     }
 }
 
@@ -79,8 +80,9 @@ using TransposeParams = struct TransposeParams {
 }; // Index the position of the segmented small block within the original large block
 
 template <typename T>
-__aicore__ inline void DataCopyTranspose(const GlobalTensor<T> &dstGlobal, const LocalTensor<T> &srcLocal,
-    CopyTransposeType transposeType, TransposeParams transposeParams, CopyTransposeTiling tiling)
+__aicore__ inline void DataCopyTranspose(const GlobalTensor<T>& dstGlobal, const LocalTensor<T>& srcLocal,
+                                         CopyTransposeType transposeType, TransposeParams transposeParams,
+                                         CopyTransposeTiling tiling)
 {
     if (transposeType != CopyTransposeType::TRANSPOSE_ND_UB_GM) {
         return;
@@ -90,14 +92,14 @@ __aicore__ inline void DataCopyTranspose(const GlobalTensor<T> &dstGlobal, const
     }
 
     int startAddr = transposeParams.bIndex * (tiling.shapeSHValue) + transposeParams.nIndex * tiling.dstShapeHN +
-        transposeParams.sIndex * tiling.dstShapeH + transposeParams.hNIndex;
+                    transposeParams.sIndex * tiling.dstShapeH + transposeParams.hNIndex;
 
     for (int i = 0; i < (int)tiling.srcShapeB; i++) {
         for (int j = 0; j < (int)tiling.srcShapeN; j++) {
             for (int k = 0; k < (int)tiling.srcShapeS; k++) {
-                DataCopyUB2GMAlign(dstGlobal[startAddr + i * (tiling.shapeSHValue) + j * tiling.dstShapeHN
-                    + k * tiling.dstShapeH], srcLocal[k * tiling.srcShapeHN + j * (tiling.shapeNsValue)
-                    + i * (tiling.shapeNsnValue)], 1,
+                DataCopyUB2GMAlign(
+                    dstGlobal[startAddr + i * (tiling.shapeSHValue) + j * tiling.dstShapeHN + k * tiling.dstShapeH],
+                    srcLocal[k * tiling.srcShapeHN + j * (tiling.shapeNsValue) + i * (tiling.shapeNsnValue)], 1,
                     tiling.originalShapeNLen, 0, 0);
             }
         }
@@ -105,9 +107,9 @@ __aicore__ inline void DataCopyTranspose(const GlobalTensor<T> &dstGlobal, const
 }
 
 template <typename T>
-__aicore__ inline void DataCopyTranspose2(const GlobalTensor<T> &dstGlobal, const LocalTensor<T> &srcLocal,
-    CopyTransposeType transposeType, TransposeParams transposeParams,
-    CopyTransposeTiling tiling, int64_t multi_seq_offset)
+__aicore__ inline void DataCopyTranspose2(const GlobalTensor<T>& dstGlobal, const LocalTensor<T>& srcLocal,
+                                          CopyTransposeType transposeType, TransposeParams transposeParams,
+                                          CopyTransposeTiling tiling, int64_t multi_seq_offset)
 {
     if (transposeType != CopyTransposeType::TRANSPOSE_ND_UB_GM) {
         return;
@@ -117,14 +119,15 @@ __aicore__ inline void DataCopyTranspose2(const GlobalTensor<T> &dstGlobal, cons
     }
 
     int64_t startAddr = multi_seq_offset + transposeParams.nIndex * tiling.dstShapeHN +
-        transposeParams.sIndex * tiling.dstShapeH + transposeParams.hNIndex;
+                        transposeParams.sIndex * tiling.dstShapeH + transposeParams.hNIndex;
 
     for (int i = 0; i < (int)tiling.srcShapeB; i++) {
         for (int j = 0; j < (int)tiling.srcShapeN; j++) {
             for (int k = 0; k < (int)tiling.srcShapeS; k++) {
-                DataCopyUB2GMAlign(dstGlobal[startAddr + i * (tiling.shapeSHValue) + j * tiling.dstShapeHN +
-                k * tiling.dstShapeH], srcLocal[k * tiling.srcShapeHN + j * (tiling.shapeNsValue) +
-                i * (tiling.shapeNsnValue)], 1, tiling.originalShapeNLen, 0, 0);
+                DataCopyUB2GMAlign(
+                    dstGlobal[startAddr + i * (tiling.shapeSHValue) + j * tiling.dstShapeHN + k * tiling.dstShapeH],
+                    srcLocal[k * tiling.srcShapeHN + j * (tiling.shapeNsValue) + i * (tiling.shapeNsnValue)], 1,
+                    tiling.originalShapeNLen, 0, 0);
             }
         }
     }

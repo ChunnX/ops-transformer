@@ -62,7 +62,7 @@ uint32_t Align(uint32_t x, uint32_t y)
     return CeilDiv(x, y) * y;
 }
 
-bool CheckRank(const gert::Shape &shape, size_t expectedRank, const char *name)
+bool CheckRank(const gert::Shape& shape, size_t expectedRank, const char* name)
 {
     if (shape.GetDimNum() != expectedRank) {
         OP_LOGE("FusedGdnDecode", "%s rank must be %zu, but got %zu", name, expectedRank, shape.GetDimNum());
@@ -71,7 +71,7 @@ bool CheckRank(const gert::Shape &shape, size_t expectedRank, const char *name)
     return true;
 }
 
-bool CheckPositiveDims(const gert::Shape &shape, const char *name)
+bool CheckPositiveDims(const gert::Shape& shape, const char* name)
 {
     for (size_t i = 0; i < shape.GetDimNum(); ++i) {
         if (shape.GetDim(i) <= 0) {
@@ -82,7 +82,7 @@ bool CheckPositiveDims(const gert::Shape &shape, const char *name)
     return true;
 }
 
-bool CheckU32Dim(int64_t dim, const char *name)
+bool CheckU32Dim(int64_t dim, const char* name)
 {
     if (dim <= 0 || static_cast<uint64_t>(dim) > std::numeric_limits<uint32_t>::max()) {
         OP_LOGE("FusedGdnDecode", "%s must be in (0, UINT32_MAX], but got %ld", name, dim);
@@ -91,7 +91,7 @@ bool CheckU32Dim(int64_t dim, const char *name)
     return true;
 }
 
-bool CheckMulU64(uint64_t lhs, uint64_t rhs, const char *name)
+bool CheckMulU64(uint64_t lhs, uint64_t rhs, const char* name)
 {
     if (rhs != 0 && lhs > std::numeric_limits<uint64_t>::max() / rhs) {
         OP_LOGE("FusedGdnDecode", "%s overflows uint64", name);
@@ -169,7 +169,7 @@ uint32_t SelectBv(uint32_t k, uint32_t v, uint32_t stateBytes, uint32_t indexBuf
     return 0;
 }
 
-bool GetPlatformInfo(const gert::TilingContext *context, uint32_t &aivNum, uint64_t &ubSize)
+bool GetPlatformInfo(const gert::TilingContext* context, uint32_t& aivNum, uint64_t& ubSize)
 {
     auto platformInfo = context->GetPlatformInfo();
     if (platformInfo != nullptr) {
@@ -178,7 +178,7 @@ bool GetPlatformInfo(const gert::TilingContext *context, uint32_t &aivNum, uint6
         platform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
         return aivNum > 0 && ubSize > 0;
     }
-    auto compileInfo = reinterpret_cast<const FusedGdnDecodeCompileInfo *>(context->GetCompileInfo());
+    auto compileInfo = reinterpret_cast<const FusedGdnDecodeCompileInfo*>(context->GetCompileInfo());
     if (compileInfo == nullptr) {
         return false;
     }
@@ -188,7 +188,7 @@ bool GetPlatformInfo(const gert::TilingContext *context, uint32_t &aivNum, uint6
 }
 } // namespace
 
-ge::graphStatus FusedGdnDecodeTilingFunc(gert::TilingContext *context)
+ge::graphStatus FusedGdnDecodeTilingFunc(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("FusedGdnDecode", "tiling context is null"), return ge::GRAPH_FAILED);
 
@@ -203,13 +203,13 @@ ge::graphStatus FusedGdnDecodeTilingFunc(gert::TilingContext *context)
                     dtBiasShapePtr == nullptr || stateShapePtr == nullptr || stateIndicesShapePtr == nullptr,
                 OP_LOGE("FusedGdnDecode", "input shape is null"), return ge::GRAPH_FAILED);
 
-    const auto &mixedShape = mixedShapePtr->GetOriginShape();
-    const auto &aShape = aShapePtr->GetOriginShape();
-    const auto &bShape = bShapePtr->GetOriginShape();
-    const auto &aLogShape = aLogShapePtr->GetOriginShape();
-    const auto &dtBiasShape = dtBiasShapePtr->GetOriginShape();
-    const auto &stateShape = stateShapePtr->GetOriginShape();
-    const auto &stateIndicesShape = stateIndicesShapePtr->GetOriginShape();
+    const auto& mixedShape = mixedShapePtr->GetOriginShape();
+    const auto& aShape = aShapePtr->GetOriginShape();
+    const auto& bShape = bShapePtr->GetOriginShape();
+    const auto& aLogShape = aLogShapePtr->GetOriginShape();
+    const auto& dtBiasShape = dtBiasShapePtr->GetOriginShape();
+    const auto& stateShape = stateShapePtr->GetOriginShape();
+    const auto& stateIndicesShape = stateIndicesShapePtr->GetOriginShape();
     OP_CHECK_IF(!CheckRank(mixedShape, 2, "mixed_qkv") || !CheckRank(aShape, 2, "a") || !CheckRank(bShape, 2, "b") ||
                     !CheckRank(aLogShape, 1, "a_log") || !CheckRank(dtBiasShape, 1, "dt_bias") ||
                     !CheckRank(stateShape, 4, "state") || !CheckRank(stateIndicesShape, 1, "ssm_state_indices"),
@@ -301,8 +301,8 @@ ge::graphStatus FusedGdnDecodeTilingFunc(gert::TilingContext *context)
 
     auto attrs = context->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE("FusedGdnDecode", "attrs is null"), return ge::GRAPH_FAILED);
-    const float *scaleAttr = attrs->GetAttrPointer<float>(0);
-    const float *thresholdAttr = attrs->GetAttrPointer<float>(1);
+    const float* scaleAttr = attrs->GetAttrPointer<float>(0);
+    const float* thresholdAttr = attrs->GetAttrPointer<float>(1);
     const float scale = scaleAttr == nullptr ? 1.0f : *scaleAttr;
     const float threshold = thresholdAttr == nullptr ? 20.0f : *thresholdAttr;
     OP_CHECK_IF(!std::isfinite(scale) || !std::isfinite(threshold),
@@ -375,7 +375,7 @@ ge::graphStatus FusedGdnDecodeTilingFunc(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForFusedGdnDecode(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForFusedGdnDecode(gert::TilingParseContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("FusedGdnDecode", "tiling parse context is null"), return ge::GRAPH_FAILED);
     auto compileInfo = context->GetCompiledInfo<FusedGdnDecodeCompileInfo>();

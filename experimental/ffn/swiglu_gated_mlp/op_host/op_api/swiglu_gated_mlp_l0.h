@@ -22,13 +22,9 @@
 
 namespace l0op {
 
-const aclTensor* SwigluGatedMlp(
-    const aclTensor* x,
-    const aclTensor* gateUpWeight,
-    const aclTensor* downWeight,
-    int64_t cubeMathType,
-    aclOpExecutor* executor);
+const aclTensor* SwigluGatedMlp(const aclTensor* x, const aclTensor* gateUpWeight, const aclTensor* downWeight,
+                                int64_t cubeMathType, aclOpExecutor* executor);
 
-}  // namespace l0op
+} // namespace l0op
 
-#endif  // OP_API_INC_LEVEL0_SWIGLU_GATED_MLP_L0_H_
+#endif // OP_API_INC_LEVEL0_SWIGLU_GATED_MLP_L0_H_

@@ -17,20 +17,20 @@
 extern "C" {
 #endif
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
     const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKeyOptional, int64_t numHeadsQ,
     int64_t numHeadsK, int64_t headDim, int64_t queryQuantMode, int64_t keyQuantMode, int64_t batchSize,
-    int64_t maxSeqlenQ, int64_t maxSeqlenK, char* layoutQueryOptional, char* layoutKeyOptional,
-    int64_t sparseCount, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t cmpRatio,
-    const aclTensor* metadata, uint64_t* workspaceSize, aclOpExecutor** executor);
+    int64_t maxSeqlenQ, int64_t maxSeqlenK, char* layoutQueryOptional, char* layoutKeyOptional, int64_t sparseCount,
+    int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t cmpRatio, const aclTensor* metadata,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 
-__attribute__((visibility("default"))) aclnnStatus
-aclnnQuantLightningIndexerMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                   aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantLightningIndexerMetadata(void* workspace,
+                                                                                      uint64_t workspaceSize,
+                                                                                      aclOpExecutor* executor,
+                                                                                      aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // ACLNN_QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H
+#endif // ACLNN_QUANT_LIGHTNING_INDEXER_METADATA_AICPU_H

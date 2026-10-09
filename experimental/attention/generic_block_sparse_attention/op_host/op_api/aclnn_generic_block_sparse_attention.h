@@ -18,17 +18,17 @@ extern "C" {
 #endif
 
 __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
-    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparseBlockIdx,
-    const aclTensor *sparseBlockCount, const aclTensor *metadataOptional, const aclTensor *qDequantScaleOptional,
-    const aclTensor *kDequantScaleOptional, const aclTensor *vDequantScaleOptional,
-    const aclTensor *cuSeqLengthsQOptional, const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional, const aclIntArray *blockShape,
-    int64_t isPackedGQA, char *layoutQ, char *layoutKv, double scaleValue, int64_t maskType, int64_t softmaxPrecision,
-    aclTensor *attentionOut, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* query, const aclTensor* key, const aclTensor* value, const aclTensor* sparseBlockIdx,
+    const aclTensor* sparseBlockCount, const aclTensor* metadataOptional, const aclTensor* qDequantScaleOptional,
+    const aclTensor* kDequantScaleOptional, const aclTensor* vDequantScaleOptional,
+    const aclTensor* cuSeqLengthsQOptional, const aclTensor* cuSeqLengthsKvOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* sequsedKvOptional, const aclTensor* blockTableOptional, const aclIntArray* blockShape,
+    int64_t isPackedGQA, char* layoutQ, char* layoutKv, double scaleValue, int64_t maskType, int64_t softmaxPrecision,
+    aclTensor* attentionOut, uint64_t* workspaceSize, aclOpExecutor** executor);
 
-__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttention(void *workspace,
+__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttention(void* workspace,
                                                                                     uint64_t workspaceSize,
-                                                                                    aclOpExecutor *executor,
+                                                                                    aclOpExecutor* executor,
                                                                                     aclrtStream stream);
 
 #ifdef __cplusplus

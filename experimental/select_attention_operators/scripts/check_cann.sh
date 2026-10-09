@@ -9,7 +9,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 
 check_cann_environment() {
-    # Check if first argument is "true" for 
+    # Check if first argument is "true" for
     local verbose=false
     if [[ "$1" == "true" ]]; then
         verbose=true

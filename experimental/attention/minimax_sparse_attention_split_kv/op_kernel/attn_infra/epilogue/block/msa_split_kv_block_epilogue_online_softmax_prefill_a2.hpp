@@ -96,19 +96,19 @@ public:
     AscendC::GlobalTensor<ElementOutput> gmPWorkspace_;
     uint64_t gmPStageElems_ = 0;
 
-    __aicore__ inline void SetGmSWorkspace(AscendC::GlobalTensor<ElementInput> &gmSWorkspace, uint64_t gmSStageElems)
+    __aicore__ inline void SetGmSWorkspace(AscendC::GlobalTensor<ElementInput>& gmSWorkspace, uint64_t gmSStageElems)
     {
         gmSWorkspace_ = gmSWorkspace;
         gmSStageElems_ = gmSStageElems;
     }
 
-    __aicore__ inline void SetGmPWorkspace(AscendC::GlobalTensor<ElementOutput> &gmPWorkspace, uint64_t gmPStageElems)
+    __aicore__ inline void SetGmPWorkspace(AscendC::GlobalTensor<ElementOutput>& gmPWorkspace, uint64_t gmPStageElems)
     {
         gmPWorkspace_ = gmPWorkspace;
         gmPStageElems_ = gmPStageElems;
     }
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue_)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag>& resource, float scaleValue_)
     {
         // UB layout (must match kernel's SM_UB_GM_OFFSET / SM_UB_GL_OFFSET):
         //   LS  (bf16 S input):  offset 0,                  2 stages * 16384B = 32768B
@@ -155,7 +155,7 @@ public:
     // WAIT: CrossCoreWaitFlag (non-templated, MODE=0/PIPE_S — generic sync pipe)
     // MODE_4 with PIPE_FIX↔PIPE_V pairing does NOT work on A2 hardware.
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 0x2U) {
             Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
@@ -163,7 +163,7 @@ public:
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 0x2U) {
             // A2: must use MODE=0x2 to match SET. Arch::CrossCoreWaitFlag defaults
@@ -203,8 +203,8 @@ public:
     }
 
     // === Cast bf16 S → float FS (for standard vector compute) ===
-    __aicore__ inline void CastSToFloat(AscendC::LocalTensor<float> &fsUb,
-                                        AscendC::LocalTensor<ElementInput> const &lsUb, uint32_t m, uint32_t nRound)
+    __aicore__ inline void CastSToFloat(AscendC::LocalTensor<float>& fsUb,
+                                        AscendC::LocalTensor<ElementInput> const& lsUb, uint32_t m, uint32_t nRound)
     {
         if constexpr (!AscendC::IsSameType<ElementInput, float>::value) {
             AscendC::Cast<float, ElementInput, false>(fsUb, lsUb, AscendC::RoundMode::CAST_NONE,
@@ -215,7 +215,7 @@ public:
     }
 
     // === Scale: FS = FS * scaleValue ===
-    __aicore__ inline void ScaleS(AscendC::LocalTensor<float> &fsUb, uint32_t m, uint32_t nRound)
+    __aicore__ inline void ScaleS(AscendC::LocalTensor<float>& fsUb, uint32_t m, uint32_t nRound)
     {
         AscendC::Muls<float, false>(fsUb, fsUb, scaleValue, static_cast<uint64_t>(0),
                                     CeilDiv(m * nRound, FLOAT_VECTOR_SIZE), AscendC::UnaryRepeatParams(1, 1, 8, 8));
@@ -227,7 +227,7 @@ public:
     // Handles unaligned tailN: A2 VEC instructions require 32-byte (8-float)
     // aligned UB addresses. When tailN % 8 != 0, the unaligned part is zeroed
     // via a masked Duplicate at the aligned address tailNAlignedDown.
-    __aicore__ inline void ZeroOutCausalTail(AscendC::LocalTensor<float> &fsUb, uint32_t rows, uint32_t nRound,
+    __aicore__ inline void ZeroOutCausalTail(AscendC::LocalTensor<float>& fsUb, uint32_t rows, uint32_t nRound,
                                              uint32_t tailN)
     {
         if (tailN >= nRound) {
@@ -266,7 +266,7 @@ public:
     }
 
     // === RowMax: two-stage BlockReduceMax (from A2 infer RowmaxTAILTILE pattern) ===
-    __aicore__ inline void CalcRowMax(AscendC::LocalTensor<float> const &srcUb, AscendC::LocalTensor<float> &rowmaxUb,
+    __aicore__ inline void CalcRowMax(AscendC::LocalTensor<float> const& srcUb, AscendC::LocalTensor<float>& rowmaxUb,
                                       uint32_t numRows, uint32_t numRowsRound, uint32_t numElems,
                                       uint32_t numElemsAligned)
     {
@@ -316,8 +316,8 @@ public:
     }
 
     // === Subtract rowMax and Exp (from A2 infer CalcExp pattern) ===
-    __aicore__ inline void SubtractRowMaxAndExp(AscendC::LocalTensor<float> &srcUb,
-                                                AscendC::LocalTensor<float> const &rowmaxUb, uint32_t numRows,
+    __aicore__ inline void SubtractRowMaxAndExp(AscendC::LocalTensor<float>& srcUb,
+                                                AscendC::LocalTensor<float> const& rowmaxUb, uint32_t numRows,
                                                 uint32_t numRowsRound, uint32_t numElems, uint32_t numElemsAligned)
     {
         AscendC::Brcb(tvUbTensor.template ReinterpretCast<uint32_t>(), rowmaxUb.template ReinterpretCast<uint32_t>(),
@@ -347,7 +347,7 @@ public:
     }
 
     // === RowSum: two-stage BlockReduceSum (from A2 infer RowsumTAILTILE pattern) ===
-    __aicore__ inline void CalcRowSum(AscendC::LocalTensor<float> const &srcUb, AscendC::LocalTensor<float> &rowsumUb,
+    __aicore__ inline void CalcRowSum(AscendC::LocalTensor<float> const& srcUb, AscendC::LocalTensor<float>& rowsumUb,
                                       uint32_t numRows, uint32_t numRowsRound, uint32_t numElems,
                                       uint32_t numElemsAligned)
     {
@@ -402,7 +402,7 @@ public:
     }
 
     // === DownCast float→16-bit P (from A2 infer DownCastP pattern) ===
-    __aicore__ inline void DownCastP(AscendC::LocalTensor<ElementOutput> &lpUb, AscendC::LocalTensor<float> const &fsUb,
+    __aicore__ inline void DownCastP(AscendC::LocalTensor<ElementOutput>& lpUb, AscendC::LocalTensor<float> const& fsUb,
                                      uint32_t m, uint32_t nRound)
     {
         if constexpr (std::is_same<ElementOutput, bfloat16_t>::value) {
@@ -422,7 +422,7 @@ public:
     // Instead, VEC writes P to GM via DataCopyPad (MTE3, valid on VEC), then CUBE reads P
     // from GM to L1 via Nd2Nz DataCopy (MTE2, valid on CUBE).
     // Double-buffered by bi%2; sub-block offset ensures both AIVs write to correct rows.
-    __aicore__ inline void CopyPUbToGm(AscendC::LocalTensor<ElementOutput> const &ubPTensor, uint32_t m,
+    __aicore__ inline void CopyPUbToGm(AscendC::LocalTensor<ElementOutput> const& ubPTensor, uint32_t m,
                                        uint32_t nRound, uint32_t bi, uint32_t mCopyOffset)
     {
         uint32_t gmStageOffset = static_cast<uint32_t>((bi % 3U) * gmPStageElems_);
@@ -439,9 +439,9 @@ public:
 
     // === operator() — A2: adds bi param for GM workspace stage offset ===
     template <class TensorP>
-    __aicore__ inline void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape, uint32_t ubSBufId,
+    __aicore__ inline void operator()(TensorP& l1PTensorTla, GemmCoord actualBlockShape, uint32_t ubSBufId,
                                       uint32_t l1PBufId, Arch::CrossCoreFlag mm1ToSmFlag,
-                                      Arch::CrossCoreFlag smToMm2Flag, const uint32_t *causalValidLens,
+                                      Arch::CrossCoreFlag smToMm2Flag, const uint32_t* causalValidLens,
                                       uint32_t groupCount, uint32_t groupRows, uint32_t bi, bool dumpPhase1Rowsum,
                                       bool extraToSubBlock0)
     {

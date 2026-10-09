@@ -26,13 +26,13 @@ std::tuple<at::Tensor, at::Tensor> construct_tsqr_output_tensor(const at::Tensor
     return std::tuple<at::Tensor, at::Tensor>(Q, R);
 }
 
-std::tuple<at::Tensor, at::Tensor> tsqr_npu(const at::Tensor& A, const c10::optional<int64_t>  block_size)
+std::tuple<at::Tensor, at::Tensor> tsqr_npu(const at::Tensor& A, const c10::optional<int64_t> block_size)
 {
     int64_t blk_size = c10::value_or_else(block_size, [] { return 0; });
 
     // construct the output tensor
     auto output_tensors = construct_tsqr_output_tensor(A);
-    at::Tensor Q  = std::get<0>(output_tensors);
+    at::Tensor Q = std::get<0>(output_tensors);
     at::Tensor R = std::get<1>(output_tensors);
 
     EXEC_NPU_CMD_V1(aclnnTsqr, A, blk_size, Q, R);
@@ -50,12 +50,12 @@ std::tuple<at::Tensor, at::Tensor> tsqr_meta(const at::Tensor& A, const c10::opt
 }
 } // namespace npu_linalg
 
-
-TORCH_LIBRARY_IMPL(npu_linalg, PrivateUse1, m) {
+TORCH_LIBRARY_IMPL(npu_linalg, PrivateUse1, m)
+{
     m.impl("tsqr", &npu_linalg::tsqr_npu);
 }
 
-
-TORCH_LIBRARY_IMPL(npu_linalg, Meta, m) {
+TORCH_LIBRARY_IMPL(npu_linalg, Meta, m)
+{
     m.impl("tsqr", &npu_linalg::tsqr_meta);
 }

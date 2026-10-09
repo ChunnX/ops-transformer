@@ -36,7 +36,7 @@ struct CopyL0CToGmTla<NpuArch::Arch::AtlasA5, TensorSrc_,
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint16_t ndNum = 1,
+    __aicore__ inline void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint16_t ndNum = 1,
                                       uint16_t srcNdStride = 1, uint32_t dstNdStride = 1, uint8_t unitFlag = 0)
     {
         // TODO: check why use fixpipe is not OK

@@ -57,14 +57,14 @@ public:
     uint64_t gradOffset = 0;
 
     uint64_t usedCoreNum = 0;
-    __aicore__ inline BlockEpilogue(Params const &params)
+    __aicore__ inline BlockEpilogue(Params const& params)
     {
         // KERNEL_TYPE_MIX_AIC_1_2 exposes two contiguous AIV block ids for
         // every AIC.  Use the physical AIV id so all vector cores clear a
         // unique slice of the accumulation workspace.
         cBlockIdx = GetBlockIdx();
-        __gm__ BlockSparseAttentionGradTilingData *tilingData =
-            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tilingData);
+        __gm__ BlockSparseAttentionGradTilingData* tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData*>(params.tilingData);
         usedCoreNum = tilingData->usedVecCoreNum;
 
         // Clear all accumulation planes in-kernel.  Sparse rows with very
@@ -77,7 +77,7 @@ public:
         const uint64_t gradPreTailTmp = gradSize % gradPreBlockFactor;
         gradPreTail = gradPreTailTmp == 0 ? gradPreBlockFactor : gradPreTailTmp;
 
-        gradWorkSpaceGm.SetGlobalBuffer((__gm__ float *)params.dqWrk);
+        gradWorkSpaceGm.SetGlobalBuffer((__gm__ float*)params.dqWrk);
         initGradSize = cBlockIdx == gradPreBlockTotal - 1 ? gradPreTail : gradPreBlockFactor;
         gradOffset = cBlockIdx * gradPreBlockFactor;
     }

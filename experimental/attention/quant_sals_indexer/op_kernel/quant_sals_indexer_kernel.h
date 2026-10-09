@@ -35,7 +35,8 @@ using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
-__aicore__ inline int32_t FloatCeil(float num) {
+__aicore__ inline int32_t FloatCeil(float num)
+{
     int integer_part = static_cast<int>(num);
     if (num > 0 && num != integer_part) {
         integer_part += 1;
@@ -48,7 +49,7 @@ struct TempLoopInfo {
     uint32_t bN2Idx = 0;
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
-    int32_t s2LoopEnd = 0;       // S2方向循环的结束Idx
+    int32_t s2LoopEnd = 0; // S2方向循环的结束Idx
     uint32_t actS2Size = 0ULL;
     int32_t needProcessS2Size = 0L;
     int32_t targetTopKAlign = 0L;
@@ -68,11 +69,10 @@ template <typename QSIT>
 class QSIPreload {
 public:
     __aicore__ inline QSIPreload(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *queryScale,
-                                __gm__ uint8_t *keyScale, __gm__ uint8_t *actualSeqLengths,
-                                __gm__ uint8_t *blockTable, QsiMetaData *metaData,
-                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *workspace,
-                                const QSITilingData *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* queryScale,
+                                __gm__ uint8_t* keyScale, __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* blockTable,
+                                QsiMetaData* metaData, __gm__ uint8_t* sparseIndices, __gm__ uint8_t* workspace,
+                                const QSITilingData* __restrict tiling, TPipe* tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
@@ -103,8 +103,8 @@ public:
     static constexpr uint32_t WS_DOUBLE = 2;
 
 protected:
-    TPipe *pipe = nullptr;
-    QsiMetaData *metaDataPtr = nullptr;
+    TPipe* pipe = nullptr;
+    QsiMetaData* metaDataPtr = nullptr;
 
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
@@ -134,34 +134,34 @@ protected:
     QSICommon::SplitCoreInfo splitCoreInfo{};
 
     // ================================Init functions==================================
-    __aicore__ inline void InitTilingData(const QSITilingData *__restrict tilingData);
+    __aicore__ inline void InitTilingData(const QSITilingData* __restrict tilingData);
     __aicore__ inline void InitMetaData();
-    __aicore__ inline void InitCalcParamsEach(const QSITilingData *__restrict tilingData,
-                                              QSICommon::SplitCoreInfo &info);
-    __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t s1GEndPrev,
-                                           uint32_t s2EndPrev, QSICommon::SplitCoreInfo &info);
+    __aicore__ inline void InitCalcParamsEach(const QSITilingData* __restrict tilingData,
+                                              QSICommon::SplitCoreInfo& info);
+    __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t s1GEndPrev, uint32_t s2EndPrev,
+                                           QSICommon::SplitCoreInfo& info);
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengths);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t* actualSeqLengths);
     // ================================Split Core================================
-    __aicore__ inline void SplitCore(uint32_t curCoreIdx, uint32_t &coreNum, QSICommon::SplitCoreInfo &info);
+    __aicore__ inline void SplitCore(uint32_t curCoreIdx, uint32_t& coreNum, QSICommon::SplitCoreInfo& info);
     __aicore__ inline int32_t GetS2NeedProcessSize(uint32_t actS2Size);
     __aicore__ inline uint32_t GetTotalBaseBlockNum();
     // ================================Process functions================================
     __aicore__ inline void ProcessMain();
-    __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, QSICommon::RunInfo &runInfo);
+    __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, QSICommon::RunInfo& runInfo);
     __aicore__ inline void ProcessDecode();
     __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx);
-    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QSICommon::RunInfo &runInfo);
-    __aicore__ inline void CalcRunInfo(QSICommon::RunInfo &runInfo);
+    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QSICommon::RunInfo& runInfo);
+    __aicore__ inline void CalcRunInfo(QSICommon::RunInfo& runInfo);
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx);
 };
 
 template <typename QSIT>
-__aicore__ inline void QSIPreload<QSIT>::InitTilingData(const QSITilingData *__restrict tilingData)
+__aicore__ inline void QSIPreload<QSIT>::InitTilingData(const QSITilingData* __restrict tilingData)
 {
     usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
@@ -194,17 +194,17 @@ __aicore__ inline void QSIPreload<QSIT>::InitMetaData()
 }
 
 template <typename QSIT>
-__aicore__ inline void QSIPreload<QSIT>::InitCalcParamsEach(const QSITilingData *__restrict tilingData,
-                                                            QSICommon::SplitCoreInfo &info)
+__aicore__ inline void QSIPreload<QSIT>::InitCalcParamsEach(const QSITilingData* __restrict tilingData,
+                                                            QSICommon::SplitCoreInfo& info)
 {
     // 计算总的基本块
     // 这里是编译器优化写法，定义一个局部数组变量coreSidxEnd(存在栈上)，使用copy_data_align64接口
     // 可以只从ub中拷贝tiling中coreSidxEnd的内容到栈上，而非将整个increFlashAttentionCoreParams
     // 内容拷贝到栈，减少拷贝时间
     if (metaDataPtr != nullptr) {
-        const uint32_t *bN2End = metaDataPtr->bN2End;
-        const uint32_t *gS1End = metaDataPtr->gS1End;
-        const uint32_t *s2End = metaDataPtr->s2End;
+        const uint32_t* bN2End = metaDataPtr->bN2End;
+        const uint32_t* gS1End = metaDataPtr->gS1End;
+        const uint32_t* s2End = metaDataPtr->s2End;
         // TND分核信息
         info.bN2End = bN2End[aiCoreIdx];
         info.gS1End = gS1End[aiCoreIdx];
@@ -218,16 +218,16 @@ __aicore__ inline void QSIPreload<QSIT>::InitCalcParamsEach(const QSITilingData 
         info.isLD = (info.s2Start > 0U || info.s2End < s2BaseNum - 1U);
     } else {
 #ifdef ASCENDC_CPU_DEBUG
-            const uint32_t *bN2End = tilingData->splitParams.bN2End;
-            const uint32_t *gS1End = tilingData->splitParams.gS1End;
-            const uint32_t *s2End = tilingData->splitParams.s2End;
+        const uint32_t* bN2End = tilingData->splitParams.bN2End;
+        const uint32_t* gS1End = tilingData->splitParams.gS1End;
+        const uint32_t* s2End = tilingData->splitParams.s2End;
 #else
-            uint32_t bN2End[ARRAY_SIZE(tilingData->splitParams.bN2End)];
-            uint32_t gS1End[ARRAY_SIZE(tilingData->splitParams.gS1End)];
-            uint32_t s2End[ARRAY_SIZE(tilingData->splitParams.s2End)];
-            copy_data_align64((uint8_t*)bN2End, (uint8_t*)(tilingData->splitParams.bN2End), sizeof(bN2End));
-            copy_data_align64((uint8_t*)gS1End, (uint8_t*)(tilingData->splitParams.gS1End), sizeof(gS1End));
-            copy_data_align64((uint8_t*)s2End, (uint8_t*)(tilingData->splitParams.s2End), sizeof(s2End));
+        uint32_t bN2End[ARRAY_SIZE(tilingData->splitParams.bN2End)];
+        uint32_t gS1End[ARRAY_SIZE(tilingData->splitParams.gS1End)];
+        uint32_t s2End[ARRAY_SIZE(tilingData->splitParams.s2End)];
+        copy_data_align64((uint8_t*)bN2End, (uint8_t*)(tilingData->splitParams.bN2End), sizeof(bN2End));
+        copy_data_align64((uint8_t*)gS1End, (uint8_t*)(tilingData->splitParams.gS1End), sizeof(gS1End));
+        copy_data_align64((uint8_t*)s2End, (uint8_t*)(tilingData->splitParams.s2End), sizeof(s2End));
 #endif
         // TND分核信息
         info.bN2End = bN2End[aiCoreIdx];
@@ -242,8 +242,8 @@ __aicore__ inline void QSIPreload<QSIT>::InitCalcParamsEach(const QSITilingData 
 }
 
 template <typename QSIT>
-__aicore__ inline void QSIPreload<QSIT>::GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t s1GEndPrev,
-                                                         uint32_t s2EndPrev, QSICommon::SplitCoreInfo &info)
+__aicore__ inline void QSIPreload<QSIT>::GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t s1GEndPrev, uint32_t s2EndPrev,
+                                                         QSICommon::SplitCoreInfo& info)
 {
     if (metaDataPtr != nullptr) {
         uint32_t bEndPrev = bN2EndPrev / constInfo.kHeadNum;
@@ -290,7 +290,7 @@ __aicore__ inline void QSIPreload<QSIT>::InitBuffers()
 }
 
 template <typename QSIT>
-__aicore__ inline void QSIPreload<QSIT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengths)
+__aicore__ inline void QSIPreload<QSIT>::InitActualSeqLen(__gm__ uint8_t* actualSeqLengths)
 {
     // todo 删除
     constInfo.actualLenQDims = constInfo.batchSize;
@@ -298,7 +298,7 @@ __aicore__ inline void QSIPreload<QSIT>::InitActualSeqLen(__gm__ uint8_t *actual
         constInfo.actualLenDims = 0;
     } else {
         constInfo.actualLenDims = constInfo.batchSize;
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t *)actualSeqLengths, constInfo.actualLenDims);
+        actualSeqLengthsGm.SetGlobalBuffer((__gm__ uint32_t*)actualSeqLengths, constInfo.actualLenDims);
     }
 }
 
@@ -331,14 +331,16 @@ __aicore__ inline uint32_t QSIPreload<QSIT>::GetTotalBaseBlockNum()
     for (uint32_t bIdx = 0; bIdx < constInfo.batchSize; bIdx++) {
         uint32_t actS2Size = GetActualSeqLen(bIdx);
 
-        totalBlockNum += (GetS2NeedProcessSize(actS2Size)+ constInfo.s2BaseSize - 1) / constInfo.s2BaseSize * constInfo.kHeadNum;
+        totalBlockNum +=
+            (GetS2NeedProcessSize(actS2Size) + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize * constInfo.kHeadNum;
     }
     return totalBlockNum;
 }
 
 // 多核版本，双闭区间
 template <typename QSIT>
-__aicore__ void inline QSIPreload<QSIT>::SplitCore(uint32_t curCoreIdx, uint32_t &coreNum, QSICommon::SplitCoreInfo &info)
+__aicore__ void inline QSIPreload<QSIT>::SplitCore(uint32_t curCoreIdx, uint32_t& coreNum,
+                                                   QSICommon::SplitCoreInfo& info)
 {
     // 计算每个核最少处理的块数, 剩余的部分前面的核每个核多处理一块
     uint32_t totalBlockNum = GetTotalBaseBlockNum();
@@ -407,17 +409,17 @@ __aicore__ inline void QSIPreload<QSIT>::DealActSeqLenIsZero(uint32_t bIdx, uint
             return;
         }
         uint64_t indiceOutOffset =
-            bIdx * constInfo.kHeadNum * constInfo.sparseCount + n2Idx * constInfo.sparseCount;  // N2轴偏移
+            bIdx * constInfo.kHeadNum * constInfo.sparseCount + n2Idx * constInfo.sparseCount; // N2轴偏移
         vectorService.CleanInvalidOutput(indiceOutOffset);
     }
 }
 
 template <typename QSIT>
-__aicore__ inline void QSIPreload<QSIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key,
-                                            __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale, __gm__ uint8_t *actualSeqLengths,
-                                            __gm__ uint8_t *blockTable, QsiMetaData *metaData, __gm__ uint8_t *sparseIndices,
-                                            __gm__ uint8_t *workspace, const QSITilingData *__restrict tiling,
-                                            TPipe *tPipe)
+__aicore__ inline void QSIPreload<QSIT>::Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* queryScale,
+                                              __gm__ uint8_t* keyScale, __gm__ uint8_t* actualSeqLengths,
+                                              __gm__ uint8_t* blockTable, QsiMetaData* metaData,
+                                              __gm__ uint8_t* sparseIndices, __gm__ uint8_t* workspace,
+                                              const QSITilingData* __restrict tiling, TPipe* tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -446,37 +448,37 @@ __aicore__ inline void QSIPreload<QSIT>::Init(__gm__ uint8_t *query, __gm__ uint
 
     // mm1开DoubleBuffer
     uint64_t singleCoreMm1ResSize = WS_DOUBLE * constInfo.mBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
-    mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
+    mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T*)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
     // ld流程需要ws大小: [aicnum, 2, constInfo.mBaseSize, topkOut_*2]
     // (aic, 8, 2, 2, 2048)
     // (aic, s1_cube, 头尾, idx/value, K)
-    vec1ResGm.SetGlobalBuffer((__gm__ float *)(workspace + offset));
+    vec1ResGm.SetGlobalBuffer((__gm__ float*)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * WS_DOUBLE * MAX_TOPK * sizeof(float);
 
     // (aic, 8, 2, 16)
     // (aic, s1_cube, 头尾，16ele)
-    vec1ParamGm.SetGlobalBuffer((__gm__ int64_t *)(workspace + offset));
+    vec1ParamGm.SetGlobalBuffer((__gm__ int64_t*)(workspace + offset));
     offset += GetBlockNum() * constInfo.s1BaseSize * WS_DOUBLE * LD_PARAM_NUM * sizeof(int64_t);
 
-    qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
+    qScaleGm.SetGlobalBuffer((__gm__ float*)queryScale);
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, tiling);
-        indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
+        indiceOutGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
+        kScaleGm.SetGlobalBuffer((__gm__ float*)keyScale);
         if constexpr (PAGE_ATTENTION) {
-            blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+            blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
         }
         vectorService.InitVec1GlobalTensor(mm1ResGm, qScaleGm, kScaleGm, blockTableGm, vec1ResGm, vec1ParamGm,
                                            indiceOutGm);
     } else {
         matmulService.InitParams(constInfo);
-        queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
+        queryGm.SetGlobalBuffer((__gm__ Q_T*)query);
         if constexpr (PAGE_ATTENTION) {
-            blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+            blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
         }
-        keyGm.SetGlobalBuffer((__gm__ K_T *)key);
+        keyGm.SetGlobalBuffer((__gm__ K_T*)key);
         keyGm.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
         matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm, mm1ResGm);
     }
@@ -500,16 +502,21 @@ __aicore__ inline void QSIPreload<QSIT>::CalcS2LoopParams(uint32_t bN2LoopIdx)
     tempLoopInfo.actS2Size = GetActualSeqLen(bN2LoopIdx / constInfo.kHeadNum);
 
     tempLoopInfo.needProcessS2Size = GetS2NeedProcessSize(tempLoopInfo.actS2Size);
-    tempLoopInfo.s2LoopEnd =(tempLoopInfo.needProcessS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize - 1;
+    tempLoopInfo.s2LoopEnd = (tempLoopInfo.needProcessS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize - 1;
     if (metaDataPtr != nullptr) {
-        tempLoopInfo.s2LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End && !(tempLoopInfo.actS2Size == 0)) ? splitCoreInfo.s2End : tempLoopInfo.s2LoopEnd;
+        tempLoopInfo.s2LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End && !(tempLoopInfo.actS2Size == 0)) ?
+                                     splitCoreInfo.s2End :
+                                     tempLoopInfo.s2LoopEnd;
     }
     tempLoopInfo.needCleanSparseCount = (tempLoopInfo.actS2Size < constInfo.maxSeqlenKey);
-    int32_t targetTopK = FloatCeil(((tempLoopInfo.needProcessS2Size + constInfo.sparseBlockSize - 1) / (constInfo.sparseBlockSize)) * constInfo.sparseRatio);
+    int32_t targetTopK =
+        FloatCeil(((tempLoopInfo.needProcessS2Size + constInfo.sparseBlockSize - 1) / (constInfo.sparseBlockSize)) *
+                  constInfo.sparseRatio);
     targetTopK = targetTopK >= 2048 ? 2048 : targetTopK;
     tempLoopInfo.OnlyFixTail = (targetTopK == 0);
     if (targetTopK > constInfo.s2BaseSize / constInfo.sparseBlockSize) {
-        tempLoopInfo.targetTopKAlign = QSiCeilAlign(static_cast<uint32_t>(targetTopK), 4 * constInfo.s2BaseSize / constInfo.sparseBlockSize);
+        tempLoopInfo.targetTopKAlign =
+            QSiCeilAlign(static_cast<uint32_t>(targetTopK), 4 * constInfo.s2BaseSize / constInfo.sparseBlockSize);
     } else {
         tempLoopInfo.targetTopKAlign = QSiCeilAlign(targetTopK, 128);
     }
@@ -517,7 +524,7 @@ __aicore__ inline void QSIPreload<QSIT>::CalcS2LoopParams(uint32_t bN2LoopIdx)
 }
 
 template <typename QSIT>
-__aicore__ inline void QSIPreload<QSIT>::CalcRunInfo(QSICommon::RunInfo &runInfo)
+__aicore__ inline void QSIPreload<QSIT>::CalcRunInfo(QSICommon::RunInfo& runInfo)
 {
     runInfo.needProcessS2Size = tempLoopInfo.needProcessS2Size;
     runInfo.targetTopKAlign = tempLoopInfo.targetTopKAlign;
@@ -528,7 +535,7 @@ __aicore__ inline void QSIPreload<QSIT>::CalcRunInfo(QSICommon::RunInfo &runInfo
 }
 
 template <typename QSIT>
-__aicore__ inline void QSIPreload<QSIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QSICommon::RunInfo &runInfo)
+__aicore__ inline void QSIPreload<QSIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, QSICommon::RunInfo& runInfo)
 {
     runInfo.loop = loop;
     runInfo.bIdx = tempLoopInfo.bIdx;
@@ -573,9 +580,10 @@ __aicore__ inline void QSIPreload<QSIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
         // B,N2,k
         runInfo.indiceOutOffset = runInfo.bN2Idx * constInfo.sparseCount;
     }
-    runInfo.tensorKeyOffset = keyCoreOffset + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
-    runInfo.tensorKeyScaleOffset = actualSeqKPrefixSum * constInfo.kHeadNum +
-                                   runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum;
+    runInfo.tensorKeyOffset =
+        keyCoreOffset + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum * constInfo.headDim;
+    runInfo.tensorKeyScaleOffset =
+        actualSeqKPrefixSum * constInfo.kHeadNum + runInfo.s2Idx * constInfo.s2BaseSize * constInfo.kHeadNum;
 }
 
 template <typename QSIT>
@@ -595,8 +603,7 @@ __aicore__ inline void QSIPreload<QSIT>::ProcessInvalid()
 {
     if ASCEND_IS_AIV {
         uint32_t aivCoreNum = GetBlockNum() * 2; // 2 means c:v = 1:2
-        uint64_t totalOutputSize =
-            constInfo.batchSize * constInfo.kHeadNum * constInfo.sparseCount;
+        uint64_t totalOutputSize = constInfo.batchSize * constInfo.kHeadNum * constInfo.sparseCount;
         uint64_t singleCoreSize =
             QSICommon::Align((totalOutputSize + aivCoreNum - 1) / aivCoreNum, GM_ALIGN_BYTES / sizeof(OUT_T));
         uint64_t baseSize = tmpBlockIdx * singleCoreSize;
@@ -658,7 +665,8 @@ __aicore__ inline void QSIPreload<QSIT>::ProcessMain()
 }
 
 template <typename QSIT>
-__aicore__ inline void QSIPreload<QSIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx, QSICommon::RunInfo &runInfo)
+__aicore__ inline void QSIPreload<QSIT>::ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
+                                                          QSICommon::RunInfo& runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {

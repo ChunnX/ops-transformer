@@ -14,10 +14,10 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const std::array<const aclTensor *, 5> ChunkGatedDeltaRuleComputeWy(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *g, const aclTensor *beta,
-    int64_t chunkSize, const aclTensor *qKernelOut, const aclTensor *kKernelOut, const aclTensor *wKernelOut,
-    const aclTensor *uKernelOut, const aclTensor *gKernelOut, aclOpExecutor *executor);
+const std::array<const aclTensor*, 5> ChunkGatedDeltaRuleComputeWy(
+    const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* g, const aclTensor* beta,
+    int64_t chunkSize, const aclTensor* qKernelOut, const aclTensor* kKernelOut, const aclTensor* wKernelOut,
+    const aclTensor* uKernelOut, const aclTensor* gKernelOut, aclOpExecutor* executor);
 }
 
 #endif

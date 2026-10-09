@@ -30,11 +30,11 @@ using namespace CompressorV2;
     } while (0)
 
 template <uint8_t XLayout, uint8_t XDType, uint8_t TemplateId>
-__global__ __aicore__ void compressor_v2(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
-                                         __gm__ uint8_t *stateCache, __gm__ uint8_t *stateBlockTable,
-                                         __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                         __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *stateCacheOut,
-                                         __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+__global__ __aicore__ void compressor_v2(__gm__ uint8_t* x, __gm__ uint8_t* wKv, __gm__ uint8_t* wGate,
+                                         __gm__ uint8_t* stateCache, __gm__ uint8_t* stateBlockTable,
+                                         __gm__ uint8_t* cuSeqlens, __gm__ uint8_t* seqUsed, __gm__ uint8_t* startPos,
+                                         __gm__ uint8_t* cmpKvOut, __gm__ uint8_t* stateCacheOut,
+                                         __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     (void)stateCacheOut; // state_cache 为 in-place，kernel 直接写 stateCache(input)
     REGISTER_TILING_DEFAULT(optiling::CompressorV2TilingData);
@@ -43,7 +43,7 @@ __global__ __aicore__ void compressor_v2(__gm__ uint8_t *x, __gm__ uint8_t *wKv,
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::EMPTY_X) {
         return;
     }
-    const optiling::CompressorV2TilingData *__restrict tilingData = &tilingDataIn;
+    const optiling::CompressorV2TilingData* __restrict tilingData = &tilingDataIn;
     TPipe pipe;
     constexpr auto xLayout = static_cast<X_LAYOUT>(XLayout);
     constexpr auto xDtype = static_cast<X_DTYPE>(XDType);

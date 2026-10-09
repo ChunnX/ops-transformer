@@ -29,7 +29,8 @@ struct StemIndexerHostUtParamBase : public HostUtParamBase {
     int64_t k_block_num_bias_large;
     int64_t topk_score_precision;
 
-    StemIndexerHostUtParamBase(const csv_map &csvMap) : HostUtParamBase(csvMap)
+    StemIndexerHostUtParamBase(const csv_map& csvMap)
+        : HostUtParamBase(csvMap)
     {
         this->causal = std::stoi(ReadMap(csvMap, "causal", "1"));
         this->stem_block_size = std::stoll(ReadMap(csvMap, "stem_block_size", "128"));
@@ -60,7 +61,8 @@ struct StemIndexerTilingUtParam : public StemIndexerHostUtParamBase {
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
 
-    StemIndexerTilingUtParam(const csv_map &csvMap) : StemIndexerHostUtParamBase(csvMap)
+    StemIndexerTilingUtParam(const csv_map& csvMap)
+        : StemIndexerHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "qflat_shape", "qflat_dtype", "qflat_format", this->qflat));
@@ -108,7 +110,8 @@ struct StemIndexerInferShapeUtParam : public StemIndexerHostUtParamBase {
 
     std::vector<std::vector<int64_t>> expectOutputShape;
 
-    StemIndexerInferShapeUtParam(const csv_map &csvMap) : StemIndexerHostUtParamBase(csvMap)
+    StemIndexerInferShapeUtParam(const csv_map& csvMap)
+        : StemIndexerHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(
             GetTensorGE(csvMap, "qflat_shape", "qflat_dtype", "qflat_format", this->qflat));
@@ -149,7 +152,8 @@ struct StemIndexerInferDTypeUtParam : public StemIndexerHostUtParamBase {
     ge::DataType sparse_indices_dtype = ge::DT_UNDEFINED;
     ge::DataType sparse_seq_len_dtype = ge::DT_UNDEFINED;
 
-    StemIndexerInferDTypeUtParam(const csv_map &csvMap) : StemIndexerHostUtParamBase(csvMap)
+    StemIndexerInferDTypeUtParam(const csv_map& csvMap)
+        : StemIndexerHostUtParamBase(csvMap)
     {
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "qflat_dtype", this->qflat_dtype));
         this->inputInstance.emplace_back(GetDataTypeGE(csvMap, "kflat_dtype", this->kflat_dtype));

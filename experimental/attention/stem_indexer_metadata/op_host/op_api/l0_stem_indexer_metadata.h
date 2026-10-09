@@ -14,20 +14,10 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* StemIndexerMetadata(
-    const aclTensor* qSeqLens,
-    const aclTensor* kvSeqLens,
-    int64_t qHeads,
-    int64_t kvHeads,
-    bool causal,
-    int64_t stemBlockSize,
-    int64_t dimQkflat,
-    int64_t windowSize,
-    const char* socVersion,
-    int64_t aicCoreNum,
-    int64_t aivCoreNum,
-    const aclTensor* metadata,
-    aclOpExecutor* executor);
+const aclTensor* StemIndexerMetadata(const aclTensor* qSeqLens, const aclTensor* kvSeqLens, int64_t qHeads,
+                                     int64_t kvHeads, bool causal, int64_t stemBlockSize, int64_t dimQkflat,
+                                     int64_t windowSize, const char* socVersion, int64_t aicCoreNum, int64_t aivCoreNum,
+                                     const aclTensor* metadata, aclOpExecutor* executor);
 } // namespace l0op
 
 #endif

@@ -108,32 +108,32 @@ constexpr std::initializer_list<ge::DataType> FP8DTYPE_SUPPORT_LIST = {
 constexpr std::initializer_list<ge::DataType> MXFP8DTYPE_SUPPORT_LIST = {ge::DataType::DT_FLOAT8_E4M3FN,
                                                                          ge::DataType::DT_FLOAT8_E5M2};
 
-matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName, ge::DataType type);
-ge::DataType ConvertMmTypeToGeType(const std::string &opName, matmul_tiling::DataType type);
-uint64_t GetDataTypeSize(const std::string &opName, ge::DataType type);
-HcclDataType ConvertGeTypeToHcclType(const std::string &opName, ge::DataType type);
+matmul_tiling::DataType ConvertGeTypeToMmType(const std::string& opName, ge::DataType type);
+ge::DataType ConvertMmTypeToGeType(const std::string& opName, matmul_tiling::DataType type);
+uint64_t GetDataTypeSize(const std::string& opName, ge::DataType type);
+HcclDataType ConvertGeTypeToHcclType(const std::string& opName, ge::DataType type);
 bool CheckSuppportedFormat(ge::Format format);
 bool IsDeterministic();
-bool GetRankSize(const std::string &opName, const char *group, int64_t &rankSize);
+bool GetRankSize(const std::string& opName, const char* group, int64_t& rankSize);
 bool CheckRankSize(const NpuArch npuArch, const uint32_t rankSize);
-uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group, const gert::TilingContext *context);
+uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char* group, const gert::TilingContext* context);
 
 bool CheckDataTypeVaild(ge::DataType type, std::initializer_list<ge::DataType> supportDtypeList);
 
-void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args, const mc2tiling::TilingArgs &args,
-                        const char *opName);
-ge::graphStatus GetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<int32_t> &priorities, const char *opName);
+void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args& mmV3Args, const mc2tiling::TilingArgs& args,
+                        const char* opName);
+ge::graphStatus GetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<int32_t>& priorities, const char* opName);
 
-inline std::string GetSocVersion(const gert::TilingContext *context)
+inline std::string GetSocVersion(const gert::TilingContext* context)
 {
-    fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
-    fe::PlatFormInfos &platformInfo = *platformInfoPtr;
+    fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
+    fe::PlatFormInfos& platformInfo = *platformInfoPtr;
     std::string socVersion;
     (void)platformInfo.GetPlatformResWithLock("version", "Short_SoC_version", socVersion);
     return socVersion;
 }
 
-inline NpuArch GetNpuArch(const gert::TilingContext *context)
+inline NpuArch GetNpuArch(const gert::TilingContext* context)
 {
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::platformAscendC ascendcPlatform(platformInfo);
@@ -145,15 +145,15 @@ public:
     static uint8_t GetDebugMode();
     static uint8_t GetDebugCommAlg();
     static uint8_t GetDebugStepSize();
-    static uint32_t GetCommSets(const char *group);
-    static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
+    static uint32_t GetCommSets(const char* group);
+    static ge::graphStatus CommonParamCheck(const gert::TilingContext* context);
     static mc2tiling::HcclDataType GetDataType(ge::DataType type);
     static uint64_t GetMaxWindowSize();
     static bool CheckRankSize(NpuArch npuArch, uint32_t rankSize);
-    static HcclDataType ConvertGeTypeToHcclType(const std::string &opName, ge::DataType type);
+    static HcclDataType ConvertGeTypeToHcclType(const std::string& opName, ge::DataType type);
 
     template <typename T>
-    static uint64_t GetTilingKey(T &tilingData, bool isFullMeshHost = false)
+    static uint64_t GetTilingKey(T& tilingData, bool isFullMeshHost = false)
     {
         uint8_t commAlg = isFullMeshHost ? COMM_ALG_FULL_MESH_HOST : tilingData.msg.get_commAlg();
         uint64_t castBias = tilingData.param.get_biasLen() == 0 ? 0 : 1;
@@ -202,12 +202,12 @@ const std::map<NpuArch, std::set<uint32_t>> supportedRankSizeSet = {
 const std::set<ge::Format> SUPPORTED_FORMAT = {ge::FORMAT_NCL,  ge::FORMAT_NCDHW, ge::FORMAT_DHWCN,
                                                ge::FORMAT_NHWC, ge::FORMAT_NCHW,  ge::FORMAT_ND};
 
-inline ge::graphStatus GetCclBufferSize(const char *groupStr, uint64_t *cclBufferSize, const char *nodeName)
+inline ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBufferSize, const char* nodeName)
 {
     HcclComm hcclComm;
-    OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm) !=
-                        HCCL_SUCCESS,
-                    OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm) != HCCL_SUCCESS,
+        OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
     if (hcclComm == nullptr) {
         OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetGroupLocalWindowSize(groupStr, cclBufferSize) != HCCL_SUCCESS,
                         OP_LOGE(nodeName, "GetGroupLocalWindowSize from topoInfo failed"), return ge::GRAPH_FAILED);
@@ -220,8 +220,8 @@ inline ge::graphStatus GetCclBufferSize(const char *groupStr, uint64_t *cclBuffe
     return ge::GRAPH_SUCCESS;
 }
 
-inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const char *nodeName,
-                                    uint64_t &hcclBufferSizeEp, uint64_t &maxWindowSizeEp, uint32_t attrGroupEpIndex)
+inline ge::graphStatus GetEpWinSize(const gert::TilingContext* context, const char* nodeName,
+                                    uint64_t& hcclBufferSizeEp, uint64_t& maxWindowSizeEp, uint32_t attrGroupEpIndex)
 {
     auto attrs = context->GetAttrs();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);

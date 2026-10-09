@@ -54,7 +54,7 @@ constexpr int32_t SINGLE_M = 256;
 constexpr int32_t DEFAULT_SINGLE_N = 256;
 class TilingTuner {
 public:
-    static const TilingTuner &Instance()
+    static const TilingTuner& Instance()
     {
         static const TilingTuner instance;
         return instance;
@@ -86,8 +86,8 @@ private:
           })
     {}
 
-    TilingTuner(const TilingTuner &) = delete;
-    TilingTuner &operator=(const TilingTuner &) = delete;
+    TilingTuner(const TilingTuner&) = delete;
+    TilingTuner& operator=(const TilingTuner&) = delete;
 
     const std::unordered_map<uint64_t, int32_t> singleNMap_;
 };
@@ -119,12 +119,12 @@ struct PlatFormMemSize {
 class GmmAddTiling {
 public:
     GmmAddTilingData tilingData;
-    ge::graphStatus Init(const gert::TilingContext *context);
-    ge::graphStatus RunFusionKernelTiling(gert::TilingContext *context);
+    ge::graphStatus Init(const gert::TilingContext* context);
+    ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
 
 protected:
-    ge::graphStatus CalMMTiling(const gert::TilingContext *context, PlatFormMemSize platFormMemSize);
-    ge::graphStatus GMMSetMMTiling(const gert::TilingContext *context, uint64_t l1Size, uint64_t l0CSize,
+    ge::graphStatus CalMMTiling(const gert::TilingContext* context, PlatFormMemSize platFormMemSize);
+    ge::graphStatus GMMSetMMTiling(const gert::TilingContext* context, uint64_t l1Size, uint64_t l0CSize,
                                    matmul_tiling::DataType matmulDtype, matmul_tiling::DataType TensorCType);
 
 private:
@@ -143,12 +143,12 @@ private:
     uint32_t mmDataTypeSize;
 };
 
-ge::graphStatus GmmAddTiling::Init(const gert::TilingContext *context)
+ge::graphStatus GmmAddTiling::Init(const gert::TilingContext* context)
 {
-    const gert::Shape &xShape = context->GetInputShape(X_INDEX)->GetStorageShape();
-    const gert::Shape &wShape = context->GetInputShape(WEIGHT_INDEX)->GetStorageShape();
-    const gert::Shape &group_list_shape = context->GetInputShape(GROUP_LIST_INDEX)->GetStorageShape();
-    const gert::Shape &wGradShape = context->GetInputShape(WEIGHT_GRAD_INDEX)->GetStorageShape();
+    const gert::Shape& xShape = context->GetInputShape(X_INDEX)->GetStorageShape();
+    const gert::Shape& wShape = context->GetInputShape(WEIGHT_INDEX)->GetStorageShape();
+    const gert::Shape& group_list_shape = context->GetInputShape(GROUP_LIST_INDEX)->GetStorageShape();
+    const gert::Shape& wGradShape = context->GetInputShape(WEIGHT_GRAD_INDEX)->GetStorageShape();
 
     trans_a = *(context->GetAttrs()->GetAttrPointer<bool>(TRANS_A_ATTR_INDEX));
     inputAicoreNum_ = *(context->GetAttrs()->GetAttrPointer<int>(AICORE_NUM_ATTR_INDEX));
@@ -235,7 +235,7 @@ ge::graphStatus GmmAddTiling::Init(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAddTiling::RunFusionKernelTiling(gert::TilingContext *context)
+ge::graphStatus GmmAddTiling::RunFusionKernelTiling(gert::TilingContext* context)
 {
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(context->GetPlatformInfo());
@@ -274,7 +274,7 @@ ge::graphStatus GmmAddTiling::RunFusionKernelTiling(gert::TilingContext *context
     // cube tiling的used core num还是设成aicNum
     tilingData.mmTilingData.set_usedCoreNum(validAicNum);
     // set workspsces
-    size_t *workspaces = context->GetWorkspaceSizes(1);
+    size_t* workspaces = context->GetWorkspaceSizes(1);
     // 用户需要48*128*256*4=6MB的空间，每个core 128KB
     // TensorC如果使用bf16类型，不需要这么多workspace，目前这里先不动，申请多一点没什么问题，总量并不大
     workspaces[0] = SYS_WORKSPACE_SIZE + aivNum * SINGLE_M * bestSingleN_ * sizeof(float);
@@ -306,7 +306,7 @@ ge::graphStatus GmmAddTiling::RunFusionKernelTiling(gert::TilingContext *context
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAddTiling::GMMSetMMTiling(const gert::TilingContext *context, uint64_t l1Size, uint64_t l0CSize,
+ge::graphStatus GmmAddTiling::GMMSetMMTiling(const gert::TilingContext* context, uint64_t l1Size, uint64_t l0CSize,
                                              matmul_tiling::DataType matmulDtype, matmul_tiling::DataType TensorCType)
 {
     matmul_tiling::MatmulApiTiling mm;
@@ -354,7 +354,7 @@ ge::graphStatus GmmAddTiling::GMMSetMMTiling(const gert::TilingContext *context,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmAddTiling::CalMMTiling(const gert::TilingContext *context, PlatFormMemSize platFormMemSize)
+ge::graphStatus GmmAddTiling::CalMMTiling(const gert::TilingContext* context, PlatFormMemSize platFormMemSize)
 {
     baseN_ = BEST_BASEN;
     // 基于使能double buffer的L0B内存计算baseK
@@ -376,7 +376,7 @@ ge::graphStatus GmmAddTiling::CalMMTiling(const gert::TilingContext *context, Pl
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingGmmAdd(gert::TilingContext *context)
+ge::graphStatus TilingGmmAdd(gert::TilingContext* context)
 {
     GmmAddTiling GMM_tiling;
     if (GMM_tiling.Init(context) != ge::GRAPH_SUCCESS) {
@@ -386,7 +386,7 @@ ge::graphStatus TilingGmmAdd(gert::TilingContext *context)
     return GMM_tiling.RunFusionKernelTiling(context);
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext *context)
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     return TilingGmmAdd(context);
 }

@@ -29,7 +29,7 @@ int g_passed = 0;
 int g_failed = 0;
 
 // ---- host 侧 golden ----
-std::vector<int64_t> ComputeGolden(const std::vector<int32_t> &mask, int64_t B, int64_t S, int64_t fill)
+std::vector<int64_t> ComputeGolden(const std::vector<int32_t>& mask, int64_t B, int64_t S, int64_t fill)
 {
     std::vector<int64_t> golden(static_cast<size_t>(B * S));
     for (int64_t r = 0; r < B; ++r) {
@@ -45,31 +45,31 @@ std::vector<int64_t> ComputeGolden(const std::vector<int32_t> &mask, int64_t B, 
 
 // ---- 把 int32 mask 转成目标 dtype 的字节流 ----
 // 返回设备侧输入字节数, 并填充 hostBytes
-size_t MakeInputBytes(const std::vector<int32_t> &mask, aclDataType dtype, std::vector<uint8_t> &hostBytes)
+size_t MakeInputBytes(const std::vector<int32_t>& mask, aclDataType dtype, std::vector<uint8_t>& hostBytes)
 {
     size_t n = mask.size();
     if (dtype == ACL_INT32) {
         hostBytes.resize(n * sizeof(int32_t));
-        auto *p = reinterpret_cast<int32_t *>(hostBytes.data());
+        auto* p = reinterpret_cast<int32_t*>(hostBytes.data());
         for (size_t i = 0; i < n; ++i)
             p[i] = mask[i];
         return hostBytes.size();
     } else if (dtype == ACL_INT64) {
         hostBytes.resize(n * sizeof(int64_t));
-        auto *p = reinterpret_cast<int64_t *>(hostBytes.data());
+        auto* p = reinterpret_cast<int64_t*>(hostBytes.data());
         for (size_t i = 0; i < n; ++i)
             p[i] = mask[i];
         return hostBytes.size();
     } else { // ACL_BOOL, 以 1 字节存
         hostBytes.resize(n * sizeof(uint8_t));
-        auto *p = reinterpret_cast<uint8_t *>(hostBytes.data());
+        auto* p = reinterpret_cast<uint8_t*>(hostBytes.data());
         for (size_t i = 0; i < n; ++i)
             p[i] = static_cast<uint8_t>(mask[i]);
         return hostBytes.size();
     }
 }
 
-const char *DtypeName(aclDataType dt)
+const char* DtypeName(aclDataType dt)
 {
     switch (dt) {
         case ACL_INT32:
@@ -85,7 +85,7 @@ const char *DtypeName(aclDataType dt)
 
 // ---- 单个用例 ----
 // 仅 ACL/运行时失败时返回 false；数值不一致通过 g_failed 计数。
-bool RunCase(const std::string &name, const std::vector<int32_t> &mask, int64_t B, int64_t S, int64_t fill,
+bool RunCase(const std::string& name, const std::vector<int32_t>& mask, int64_t B, int64_t S, int64_t fill,
              aclDataType inDtype, aclrtStream stream)
 {
     std::vector<int64_t> shape = {B, S};
@@ -96,25 +96,25 @@ bool RunCase(const std::string &name, const std::vector<int32_t> &mask, int64_t 
     size_t inBytes = MakeInputBytes(mask, inDtype, hostIn);
     size_t outBytes = static_cast<size_t>(B * S) * sizeof(int64_t);
 
-    void *maskDev = nullptr;
-    void *posDev = nullptr;
+    void* maskDev = nullptr;
+    void* posDev = nullptr;
     CHECK(aclrtMalloc(&maskDev, inBytes, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, name + ": malloc mask failed");
     CHECK(aclrtMalloc(&posDev, outBytes, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, name + ": malloc pos failed");
     CHECK(aclrtMemcpy(maskDev, inBytes, hostIn.data(), inBytes, ACL_MEMCPY_HOST_TO_DEVICE) == ACL_SUCCESS,
           name + ": memcpy H2D failed");
 
-    aclTensor *maskT = aclCreateTensor(shape.data(), shape.size(), inDtype, nullptr, 0, ACL_FORMAT_ND, shape.data(),
+    aclTensor* maskT = aclCreateTensor(shape.data(), shape.size(), inDtype, nullptr, 0, ACL_FORMAT_ND, shape.data(),
                                        shape.size(), maskDev);
-    aclTensor *posT = aclCreateTensor(shape.data(), shape.size(), ACL_INT64, nullptr, 0, ACL_FORMAT_ND, shape.data(),
+    aclTensor* posT = aclCreateTensor(shape.data(), shape.size(), ACL_INT64, nullptr, 0, ACL_FORMAT_ND, shape.data(),
                                       shape.size(), posDev);
     CHECK(maskT != nullptr && posT != nullptr, name + ": create tensor failed");
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor *executor = nullptr;
+    aclOpExecutor* executor = nullptr;
     aclnnStatus st = aclnnGenPositionIdsFromMaskGetWorkspaceSize(maskT, fill, posT, &workspaceSize, &executor);
     CHECK(st == ACL_SUCCESS, name + ": GetWorkspaceSize failed, ret=" + std::to_string(st));
 
-    void *workspace = nullptr;
+    void* workspace = nullptr;
     if (workspaceSize > 0) {
         CHECK(aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS,
               name + ": malloc workspace failed");
@@ -207,7 +207,7 @@ int main()
 
     bool fatal = false;
     for (auto dt : dtypes) {
-        for (auto &c : cases) {
+        for (auto& c : cases) {
             if (!RunCase(c.name, c.mask, c.B, c.S, c.fill, dt, stream)) {
                 fatal = true;
                 break;

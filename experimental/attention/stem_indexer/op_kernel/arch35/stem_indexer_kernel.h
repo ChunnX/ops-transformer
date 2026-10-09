@@ -38,11 +38,11 @@ template <typename SIT>
 class SIPreload {
 public:
     __aicore__ inline SIPreload(){};
-    __aicore__ inline void Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_t *vbias,
-                                __gm__ uint8_t *qSeqLens, __gm__ uint8_t *kvSeqLens, __gm__ uint8_t *numPromptTokens,
-                                __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
-                                __gm__ uint8_t *workspace, const StemIndexerTilingData *__restrict tiling,
-                                TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* qflat, __gm__ uint8_t* kflat, __gm__ uint8_t* vbias,
+                                __gm__ uint8_t* qSeqLens, __gm__ uint8_t* kvSeqLens, __gm__ uint8_t* numPromptTokens,
+                                __gm__ uint8_t* metadata, __gm__ uint8_t* sparseIndices, __gm__ uint8_t* sparseSeqLen,
+                                __gm__ uint8_t* workspace, const StemIndexerTilingData* __restrict tiling,
+                                TPipe* tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
@@ -58,7 +58,7 @@ public:
 
     // =================================常量区=================================
 protected:
-    TPipe *pipe = nullptr;
+    TPipe* pipe = nullptr;
 
     // offset
     int64_t queryCoreOffset = 0LL;
@@ -98,9 +98,9 @@ protected:
     SICommon::SplitCoreInfo splitCoreInfo{};
 
     // ================================Init functions==================================
-    __aicore__ inline void InitTilingData(const StemIndexerTilingData *__restrict tilingData);
+    __aicore__ inline void InitTilingData(const StemIndexerTilingData* __restrict tilingData);
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengthsK);
     __aicore__ inline bool NeedCleanOutput();
     // ================================Split Core================================
     __aicore__ inline void GetFASectionInfo(uint32_t sectionIdx);
@@ -109,19 +109,19 @@ protected:
     // ================================Process functions================================
     __aicore__ inline void WaitMm1CrossCoreSlots();
     __aicore__ inline void ProcessMain();
-    __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo);
+    __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo& runInfo);
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
-    __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, GlobalTensor<int32_t> &seqLensGm,
+    __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, GlobalTensor<int32_t>& seqLensGm,
                                                uint32_t defaultSeqLen);
-    __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size);
+    __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t& actS1Size, uint32_t& actS2Size);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
-    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo);
+    __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo& runInfo);
 };
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingData *__restrict tilingData)
+__aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingData* __restrict tilingData)
 {
     usedCoreNum = tilingData->usedCoreNum;
     useKvSeqLensAsNumPrompt = tilingData->useKvSeqLensAsNumPrompt != 0U;
@@ -165,19 +165,19 @@ __aicore__ inline void SIPreload<SIT>::InitBuffers()
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::InitActualSeqLen(__gm__ uint8_t *qSeqLens, __gm__ uint8_t *kvSeqLens)
+__aicore__ inline void SIPreload<SIT>::InitActualSeqLen(__gm__ uint8_t* qSeqLens, __gm__ uint8_t* kvSeqLens)
 {
     if (qSeqLens == nullptr) {
         constInfo.actualLenQDims = 0;
     } else {
         constInfo.actualLenQDims = constInfo.batchSize;
-        qSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)qSeqLens, constInfo.actualLenQDims);
+        qSeqLensGm.SetGlobalBuffer((__gm__ int32_t*)qSeqLens, constInfo.actualLenQDims);
     }
     if (kvSeqLens == nullptr) {
         constInfo.actualLenDims = 0;
     } else {
         constInfo.actualLenDims = constInfo.batchSize;
-        kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens, constInfo.actualLenDims);
+        kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t*)kvSeqLens, constInfo.actualLenDims);
     }
 }
 
@@ -205,7 +205,7 @@ __aicore__ inline bool SIPreload<SIT>::NeedCleanOutput()
 
 template <typename SIT>
 __aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims,
-                                                           GlobalTensor<int32_t> &seqLensGm, uint32_t defaultSeqLen)
+                                                           GlobalTensor<int32_t>& seqLensGm, uint32_t defaultSeqLen)
 {
     if (actualLenDims == 0) {
         return defaultSeqLen;
@@ -214,7 +214,7 @@ __aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLen(uint32_t bIdx, uint32
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size)
+__aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t& actS1Size, uint32_t& actS2Size)
 {
     uint32_t qTokenLen =
         GetActualSeqLen(bIdx, constInfo.actualLenQDims, qSeqLensGm, constInfo.qSeqSize * constInfo.stemBlockSize);
@@ -322,12 +322,12 @@ __aicore__ inline void SIPreload<SIT>::GetFASectionInfo(uint32_t sectionIdx)
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_t *vbias,
-                                            __gm__ uint8_t *qSeqLens, __gm__ uint8_t *kvSeqLens,
-                                            __gm__ uint8_t *numPromptTokens, __gm__ uint8_t *metadata,
-                                            __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
-                                            __gm__ uint8_t *workspace, const StemIndexerTilingData *__restrict tiling,
-                                            TPipe *tPipe)
+__aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t* qflat, __gm__ uint8_t* kflat, __gm__ uint8_t* vbias,
+                                            __gm__ uint8_t* qSeqLens, __gm__ uint8_t* kvSeqLens,
+                                            __gm__ uint8_t* numPromptTokens, __gm__ uint8_t* metadata,
+                                            __gm__ uint8_t* sparseIndices, __gm__ uint8_t* sparseSeqLen,
+                                            __gm__ uint8_t* workspace, const StemIndexerTilingData* __restrict tiling,
+                                            TPipe* tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -339,14 +339,14 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
 
     InitTilingData(tiling);
     InitActualSeqLen(qSeqLens, kvSeqLens);
-    __gm__ uint8_t *effectiveNumPromptTokens = useKvSeqLensAsNumPrompt ? kvSeqLens : numPromptTokens;
-    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)effectiveNumPromptTokens, constInfo.batchSize);
+    __gm__ uint8_t* effectiveNumPromptTokens = useKvSeqLensAsNumPrompt ? kvSeqLens : numPromptTokens;
+    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t*)effectiveNumPromptTokens, constInfo.batchSize);
 
-    sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
+    sectionNum_ = ((__gm__ uint32_t*)metadata)[0];
     if (sectionNum_ == 0U) {
         isUsedCoreEqZero = true;
     }
-    faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(metadata + SLI_METADATA_HEADER_OFFSET),
+    faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t*)(metadata + SLI_METADATA_HEADER_OFFSET),
                                  AIC_CORE_NUM * SLI_PER_CORE_STRIDE * sectionNum_);
 
     if ASCEND_IS_AIV {
@@ -356,14 +356,14 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
     pipe = tPipe;
 
     if ASCEND_IS_AIV {
-        vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
-        sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
+        vbiasGm.SetGlobalBuffer((__gm__ float*)vbias);
+        sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
+        sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t*)sparseSeqLen);
         vectorService.InitParams(constInfo);
         vectorService.InitVecInputTensor(vbiasGm, sparseIndicesGm, sparseSeqLenGm);
     } else {
-        queryGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
-        keyGm.SetGlobalBuffer((__gm__ K_T *)kflat);
+        queryGm.SetGlobalBuffer((__gm__ Q_T*)qflat);
+        keyGm.SetGlobalBuffer((__gm__ K_T*)kflat);
         queryGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         keyGm.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
         matmulService.InitParams(constInfo);
@@ -448,7 +448,7 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo)
+__aicore__ inline void SIPreload<SIT>::CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo& runInfo)
 {
     runInfo.loop = loop;
     runInfo.bN2Idx = tempLoopInfo.bN2Idx;
@@ -557,7 +557,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo)
+__aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo& runInfo)
 {
     CalcRunInfo(loop, s2LoopIdx, runInfo);
     if ASCEND_IS_AIC {

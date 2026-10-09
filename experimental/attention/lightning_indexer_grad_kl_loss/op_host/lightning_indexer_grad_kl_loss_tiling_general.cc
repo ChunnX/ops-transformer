@@ -80,7 +80,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBase::CheckContext()
     auto sparseModePtr = attrs->GetAttrPointer<int64_t>(SPARSE_MODE_ATTR_INDEX);
     auto blockSizePtr = attrs->GetAttrPointer<int64_t>(BLOCK_SIZE_ATTR_INDEX);
     auto determinPtr = attrs->GetAttrPointer<bool>(DETERMINISTIC_ATTR_INDEX);
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
 
     OP_CHECK_NULL_WITH_CONTEXT(context_, scaleValuePtr);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inputLayoutPtr);
@@ -145,22 +145,22 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeAttrs()
     return true;
 }
 
-void SparseLightningIndexerGradKLLossTilingBase::GetActualSeqLenData(int64_t inputIdx, std::vector<int64_t> &res,
-                                                                     int64_t &actualLen) const
+void SparseLightningIndexerGradKLLossTilingBase::GetActualSeqLenData(int64_t inputIdx, std::vector<int64_t>& res,
+                                                                     int64_t& actualLen) const
 {
     auto actualSeqLenTensor = context_->GetOptionalInputTensor(inputIdx);
     if (actualSeqLenTensor == nullptr) {
         OP_LOGW(context_->GetNodeName(), "[%s]actualSeqLenTensor is null pointer", templateName);
         return;
     }
-    auto &actualSeqLenShape = actualSeqLenTensor->GetShape().GetStorageShape();
+    auto& actualSeqLenShape = actualSeqLenTensor->GetShape().GetStorageShape();
     if (actualSeqLenShape.GetDimNum() != 1) {
         OP_LOGW(context_->GetNodeName(), "[%s]actualSeqLenShape is invalid %lu %ld", templateName,
                 actualSeqLenShape.GetDimNum(), actualSeqLenShape.GetDim(0));
         return;
     }
     /* Get Data from tensor. */
-    const int64_t *value = actualSeqLenTensor->GetData<int64_t>();
+    const int64_t* value = actualSeqLenTensor->GetData<int64_t>();
     if (value == nullptr) {
         OP_LOGW(context_->GetNodeName(), "[%s]actualSeqLenTensor data is null pointer", templateName);
         return;
@@ -181,8 +181,8 @@ void SparseLightningIndexerGradKLLossTilingBase::GetActualSeqLenData(int64_t inp
 }
 
 bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDimLayout(
-    const gert::Shape &queryShape, const gert::Shape &keyShape, const gert::Shape &queryIndexShape,
-    const gert::Shape &topKShape, size_t layoutLen, const gert::Shape &queryRopeShape, const gert::Shape &keyRopeShape)
+    const gert::Shape& queryShape, const gert::Shape& keyShape, const gert::Shape& queryIndexShape,
+    const gert::Shape& topKShape, size_t layoutLen, const gert::Shape& queryRopeShape, const gert::Shape& keyRopeShape)
 {
     if (layoutLen == 3UL) {
         if (inputLayout[0] == 'T' && inputLayout[1] == 'N' && inputLayout[2] == 'D') {
@@ -368,11 +368,11 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeDtype()
 
 bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeLayout()
 {
-    auto &queryShape = context_->GetInputShape(0)->GetStorageShape();
-    auto &keyShape = context_->GetInputShape(1)->GetStorageShape();
-    auto &queryIndexShape = context_->GetInputShape(2)->GetStorageShape();
-    auto &keyIndexShape = context_->GetInputShape(3)->GetStorageShape();
-    auto &topKShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX)->GetStorageShape();
+    auto& queryShape = context_->GetInputShape(0)->GetStorageShape();
+    auto& keyShape = context_->GetInputShape(1)->GetStorageShape();
+    auto& queryIndexShape = context_->GetInputShape(2)->GetStorageShape();
+    auto& keyIndexShape = context_->GetInputShape(3)->GetStorageShape();
+    auto& topKShape = context_->GetInputShape(SPARSE_INDICES_INPUT_INDEX)->GetStorageShape();
 
     auto queryRope = context_->GetOptionalInputShape(QUERY_ROPE_INPUT_INDEX);
     bool hasQueryRope = queryRope != nullptr && queryRope->GetStorageShape().GetDimNum() != 0;
@@ -384,8 +384,8 @@ bool SparseLightningIndexerGradKLLossTilingBase::AnalyzeLayout()
     }
     // TND和BSND的dim位置不同来赋值
     hasRope = hasQueryRope && hasKeyRope;
-    auto &queryRopeShape = queryRope->GetStorageShape();
-    auto &keyRopeShape = keyRope->GetStorageShape();
+    auto& queryRopeShape = queryRope->GetStorageShape();
+    auto& keyRopeShape = keyRope->GetStorageShape();
 
     size_t layoutLen = strlen(inputLayout);
     OP_CHECK_IF(queryShape.GetDimNum() != layoutLen || keyShape.GetDimNum() != layoutLen ||
@@ -405,7 +405,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBase::GetPlatformInfo()
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr =
-            reinterpret_cast<const SparseLightningIndexerGradKLLossCompileInfo *>(context_->GetCompileInfo());
+            reinterpret_cast<const SparseLightningIndexerGradKLLossCompileInfo*>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
@@ -476,7 +476,7 @@ int64_t SparseLightningIndexerGradKLLossTilingBase::GetS2RealSize(int32_t sparse
     return std::min(s2RealSize, (int64_t)sliGradkllossBaseParams_->get_kSize());
 }
 
-bool SparseLightningIndexerGradKLLossTilingBase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray)
+bool SparseLightningIndexerGradKLLossTilingBase::InitSparseValidArray(std::vector<int64_t>& sparseValidArray)
 {
     OP_CHECK_IF(sparseValidArray.size() == 0,
                 OP_LOGE(context_->GetNodeName(), "Sparse valid array size should be larger than 0."), return false);
@@ -508,10 +508,10 @@ bool SparseLightningIndexerGradKLLossTilingBase::InitSparseValidArray(std::vecto
     return true;
 }
 
-inline bool SparseLightningIndexerGradKLLossTilingBase::InitLoadValue(const std::vector<int64_t> &sparseValidArray,
+inline bool SparseLightningIndexerGradKLLossTilingBase::InitLoadValue(const std::vector<int64_t>& sparseValidArray,
                                                                       int64_t validAicNum, int64_t totalSize,
-                                                                      const std::vector<int64_t> &sparseStartIdx,
-                                                                      std::vector<int64_t> &localValue)
+                                                                      const std::vector<int64_t>& sparseStartIdx,
+                                                                      std::vector<int64_t>& localValue)
 {
     for (int64_t idx = 0; idx < validAicNum; ++idx) {
         int64_t start = sparseStartIdx[idx];
@@ -525,9 +525,9 @@ inline bool SparseLightningIndexerGradKLLossTilingBase::InitLoadValue(const std:
     return true;
 }
 
-bool SparseLightningIndexerGradKLLossTilingBase::BalanceLoad(const std::vector<int64_t> &sparseValidArray,
-                                                             std::vector<int64_t> &localValue,
-                                                             std::vector<int64_t> &sparseStartIdx)
+bool SparseLightningIndexerGradKLLossTilingBase::BalanceLoad(const std::vector<int64_t>& sparseValidArray,
+                                                             std::vector<int64_t>& localValue,
+                                                             std::vector<int64_t>& sparseStartIdx)
 {
     // to avoid buffer overflow, or maybe sometimes we want to only verify single core
     int64_t validAicNum =
@@ -575,7 +575,7 @@ bool SparseLightningIndexerGradKLLossTilingBase::BalanceLoad(const std::vector<i
     return (tmpMaxVal >= maxVal) ? false : true;
 }
 
-bool SparseLightningIndexerGradKLLossTilingBase::Balance4DLoad(std::vector<int64_t> &tmpSparseValue,
+bool SparseLightningIndexerGradKLLossTilingBase::Balance4DLoad(std::vector<int64_t>& tmpSparseValue,
                                                                const std::vector<int64_t> sparseValidArray,
                                                                const int64_t balanceNum)
 {
@@ -612,13 +612,13 @@ bool SparseLightningIndexerGradKLLossTilingBase::Balance4DLoad(std::vector<int64
 }
 
 // 负载均衡
-bool SparseLightningIndexerGradKLLossTilingBase::SetSparseStartIdx(const std::vector<int64_t> &sparseValidArray,
+bool SparseLightningIndexerGradKLLossTilingBase::SetSparseStartIdx(const std::vector<int64_t>& sparseValidArray,
                                                                    int64_t maxCoreNum)
 {
     // to avoid buffer overflow, or maybe sometimes we want to only verify single core
     int64_t validAicNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
     int64_t totalSize = sliGradkllossMultiCoreParams_->get_totalSize();
-    int64_t *sparseStartIdx = sliGradkllossMultiCoreParams_->get_bS1Ptr();
+    int64_t* sparseStartIdx = sliGradkllossMultiCoreParams_->get_bS1Ptr();
     int64_t splitFactorSize = sliGradkllossMultiCoreParams_->get_splitFactorSize();
 
     OP_CHECK_IF(totalSize <= 0, OP_LOGE(context_->GetNodeName(), "totalSize should be larger than 0."), return false);
@@ -729,8 +729,8 @@ void SparseLightningIndexerGradKLLossTilingBase::SetMultiCoreParamsRegbase(int64
 
 void SparseLightningIndexerGradKLLossTilingBase::InitOutputSplit()
 {
-    SLIGradKLLossInitOutputParams *initoutput = &tilingData->initOutputParams;
-    auto &dKeyIndexShape = context_->GetOutputShape(1)->GetStorageShape();
+    SLIGradKLLossInitOutputParams* initoutput = &tilingData->initOutputParams;
+    auto& dKeyIndexShape = context_->GetOutputShape(1)->GetStorageShape();
     int64_t totalsize = 0;
     uint32_t singlecoresize = 0;
     if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
@@ -784,7 +784,7 @@ uint64_t SparseLightningIndexerGradKLLossTilingBase::GetTilingKey() const
 
 ge::graphStatus SparseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
 {
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     int64_t pSize = AlignUp(kSize, static_cast<int32_t>(1024)) * (dSizeQuery + dQueryRopeSize) * 2; // 2代表half大小
     int64_t sySize = kSize * dSizeQueryIndex * 2;                                                   // 2使用DB
     int64_t bmm1Size = gSizeQuery * kSize * sizeof(float);

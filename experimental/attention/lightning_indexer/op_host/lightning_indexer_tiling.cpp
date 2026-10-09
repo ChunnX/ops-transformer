@@ -386,8 +386,8 @@ ge::graphStatus LIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetCurSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                               const std::string &curSeqLenName)
+ge::graphStatus LIInfoParser::GetCurSeqLenSize(uint32_t& size, const gert::Tensor* tensor,
+                                               const std::string& curSeqLenName)
 {
     size = static_cast<uint32_t>(tensor->GetShapeSize()) - 1;
     if (size <= 0) {
@@ -616,7 +616,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
     return ge::GRAPH_SUCCESS;
 }
 
-void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
+void LIInfoParser::GenerateInfo(LITilingInfo& liInfo)
 {
     liInfo.opName = opName_;
     liInfo.platformInfo = platformInfo_;
@@ -653,7 +653,7 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
     liInfo.inputKLayout = kLayout_;
 }
 
-ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
+ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo& liInfo)
 {
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
@@ -684,13 +684,13 @@ ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // --------------------------LightningIndexerTiling类成员函数定义-----------------------
-ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
+ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo* tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -720,7 +720,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
     // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
     workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
     // -------------set tilingdata-----------------
     tilingData_.set_bSize(tilingInfo->bSize);
@@ -759,7 +759,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingForLightningIndexer(gert::TilingContext *context)
+ge::graphStatus TilingForLightningIndexer(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexer", "Tiling context is null."), return ge::GRAPH_FAILED);
     LITilingInfo liInfo;

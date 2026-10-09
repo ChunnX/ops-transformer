@@ -160,32 +160,32 @@ public:
     BSAGradTiling() = default;
     ~BSAGradTiling() = default;
 
-    ge::graphStatus GetBSAGradTiling(gert::TilingContext *context, BlockSparseAttentionGradTilingData &tilingData);
-    ge::graphStatus SetTilingData(gert::TilingContext *context, BlockSparseAttentionGradTilingData &tilingData);
+    ge::graphStatus GetBSAGradTiling(gert::TilingContext* context, BlockSparseAttentionGradTilingData& tilingData);
+    ge::graphStatus SetTilingData(gert::TilingContext* context, BlockSparseAttentionGradTilingData& tilingData);
 
 private:
-    ge::graphStatus GetNpuInfo(gert::TilingContext *context);
-    ge::graphStatus ProcessInput(gert::TilingContext *context);
-    ge::graphStatus CalculateTaskSplit(gert::TilingContext *context);
-    ge::graphStatus CalculateWorkSpace(gert::TilingContext *context);
-    ge::graphStatus FillTilingData(gert::TilingContext *context);
+    ge::graphStatus GetNpuInfo(gert::TilingContext* context);
+    ge::graphStatus ProcessInput(gert::TilingContext* context);
+    ge::graphStatus CalculateTaskSplit(gert::TilingContext* context);
+    ge::graphStatus CalculateWorkSpace(gert::TilingContext* context);
+    ge::graphStatus FillTilingData(gert::TilingContext* context);
 
-    ge::graphStatus CalculatePostUbBaseSize(gert::TilingContext *context);
-    ge::graphStatus CalculateSoftmaxGradTiling(gert::TilingContext *context);
+    ge::graphStatus CalculatePostUbBaseSize(gert::TilingContext* context);
+    ge::graphStatus CalculateSoftmaxGradTiling(gert::TilingContext* context);
 
-    ge::graphStatus ProcessTND(gert::TilingContext *context);
-    ge::graphStatus ProcessBNSD(gert::TilingContext *context);
-    ge::graphStatus ProcessAttrs(gert::TilingContext *context);
-    ge::graphStatus ParseAttnMaskCounts(gert::TilingContext *context);
+    ge::graphStatus ProcessTND(gert::TilingContext* context);
+    ge::graphStatus ProcessBNSD(gert::TilingContext* context);
+    ge::graphStatus ProcessAttrs(gert::TilingContext* context);
+    ge::graphStatus ParseAttnMaskCounts(gert::TilingContext* context);
     uint32_t SelectSchedule();
 
     ge::graphStatus AssignCoreTasks(uint32_t numHeads, uint32_t kvHeads, uint32_t blockX, uint32_t coreNum,
-                                    const std::vector<uint32_t> &tasksInBatch,
-                                    const std::vector<uint64_t> &qPrefixTokenSum,
-                                    const std::vector<uint64_t> &kvPrefixTokenSum);
+                                    const std::vector<uint32_t>& tasksInBatch,
+                                    const std::vector<uint64_t>& qPrefixTokenSum,
+                                    const std::vector<uint64_t>& kvPrefixTokenSum);
     ge::graphStatus AssignWideCoreTasks(uint32_t numHeads, uint32_t kvHeads, uint32_t blockX, uint32_t coreNum,
-                                        const std::vector<uint32_t> &tasksInBatch,
-                                        const std::vector<uint32_t> &qWorkItemsPerHead);
+                                        const std::vector<uint32_t>& tasksInBatch,
+                                        const std::vector<uint32_t>& qWorkItemsPerHead);
 
     uint64_t GenerateTilingKey();
 
@@ -206,9 +206,9 @@ private:
 
     uint32_t totalTaskNum_ = 0;
 
-    const int64_t *qSeqLenList = nullptr;
-    const int64_t *kvSeqLenList = nullptr;
-    const int64_t *blockShapeList = nullptr;
+    const int64_t* qSeqLenList = nullptr;
+    const int64_t* kvSeqLenList = nullptr;
+    const int64_t* blockShapeList = nullptr;
     bool useUniformQSeqlen_ = false;  // 是否使用统一的qseqlen值（使用maxQSeqlen_）
     bool useUniformKvSeqlen_ = false; // 是否使用统一的kvseqlen值（使用maxKvSeqlen_）
 
@@ -252,7 +252,7 @@ private:
     uint64_t wideWorkspaceCoreElements_ = 0;  // wide：单 core 双 stage 元素数
     uint64_t wideRawPlaneBytes_ = 0;          // wide：FP32 raw 平面字节数
 
-    BlockSparseAttentionGradTilingData *tilingData_ = nullptr;
+    BlockSparseAttentionGradTilingData* tilingData_ = nullptr;
 };
 
 } // namespace optiling

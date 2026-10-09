@@ -27,10 +27,13 @@ logger = logging.getLogger(__name__)
 
 try:
     import mhc_res_ext
+
     _USE_CPP_EXT = True
 except ImportError:
     _USE_CPP_EXT = False
-    logger.warning("mhc_res_ext not found. Run 'python setup.py build_ext --inplace' to build.")
+    logger.warning(
+        "mhc_res_ext not found. Run 'python setup.py build_ext --inplace' to build."
+    )
 
 
 def mhc_res(x: torch.Tensor, h_res: torch.Tensor) -> torch.Tensor:
@@ -65,10 +68,12 @@ def mhc_res_einsum(x: torch.Tensor, h_res: torch.Tensor) -> torch.Tensor:
     seq_len = x.size(1)
     dim = x.size(2)
     x_4d = x.view(batch, num_streams, seq_len, dim)
-    return torch.einsum('brsd,rt->btsd', x_4d, h_res).reshape(batch * num_streams, seq_len, dim)
+    return torch.einsum("brsd,rt->btsd", x_4d, h_res).reshape(
+        batch * num_streams, seq_len, dim
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     torch.npu.set_device(0)
 

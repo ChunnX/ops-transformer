@@ -51,7 +51,7 @@ using Catlass::Arch::CrossCoreWaitFlagWithReverse;
 // GBSA historically passed a mode template argument to WaitFlag. Catlass'
 // implementation does not need it, so keep the source-compatible adapter.
 template <uint8_t MODE = 0, pipe_t PIPE = PIPE_S>
-CATLASS_DEVICE inline void CrossCoreWaitFlag(CrossCoreFlag &flag)
+CATLASS_DEVICE inline void CrossCoreWaitFlag(CrossCoreFlag& flag)
 {
     (void)MODE;
     (void)sizeof(PIPE);

@@ -22,23 +22,23 @@ template <typename OUT_TYPE, typename TILING_TYPE, const uint32_t LAYOUT, const 
 class SparseFlashAttentionGradPost {
 public:
     __aicore__ inline SparseFlashAttentionGradPost(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
-                                __gm__ uint8_t *cur_seq_qlen, __gm__ uint8_t *cur_seq_kvlen, __gm__ uint8_t *dq_rope,
-                                __gm__ uint8_t *dk_rope, __gm__ uint8_t *workspace,
-                                const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in);
+    __aicore__ inline void Init(__gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv,
+                                __gm__ uint8_t* cur_seq_qlen, __gm__ uint8_t* cur_seq_kvlen, __gm__ uint8_t* dq_rope,
+                                __gm__ uint8_t* dk_rope, __gm__ uint8_t* workspace,
+                                const TILING_TYPE* __restrict ordTilingData, TPipe* pipe_in);
     __aicore__ inline void Process();
-    __aicore__ inline void InitIndex(uint64_t startIdx, int64_t curG, int64_t &curS, int64_t headDim,
+    __aicore__ inline void InitIndex(uint64_t startIdx, int64_t curG, int64_t& curS, int64_t headDim,
                                      int64_t headDimAlign, GM_ADDR seqS);
-    __aicore__ inline void NZ2ND(LocalTensor<float> &dstTensor, LocalTensor<float> &srcTensor, uint64_t sLen,
+    __aicore__ inline void NZ2ND(LocalTensor<float>& dstTensor, LocalTensor<float>& srcTensor, uint64_t sLen,
                                  uint64_t ubOffset, uint64_t srcUbOffset, int64_t headDimAlign);
     __aicore__ inline void NZVecClc(GlobalTensor<float> srcGm, GlobalTensor<OUT_TYPE> dstGm, uint64_t dataSize,
-                                    GM_ADDR seqS, int64_t curG, int64_t &curS, int64_t headDim, int64_t headDimAlign,
+                                    GM_ADDR seqS, int64_t curG, int64_t& curS, int64_t headDim, int64_t headDimAlign,
                                     bool needMuls, int64_t flag);
     __aicore__ inline void NZProcess();
-    __aicore__ inline void ComputeDataCopyOffset(int64_t curG, int64_t &curS, int64_t headDim, int64_t headDimAlign);
+    __aicore__ inline void ComputeDataCopyOffset(int64_t curG, int64_t& curS, int64_t headDim, int64_t headDimAlign);
 
     constexpr static uint32_t BUFFER_NUM = 1;
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, BUFFER_NUM> inQueue;
     TQue<QuePosition::VECOUT, BUFFER_NUM> outQueue;
 
@@ -58,7 +58,7 @@ public:
     AscendC::GlobalTensor<float> dqWorkSpaceGm;
     AscendC::GlobalTensor<float> dkWorkSpaceGm;
 
-    const TILING_TYPE *__restrict tilingData;
+    const TILING_TYPE* __restrict tilingData;
     constexpr static uint32_t SYNC_GLOBAL_WORKSPACE_SIZE = 16 * 1024;
     constexpr static uint32_t ADDR_ALIGN_SIZE = 512;
     constexpr static uint64_t C0_SIZE = 16;
@@ -120,20 +120,20 @@ template <typename OUT_TYPE, typename TILING_TYPE, const uint32_t LAYOUT, const 
           const bool HAS_ROPE, const bool SKIP_DQ_DST>
 __aicore__ inline void
 SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOUT, INPUT_FORMAT, HAS_ROPE, SKIP_DQ_DST>::Init(
-    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *cur_seq_qlen,
-    __gm__ uint8_t *cur_seq_kvlen, __gm__ uint8_t *dq_rope, __gm__ uint8_t *dk_rope, __gm__ uint8_t *workspace,
-    const TILING_TYPE *__restrict ordTilingData, TPipe *pipe_in)
+    __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* cur_seq_qlen,
+    __gm__ uint8_t* cur_seq_kvlen, __gm__ uint8_t* dq_rope, __gm__ uint8_t* dk_rope, __gm__ uint8_t* workspace,
+    const TILING_TYPE* __restrict ordTilingData, TPipe* pipe_in)
 {
     cBlockIdx = GetBlockIdx();
 
     tilingData = ordTilingData;
     pipe = pipe_in;
 
-    dqGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dq);
-    dkGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dk);
+    dqGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dq);
+    dkGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dk);
     (void)dv;
-    dqRopeGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dq_rope);
-    dkRopeGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dk_rope);
+    dqRopeGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dq_rope);
+    dkRopeGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dk_rope);
 
     // tiling_data
     usedCoreNum = tilingData->postTilingData.coreNum;
@@ -167,9 +167,9 @@ SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOUT, INPUT_FORMAT, HAS_RO
         cur_seq_kvlen_addr = cur_seq_kvlen;
     }
 
-    dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+    dqWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                   tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
-    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                   tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
 
     if constexpr (INPUT_FORMAT == NZ) {
@@ -189,17 +189,17 @@ template <typename OUT_TYPE, typename TILING_TYPE, const uint32_t LAYOUT, const 
           const bool HAS_ROPE, const bool SKIP_DQ_DST>
 __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOUT, INPUT_FORMAT, HAS_ROPE,
                                                     SKIP_DQ_DST>::InitIndex(uint64_t startIdx, int64_t curG,
-                                                                            int64_t &curS, int64_t headDim,
+                                                                            int64_t& curS, int64_t headDim,
                                                                             int64_t headDimAlign, GM_ADDR seqS)
 {
     if constexpr (LAYOUT == TND) {
         // seqS 为 int64 cumsum（长度 B+1）
         uint64_t totalLen = 0;
         for (int64_t bDimIdx = 0; bDimIdx < b; bDimIdx++) {
-            totalLen = n2 * curG * ((__gm__ int64_t *)seqS)[bDimIdx + 1] * headDim;
+            totalLen = n2 * curG * ((__gm__ int64_t*)seqS)[bDimIdx + 1] * headDim;
             if (totalLen > startIdx) {
                 bIdx = bDimIdx;
-                curS = ((__gm__ int64_t *)seqS)[bIdx + 1] - ((__gm__ int64_t *)seqS)[bIdx];
+                curS = ((__gm__ int64_t*)seqS)[bIdx + 1] - ((__gm__ int64_t*)seqS)[bIdx];
                 uint64_t bTail = startIdx - (totalLen - n2 * curG * curS * headDim);
                 nIdx = bTail / (curS * headDim);
                 uint64_t nTail = bTail % (curS * headDim);
@@ -226,7 +226,7 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOU
 template <typename OUT_TYPE, typename TILING_TYPE, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
           const bool HAS_ROPE, const bool SKIP_DQ_DST>
 __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOUT, INPUT_FORMAT, HAS_ROPE,
-                                                    SKIP_DQ_DST>::ComputeDataCopyOffset(int64_t curG, int64_t &curS,
+                                                    SKIP_DQ_DST>::ComputeDataCopyOffset(int64_t curG, int64_t& curS,
                                                                                         int64_t headDim,
                                                                                         int64_t headDimAlign)
 {
@@ -252,8 +252,8 @@ __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOU
 template <typename OUT_TYPE, typename TILING_TYPE, const uint32_t LAYOUT, const uint32_t INPUT_FORMAT,
           const bool HAS_ROPE, const bool SKIP_DQ_DST>
 __aicore__ inline void SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOUT, INPUT_FORMAT, HAS_ROPE,
-                                                    SKIP_DQ_DST>::NZ2ND(LocalTensor<float> &dstTensor,
-                                                                        LocalTensor<float> &srcTensor, uint64_t sLen,
+                                                    SKIP_DQ_DST>::NZ2ND(LocalTensor<float>& dstTensor,
+                                                                        LocalTensor<float>& srcTensor, uint64_t sLen,
                                                                         uint64_t ubOffset, uint64_t srcUbOffset,
                                                                         int64_t headDimAlign)
 {
@@ -290,7 +290,7 @@ template <typename OUT_TYPE, typename TILING_TYPE, const uint32_t LAYOUT, const 
 __aicore__ inline void
 SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOUT, INPUT_FORMAT, HAS_ROPE, SKIP_DQ_DST>::NZVecClc(
     GlobalTensor<float> srcGm, GlobalTensor<OUT_TYPE> dstGm, uint64_t dataSize, GM_ADDR seqS, int64_t curG,
-    int64_t &curS, int64_t headDim, int64_t headDimAlign, bool needMuls, int64_t flag)
+    int64_t& curS, int64_t headDim, int64_t headDimAlign, bool needMuls, int64_t flag)
 {
     if (dataSize == 0) {
         return;
@@ -393,7 +393,7 @@ SparseFlashAttentionGradPost<OUT_TYPE, TILING_TYPE, LAYOUT, INPUT_FORMAT, HAS_RO
             if constexpr (LAYOUT == TND) {
                 scrOffsetBase += curS * n2 * curG * headDimAlign;
                 dstOffsetBase += curS * n2 * curG * headDim;
-                curS = ((__gm__ int64_t *)seqS)[bIdx + 1] - ((__gm__ int64_t *)seqS)[bIdx];
+                curS = ((__gm__ int64_t*)seqS)[bIdx + 1] - ((__gm__ int64_t*)seqS)[bIdx];
             }
         } else {
             sIdx = 0;

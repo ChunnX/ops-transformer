@@ -50,21 +50,33 @@ def _check_runtime_available():
     if not custom_ops.has_quant_block_sparse_attn_op():
         detail = "; ".join(custom_ops.load_errors()[:3])
         suffix = f" Load errors: {detail}" if detail else ""
-        pytest.skip(f"torch.ops.custom.npu_quant_block_sparse_attn is not registered.{suffix}")
+        pytest.skip(
+            f"torch.ops.custom.npu_quant_block_sparse_attn is not registered.{suffix}"
+        )
     if not custom_ops.has_quant_block_sparse_attn_metadata_op():
         detail = "; ".join(custom_ops.load_errors()[:3])
         suffix = f" Load errors: {detail}" if detail else ""
-        pytest.skip(f"torch.ops.custom.npu_quant_block_sparse_attn_metadata is not registered.{suffix}")
+        pytest.skip(
+            f"torch.ops.custom.npu_quant_block_sparse_attn_metadata is not registered.{suffix}"
+        )
 
 
 def _prepare_kv_inputs(inputs):
     if "kv_cache_storage" not in inputs:
-        return None, _to_npu(inputs["key"]), _to_npu(inputs["value"]), _to_npu(inputs["k_descale"])
+        return (
+            None,
+            _to_npu(inputs["key"]),
+            _to_npu(inputs["value"]),
+            _to_npu(inputs["k_descale"]),
+        )
 
     kv_cache_storage = _to_npu(inputs["kv_cache_storage"])
-    combined_kv_cache.assert_combined_kv_views(kv_cache_storage, inputs["kv_cache_meta"])
+    combined_kv_cache.assert_combined_kv_views(
+        kv_cache_storage, inputs["kv_cache_meta"]
+    )
     key, value, k_descale = combined_kv_cache.make_combined_kv_views(
-        kv_cache_storage, inputs["kv_cache_meta"])
+        kv_cache_storage, inputs["kv_cache_meta"]
+    )
     return kv_cache_storage, key, value, k_descale
 
 
@@ -80,7 +92,11 @@ def _normalize_npu_output(output, return_softmax_lse):
         softmax_lse = None
 
     attention_out_cpu = _to_cpu(attention_out)
-    nonzero_count = int(torch.count_nonzero(attention_out_cpu).item()) if attention_out_cpu is not None else 0
+    nonzero_count = (
+        int(torch.count_nonzero(attention_out_cpu).item())
+        if attention_out_cpu is not None
+        else 0
+    )
     total_count = int(attention_out_cpu.numel()) if attention_out_cpu is not None else 0
     result = {"attention_out": attention_out_cpu}
     if return_softmax_lse and softmax_lse is not None:
@@ -125,14 +141,18 @@ def _call_npu_quant_block_sparse_attn_metadata(test_data):
         cu_seqlens_kv=None,
         seqused_q=None,
         seqused_kv=_to_npu(inputs["seqused_kv"]),
-        batch_size=metadata_input.get("batch_size", int(inputs["sparse_seq_len"].shape[0])),
+        batch_size=metadata_input.get(
+            "batch_size", int(inputs["sparse_seq_len"].shape[0])
+        ),
         sparse_block_size_q=inputs["sparse_q_block_size"],
         sparse_block_size_k=inputs["sparse_kv_block_size"],
         quant_mode=inputs["quant_mode"],
         mask_mode=inputs["mask_mode"],
         layout_q=metadata_input.get("layout_q", inputs["layout_q"]),
         layout_kv=metadata_input.get("layout_kv", inputs["layout_kv"]),
-        layout_sparse_indices=metadata_input.get("layout_sparse_indices", inputs["layout_sparse_indices"]),
+        layout_sparse_indices=metadata_input.get(
+            "layout_sparse_indices", inputs["layout_sparse_indices"]
+        ),
     )
     torch_npu.npu.synchronize()
     return metadata
@@ -196,35 +216,80 @@ class _QuantBlockSparseAttnGraph(torch.nn.Module):
         key = torch.as_strided(
             fp8_storage,
             (meta["block_num"], meta["n2"], meta["block_size"], meta["d_size"]),
-            (meta["pa_block_stride"], meta["block_size"] * meta["d_size"], meta["d_size"], 1),
-            meta["key_offset_bytes"])
+            (
+                meta["pa_block_stride"],
+                meta["block_size"] * meta["d_size"],
+                meta["d_size"],
+                1,
+            ),
+            meta["key_offset_bytes"],
+        )
         value = torch.as_strided(
             fp8_storage,
             (meta["block_num"], meta["n2"], meta["block_size"], meta["dv_size"]),
-            (meta["pa_block_stride"], meta["block_size"] * meta["dv_size"], meta["dv_size"], 1),
-            meta["value_offset_bytes"])
+            (
+                meta["pa_block_stride"],
+                meta["block_size"] * meta["dv_size"],
+                meta["dv_size"],
+                1,
+            ),
+            meta["value_offset_bytes"],
+        )
         fp32_storage = kv_cache_storage.view(torch.float32)
         k_descale = torch.as_strided(
             fp32_storage,
             (meta["block_num"], meta["n2"], meta["block_size"], 1),
             (meta["pa_block_stride"] // 4, meta["block_size"], 1, 1),
-            meta["k_scale_offset_bytes"] // 4)
+            meta["k_scale_offset_bytes"] // 4,
+        )
         return key, value, k_descale
 
-    def forward(self, query, kv_cache_storage, q_descale, v_descale, p_scale, sparse_indices,
-                sparse_seq_len, atten_mask, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                block_table, metadata):
+    def forward(
+        self,
+        query,
+        kv_cache_storage,
+        q_descale,
+        v_descale,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        atten_mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
+    ):
         key, value, k_descale = self._rebuild_combined_kv_views(kv_cache_storage)
         return torch.ops.custom.npu_quant_block_sparse_attn(
-            query, key, value, q_descale, k_descale, v_descale, p_scale, sparse_indices, sparse_seq_len,
-            atten_mask, self.inputs["softmax_scale"], self.inputs["sparse_q_block_size"],
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            self.inputs["softmax_scale"],
+            self.inputs["sparse_q_block_size"],
             self.inputs["sparse_kv_block_size"],
-            cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=None, seqused_q=None,
-            seqused_kv=seqused_kv, block_table=block_table, metadata=metadata,
-            layout_kv=self.inputs["layout_kv"], layout_q=self.inputs["layout_q"],
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=None,
+            seqused_q=None,
+            seqused_kv=seqused_kv,
+            block_table=block_table,
+            metadata=metadata,
+            layout_kv=self.inputs["layout_kv"],
+            layout_q=self.inputs["layout_q"],
             layout_sparse_indices=self.inputs["layout_sparse_indices"],
-   	        layout_out=self.inputs["layout_out"], quant_mode=self.inputs["quant_mode"],
-            mask_mode=self.inputs["mask_mode"], return_softmax_lse=self.inputs["return_softmax_lse"])
+            layout_out=self.inputs["layout_out"],
+            quant_mode=self.inputs["quant_mode"],
+            mask_mode=self.inputs["mask_mode"],
+            return_softmax_lse=self.inputs["return_softmax_lse"],
+        )
 
 
 def _mark_static_tensors(*tensors):
@@ -240,7 +305,9 @@ def test_quant_block_sparse_attn_process_graph(test_data, device_id=0):
     kv_cache_storage, key, value, k_descale = _prepare_kv_inputs(inputs)
     if kv_cache_storage is None:
         pytest.skip("graph mode currently requires combined KV cache storage")
-    combined_kv_cache.assert_combined_kv_views(kv_cache_storage, inputs["kv_cache_meta"])
+    combined_kv_cache.assert_combined_kv_views(
+        kv_cache_storage, inputs["kv_cache_meta"]
+    )
     metadata = _prepare_metadata(test_data)
     query = _to_npu(inputs["query"])
     kv_cache_storage = _to_npu(inputs["kv_cache_storage"])
@@ -261,21 +328,49 @@ def test_quant_block_sparse_attn_process_graph(test_data, device_id=0):
     config.debug.aclgraph.disable_reinplace_inplaceable_ops_pass = True
     npu_backend = torchair.get_npu_backend(compiler_config=config)
     _mark_static_tensors(
-        query, kv_cache_storage, q_descale, v_descale, p_scale, sparse_indices,
-        sparse_seq_len, atten_mask, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-        block_table, metadata,
+        query,
+        kv_cache_storage,
+        q_descale,
+        v_descale,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        atten_mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
     )
     torch._dynamo.reset()
     model = torch.compile(
         _QuantBlockSparseAttnGraph(inputs, inputs["kv_cache_meta"]).npu(),
-        fullgraph=True, backend=npu_backend, dynamic=False)
+        fullgraph=True,
+        backend=npu_backend,
+        dynamic=False,
+    )
     output = model(
-        query, kv_cache_storage, q_descale, v_descale, p_scale, sparse_indices,
-        sparse_seq_len, atten_mask, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-        block_table, metadata)
+        query,
+        kv_cache_storage,
+        q_descale,
+        v_descale,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        atten_mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
+    )
     torch_npu.npu.synchronize()
     del kv_cache_storage
-    return _normalize_npu_output(output, inputs["return_softmax_lse"]), _golden_output(test_data)
+    return _normalize_npu_output(output, inputs["return_softmax_lse"]), _golden_output(
+        test_data
+    )
 
 
 def test_quant_block_sparse_attn_process_ci(test_data, device_id=0):

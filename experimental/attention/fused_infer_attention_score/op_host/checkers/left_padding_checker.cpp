@@ -28,8 +28,8 @@ using namespace AscendC;
 using namespace arch35FIA;
 
 // Utility functions for common checkers.
-ge::graphStatus LeftPaddingChecker::CheckShapeSupport(const gert::Tensor *tensor,
-                                                      const std::vector<int64_t> &expectShapeList) const
+ge::graphStatus LeftPaddingChecker::CheckShapeSupport(const gert::Tensor* tensor,
+                                                      const std::vector<int64_t>& expectShapeList) const
 {
     if (tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -43,7 +43,7 @@ ge::graphStatus LeftPaddingChecker::CheckShapeSupport(const gert::Tensor *tensor
 }
 
 // CheckSinglePara
-ge::graphStatus LeftPaddingChecker::CheckShapeAndDim(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckShapeAndDim(const FiaTilingInfo& fiaInfo)
 {
     // When left-padding is enabled for Query and Key/Value,
     // the Shape size and Dim number corresponding to the Padding size must both be 1.
@@ -70,7 +70,7 @@ ge::graphStatus LeftPaddingChecker::CheckShapeAndDim(const FiaTilingInfo &fiaInf
 }
 
 // CheckExistence
-ge::graphStatus LeftPaddingChecker::CheckExistenceDesc(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckExistenceDesc(const FiaTilingInfo& fiaInfo)
 {
     if (fiaInfo.qPaddingSizeFlag) {
         OP_CHECK_IF(fiaInfo.opParamInfo.queryPaddingSize.desc == nullptr,
@@ -88,7 +88,7 @@ ge::graphStatus LeftPaddingChecker::CheckExistenceDesc(const FiaTilingInfo &fiaI
 }
 
 // CheckFeature
-ge::graphStatus LeftPaddingChecker::CheckFeatureActualLen(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckFeatureActualLen(const FiaTilingInfo& fiaInfo)
 {
     // When left-padding is enabled for Query and Key/Value, the actual sequence length information must be provided.
     if (fiaInfo.qPaddingSizeFlag && !fiaInfo.isMaxWorkspace) {
@@ -110,9 +110,10 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureActualLen(const FiaTilingInfo &f
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo& fiaInfo)
 {
-    // When left-padding is enabled for Query and Key/Value, BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD scenarios are not supported.
+    // When left-padding is enabled for Query and Key/Value, BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD scenarios are
+    // not supported.
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
         OP_CHECK_IF(layoutStr == "BSH_BNSD",
@@ -121,11 +122,9 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaI
         OP_CHECK_IF(layoutStr == "BSND_BNSD",
                     OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout BSND_BNSD!"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "TND",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND!"),
+        OP_CHECK_IF(layoutStr == "TND", OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout TND!"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(layoutStr == "NTD",
-                    OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD!"),
+        OP_CHECK_IF(layoutStr == "NTD", OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD!"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(layoutStr == "NTD_TND",
                     OP_LOGE(fiaInfo.opName, "QueryLeftPadding illegal condition:input layout NTD_TND!"),
@@ -138,7 +137,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureLayout(const FiaTilingInfo &fiaI
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckFeatureAlibiPse(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckFeatureAlibiPse(const FiaTilingInfo& fiaInfo)
 {
     // When left-padding is enabled for Query and Key/Value, PseType = 2/3 is not supported.
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
@@ -150,7 +149,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureAlibiPse(const FiaTilingInfo &fi
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckFeaturePageAttention(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckFeaturePageAttention(const FiaTilingInfo& fiaInfo)
 {
     // When left-padding is enabled for Query and Key/Value, PageAttention scenarios are not supported.
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
@@ -162,7 +161,7 @@ ge::graphStatus LeftPaddingChecker::CheckFeaturePageAttention(const FiaTilingInf
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo& fiaInfo)
 {
     // When antiquantMode is 0 or 1 and data type of key/value is int8 scenario, leftpadding is not supported.
     if (fiaInfo.qPaddingSizeFlag || fiaInfo.kvPaddingSizeFlag) {
@@ -175,15 +174,15 @@ ge::graphStatus LeftPaddingChecker::CheckFeatureQueryS(const FiaTilingInfo &fiaI
                 (keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
                     fiaInfo.inputKvType == ge::DT_INT8,
                 OP_LOGE(fiaInfo.opName,
-                    "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
-                    "keyAntiquantMode/valueAntiquantMode is 0 or 1, leftpadding is not supported!"),
-                    return ge::GRAPH_FAILED);
+                        "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
+                        "keyAntiquantMode/valueAntiquantMode is 0 or 1, leftpadding is not supported!"),
+                return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckSinglePara(const FiaTilingInfo& fiaInfo)
 {
     if (enableNonQuant_) {
         if (ge::GRAPH_SUCCESS != CheckShapeAndDim(fiaInfo)) {
@@ -193,7 +192,7 @@ ge::graphStatus LeftPaddingChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckParaExistence(const FiaTilingInfo& fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckExistenceDesc(fiaInfo)) {
         return ge::GRAPH_FAILED;
@@ -201,7 +200,7 @@ ge::graphStatus LeftPaddingChecker::CheckParaExistence(const FiaTilingInfo &fiaI
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckCrossFeature(const FiaTilingInfo& fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureActualLen(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeatureLayout(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckFeatureAlibiPse(fiaInfo) || ge::GRAPH_SUCCESS != CheckFeaturePageAttention(fiaInfo)) {
@@ -215,9 +214,9 @@ ge::graphStatus LeftPaddingChecker::CheckCrossFeature(const FiaTilingInfo &fiaIn
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LeftPaddingChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
+ge::graphStatus LeftPaddingChecker::CheckMultiParaConsistency(const FiaTilingInfo& fiaInfo)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

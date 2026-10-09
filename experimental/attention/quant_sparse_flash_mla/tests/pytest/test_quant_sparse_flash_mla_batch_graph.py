@@ -27,12 +27,12 @@ from batch import quant_sparse_flash_mla_process
 import utils
 
 testcase_path = "qsmla_testcase"
-result_path = Path('result.xlsx')  # 或使用传入的result_path
-device_id=0
+result_path = Path("result.xlsx")  # 或使用传入的result_path
+device_id = 0
 
 locals()["testcase_files"] = []
 if os.path.isdir(testcase_path):
-    pt_files = [f for f in os.listdir(testcase_path) if f.endswith('.pt')]
+    pt_files = [f for f in os.listdir(testcase_path) if f.endswith(".pt")]
     if not pt_files:
         print(f"错误: 目录中没有找到.pt文件: {testcase_path}")
     else:
@@ -43,23 +43,35 @@ if os.path.isdir(testcase_path):
 else:
     print(f"错误: 输出目录不存在: {testcase_path}")
 
+
 def qsmla_aclgraph(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     try:
-        npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
-            test_data, device_id=device_id)
-        result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        npu_result, cpu_quant_result = (
+            quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
+                test_data, device_id=device_id
+            )
+        )
+        result, fulfill_percent = result_compare_method.check_result(
+            cpu_quant_result, npu_result
+        )
     except Exception as e:
         print("NPU ERROR：", e)
         result = "NPU ERROR"
         fulfill_percent = 0
 
-    utils.save_result(test_data['params'], result, fulfill_percent, result_path)
+    utils.save_result(test_data["params"], result, fulfill_percent, result_path)
 
     if result in ("NPU ERROR", "Failed"):
-        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
+        pytest.fail(
+            f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
+        )
 
-testcase_ids = [os.path.splitext(os.path.basename(f))[0] for f in locals()["testcase_files"]]
+
+testcase_ids = [
+    os.path.splitext(os.path.basename(f))[0] for f in locals()["testcase_files"]
+]
+
 
 @pytest.mark.graph
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"], ids=testcase_ids)
@@ -72,4 +84,4 @@ def test_quant_sparse_flash_mla(testcase_files):
             try:
                 result = future.result()
             except Exception as e:
-                pytest.fail(f"当前用例线程执行失败")
+                pytest.fail("当前用例线程执行失败")

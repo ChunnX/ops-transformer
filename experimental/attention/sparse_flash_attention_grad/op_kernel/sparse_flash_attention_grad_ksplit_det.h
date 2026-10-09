@@ -79,20 +79,20 @@ public:
                                    GM_ADDR topk_indices, GM_ADDR cur_seq_qlen, GM_ADDR cur_seq_kvlen,
                                    GM_ADDR query_rope, GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
                                    GM_ADDR dq_rope, GM_ADDR dk_rope, GM_ADDR workspace,
-                                   const TILING_CLASS *__restrict tilingData);
+                                   const TILING_CLASS* __restrict tilingData);
 
 private:
-    __aicore__ inline void InitKsplit(const TILING_CLASS *__restrict tilingData);
+    __aicore__ inline void InitKsplit(const TILING_CLASS* __restrict tilingData);
     __aicore__ inline void AicProcess(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out,
                                       GM_ADDR attention_out_grad, GM_ADDR softmax_max, GM_ADDR softmax_sum,
                                       GM_ADDR topk_indices, GM_ADDR cur_seq_qlen, GM_ADDR cur_seq_kvlen,
                                       GM_ADDR query_rope, GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv,
-                                      GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
+                                      GM_ADDR workspace, const TILING_CLASS* __restrict tilingData);
     __aicore__ inline void AivProcess(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out,
                                       GM_ADDR attention_out_grad, GM_ADDR softmax_max, GM_ADDR softmax_sum,
                                       GM_ADDR topk_indices, GM_ADDR cur_seq_qlen, GM_ADDR cur_seq_kvlen,
                                       GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dq_rope,
-                                      GM_ADDR dk_rope, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData);
+                                      GM_ADDR dk_rope, GM_ADDR workspace, const TILING_CLASS* __restrict tilingData);
     __aicore__ inline void GetTndSeqLenK(const GM_ADDR cur_seq_qlen_addr, const GM_ADDR cur_seq_kvlen_addr,
                                          const int64_t t1Idx);
     __aicore__ inline int32_t GetRowActualSelCount(const int64_t t1Idx);
@@ -138,7 +138,7 @@ private:
 };
 
 template <typename SFAGT>
-__aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::InitKsplit(const TILING_CLASS *__restrict tilingData)
+__aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::InitKsplit(const TILING_CLASS* __restrict tilingData)
 {
     // 与 VecOp::InitParams 同源的字段在此先填（AIC 侧不走 VecOp::Init），AIV 侧 VecOp::Init 会重填同值
     this->dimB = tilingData->opInfo.B;
@@ -186,12 +186,12 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::Process(
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR softmax_max,
     GM_ADDR softmax_sum, GM_ADDR topk_indices, GM_ADDR cur_seq_qlen, GM_ADDR cur_seq_kvlen, GM_ADDR query_rope,
     GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dq_rope, GM_ADDR dk_rope, GM_ADDR workspace,
-    const TILING_CLASS *__restrict tilingData)
+    const TILING_CLASS* __restrict tilingData)
 {
     InitKsplit(tilingData);
-    topkIndicesGmK.SetGlobalBuffer((__gm__ int32_t *)topk_indices);
+    topkIndicesGmK.SetGlobalBuffer((__gm__ int32_t*)topk_indices);
     // cur_seq_qlen 为 int64 cumsum（长度 B+1），末元素即有效 T1 总行数；全核读同一 GM 值，循环上界一致
-    validT1 = ((__gm__ int64_t *)cur_seq_qlen)[this->dimB];
+    validT1 = ((__gm__ int64_t*)cur_seq_qlen)[this->dimB];
 
     if ASCEND_IS_AIC {
         AicProcess(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
@@ -210,15 +210,14 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::GetTndSeqLenK(cons
 {
     if constexpr (IS_BSND == false) {
         // cur_seq 为 int64 cumsum（长度 B+1），curS1/curS2 由相邻元素差分得到；行号单调递增，bIndex 不回退
-        int64_t curT1 = ((__gm__ int64_t *)cur_seq_qlen_addr)[bIndex + 1];
+        int64_t curT1 = ((__gm__ int64_t*)cur_seq_qlen_addr)[bIndex + 1];
         while (t1Idx >= curT1) {
-            curT1 = ((__gm__ int64_t *)cur_seq_qlen_addr)[++bIndex + 1];
+            curT1 = ((__gm__ int64_t*)cur_seq_qlen_addr)[++bIndex + 1];
         }
-        t1Offset = ((__gm__ int64_t *)cur_seq_qlen_addr)[bIndex];
-        t2Offset = ((__gm__ int64_t *)cur_seq_kvlen_addr)[bIndex];
-        this->curS1 = ((__gm__ int64_t *)cur_seq_qlen_addr)[bIndex + 1] - ((__gm__ int64_t *)cur_seq_qlen_addr)[bIndex];
-        this->curS2 =
-            ((__gm__ int64_t *)cur_seq_kvlen_addr)[bIndex + 1] - ((__gm__ int64_t *)cur_seq_kvlen_addr)[bIndex];
+        t1Offset = ((__gm__ int64_t*)cur_seq_qlen_addr)[bIndex];
+        t2Offset = ((__gm__ int64_t*)cur_seq_kvlen_addr)[bIndex];
+        this->curS1 = ((__gm__ int64_t*)cur_seq_qlen_addr)[bIndex + 1] - ((__gm__ int64_t*)cur_seq_qlen_addr)[bIndex];
+        this->curS2 = ((__gm__ int64_t*)cur_seq_kvlen_addr)[bIndex + 1] - ((__gm__ int64_t*)cur_seq_kvlen_addr)[bIndex];
         s1Index = t1Idx - t1Offset;
     } else {
         t1Offset = t1Idx;
@@ -275,7 +274,7 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::UpdateGmOffsetKspl
      * N2=1（门控保证）；blkCntOffset 恒 0，slice 起点折进 indicesGmOffset（sparse gather 单独传 sliceStart）。
      * slot（r%3）：runInfo / mm4/mm5 scatter 源槽位；parity（r%2）：mm12/mm345 握手槽位（仍为 2 份）。
      */
-    RunInfo &ri = runInfo[slot];
+    RunInfo& ri = runInfo[slot];
     ri.valid = true;
     int64_t rowT1 = t1Offset + s1Index;
 
@@ -344,7 +343,7 @@ template <typename SFAGT>
 __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::AicProcess(
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR softmax_max,
     GM_ADDR softmax_sum, GM_ADDR topk_indices, GM_ADDR cur_seq_qlen, GM_ADDR cur_seq_kvlen, GM_ADDR query_rope,
-    GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *__restrict tilingData)
+    GM_ADDR key_rope, GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS* __restrict tilingData)
 {
     if (aicBlockIdx >= KSPLIT_COMPUTE_CORES) {
         return; // Only this pair's AIVs participate, as dq reducers.
@@ -357,8 +356,7 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::AicProcess(
     // scatter 区 3 槽化（host 已按 3 槽分配）：mm5Res 基址按 3 槽重定位（CubeOp 内默认按 2 槽布局）
     cubeOp.RepointMm5ResBase(KSPLIT_SCATTER_SLOTS);
     AllocEventID();
-    dqPartialGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                tilingData->opInfo.dqPartialWorkspaceOffset / sizeof(float));
+    dqPartialGm.SetGlobalBuffer((__gm__ float*)workspace + tilingData->opInfo.dqPartialWorkspaceOffset / sizeof(float));
 
     int32_t prevSliceCount = 0; // 行 r-1 的本核 slice 计数（决定是否补做 mm345(r-1)）
     for (int64_t r = 0; r < validT1 + 1; r++) {
@@ -372,7 +370,7 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::AicProcess(
             if (sliceCount > 0) {
                 scatterTaskId = slot; // mm4/mm5 写槽 r%3（scatter(r) 在窗口 r+2 读取）
                 UpdateGmOffsetKsplit(r, rowActual, sliceCount, slot, parity);
-                RunInfo &ri = runInfo[slot];
+                RunInfo& ri = runInfo[slot];
                 // Q/Dy preload 提前：不等 gather，L1 装载与 AIV gather(r) 重叠
                 WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_QUERY_EVENTS);
                 WaitFlag<HardEvent::MTE1_MTE2>(MM_L1_DY_EVENTS);
@@ -397,7 +395,7 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::AicProcess(
         // 行 r-1 的 mm345（AIV softmax(r-1) 已落 p/ds；与 mm12(r) 在 cube 流水上首尾衔接）
         if (prevSliceCount > 0) {
             uint32_t prevParity = (r - 1) & 1;
-            RunInfo &prevRi = runInfo[(r - 1) % KSPLIT_SCATTER_SLOTS];
+            RunInfo& prevRi = runInfo[(r - 1) % KSPLIT_SCATTER_SLOTS];
             CrossCoreWaitFlag<2>(prevParity == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
             cubeOp.cube345ProcessKsplit(
                 prevRi, 0, prevParity,
@@ -420,7 +418,7 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::AivProcess(
     GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR attention_out, GM_ADDR attention_out_grad, GM_ADDR softmax_max,
     GM_ADDR softmax_sum, GM_ADDR topk_indices, GM_ADDR cur_seq_qlen, GM_ADDR cur_seq_kvlen, GM_ADDR key_rope,
     GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dq_rope, GM_ADDR dk_rope, GM_ADDR workspace,
-    const TILING_CLASS *__restrict tilingData)
+    const TILING_CLASS* __restrict tilingData)
 {
     TPipe pipeVec;
     this->Init(query, key, value, attention_out, attention_out_grad, softmax_max, softmax_sum, topk_indices,
@@ -443,11 +441,11 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::AivProcess(
 
     const bool isReduceAiv = (aicBlockIdx >= KSPLIT_COMPUTE_CORES);
     if (isReduceAiv) {
-        dqPartialGm.SetGlobalBuffer((__gm__ float *)workspace +
+        dqPartialGm.SetGlobalBuffer((__gm__ float*)workspace +
                                     tilingData->opInfo.dqPartialWorkspaceOffset / sizeof(float));
         // dq reduce 直接写出到 dq / dq_rope 输出（*scale + cast），不再走 dqWorkspace
-        dqOutGm.SetGlobalBuffer((__gm__ T1 *)dq);
-        dqRopeOutGm.SetGlobalBuffer((__gm__ T1 *)dq_rope);
+        dqOutGm.SetGlobalBuffer((__gm__ T1*)dq);
+        dqRopeOutGm.SetGlobalBuffer((__gm__ T1*)dq_rope);
         // reduce 事件不变量：每行结束 vWaitMte3 / reduceVMte2 各留 1 个未消费 SET，行首复用
         SET_FLAG(MTE3, V, this->vWaitMte3);
     }
@@ -487,7 +485,7 @@ __aicore__ inline void SelectedAttentionGradKsplitDet<SFAGT>::AivProcess(
         // This uses the PREVIOUS row's activity, not the current slice count.
         if (prevSliceCount > 0) {
             const uint32_t prevParity = (r - 1) & 1;
-            RunInfo &prevRi = runInfo[(r - 1) % KSPLIT_SCATTER_SLOTS];
+            RunInfo& prevRi = runInfo[(r - 1) % KSPLIT_SCATTER_SLOTS];
             CrossCoreWaitFlag<2>(prevParity == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
             this->VecOp<SFAGT>::Process(prevRi);
             CrossCoreSetFlag<2, PIPE_MTE3>(prevParity == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);

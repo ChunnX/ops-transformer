@@ -48,29 +48,13 @@ extern "C" {
  */
 
 aclnnStatus aclnnNsaCompressAttentionInferGetWorkspaceSize(
-    const aclTensor *query,
-    const aclTensor *key,
-    const aclTensor *value,
-    const aclTensor *attentionMaskOptional,
-    const aclTensor *blockTableOptional,
-    const aclIntArray *actualQSeqLenOptional,
-    const aclIntArray *actualCmpKvSeqLenOptional,
-    const aclIntArray *actualSelKvSeqLenOptional,
-    const aclTensor *topKMaskOptional,
-    int64_t numHeads,
-    int64_t numKeyValueHeads,
-    int64_t selectBlockSize,
-    int64_t selectBlockCount,
-    int64_t compressBlockSize,
-    int64_t compressBlockStride,
-    double scaleValue,
-    char *layoutOptional,
-    int64_t pageBlockSize,
-    int64_t sparseMode,
-    const aclTensor *output,
-    const aclTensor *topKOutput,
-    uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const aclTensor* query, const aclTensor* key, const aclTensor* value, const aclTensor* attentionMaskOptional,
+    const aclTensor* blockTableOptional, const aclIntArray* actualQSeqLenOptional,
+    const aclIntArray* actualCmpKvSeqLenOptional, const aclIntArray* actualSelKvSeqLenOptional,
+    const aclTensor* topKMaskOptional, int64_t numHeads, int64_t numKeyValueHeads, int64_t selectBlockSize,
+    int64_t selectBlockCount, int64_t compressBlockSize, int64_t compressBlockStride, double scaleValue,
+    char* layoutOptional, int64_t pageBlockSize, int64_t sparseMode, const aclTensor* output,
+    const aclTensor* topKOutput, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * funtion: aclnnNsaCompressAttentionInfer
@@ -81,11 +65,8 @@ aclnnStatus aclnnNsaCompressAttentionInferGetWorkspaceSize(
  * @return aclnnStatus: 返回状态码
  */
 
-aclnnStatus aclnnNsaCompressAttentionInfer(
-    void *workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor *executor,
-    aclrtStream stream);
+aclnnStatus aclnnNsaCompressAttentionInfer(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                           aclrtStream stream);
 
 #ifdef __cplusplus
 }

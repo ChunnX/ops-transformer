@@ -32,13 +32,13 @@ constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
 constexpr uint32_t DIM_NUM_FOUR = 4;
 
-static ge::graphStatus InferShapeStemIndexer(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeStemIndexer(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("StemIndexer", "InferShapeContext is nullptr!"), return ge::GRAPH_FAILED);
 
-    const gert::Shape *qflatShape = context->GetInputShape(QFLAT_INDEX);
+    const gert::Shape* qflatShape = context->GetInputShape(QFLAT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qflatShape);
-    const gert::Shape *kflatShape = context->GetInputShape(KFLAT_INDEX);
+    const gert::Shape* kflatShape = context->GetInputShape(KFLAT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kflatShape);
 
     OP_CHECK_IF(qflatShape->GetDimNum() != DIM_NUM_FOUR,
@@ -50,9 +50,9 @@ static ge::graphStatus InferShapeStemIndexer(gert::InferShapeContext *context)
                                              (std::to_string(kflatShape->GetDimNum()) + "D").c_str(), "4D"),
                 return ge::GRAPH_FAILED);
 
-    gert::Shape *sparseIndicesShape = context->GetOutputShape(SPARSE_INDICES_INDEX);
+    gert::Shape* sparseIndicesShape = context->GetOutputShape(SPARSE_INDICES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseIndicesShape);
-    gert::Shape *sparseSeqLenShape = context->GetOutputShape(SPARSE_SEQ_LEN_INDEX);
+    gert::Shape* sparseSeqLenShape = context->GetOutputShape(SPARSE_SEQ_LEN_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, sparseSeqLenShape);
 
     sparseIndicesShape->SetDimNum(DIM_NUM_FOUR);
@@ -70,7 +70,7 @@ static ge::graphStatus InferShapeStemIndexer(gert::InferShapeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeStemIndexer(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeStemIndexer(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("StemIndexer", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);

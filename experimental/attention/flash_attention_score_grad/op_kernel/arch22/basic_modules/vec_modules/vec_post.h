@@ -32,16 +32,17 @@ using AscendC::TBuf;
 using AscendC::TPipe;
 using AscendC::TQue;
 
-template <typename OUT_TYPE, class TILING_TYPE> class VectorPost {
+template <typename OUT_TYPE, class TILING_TYPE>
+class VectorPost {
 public:
     __aicore__ inline VectorPost(){};
-    __aicore__ inline void Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
-                                __gm__ uint8_t *workspace, const TILING_TYPE *__restrict ordTilingData);
+    __aicore__ inline void Init(TPipe* pipe_in, __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv,
+                                __gm__ uint8_t* workspace, const TILING_TYPE* __restrict ordTilingData);
     __aicore__ inline void Process();
 
     constexpr static uint32_t POST_BUFFER_NUM = 1;
 
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, POST_BUFFER_NUM> inQueue;
     TQue<QuePosition::VECOUT, POST_BUFFER_NUM> outQueue;
 
@@ -50,7 +51,7 @@ public:
     // output
     AscendC::GlobalTensor<OUT_TYPE> dqGm, dkGm, dvGm;
 
-    const TILING_TYPE *__restrict tilingData;
+    const TILING_TYPE* __restrict tilingData;
 
     int64_t cBlockIdx;
     // query
@@ -66,24 +67,24 @@ public:
 };
 
 template <typename OUT_TYPE, class TILING_TYPE>
-__aicore__ inline void VectorPost<OUT_TYPE, TILING_TYPE>::Init(TPipe *pipe_in, __gm__ uint8_t *dq, __gm__ uint8_t *dk,
-                                                               __gm__ uint8_t *dv, __gm__ uint8_t *workspace,
-                                                               const TILING_TYPE *__restrict ordTilingData)
+__aicore__ inline void VectorPost<OUT_TYPE, TILING_TYPE>::Init(TPipe* pipe_in, __gm__ uint8_t* dq, __gm__ uint8_t* dk,
+                                                               __gm__ uint8_t* dv, __gm__ uint8_t* workspace,
+                                                               const TILING_TYPE* __restrict ordTilingData)
 {
     cBlockIdx = GetBlockIdx();
 
     tilingData = ordTilingData;
     pipe = pipe_in;
 
-    dqGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dq);
-    dkGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dk);
-    dvGm.SetGlobalBuffer((__gm__ OUT_TYPE *)dv);
+    dqGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dq);
+    dkGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dk);
+    dvGm.SetGlobalBuffer((__gm__ OUT_TYPE*)dv);
 
-    dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+    dqWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                   tilingData->mlaTensorTilingData.dqWorkSpaceOffset / sizeof(float));
-    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+    dkWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                   tilingData->mlaTensorTilingData.dkWorkSpaceOffset / sizeof(float));
-    dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+    dvWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                   tilingData->mlaTensorTilingData.dvWorkSpaceOffset / sizeof(float));
 
     uint32_t coreNum = tilingData->mlaTensorTilingData.coreNum;
@@ -120,7 +121,8 @@ __aicore__ inline void VectorPost<OUT_TYPE, TILING_TYPE>::Init(TPipe *pipe_in, _
     pipe->InitBuffer(outQueue, 1, ubBaseSize);
 }
 
-template <typename OUT_TYPE, class TILING_TYPE> __aicore__ inline void VectorPost<OUT_TYPE, TILING_TYPE>::Process()
+template <typename OUT_TYPE, class TILING_TYPE>
+__aicore__ inline void VectorPost<OUT_TYPE, TILING_TYPE>::Process()
 {
     // init q
     uint64_t qBegin = cBlockIdx * qPostBlockFactor * qPostBaseNum;

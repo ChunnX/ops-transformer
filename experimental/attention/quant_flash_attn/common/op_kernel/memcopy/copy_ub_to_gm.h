@@ -50,14 +50,14 @@ public:
         }
     }
     template <typename FaGmTensorType, bool ROW_PAD = true>
-    __aicore__ inline void operator()(FaGmTensorType &dstTensor, FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
-                                      GmCoord &gmCoord)
+    __aicore__ inline void operator()(FaGmTensorType& dstTensor, FaUbTensor<OUT_T, ROW_PAD>& srcTensor,
+                                      GmCoord& gmCoord)
     {
         static_assert(std::is_same_v<OUT_T, typename FaGmTensorType::dataType>, "DataType of FaGmTensorType mismatch");
         static_assert(GM_FORMAT == FaGmTensorType::gmFormat, "GmFormat of FaGmTensorType mismatch");
 
         if constexpr (UB_FORMAT == UbFormat::GS1) {
-            auto &offsetCalculator = dstTensor.offsetCalculator;
+            auto& offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1Size = 0;
             if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
@@ -112,7 +112,7 @@ public:
                 }
             }
         } else if constexpr (UB_FORMAT == UbFormat::S1G) {
-            auto &offsetCalculator = dstTensor.offsetCalculator;
+            auto& offsetCalculator = dstTensor.offsetCalculator;
             uint32_t s1IdxStart = gmCoord.gS1Idx / offsetCalculator.GetDimG();
             uint32_t gIdxStart = gmCoord.gS1Idx % offsetCalculator.GetDimG();
             uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / offsetCalculator.GetDimG();

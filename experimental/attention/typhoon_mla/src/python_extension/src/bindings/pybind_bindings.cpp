@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-
 #include <pybind11/pybind11.h>
 #include <torch/extension.h>
 #include <torch_npu/csrc/core/npu/NPUStream.h>
@@ -19,7 +18,8 @@
 namespace py = pybind11;
 using namespace CatlassKernelWrapper;
 
-PYBIND11_MODULE(_C, m) {
+PYBIND11_MODULE(_C, m)
+{
     m.doc() = "Python bindings for CatlassKernel";
     m.def("mla", &RunMLA, "");
     m.def("catlass_mla_prepare", &KernelGetKVSplit, "");

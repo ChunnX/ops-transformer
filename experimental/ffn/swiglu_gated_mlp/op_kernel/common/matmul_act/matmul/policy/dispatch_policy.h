@@ -137,7 +137,7 @@ struct MatmulMultiBlock {
  * @param [in] ENABLE_RELU: execute relu after mmad , default is false
  */
 template <class SingleCoreShape = AscendC::Shape<_0, _0, _0, _0>, uint64_t FULL_LOAD_MODE_ = 0,
-    bool ENABLE_RELU_ = false>
+          bool ENABLE_RELU_ = false>
 struct MatmulMultiBlockWithOutQue {
     using ScheduleType = KernelMultiBlockOnKAxis;
     using SingleShape = SingleCoreShape;
@@ -153,7 +153,7 @@ struct MatmulMultiBlockWithOutQue {
  * @param [in] SingleCoreShape: the shape of a single core, default is AscendC::Shape<_0, _0, _0, _0>
  */
 template <MatMulL0C2Out fixpOpti = MatMulL0C2Out::ON_THE_FLY, bool ENABLE_RELU = false,
-    class SingleCoreShape = AscendC::Shape<_0, _0, _0, _0>>
+          class SingleCoreShape = AscendC::Shape<_0, _0, _0, _0>>
 struct MatmulMultiBlockWithStreamK {
     using ScheduleType = KernelMultiBlockStreamK;
     using SingleShape = SingleCoreShape;

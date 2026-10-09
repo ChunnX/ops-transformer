@@ -11,12 +11,12 @@
 #include <torch/extension.h>
 #include <torch/library.h>
 
-TORCH_LIBRARY(npu_linalg, m) {
+TORCH_LIBRARY(npu_linalg, m)
+{
     m.def("tsqr(Tensor A, int? block_size=0) -> (Tensor, Tensor)");
     m.def("svd(Tensor A, int num_iterations=10) -> (Tensor, Tensor, Tensor)");
     m.def("svd_lowrank(Tensor A, *, Tensor? M=None, Tensor? omega=None, int q=160, int niter=2) -> "
-        "(Tensor, Tensor, Tensor)");
+          "(Tensor, Tensor, Tensor)");
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {}

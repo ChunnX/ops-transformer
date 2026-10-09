@@ -214,33 +214,33 @@ ge::graphStatus KvQuantSASInfoParser::GetKvLayout()
 
 // =============Parser function====================
 
-bool KvQuantSASInfoParser::HasAxis(const SASAxis &axis, const SASLayout &layout, const gert::Shape &shape) const
+bool KvQuantSASInfoParser::HasAxis(const SASAxis& axis, const SASLayout& layout, const gert::Shape& shape) const
 {
-    const auto &layoutIt = SAS_LAYOUT_AXIS_MAP.find(layout);
+    const auto& layoutIt = SAS_LAYOUT_AXIS_MAP.find(layout);
     if (layoutIt == SAS_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
 
-    const std::vector<SASAxis> &axes = layoutIt->second;
-    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<SASAxis>& axes = layoutIt->second;
+    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
     if (axisIt == axes.end()) {
         return false;
     }
-    const auto &dimIt = SAS_LAYOUT_DIM_MAP.find(layout);
+    const auto& dimIt = SAS_LAYOUT_DIM_MAP.find(layout);
     if (dimIt == SAS_LAYOUT_DIM_MAP.end() || dimIt->second != shape.GetDimNum()) {
         return false;
     }
     return true;
 }
 
-size_t KvQuantSASInfoParser::GetAxisIdx(const SASAxis &axis, const SASLayout &layout) const
+size_t KvQuantSASInfoParser::GetAxisIdx(const SASAxis& axis, const SASLayout& layout) const
 {
-    const std::vector<SASAxis> &axes = SAS_LAYOUT_AXIS_MAP.find(layout)->second;
-    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<SASAxis>& axes = SAS_LAYOUT_AXIS_MAP.find(layout)->second;
+    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t KvQuantSASInfoParser::GetAxisNum(const gert::Shape &shape, const SASAxis &axis, const SASLayout &layout) const
+uint32_t KvQuantSASInfoParser::GetAxisNum(const gert::Shape& shape, const SASAxis& axis, const SASLayout& layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
@@ -283,8 +283,8 @@ ge::graphStatus KvQuantSASInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, SASLayout &layout,
-                                                          const std::string &name) const
+ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor, SASLayout& layout,
+                                                          const std::string& name) const
 {
     if ((tensor == nullptr)) {
         OP_LOGE(opName_, "when layout of q is %s, %s must be provided.", KvQuantSASLayoutToSerialString(layout).c_str(),
@@ -300,7 +300,7 @@ ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenSize(uint32_t &size, const 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus KvQuantSASInfoParser::GetActualSeqLenQSize(uint32_t& size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.sequsedKv.tensor, qLayout_, "cuSeqLensQ");
 }
@@ -461,7 +461,7 @@ ge::graphStatus KvQuantSASInfoParser::GetSinks()
     return ge::GRAPH_SUCCESS;
 }
 
-void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
+void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo& sasInfo)
 {
     sasInfo.opName = opName_;
     sasInfo.platformInfo = platformInfo_;
@@ -518,7 +518,7 @@ void KvQuantSASInfoParser::GenerateInfo(KvQuantSASTilingInfo &sasInfo)
     sasInfo.outLayout = outLayout_;
 }
 
-ge::graphStatus KvQuantSASInfoParser::Parse(KvQuantSASTilingInfo &sasInfo)
+ge::graphStatus KvQuantSASInfoParser::Parse(KvQuantSASTilingInfo& sasInfo)
 {
     if (context_ == nullptr) {
         OP_LOGE("SparseFlashAttention", "tiling context is nullptr!");
@@ -553,13 +553,13 @@ ge::graphStatus KvQuantSASInfoParser::Parse(KvQuantSASTilingInfo &sasInfo)
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForKvQuantSparseAttnSharedkv(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForKvQuantSparseAttnSharedkv(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // --------------------------SparseAttnSharedkvTiling类成员函数定义-----------------------
-ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo *tilingInfo)
+ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo* tilingInfo)
 {
     if (tilingInfo->opParamInfo.cmpKv.tensor == nullptr) {
         OP_CHECK_IF(tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,
@@ -613,7 +613,7 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
         workspaceSize += (totalBS1 * tilingInfo->sparseBlockCount * sizeof(int64_t));
     }
 
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
@@ -661,7 +661,7 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingKvQuantSparseAttnSharedkv(gert::TilingContext *context)
+ge::graphStatus TilingKvQuantSparseAttnSharedkv(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("KvQuantSparseAttnSharedkv", "Tiling context is null."),
                 return ge::GRAPH_FAILED);

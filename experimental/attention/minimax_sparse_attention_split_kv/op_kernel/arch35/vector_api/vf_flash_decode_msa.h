@@ -44,7 +44,7 @@ namespace FaVectorApiSplitKv {
 
 // 处理循环splitKVIndex=0的场景，vregDst需要置0
 template <typename T>
-__simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __ubuf__ T *accumOutUb, __ubuf__ T *rowSumUb,
+__simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T* dstUb, __ubuf__ T* lseUb, __ubuf__ T* accumOutUb, __ubuf__ T* rowSumUb,
                                      uint16_t k, uint16_t z, uint32_t dealNum1Reg, uint32_t repStride,
                                      const uint16_t floatRepSize, const uint16_t dLoops, uint32_t dealRowCount,
                                      uint32_t splitKVIndex)
@@ -59,14 +59,14 @@ __simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __ubu
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) { // repeat g
 
         Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(vregLse,
-                                                   (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
+                                                   (__ubuf__ float*&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         // rowSum is per-row (constant across the D-dim z-blocks): broadcast-load once per row.
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float *&)rowSumUb + k);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float*&)rowSumUb + k);
         for (z = 0; z < dLoops; z++) {
             // splitKVIndex=0的场景，vregDst不需要load，直接置0
             Reg::Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vregDst, FLT_ZERO, pregTailN);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(
-                vregAccumOut, (__ubuf__ float *&)accumOutUb + k * repStride * 8 + z * floatRepSize);
+                vregAccumOut, (__ubuf__ float*&)accumOutUb + k * repStride * 8 + z * floatRepSize);
             // Embedded regbase Mul: normalize Phase1 accumOut by its original per-row rowSum.
             // rowSum was pre-inverted to 1/rowSum by CopyLseIn's Reciprocal on the compact
             // lseSumTmpBuf, so this is a Mul (cheaper than Div). Broadcast-loaded via
@@ -75,20 +75,20 @@ __simd_vf__ void ReduceFinalRes_0_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __ubu
             Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
             Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregDst, vregDst, vregAccumOut, pregTailN);
             Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ float *&)dstUb + k * repStride * 8 + z * floatRepSize, vregDst, pregTailN);
+                (__ubuf__ float*&)dstUb + k * repStride * 8 + z * floatRepSize, vregDst, pregTailN);
         }
     }
 }
 
 template <typename T>
-__aicore__ inline void ReduceFinalRes_0(LocalTensor<T> &dstLocal, LocalTensor<T> &lseLocal,
-                                        LocalTensor<T> &accumOutLocal, LocalTensor<T> &rowSumLocal,
+__aicore__ inline void ReduceFinalRes_0(LocalTensor<T>& dstLocal, LocalTensor<T>& lseLocal,
+                                        LocalTensor<T>& accumOutLocal, LocalTensor<T>& rowSumLocal,
                                         uint32_t dealRowCount, uint64_t headDimAlignFp32, uint32_t splitKVIndex)
 {
-    __ubuf__ T *dstUb = (__ubuf__ T *)dstLocal.GetPhyAddr();
-    __ubuf__ T *lseUb = (__ubuf__ T *)lseLocal.GetPhyAddr();
-    __ubuf__ T *accumOutUb = (__ubuf__ T *)accumOutLocal.GetPhyAddr();
-    __ubuf__ T *rowSumUb = (__ubuf__ T *)rowSumLocal.GetPhyAddr();
+    __ubuf__ T* dstUb = (__ubuf__ T*)dstLocal.GetPhyAddr();
+    __ubuf__ T* lseUb = (__ubuf__ T*)lseLocal.GetPhyAddr();
+    __ubuf__ T* accumOutUb = (__ubuf__ T*)accumOutLocal.GetPhyAddr();
+    __ubuf__ T* rowSumUb = (__ubuf__ T*)rowSumLocal.GetPhyAddr();
     uint16_t k = 0;
     uint16_t z = 0;
     uint32_t dealNum1Reg = 256 / sizeof(float);
@@ -102,8 +102,8 @@ __aicore__ inline void ReduceFinalRes_0(LocalTensor<T> &dstLocal, LocalTensor<T>
 
 // 处理循环splitKVIndex>0的场景，reg_dst需要先从dstUb中load之前的结果，再进行add
 template <typename T>
-__simd_vf__ void ReduceFinalRes_Rest_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __ubuf__ T *accumOutUb,
-                                        __ubuf__ T *rowSumUb, uint16_t k, uint16_t z, uint32_t dealNum1Reg,
+__simd_vf__ void ReduceFinalRes_Rest_VF(__ubuf__ T* dstUb, __ubuf__ T* lseUb, __ubuf__ T* accumOutUb,
+                                        __ubuf__ T* rowSumUb, uint16_t k, uint16_t z, uint32_t dealNum1Reg,
                                         uint32_t repStride, const uint16_t floatRepSize, const uint16_t dLoops,
                                         uint32_t dealRowCount, uint32_t splitKVIndex)
 {
@@ -117,15 +117,15 @@ __simd_vf__ void ReduceFinalRes_Rest_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) { // repeat g
         Reg::LoadAlign<T, Reg::LoadDist::DIST_BLK>(vregLse,
-                                                   (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
+                                                   (__ubuf__ float*&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
         // rowSum is per-row (constant across the D-dim z-blocks): broadcast-load once per row.
-        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float *&)rowSumUb + k);
+        Reg::LoadAlign<T, Reg::LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float*&)rowSumUb + k);
         for (z = 0; z < dLoops; z++) {
             // splitKVIndex>0的场景，reg_dst需要先从dstUb中load之前的结果，再进行add
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(vregDst,
+                                                        (__ubuf__ float*&)dstUb + k * repStride * 8 + z * floatRepSize);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(
-                vregDst, (__ubuf__ float *&)dstUb + k * repStride * 8 + z * floatRepSize);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_NORM>(
-                vregAccumOut, (__ubuf__ float *&)accumOutUb + k * repStride * 8 + z * floatRepSize);
+                vregAccumOut, (__ubuf__ float*&)accumOutUb + k * repStride * 8 + z * floatRepSize);
             // Embedded regbase Mul: normalize Phase1 accumOut by its original per-row rowSum.
             // rowSum was pre-inverted to 1/rowSum by CopyLseIn's Reciprocal on the compact
             // lseSumTmpBuf, so this is a Mul (cheaper than Div). Broadcast-loaded via
@@ -134,20 +134,20 @@ __simd_vf__ void ReduceFinalRes_Rest_VF(__ubuf__ T *dstUb, __ubuf__ T *lseUb, __
             Reg::Mul<T, Reg::MaskMergeMode::ZEROING>(vregAccumOut, vregLse, vregAccumOut, pregTailN);
             Reg::Add<T, Reg::MaskMergeMode::ZEROING>(vregDst, vregDst, vregAccumOut, pregTailN);
             Reg::StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>(
-                (__ubuf__ float *&)dstUb + k * repStride * 8 + z * floatRepSize, vregDst, pregTailN);
+                (__ubuf__ float*&)dstUb + k * repStride * 8 + z * floatRepSize, vregDst, pregTailN);
         }
     }
 }
 
 template <typename T>
-__aicore__ inline void ReduceFinalRes_Rest(LocalTensor<T> &dstLocal, LocalTensor<T> &lseLocal,
-                                           LocalTensor<T> &accumOutLocal, LocalTensor<T> &rowSumLocal,
+__aicore__ inline void ReduceFinalRes_Rest(LocalTensor<T>& dstLocal, LocalTensor<T>& lseLocal,
+                                           LocalTensor<T>& accumOutLocal, LocalTensor<T>& rowSumLocal,
                                            uint32_t dealRowCount, uint64_t headDimAlignFp32, uint32_t splitKVIndex)
 {
-    __ubuf__ T *dstUb = (__ubuf__ T *)dstLocal.GetPhyAddr();
-    __ubuf__ T *lseUb = (__ubuf__ T *)lseLocal.GetPhyAddr();
-    __ubuf__ T *accumOutUb = (__ubuf__ T *)accumOutLocal.GetPhyAddr();
-    __ubuf__ T *rowSumUb = (__ubuf__ T *)rowSumLocal.GetPhyAddr();
+    __ubuf__ T* dstUb = (__ubuf__ T*)dstLocal.GetPhyAddr();
+    __ubuf__ T* lseUb = (__ubuf__ T*)lseLocal.GetPhyAddr();
+    __ubuf__ T* accumOutUb = (__ubuf__ T*)accumOutLocal.GetPhyAddr();
+    __ubuf__ T* rowSumUb = (__ubuf__ T*)rowSumLocal.GetPhyAddr();
     uint16_t k = 0;
     uint16_t z = 0;
     uint32_t dealNum1Reg = 256 / sizeof(float);
@@ -160,8 +160,8 @@ __aicore__ inline void ReduceFinalRes_Rest(LocalTensor<T> &dstLocal, LocalTensor
 }
 
 template <typename T>
-__aicore__ inline void ReduceFinalRes_VF(LocalTensor<T> &dstLocal, LocalTensor<T> &lseLocal,
-                                         LocalTensor<T> &accumOutLocal, LocalTensor<T> &rowSumLocal,
+__aicore__ inline void ReduceFinalRes_VF(LocalTensor<T>& dstLocal, LocalTensor<T>& lseLocal,
+                                         LocalTensor<T>& accumOutLocal, LocalTensor<T>& rowSumLocal,
                                          uint32_t dealRowCount, uint64_t headDimAlignFp32, uint32_t splitKVIndex)
 {
     if (splitKVIndex == 0) {
@@ -195,8 +195,8 @@ __aicore__ inline void ReduceFinalRes_VF(LocalTensor<T> &dstLocal, LocalTensor<T
 // ============================================================================
 
 template <typename Tdst> // Tdst = bfloat16_t (accumOut + dst dtype)
-__simd_vf__ void ReduceFinalRes_0_VF_BF16(__ubuf__ Tdst *dstUb, __ubuf__ float *lseUb, __ubuf__ Tdst *accumOutUb,
-                                          __ubuf__ float *rowSumUb, uint16_t k, uint32_t dealRowCount,
+__simd_vf__ void ReduceFinalRes_0_VF_BF16(__ubuf__ Tdst* dstUb, __ubuf__ float* lseUb, __ubuf__ Tdst* accumOutUb,
+                                          __ubuf__ float* rowSumUb, uint16_t k, uint32_t dealRowCount,
                                           uint32_t splitKVIndex, uint32_t repStride)
 {
     using namespace AscendC::Reg;
@@ -220,8 +220,8 @@ __simd_vf__ void ReduceFinalRes_0_VF_BF16(__ubuf__ Tdst *dstUb, __ubuf__ float *
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) {
         LoadAlign<float, LoadDist::DIST_BLK>(vregLse,
-                                             (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float *&)rowSumUb + k);
+                                             (__ubuf__ float*&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float*&)rowSumUb + k);
         LoadAlign<Tdst, LoadDist::DIST_NORM>(vregAccumRaw, accumOutUb + k * repStride * 8);
         Cast<float, Tdst, castUpZero>(vregAccumEven, vregAccumRaw, pregFull);
         Cast<float, Tdst, castUpOne>(vregAccumOdd, vregAccumRaw, pregFull);
@@ -236,16 +236,16 @@ __simd_vf__ void ReduceFinalRes_0_VF_BF16(__ubuf__ Tdst *dstUb, __ubuf__ float *
         Add<float, MaskMergeMode::ZEROING>(vregDstOdd, vregDstOdd, vregAccumOdd, pregFloatFull);
         Cast<Tdst, float, castDownZero>(vregDstBf16Even, vregDstEven, pregFloatFull);
         Cast<Tdst, float, castDownOne>(vregDstBf16Odd, vregDstOdd, pregFloatFull);
-        Or((RegTensor<uint16_t> &)vregDstBf16, (RegTensor<uint16_t> &)vregDstBf16Even,
-           (RegTensor<uint16_t> &)vregDstBf16Odd, pregFull);
+        Or((RegTensor<uint16_t>&)vregDstBf16, (RegTensor<uint16_t>&)vregDstBf16Even,
+           (RegTensor<uint16_t>&)vregDstBf16Odd, pregFull);
         // dataBlockStride=1 => 8x32B datablocks laid out contiguously (128 bf16).
         StoreAlign<Tdst, DataCopyMode::DATA_BLOCK_COPY>(dstUb + k * repStride * 8, vregDstBf16, 1U, pregFull);
     }
 }
 
 template <typename Tdst>
-__simd_vf__ void ReduceFinalRes_Rest_VF_BF16(__ubuf__ Tdst *dstUb, __ubuf__ float *lseUb, __ubuf__ Tdst *accumOutUb,
-                                             __ubuf__ float *rowSumUb, uint16_t k, uint32_t dealRowCount,
+__simd_vf__ void ReduceFinalRes_Rest_VF_BF16(__ubuf__ Tdst* dstUb, __ubuf__ float* lseUb, __ubuf__ Tdst* accumOutUb,
+                                             __ubuf__ float* rowSumUb, uint16_t k, uint32_t dealRowCount,
                                              uint32_t splitKVIndex, uint32_t repStride)
 {
     using namespace AscendC::Reg;
@@ -269,8 +269,8 @@ __simd_vf__ void ReduceFinalRes_Rest_VF_BF16(__ubuf__ Tdst *dstUb, __ubuf__ floa
 
     for (k = 0; k < static_cast<uint16_t>(dealRowCount); k++) {
         LoadAlign<float, LoadDist::DIST_BLK>(vregLse,
-                                             (__ubuf__ float *&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float *&)rowSumUb + k);
+                                             (__ubuf__ float*&)lseUb + splitKVIndex * dealRowCount * 8 + k * 8);
+        LoadAlign<float, LoadDist::DIST_BRC_B32>(vregRowSum, (__ubuf__ float*&)rowSumUb + k);
         // splitKVIndex>0: dst = load prior bf16 result, cast to fp32 even/odd
         LoadAlign<Tdst, LoadDist::DIST_NORM>(vregDstRaw, dstUb + k * repStride * 8);
         Cast<float, Tdst, castUpZero>(vregDstEven, vregDstRaw, pregFull);
@@ -286,43 +286,43 @@ __simd_vf__ void ReduceFinalRes_Rest_VF_BF16(__ubuf__ Tdst *dstUb, __ubuf__ floa
         Add<float, MaskMergeMode::ZEROING>(vregDstOdd, vregDstOdd, vregAccumOdd, pregFloatFull);
         Cast<Tdst, float, castDownZero>(vregDstBf16Even, vregDstEven, pregFloatFull);
         Cast<Tdst, float, castDownOne>(vregDstBf16Odd, vregDstOdd, pregFloatFull);
-        Or((RegTensor<uint16_t> &)vregDstBf16, (RegTensor<uint16_t> &)vregDstBf16Even,
-           (RegTensor<uint16_t> &)vregDstBf16Odd, pregFull);
+        Or((RegTensor<uint16_t>&)vregDstBf16, (RegTensor<uint16_t>&)vregDstBf16Even,
+           (RegTensor<uint16_t>&)vregDstBf16Odd, pregFull);
         StoreAlign<Tdst, DataCopyMode::DATA_BLOCK_COPY>(dstUb + k * repStride * 8, vregDstBf16, 1U, pregFull);
     }
 }
 
 template <typename Tdst>
-__aicore__ inline void ReduceFinalRes_0_BF16(LocalTensor<Tdst> &dstLocal, LocalTensor<float> &lseLocal,
-                                             LocalTensor<Tdst> &accumOutLocal, LocalTensor<float> &rowSumLocal,
+__aicore__ inline void ReduceFinalRes_0_BF16(LocalTensor<Tdst>& dstLocal, LocalTensor<float>& lseLocal,
+                                             LocalTensor<Tdst>& accumOutLocal, LocalTensor<float>& rowSumLocal,
                                              uint32_t dealRowCount, uint64_t headDimAlignFp32, uint32_t splitKVIndex)
 {
-    __ubuf__ Tdst *dstUb = (__ubuf__ Tdst *)dstLocal.GetPhyAddr();
-    __ubuf__ float *lseUb = (__ubuf__ float *)lseLocal.GetPhyAddr();
-    __ubuf__ Tdst *accumOutUb = (__ubuf__ Tdst *)accumOutLocal.GetPhyAddr();
-    __ubuf__ float *rowSumUb = (__ubuf__ float *)rowSumLocal.GetPhyAddr();
+    __ubuf__ Tdst* dstUb = (__ubuf__ Tdst*)dstLocal.GetPhyAddr();
+    __ubuf__ float* lseUb = (__ubuf__ float*)lseLocal.GetPhyAddr();
+    __ubuf__ Tdst* accumOutUb = (__ubuf__ Tdst*)accumOutLocal.GetPhyAddr();
+    __ubuf__ float* rowSumUb = (__ubuf__ float*)rowSumLocal.GetPhyAddr();
     uint16_t k = 0;
     uint32_t repStride = headDimAlignFp32 / 8;
     ReduceFinalRes_0_VF_BF16<Tdst>(dstUb, lseUb, accumOutUb, rowSumUb, k, dealRowCount, splitKVIndex, repStride);
 }
 
 template <typename Tdst>
-__aicore__ inline void ReduceFinalRes_Rest_BF16(LocalTensor<Tdst> &dstLocal, LocalTensor<float> &lseLocal,
-                                                LocalTensor<Tdst> &accumOutLocal, LocalTensor<float> &rowSumLocal,
+__aicore__ inline void ReduceFinalRes_Rest_BF16(LocalTensor<Tdst>& dstLocal, LocalTensor<float>& lseLocal,
+                                                LocalTensor<Tdst>& accumOutLocal, LocalTensor<float>& rowSumLocal,
                                                 uint32_t dealRowCount, uint64_t headDimAlignFp32, uint32_t splitKVIndex)
 {
-    __ubuf__ Tdst *dstUb = (__ubuf__ Tdst *)dstLocal.GetPhyAddr();
-    __ubuf__ float *lseUb = (__ubuf__ float *)lseLocal.GetPhyAddr();
-    __ubuf__ Tdst *accumOutUb = (__ubuf__ Tdst *)accumOutLocal.GetPhyAddr();
-    __ubuf__ float *rowSumUb = (__ubuf__ float *)rowSumLocal.GetPhyAddr();
+    __ubuf__ Tdst* dstUb = (__ubuf__ Tdst*)dstLocal.GetPhyAddr();
+    __ubuf__ float* lseUb = (__ubuf__ float*)lseLocal.GetPhyAddr();
+    __ubuf__ Tdst* accumOutUb = (__ubuf__ Tdst*)accumOutLocal.GetPhyAddr();
+    __ubuf__ float* rowSumUb = (__ubuf__ float*)rowSumLocal.GetPhyAddr();
     uint16_t k = 0;
     uint32_t repStride = headDimAlignFp32 / 8;
     ReduceFinalRes_Rest_VF_BF16<Tdst>(dstUb, lseUb, accumOutUb, rowSumUb, k, dealRowCount, splitKVIndex, repStride);
 }
 
 template <typename Tdst>
-__aicore__ inline void ReduceFinalRes_VF_BF16(LocalTensor<Tdst> &dstLocal, LocalTensor<float> &lseLocal,
-                                              LocalTensor<Tdst> &accumOutLocal, LocalTensor<float> &rowSumLocal,
+__aicore__ inline void ReduceFinalRes_VF_BF16(LocalTensor<Tdst>& dstLocal, LocalTensor<float>& lseLocal,
+                                              LocalTensor<Tdst>& accumOutLocal, LocalTensor<float>& rowSumLocal,
                                               uint32_t dealRowCount, uint64_t headDimAlignFp32, uint32_t splitKVIndex)
 {
     if (splitKVIndex == 0) {

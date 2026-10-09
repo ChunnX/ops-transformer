@@ -30,9 +30,9 @@ struct CopyL0CToGm<NpuArch::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<E
         CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
-    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementDst> const &dst,
-                                      AscendC::LocalTensor<ElementSrc> const &src, LayoutDst const &dstLayout,
-                                      LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementDst> const& dst,
+                                      AscendC::LocalTensor<ElementSrc> const& src, LayoutDst const& dstLayout,
+                                      LayoutSrc const& srcLayout, uint8_t unitFlag = 0)
     {
         AscendC::FixpipeParamsV220 intriParams;
 
@@ -64,9 +64,9 @@ struct CopyL0CToGm<NpuArch::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<E
         CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
-    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementDst> const &dst,
-                                      AscendC::LocalTensor<ElementSrc> const &src, LayoutDst const &dstLayout,
-                                      LayoutSrc const &srcLayout, uint8_t unitFlag = 0)
+    __aicore__ inline void operator()(AscendC::GlobalTensor<ElementDst> const& dst,
+                                      AscendC::LocalTensor<ElementSrc> const& src, LayoutDst const& dstLayout,
+                                      LayoutSrc const& srcLayout, uint8_t unitFlag = 0)
     {
         AscendC::FixpipeParamsV220 intriParams;
 
@@ -99,7 +99,7 @@ struct CopyL0CToGmTla<NpuArch::Arch::AtlasA2, TensorSrc_,
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint16_t ndNum = 1,
+    __aicore__ inline void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint16_t ndNum = 1,
                                       uint16_t srcNdStride = 1, uint32_t dstNdStride = 1, uint8_t unitFlag = 0)
     {
         static_assert(
@@ -152,7 +152,7 @@ struct CopyL0CToGmTla<NpuArch::Arch::AtlasA2, TensorSrc_,
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint16_t ndNum = 1,
+    __aicore__ inline void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint16_t ndNum = 1,
                                       uint16_t srcNdStride = 1, uint32_t dstNdStride = 1, uint8_t unitFlag = 0)
     {
         static_assert(tla::detail::iszN<typename TensorDst::Element, typename TensorDst::Layout>::value &&

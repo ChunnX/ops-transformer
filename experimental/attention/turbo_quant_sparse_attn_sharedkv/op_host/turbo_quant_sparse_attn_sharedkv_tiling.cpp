@@ -143,7 +143,7 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
     // dereference their descriptors.  Several of these inputs remain
     // OPTIONAL in the generic OpDef for compatibility with the upstream
     // sparse-attention schema, but they are mandatory for TurboQuant.
-    const std::pair<const void *, const char *> requiredInputs[] = {
+    const std::pair<const void*, const char*> requiredInputs[] = {
         {opParamInfo_.oriKv.tensor, "ori_kv"},
         {opParamInfo_.cmpKv.tensor, "cmp_kv"},
         {opParamInfo_.cmpSparseIndices.tensor, "cmp_sparse_indices"},
@@ -155,12 +155,12 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
         {opParamInfo_.metadata.tensor, "metadata"},
         {opParamInfo_.attnOut.shape, "attn_out shape"},
     };
-    for (const auto &required : requiredInputs) {
+    for (const auto& required : requiredInputs) {
         OP_CHECK_IF(required.first == nullptr,
                     OP_LOGE(opName_, "%s is required for TurboQuantSparseAttnSharedkv.", required.second),
                     return ge::GRAPH_FAILED);
     }
-    const std::pair<const void *, const char *> requiredDescs[] = {
+    const std::pair<const void*, const char*> requiredDescs[] = {
         {opParamInfo_.oriKv.desc, "ori_kv descriptor"},
         {opParamInfo_.cmpKv.desc, "cmp_kv descriptor"},
         {opParamInfo_.cmpSparseIndices.desc, "cmp_sparse_indices descriptor"},
@@ -172,7 +172,7 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
         {opParamInfo_.metadata.desc, "metadata descriptor"},
         {opParamInfo_.attnOut.desc, "attn_out descriptor"},
     };
-    for (const auto &required : requiredDescs) {
+    for (const auto& required : requiredDescs) {
         OP_CHECK_IF(required.first == nullptr,
                     OP_LOGE(opName_, "%s is required for TurboQuantSparseAttnSharedkv.", required.second),
                     return ge::GRAPH_FAILED);
@@ -182,12 +182,12 @@ ge::graphStatus TQSASInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus TQSASInfoParser::CheckRequiredAttrExistence() const
 {
-    const std::pair<const void *, const char *> requiredAttrs[] = {
+    const std::pair<const void*, const char*> requiredAttrs[] = {
         {opParamInfo_.softmaxScale, "softmax_scale"}, {opParamInfo_.cmpRatio, "cmp_ratio"},
         {opParamInfo_.oriMaskMode, "ori_mask_mode"},  {opParamInfo_.cmpMaskMode, "cmp_mask_mode"},
         {opParamInfo_.oriKvStride0, "ori_kv_stride"}, {opParamInfo_.cmpKvStride0, "cmp_kv_stride"},
     };
-    for (const auto &required : requiredAttrs) {
+    for (const auto& required : requiredAttrs) {
         OP_CHECK_IF(required.first == nullptr, OP_LOGE(opName_, "%s attribute is missing.", required.second),
                     return ge::GRAPH_FAILED);
     }
@@ -354,7 +354,7 @@ ge::graphStatus TQSASInfoParser::GetInOutDataType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASInfoParser::GetSASTemplateMode(SASTilingInfo &sasInfo)
+ge::graphStatus TQSASInfoParser::GetSASTemplateMode(SASTilingInfo& sasInfo)
 {
     if (opParamInfo_.oriKv.desc != nullptr) {
         if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor != nullptr) {
@@ -431,33 +431,33 @@ ge::graphStatus TQSASInfoParser::GetKvLayout()
 }
 
 // =============Parser function====================
-bool TQSASInfoParser::HasAxis(const SASAxis &axis, const SASLayout &layout, const gert::Shape &shape) const
+bool TQSASInfoParser::HasAxis(const SASAxis& axis, const SASLayout& layout, const gert::Shape& shape) const
 {
-    const auto &layoutIt = SAS_LAYOUT_AXIS_MAP.find(layout);
+    const auto& layoutIt = SAS_LAYOUT_AXIS_MAP.find(layout);
     if (layoutIt == SAS_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
 
-    const std::vector<SASAxis> &axes = layoutIt->second;
-    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<SASAxis>& axes = layoutIt->second;
+    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
     if (axisIt == axes.end()) {
         return false;
     }
-    const auto &dimIt = SAS_LAYOUT_DIM_MAP.find(layout);
+    const auto& dimIt = SAS_LAYOUT_DIM_MAP.find(layout);
     if (dimIt == SAS_LAYOUT_DIM_MAP.end() || dimIt->second != shape.GetDimNum()) {
         return false;
     }
     return true;
 }
 
-size_t TQSASInfoParser::GetAxisIdx(const SASAxis &axis, const SASLayout &layout) const
+size_t TQSASInfoParser::GetAxisIdx(const SASAxis& axis, const SASLayout& layout) const
 {
-    const std::vector<SASAxis> &axes = SAS_LAYOUT_AXIS_MAP.find(layout)->second;
-    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<SASAxis>& axes = SAS_LAYOUT_AXIS_MAP.find(layout)->second;
+    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t TQSASInfoParser::GetAxisNum(const gert::Shape &shape, const SASAxis &axis, const SASLayout &layout) const
+uint32_t TQSASInfoParser::GetAxisNum(const gert::Shape& shape, const SASAxis& axis, const SASLayout& layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
@@ -520,8 +520,8 @@ ge::graphStatus TQSASInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, SASLayout &layout,
-                                                     const std::string &name) const
+ge::graphStatus TQSASInfoParser::GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor, SASLayout& layout,
+                                                     const std::string& name) const
 {
     if ((tensor == nullptr)) {
         OP_LOGE(opName_, "when layout of q is %s, %s must be provided.", TQSASLayoutToSerialString(layout).c_str(),
@@ -537,7 +537,7 @@ ge::graphStatus TQSASInfoParser::GetActualSeqLenSize(uint32_t &size, const gert:
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASInfoParser::GetActualSeqLenQSize(uint32_t &size)
+ge::graphStatus TQSASInfoParser::GetActualSeqLenQSize(uint32_t& size)
 {
     return GetActualSeqLenSize(size, opParamInfo_.cuSeqLensQ.tensor, qLayout_, "cuSeqLensQ");
 }
@@ -796,7 +796,7 @@ ge::graphStatus TQSASInfoParser::GetActualseqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void TQSASInfoParser::GenerateInfo(SASTilingInfo &sasInfo)
+void TQSASInfoParser::GenerateInfo(SASTilingInfo& sasInfo)
 {
     sasInfo.opName = opName_;
     sasInfo.platformInfo = platformInfo_;
@@ -857,7 +857,7 @@ void TQSASInfoParser::GenerateInfo(SASTilingInfo &sasInfo)
     sasInfo.kvQuantMode = opParamInfo_.kvQuantMode == nullptr ? 3U : static_cast<uint32_t>(*opParamInfo_.kvQuantMode);
 }
 
-ge::graphStatus TQSASInfoParser::Parse(SASTilingInfo &sasInfo)
+ge::graphStatus TQSASInfoParser::Parse(SASTilingInfo& sasInfo)
 {
     if (context_ == nullptr) {
         OP_LOGE("SparseFlashAttention", "tiling context is nullptr!");
@@ -923,8 +923,8 @@ void TQSASTilingCheck::Init()
     outLayout_ = sasInfo_.outLayout;
 }
 
-void TQSASTilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
-                                            const ge::DataType &actualDtype, const std::string &name) const
+void TQSASTilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList,
+                                            const ge::DataType& actualDtype, const std::string& name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectDtypeList.size(); ++i) {
@@ -937,15 +937,15 @@ void TQSASTilingCheck::LogErrorDtypeSupport(const std::vector<ge::DataType> &exp
             SASDataTypeToSerialString(actualDtype).c_str());
 }
 
-ge::graphStatus TQSASTilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc,
-                                                    const std::string &name) const
+ge::graphStatus TQSASTilingCheck::CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc,
+                                                    const std::string& name) const
 {
     if (desc != nullptr) {
-        const auto &it = DTYPE_SUPPORT_MAP.find(name);
+        const auto& it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
                     OP_LOGE(opName_, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP", name.c_str()),
                     return ge::GRAPH_FAILED);
-        auto &expectDtypeList = it->second;
+        auto& expectDtypeList = it->second;
         OP_CHECK_IF(
             std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end(),
             LogErrorDtypeSupport(expectDtypeList, desc->GetDataType(), name), return ge::GRAPH_FAILED);
@@ -953,8 +953,8 @@ ge::graphStatus TQSASTilingCheck::CheckDtypeSupport(const gert::CompileTimeTenso
     return ge::GRAPH_SUCCESS;
 }
 
-void TQSASTilingCheck::LogErrorLayoutSupport(const std::vector<SASLayout> &expectLayoutList,
-                                             const SASLayout &actualLayout, const std::string &name) const
+void TQSASTilingCheck::LogErrorLayoutSupport(const std::vector<SASLayout>& expectLayoutList,
+                                             const SASLayout& actualLayout, const std::string& name) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectLayoutList.size(); ++i) {
@@ -967,13 +967,13 @@ void TQSASTilingCheck::LogErrorLayoutSupport(const std::vector<SASLayout> &expec
             TQSASLayoutToSerialString(actualLayout).c_str());
 }
 
-ge::graphStatus TQSASTilingCheck::CheckLayoutSupport(const SASLayout &actualLayout, const std::string &name) const
+ge::graphStatus TQSASTilingCheck::CheckLayoutSupport(const SASLayout& actualLayout, const std::string& name) const
 {
-    const auto &it = LAYOUT_SUPPORT_MAP.find(name);
+    const auto& it = LAYOUT_SUPPORT_MAP.find(name);
     OP_CHECK_IF(it == LAYOUT_SUPPORT_MAP.end(),
                 OP_LOGE(opName_, "%s layout support list should be specify in LAYOUT_SUPPORT_MAP", name.c_str()),
                 return ge::GRAPH_FAILED);
-    auto &expectLayoutList = it->second;
+    auto& expectLayoutList = it->second;
     OP_CHECK_IF(std::find(expectLayoutList.begin(), expectLayoutList.end(), actualLayout) == expectLayoutList.end(),
                 LogErrorLayoutSupport(expectLayoutList, actualLayout, name), return ge::GRAPH_FAILED);
 
@@ -981,8 +981,8 @@ ge::graphStatus TQSASTilingCheck::CheckLayoutSupport(const SASLayout &actualLayo
 }
 
 template <typename T>
-void TQSASTilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                             const std::string &name, const std::string subName) const
+void TQSASTilingCheck::LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                             const std::string& name, const std::string subName) const
 {
     std::ostringstream oss;
     for (size_t i = 0; i < expectNumberList.size(); ++i) {
@@ -996,15 +996,15 @@ void TQSASTilingCheck::LogErrorNumberSupport(const std::vector<T> &expectNumberL
 }
 
 template <typename T>
-void TQSASTilingCheck::LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                                             const std::string &name) const
+void TQSASTilingCheck::LogErrorDimNumSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                                             const std::string& name) const
 {
     LogErrorNumberSupport(expectNumberList, actualValue, name, "dimension");
 }
 
-ge::graphStatus TQSASTilingCheck::CheckDimNumSupport(const gert::StorageShape *shape,
-                                                     const std::vector<size_t> &expectDimNumList,
-                                                     const std::string &name) const
+ge::graphStatus TQSASTilingCheck::CheckDimNumSupport(const gert::StorageShape* shape,
+                                                     const std::vector<size_t>& expectDimNumList,
+                                                     const std::string& name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -1019,10 +1019,10 @@ ge::graphStatus TQSASTilingCheck::CheckDimNumSupport(const gert::StorageShape *s
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckDimNumInLayoutSupport(const SASLayout &layout, const gert::StorageShape *shape,
-                                                             const std::string &name) const
+ge::graphStatus TQSASTilingCheck::CheckDimNumInLayoutSupport(const SASLayout& layout, const gert::StorageShape* shape,
+                                                             const std::string& name) const
 {
-    const auto &dimIt = SAS_LAYOUT_DIM_MAP.find(layout);
+    const auto& dimIt = SAS_LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
                 OP_LOGE(opName_, "When layout is %s, %s dimension should be %zu, but it's %zu",
                         TQSASLayoutToSerialString(layout).c_str(), name.c_str(), dimIt->second,
@@ -1257,21 +1257,21 @@ ge::graphStatus TQSASTilingCheck::CheckSinglePara() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckExists(const void *pointer, const std::string &name) const
+ge::graphStatus TQSASTilingCheck::CheckExists(const void* pointer, const std::string& name) const
 {
     OP_CHECK_IF(pointer == nullptr, OP_LOGE(opName_, "%s should not be null", name.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckNotExists(const void *pointer, const std::string &name) const
+ge::graphStatus TQSASTilingCheck::CheckNotExists(const void* pointer, const std::string& name) const
 {
     OP_CHECK_IF(pointer != nullptr, OP_LOGE(opName_, "%s should be null", name.c_str()), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckExistsByMap(const std::map<std::string, const void *> &paramMap) const
+ge::graphStatus TQSASTilingCheck::CheckExistsByMap(const std::map<std::string, const void*>& paramMap) const
 {
-    for (const auto &kv : paramMap) {
+    for (const auto& kv : paramMap) {
         if (CheckExists(kv.second, kv.first) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -1279,9 +1279,9 @@ ge::graphStatus TQSASTilingCheck::CheckExistsByMap(const std::map<std::string, c
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckNotExistsByMap(const std::map<std::string, const void *> &paramMap) const
+ge::graphStatus TQSASTilingCheck::CheckNotExistsByMap(const std::map<std::string, const void*>& paramMap) const
 {
-    for (const auto &kv : paramMap) {
+    for (const auto& kv : paramMap) {
         if (CheckNotExists(kv.second, kv.first) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -1289,8 +1289,8 @@ ge::graphStatus TQSASTilingCheck::CheckNotExistsByMap(const std::map<std::string
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TQSASTilingCheck::CheckExistenceByMap(std::map<std::string, const void *> &existMap,
-                                                      std::map<std::string, const void *> &notExistMap) const
+ge::graphStatus TQSASTilingCheck::CheckExistenceByMap(std::map<std::string, const void*>& existMap,
+                                                      std::map<std::string, const void*>& notExistMap) const
 {
     if (CheckExistsByMap(existMap) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -1306,11 +1306,11 @@ ge::graphStatus TQSASTilingCheck::CheckParaExistence() const
     if (kvLayout_ != SASLayout::PA_ND) {
         return ge::GRAPH_SUCCESS;
     }
-    std::map<std::string, const void *> ParamExistMap = {
+    std::map<std::string, const void*> ParamExistMap = {
         {"actualSeqLengths", opParamInfo_.sequsedKv.tensor},
         {"oriBlockTable", opParamInfo_.oriBlockTable.tensor},
     };
-    std::map<std::string, const void *> ParamNotExistMap = {};
+    std::map<std::string, const void*> ParamNotExistMap = {};
     if (CheckExistenceByMap(ParamExistMap, ParamNotExistMap) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -1432,8 +1432,8 @@ void TQSASTilingCheck::SetSASShapeCompare()
     }
 }
 
-ge::graphStatus TQSASTilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype,
-                                                        const ge::DataType &expectDtype, const std::string &name) const
+ge::graphStatus TQSASTilingCheck::CheckDTypeConsistency(const ge::DataType& actualDtype,
+                                                        const ge::DataType& expectDtype, const std::string& name) const
 {
     if (actualDtype != expectDtype) {
         OP_LOGE(opName_, "%s dtype should be the same to %s, but it's %s.", name.c_str(),
@@ -1511,12 +1511,12 @@ ge::graphStatus TQSASTilingCheck::Process()
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForTurboQuantSparseAttnSharedkv(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForTurboQuantSparseAttnSharedkv(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-void TurboQuantSparseAttnSharedkvTiling::CalcUbBmm(SASTilingInfo *tilingInfo)
+void TurboQuantSparseAttnSharedkvTiling::CalcUbBmm(SASTilingInfo* tilingInfo)
 {
     uint32_t cubeMSize = tilingInfo->gSize * tilingInfo->s1Size;
     uint32_t maxMSize = mBaseSize_;
@@ -1527,7 +1527,7 @@ void TurboQuantSparseAttnSharedkvTiling::CalcUbBmm(SASTilingInfo *tilingInfo)
     bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
 }
 
-void TurboQuantSparseAttnSharedkvTiling::SplitBalanced(SASTilingInfo *tilingInfo)
+void TurboQuantSparseAttnSharedkvTiling::SplitBalanced(SASTilingInfo* tilingInfo)
 {
     uint32_t s2Size = tilingInfo->s2Size;
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
@@ -1544,7 +1544,7 @@ void TurboQuantSparseAttnSharedkvTiling::SplitBalanced(SASTilingInfo *tilingInfo
 }
 
 // --------------------------TurboQuantSparseAttnSharedkvTiling类成员函数定义-----------------------
-ge::graphStatus TurboQuantSparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
+ge::graphStatus TurboQuantSparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo* tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -1573,7 +1573,7 @@ ge::graphStatus TurboQuantSparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *ti
         workspaceSize += static_cast<size_t>(MERGE_CACHE_GM_BUF_NUM) * sInnerSize_ * tilingInfo->qHeadDim *
                          NUM_BYTES_FLOAT16 * aicNum;
     }
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
@@ -1622,7 +1622,7 @@ ge::graphStatus TurboQuantSparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *ti
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingTurboQuantSparseAttnSharedkv(gert::TilingContext *context)
+ge::graphStatus TilingTurboQuantSparseAttnSharedkv(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR("TurboQuantSparseAttnSharedkv", "Tiling context is null."),

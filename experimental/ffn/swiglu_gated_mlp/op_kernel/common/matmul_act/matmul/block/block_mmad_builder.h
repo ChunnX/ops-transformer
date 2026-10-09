@@ -40,40 +40,41 @@ namespace Act {
 namespace Gemm {
 namespace Block {
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class CType_, class LayoutC_, class BiasType_,
-    class LayoutBias_, class L1TileShape_, class L0TileShape_, class BlockScheduler_,
-    class BlockMatmulPolicy_ = MatmulMultiBlockBias<>, class TileCopyParam_ = void, typename Enable_ = void>
+          class LayoutBias_, class L1TileShape_, class L0TileShape_, class BlockScheduler_,
+          class BlockMatmulPolicy_ = MatmulMultiBlockBias<>, class TileCopyParam_ = void, typename Enable_ = void>
 class BlockMmadBuilder {
     static_assert(AscendC::Std::always_false_v<BlockMatmulPolicy_>,
-        "BlockMmadBuilder is not implemented for this BlockMatmulPolicy");
+                  "BlockMmadBuilder is not implemented for this BlockMatmulPolicy");
 };
 
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class CType_, class LayoutC_, class BiasType_,
-    class LayoutBias_, class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_,
-    class TileCopyParam_>
-class BlockMmadBuilder<AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_, LayoutBias_, L1TileShape_,
-    L0TileShape_, BlockScheduler_, BlockMatmulPolicy_, TileCopyParam_,
+          class LayoutBias_, class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_,
+          class TileCopyParam_>
+class BlockMmadBuilder<
+    AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_, LayoutBias_, L1TileShape_, L0TileShape_,
+    BlockScheduler_, BlockMatmulPolicy_, TileCopyParam_,
     AscendC::Std::enable_if_t<
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithLayout<>, BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulNaivePipelineWithLayout<>, BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithOutQue<>, BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithOutQue<AscendC::Shape<_0, _0, _0, _0>, A_FULL_LOAD_MODE>,
-            BlockMatmulPolicy_> ||
+                                   BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithOutQue<AscendC::Shape<_0, _0, _0, _0>, B_FULL_LOAD_MODE>,
-            BlockMatmulPolicy_> ||
+                                   BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithOutQue<AscendC::Shape<_0, _0, _0, _0>, 0, true>,
-            BlockMatmulPolicy_> ||
+                                   BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithOutQue<AscendC::Shape<_0, _0, _0, _0>, A_FULL_LOAD_MODE, true>,
-            BlockMatmulPolicy_> ||
+                                   BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithOutQue<AscendC::Shape<_0, _0, _0, _0>, B_FULL_LOAD_MODE, true>,
-            BlockMatmulPolicy_> ||
+                                   BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulIterBatch<>, BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlock<>, BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY>, BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2>, BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithStreamK<MatMulL0C2Out::ON_THE_FLY, true>, BlockMatmulPolicy_> ||
         AscendC::Std::is_base_of_v<MatmulMultiBlockWithStreamK<MatMulL0C2Out::ND_FIXPIPE_1_2, true>,
-            BlockMatmulPolicy_> ||
-        AscendC::Std::is_base_of_v<BatchMatmulToMul<>, BlockMatmulPolicy_>>>  {
+                                   BlockMatmulPolicy_> ||
+        AscendC::Std::is_base_of_v<BatchMatmulToMul<>, BlockMatmulPolicy_>>> {
 public:
     using AType = AType_;
     using BType = BType_;

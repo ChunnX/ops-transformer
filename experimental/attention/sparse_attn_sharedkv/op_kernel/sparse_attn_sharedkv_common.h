@@ -88,8 +88,8 @@ __aicore__ inline size_t BlockAlign(size_t s)
 
 struct PAShape {
     uint32_t blockSize;
-    uint32_t headNum;             // 一般为kv的head num，对应n2
-    uint32_t headDim;             // 512 对应d
+    uint32_t headNum; // 一般为kv的head num，对应n2
+    uint32_t headDim; // 512 对应d
     uint32_t kvStride;
     uint32_t maxblockNumPerBatch; // block table 每一行的最大个数
     uint32_t actHeadDim;          // 实际拷贝col大小,考虑到N切块   s*d, 对应d
@@ -109,7 +109,7 @@ struct Position {
 // L1按NZ格式存储
 // GM的行、列、列的stride
 template <typename T>
-__aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T> &gmTensor, uint32_t rowAct,
+__aicore__ inline void DataCopyGmNDToL1(LocalTensor<T>& l1Tensor, GlobalTensor<T>& gmTensor, uint32_t rowAct,
                                         uint32_t rowAlign,
                                         uint32_t col,       // D
                                         uint32_t colStride) // D or N*D
@@ -134,11 +134,11 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<T> &l1Tensor, GlobalTensor<T
     shape.copyRowNumAlign 需要16字节对齐，如拷贝k矩阵，一次拷贝128*512，遇到尾块 10*512 需对齐到16*512
 */
 template <typename T, SAS_LAYOUT SRC_LAYOUT = SAS_LAYOUT::PA_ND>
-__aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
-                                  GlobalTensor<T> &srcTensor, // gm
-                                  GlobalTensor<int32_t> &blockTableGm,
-                                  const PAShape &shape,     // blockSize, headNum, headDim
-                                  const Position &startPos) // bacthIdx nIdx curSeqIdx
+__aicore__ inline void DataCopyPA(LocalTensor<T>& dstTensor,  // l1
+                                  GlobalTensor<T>& srcTensor, // gm
+                                  GlobalTensor<int32_t>& blockTableGm,
+                                  const PAShape& shape,     // blockSize, headNum, headDim
+                                  const Position& startPos) // bacthIdx nIdx curSeqIdx
 {
     uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;

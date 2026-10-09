@@ -31,13 +31,13 @@
 namespace optiling {
 
 struct TilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct TilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 BEGIN_TILING_DATA_DEF(MhcPreSinkhornPremixTilingData)
@@ -189,7 +189,7 @@ struct MhcPreSinkhornPremixCompileInfo {
 
 class MhcPreSinkhornPremixTiling {
 public:
-    explicit MhcPreSinkhornPremixTiling(gert::TilingContext *tilingContext)
+    explicit MhcPreSinkhornPremixTiling(gert::TilingContext* tilingContext)
         : context_(tilingContext)
     {}
     ~MhcPreSinkhornPremixTiling() = default;
@@ -208,7 +208,7 @@ public:
     ge::graphStatus CalcStage1Tiling();
 
 private:
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     uint64_t tilingKey_ = 0;
     MhcPreSinkhornPremixTilingData tilingData_;
     uint64_t aivCoreNum_ = 0;
@@ -256,7 +256,7 @@ private:
 
 class MhcPreSinkhornPremixTilingRegbase {
 public:
-    explicit MhcPreSinkhornPremixTilingRegbase(gert::TilingContext *tilingContext);
+    explicit MhcPreSinkhornPremixTilingRegbase(gert::TilingContext* tilingContext);
     ~MhcPreSinkhornPremixTilingRegbase() = default;
 
     ge::graphStatus GetPlatformInfo();
@@ -284,7 +284,7 @@ private:
 
     ge::graphStatus CalcRegbaseCommonTiling(GradOutMode gradOutMode, SplitMode splitMode);
 
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     uint64_t tilingKey_ = 0;
     MhcPreSinkhornPremixRegbaseTilingData tilingData_;
     uint64_t aivCoreNum_ = 0;

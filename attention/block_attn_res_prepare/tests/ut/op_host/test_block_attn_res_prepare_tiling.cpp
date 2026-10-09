@@ -46,8 +46,8 @@ constexpr size_t T_DIM_INDEX = 0U;
 constexpr size_t D_DIM_INDEX = 2U;
 constexpr size_t S_DIM_INDEX = 0U;
 constexpr size_t CSV_COLUMN_COUNT = 27U;
-constexpr const char *CSV_FILE_NAME = "test_block_attn_res_prepare_tiling.csv";
-constexpr const char *CSV_REPO_DIR = "attention/block_attn_res_prepare/tests/ut/op_host";
+constexpr const char* CSV_FILE_NAME = "test_block_attn_res_prepare_tiling.csv";
+constexpr const char* CSV_REPO_DIR = "attention/block_attn_res_prepare/tests/ut/op_host";
 
 struct VectorTilingDataView {
     uint32_t totalT;
@@ -104,8 +104,8 @@ struct MixTilingDataView {
 static_assert(sizeof(VectorTilingDataView) == VECTOR_TILING_DATA_SIZE);
 static_assert(sizeof(MixTilingDataView) == MIX_TILING_DATA_SIZE);
 
-void ExpectValueIfSpecified(uint64_t actual, int64_t expected, const std::string &fieldName,
-                            const std::string &caseName)
+void ExpectValueIfSpecified(uint64_t actual, int64_t expected, const std::string& fieldName,
+                            const std::string& caseName)
 {
     if (expected >= 0) {
         EXPECT_EQ(actual, static_cast<uint64_t>(expected)) << "field=" << fieldName << ", case=" << caseName;
@@ -125,7 +125,7 @@ struct BlockAttnResPrepareTilingCase {
                 SYSTEM_WORKSPACE_SIZE};
     }
 
-    gert::TilingContextPara MakeContext(optiling::BlockAttnResPrepareCompileInfo &compileInfo) const
+    gert::TilingContextPara MakeContext(optiling::BlockAttnResPrepareCompileInfo& compileInfo) const
     {
         const std::vector<int64_t> blockDims = ops::ut::ParseDims(blockResShape);
         const std::vector<int64_t> queryDims = ops::ut::ParseDims(pseudoQueryShape);
@@ -150,10 +150,10 @@ struct BlockAttnResPrepareTilingCase {
             static_cast<uint64_t>(contextCoreNum), ASCEND_950_UB_SIZE, FAKE_L2_SIZE);
     }
 
-    void CheckVectorTiling(const TilingInfo &tilingInfo) const
+    void CheckVectorTiling(const TilingInfo& tilingInfo) const
     {
         ASSERT_GE(tilingInfo.tilingDataSize, sizeof(VectorTilingDataView));
-        const auto *tilingData = reinterpret_cast<const VectorTilingDataView *>(tilingInfo.tilingData.get());
+        const auto* tilingData = reinterpret_cast<const VectorTilingDataView*>(tilingInfo.tilingData.get());
         ASSERT_NE(tilingData, nullptr);
         ExpectValueIfSpecified(tilingData->baseD, expectBaseD, "baseD", caseName);
         ExpectValueIfSpecified(tilingData->qBufferNum, expectQBufferNum, "qBufferNum", caseName);
@@ -162,10 +162,10 @@ struct BlockAttnResPrepareTilingCase {
         ExpectValueIfSpecified(tilingData->vCacheRows, expectVCacheRows, "vCacheRows", caseName);
     }
 
-    void CheckMixTiling(const TilingInfo &tilingInfo) const
+    void CheckMixTiling(const TilingInfo& tilingInfo) const
     {
         ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MixTilingDataView));
-        const auto *tilingData = reinterpret_cast<const MixTilingDataView *>(tilingInfo.tilingData.get());
+        const auto* tilingData = reinterpret_cast<const MixTilingDataView*>(tilingInfo.tilingData.get());
         ASSERT_NE(tilingData, nullptr);
         ExpectValueIfSpecified(tilingData->baseT, expectBaseT, "baseT", caseName);
         ExpectValueIfSpecified(tilingData->baseS, expectBaseS, "baseS", caseName);
@@ -283,19 +283,19 @@ std::vector<BlockAttnResPrepareTilingCase> LoadCases()
             testCase.expectMm1NAlign = std::stoll(ops::ut::Trim(items[index++]));
             testCase.checkWorkspaceFormula = ops::ut::ParseBool(items[index++]);
             cases.emplace_back(std::move(testCase));
-        } catch (const std::exception &error) {
+        } catch (const std::exception& error) {
             ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
         }
     }
     return cases;
 }
 
-std::string MakeParamName(const testing::TestParamInfo<BlockAttnResPrepareTilingCase> &info)
+std::string MakeParamName(const testing::TestParamInfo<BlockAttnResPrepareTilingCase>& info)
 {
     return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
-const std::vector<BlockAttnResPrepareTilingCase> &GetCases()
+const std::vector<BlockAttnResPrepareTilingCase>& GetCases()
 {
     static const std::vector<BlockAttnResPrepareTilingCase> cases = LoadCases();
     return cases;

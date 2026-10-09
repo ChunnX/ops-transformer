@@ -114,9 +114,7 @@ class Buffer {
     using TargetTensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<T>, LocalTensor<T>>;
 
 public:
-    __aicore__ inline Buffer()
-    {
-    }
+    __aicore__ inline Buffer() {}
     __aicore__ inline Buffer(TensorType tensor, uint32_t size)
     {
         tensor_ = tensor;

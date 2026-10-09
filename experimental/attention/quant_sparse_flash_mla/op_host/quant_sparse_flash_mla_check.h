@@ -49,13 +49,13 @@ const std::string CMP_RESIDUAL_KV_NAME = "cmp_residual_kv";
 
 // // ------------------公共定义--------------------------
 struct QSMLATilingRequiredParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::StorageShape *shape;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::StorageShape* shape;
 };
 
 struct QSMLATilingOptionalParaInfo {
-    const gert::CompileTimeTensorDesc *desc;
-    const gert::Tensor *tensor;
+    const gert::CompileTimeTensorDesc* desc;
+    const gert::Tensor* tensor;
 };
 
 enum class QSMLALayout : uint32_t {
@@ -237,24 +237,24 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
 
-    const int64_t *qkvQuantMode = nullptr;
-    const float *softmaxScale = nullptr;
-    const int64_t *oriKvStride = nullptr;
-    const int64_t *cmpKvStride = nullptr;
-    const int64_t *cmpRatio = nullptr;
-    const uint32_t *oriMaskMode = nullptr;
-    const uint32_t *cmpMaskMode = nullptr;
-    const int64_t *oriWinLeft = nullptr;
-    const int64_t *oriWinRight = nullptr;
-    const char *layoutQ = nullptr;
-    const char *layoutKv = nullptr;
+    const int64_t* qkvQuantMode = nullptr;
+    const float* softmaxScale = nullptr;
+    const int64_t* oriKvStride = nullptr;
+    const int64_t* cmpKvStride = nullptr;
+    const int64_t* cmpRatio = nullptr;
+    const uint32_t* oriMaskMode = nullptr;
+    const uint32_t* cmpMaskMode = nullptr;
+    const int64_t* oriWinLeft = nullptr;
+    const int64_t* oriWinRight = nullptr;
+    const char* layoutQ = nullptr;
+    const char* layoutKv = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
 class QSMLATilingInfo {
 public:
-    const char *opName = nullptr;
-    fe::PlatFormInfos *platformInfo = nullptr;
+    const char* opName = nullptr;
+    fe::PlatFormInfos* platformInfo = nullptr;
     QSMLAParaInfo opParamInfo;
 
     // Base Param
@@ -313,7 +313,7 @@ public:
 
 class QSMLAInfoParser {
 public:
-    explicit QSMLAInfoParser(gert::TilingContext *context)
+    explicit QSMLAInfoParser(gert::TilingContext* context)
         : context_(context)
     {}
     ~QSMLAInfoParser() = default;
@@ -322,9 +322,9 @@ public:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, QSMLALayout &layout,
-                                        const std::string &name) const;
-    ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
+    ge::graphStatus GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor, QSMLALayout& layout,
+                                        const std::string& name) const;
+    ge::graphStatus GetActualSeqLenQSize(uint32_t& size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaInfo();
@@ -354,18 +354,18 @@ public:
     ge::graphStatus GetDSizeQ();
     ge::graphStatus GetDSizeKV();
     ge::graphStatus GetKvstride();
-    void GenerateInfo(QSMLATilingInfo &qsmlaInfo);
-    ge::graphStatus Parse(QSMLATilingInfo &qsmlaInfo);
+    void GenerateInfo(QSMLATilingInfo& qsmlaInfo);
+    ge::graphStatus Parse(QSMLATilingInfo& qsmlaInfo);
 
 public:
-    gert::TilingContext *context_ = nullptr;
-    const char *opName_;
-    fe::PlatFormInfos *platformInfo_;
+    gert::TilingContext* context_ = nullptr;
+    const char* opName_;
+    fe::PlatFormInfos* platformInfo_;
     QSMLAParaInfo opParamInfo_;
 
-    bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    bool HasAxis(const QSMLAAxis& axis, const QSMLALayout& layout, const gert::Shape& shape) const;
+    size_t GetAxisIdx(const QSMLAAxis& axis, const QSMLALayout& layout) const;
+    uint32_t GetAxisNum(const gert::Shape& shape, const QSMLAAxis& axis, const QSMLALayout& layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
     // BaseParams
@@ -417,40 +417,40 @@ public:
 
 class QSMLATilingCheck {
 public:
-    explicit QSMLATilingCheck(const QSMLATilingInfo &qsmlaInfo)
+    explicit QSMLATilingCheck(const QSMLATilingInfo& qsmlaInfo)
         : qsmlaInfo_(qsmlaInfo) {};
     ~QSMLATilingCheck() = default;
     virtual ge::graphStatus Process();
 
 private:
     void Init();
-    bool HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const;
-    size_t GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const;
-    uint32_t GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const;
+    bool HasAxis(const QSMLAAxis& axis, const QSMLALayout& layout, const gert::Shape& shape) const;
+    size_t GetAxisIdx(const QSMLAAxis& axis, const QSMLALayout& layout) const;
+    uint32_t GetAxisNum(const gert::Shape& shape, const QSMLAAxis& axis, const QSMLALayout& layout) const;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
-    void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList, const ge::DataType &actualDtype,
-                              const std::string &name) const;
-    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    void LogErrorDtypeSupport(const std::vector<ge::DataType>& expectDtypeList, const ge::DataType& actualDtype,
+                              const std::string& name) const;
+    ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc* desc, const std::string& name) const;
     template <typename T>
-    void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
+    void LogErrorNumberSupport(const std::vector<T>& expectNumberList, const T& actualValue, const std::string& name,
                                const std::string subName) const;
     template <typename T>
-    void LogErrorDimNumSupport(const std::vector<T> &expectNumberList, const T &actualValue,
-                               const std::string &name) const;
-    ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::vector<size_t> &expectDimNumList,
-                                       const std::string &name) const;
-    ge::graphStatus CheckShapeNumSupport(const gert::StorageShape *shape,
-                                         const std::vector<int64_t> &expectShapeNumList, const std::string &name) const;
-    ge::graphStatus CheckDimNumInLayoutSupport(const QSMLALayout &layout, const gert::StorageShape *shape,
-                                               const std::string &name) const;
-    void LogErrorLayoutSupport(const std::vector<QSMLALayout> &expectLayoutList, const QSMLALayout &actualLayout,
-                               const std::string &name) const;
-    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const QSMLATilingShapeCompareParam &param,
-                                     const QSMLALayout &layout) const;
-    ge::graphStatus CompareShape(QSMLATilingShapeCompareParam &param, const gert::Shape &shape,
-                                 const QSMLALayout &layout, const std::string &name) const;
-    ge::graphStatus CheckLayoutSupport(const QSMLALayout &actualLayout, const std::string &name) const;
+    void LogErrorDimNumSupport(const std::vector<T>& expectNumberList, const T& actualValue,
+                               const std::string& name) const;
+    ge::graphStatus CheckDimNumSupport(const gert::StorageShape* shape, const std::vector<size_t>& expectDimNumList,
+                                       const std::string& name) const;
+    ge::graphStatus CheckShapeNumSupport(const gert::StorageShape* shape,
+                                         const std::vector<int64_t>& expectShapeNumList, const std::string& name) const;
+    ge::graphStatus CheckDimNumInLayoutSupport(const QSMLALayout& layout, const gert::StorageShape* shape,
+                                               const std::string& name) const;
+    void LogErrorLayoutSupport(const std::vector<QSMLALayout>& expectLayoutList, const QSMLALayout& actualLayout,
+                               const std::string& name) const;
+    ge::graphStatus GetExpectedShape(gert::Shape& shapeExpected, const QSMLATilingShapeCompareParam& param,
+                                     const QSMLALayout& layout) const;
+    ge::graphStatus CompareShape(QSMLATilingShapeCompareParam& param, const gert::Shape& shape,
+                                 const QSMLALayout& layout, const std::string& name) const;
+    ge::graphStatus CheckLayoutSupport(const QSMLALayout& actualLayout, const std::string& name) const;
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaKey() const;
     ge::graphStatus CheckSingleParaNumHeads() const;
@@ -470,8 +470,8 @@ private:
     ge::graphStatus CheckCmpSparseIndicesExistence();
     ge::graphStatus CheckParaExistence();
     ge::graphStatus CheckCmpRatioExistence();
-    ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, const QSMLALayout &layout,
-                                        const std::string &name) const;
+    ge::graphStatus GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor, const QSMLALayout& layout,
+                                        const std::string& name) const;
     ge::graphStatus CheckSWAExistence();
     ge::graphStatus CheckCFAExistence();
     ge::graphStatus CheckSCFAExistence();
@@ -485,8 +485,8 @@ private:
     ge::graphStatus CheckTopK();
     ge::graphStatus CheckTopkShape();
     ge::graphStatus CheckBlockTable() const;
-    ge::graphStatus CheckDTypeConsistency(const ge::DataType &actualDtype, const ge::DataType &expectDtype,
-                                          const std::string &name) const;
+    ge::graphStatus CheckDTypeConsistency(const ge::DataType& actualDtype, const ge::DataType& expectDtype,
+                                          const std::string& name) const;
 
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
@@ -510,10 +510,10 @@ private:
     void SetQSMLAShapeCompare();
 
 private:
-    const char *opName_;
-    fe::PlatFormInfos *platformInfo_;
+    const char* opName_;
+    fe::PlatFormInfos* platformInfo_;
     QSMLAParaInfo opParamInfo_;
-    const QSMLATilingInfo &qsmlaInfo_;
+    const QSMLATilingInfo& qsmlaInfo_;
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;

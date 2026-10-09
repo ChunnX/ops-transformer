@@ -29,7 +29,7 @@ const int64_t TOPK_SCORE_PRECISION_UINT16 = 2;
 // 工具函数，推导输出 sparse_indices / sparse_seq_len 的 shape 与 dtype
 //   - sparse_indices: INT32 [B, q_heads, Qb, Kb]
 //   - sparse_seq_len: INT32 [B, q_heads, Qb]
-std::tuple<at::Tensor, at::Tensor> construct_stem_output_tensors(const at::Tensor &qflat, const at::Tensor &kflat)
+std::tuple<at::Tensor, at::Tensor> construct_stem_output_tensors(const at::Tensor& qflat, const at::Tensor& kflat)
 {
     for (auto i = 0; i < qflat.sizes().size(); i++) {
         TORCH_CHECK(qflat.size(i) > 0, "All values within qflat's shape should be greater than 0, but shape[", i,
@@ -51,13 +51,12 @@ std::tuple<at::Tensor, at::Tensor> construct_stem_output_tensors(const at::Tenso
 }
 
 // step2, 为NPU设备实现前向接口（函数形参顺序 = schema 顺序）
-std::tuple<at::Tensor, at::Tensor>
-npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at::Tensor &vbias,
-                     const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens,
-                     const c10::optional<at::Tensor> &num_prompt_tokens, const c10::optional<at::Tensor> &metadata,
-                     bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha, int64_t initial_blocks,
-                     int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
-                     double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
+std::tuple<at::Tensor, at::Tensor> npu_stem_indexer_npu(
+    const at::Tensor& qflat, const at::Tensor& kflat, const at::Tensor& vbias, const at::Tensor& q_seq_lens,
+    const at::Tensor& kv_seq_lens, const c10::optional<at::Tensor>& num_prompt_tokens,
+    const c10::optional<at::Tensor>& metadata, bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha,
+    int64_t initial_blocks, int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
+    double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
 {
     TORCH_CHECK(qflat.numel() > 0, "Tensor qflat is empty.");
     TORCH_CHECK(qflat.dim() == DIM_FOUR, "qflat must be a 4D tensor with shape (B, N1, Qb, stem_stride * D), but got ",
@@ -76,10 +75,10 @@ npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at:
                 "The Kb dimensions of kflat and vbias must be equal.");
     TORCH_CHECK(qflat.size(qflat.dim() - 1) == kflat.size(kflat.dim() - 1),
                 "The last dimensions of qflat and kflat must be equal.");
-    TORCH_CHECK(topk_score_precision == TOPK_SCORE_PRECISION_UINT32 ||
-                    topk_score_precision == TOPK_SCORE_PRECISION_UINT16,
-                "topk_score_precision must be ", TOPK_SCORE_PRECISION_UINT32, "(uint32) or ",
-                TOPK_SCORE_PRECISION_UINT16, "(uint16), but got ", topk_score_precision, ".");
+    TORCH_CHECK(
+        topk_score_precision == TOPK_SCORE_PRECISION_UINT32 || topk_score_precision == TOPK_SCORE_PRECISION_UINT16,
+        "topk_score_precision must be ", TOPK_SCORE_PRECISION_UINT32, "(uint32) or ", TOPK_SCORE_PRECISION_UINT16,
+        "(uint16), but got ", topk_score_precision, ".");
 
     // construct the output tensors
     std::tuple<at::Tensor, at::Tensor> outputs = construct_stem_output_tensors(qflat, kflat);
@@ -87,27 +86,26 @@ npu_stem_indexer_npu(const at::Tensor &qflat, const at::Tensor &kflat, const at:
     at::Tensor sparse_seq_len = std::get<1>(outputs);
 
     // EXEC_NPU_CMD_V1 实参顺序 = 算子 IR 声明顺序（输入 -> 属性 -> 输出），与 schema 形参顺序不同
-    EXEC_NPU_CMD_V1(aclnnStemIndexer, qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens, metadata,
-                    causal, stem_block_size, stem_stride, alpha, initial_blocks, window_size,
-                    k_block_num_rate_medium, k_block_num_bias_medium, k_block_num_rate_large, k_block_num_bias_large,
-                    topk_score_precision, sparse_indices, sparse_seq_len);
+    EXEC_NPU_CMD_V1(aclnnStemIndexer, qflat, kflat, vbias, q_seq_lens, kv_seq_lens, num_prompt_tokens, metadata, causal,
+                    stem_block_size, stem_stride, alpha, initial_blocks, window_size, k_block_num_rate_medium,
+                    k_block_num_bias_medium, k_block_num_rate_large, k_block_num_bias_large, topk_score_precision,
+                    sparse_indices, sparse_seq_len);
 
     return std::tuple<at::Tensor, at::Tensor>(sparse_indices, sparse_seq_len);
 }
 
 // step3, 为META设备实现前向接口
-std::tuple<at::Tensor, at::Tensor>
-npu_stem_indexer_meta(const at::Tensor &qflat, const at::Tensor &kflat, const at::Tensor &vbias,
-                      const at::Tensor &q_seq_lens, const at::Tensor &kv_seq_lens,
-                      const c10::optional<at::Tensor> &num_prompt_tokens, const c10::optional<at::Tensor> &metadata,
-                      bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha, int64_t initial_blocks,
-                      int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
-                      double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
+std::tuple<at::Tensor, at::Tensor> npu_stem_indexer_meta(
+    const at::Tensor& qflat, const at::Tensor& kflat, const at::Tensor& vbias, const at::Tensor& q_seq_lens,
+    const at::Tensor& kv_seq_lens, const c10::optional<at::Tensor>& num_prompt_tokens,
+    const c10::optional<at::Tensor>& metadata, bool causal, int64_t stem_block_size, int64_t stem_stride, double alpha,
+    int64_t initial_blocks, int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
+    double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
 {
-    TORCH_CHECK(topk_score_precision == TOPK_SCORE_PRECISION_UINT32 ||
-                    topk_score_precision == TOPK_SCORE_PRECISION_UINT16,
-                "topk_score_precision must be ", TOPK_SCORE_PRECISION_UINT32, "(uint32) or ",
-                TOPK_SCORE_PRECISION_UINT16, "(uint16), but got ", topk_score_precision, ".");
+    TORCH_CHECK(
+        topk_score_precision == TOPK_SCORE_PRECISION_UINT32 || topk_score_precision == TOPK_SCORE_PRECISION_UINT16,
+        "topk_score_precision must be ", TOPK_SCORE_PRECISION_UINT32, "(uint32) or ", TOPK_SCORE_PRECISION_UINT16,
+        "(uint16), but got ", topk_score_precision, ".");
     return construct_stem_output_tensors(qflat, kflat);
 }
 } // namespace custom

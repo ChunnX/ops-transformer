@@ -28,12 +28,12 @@ namespace l0op {
 
 OP_TYPE_REGISTER(MhcPreSinkhornPremix);
 
-static const aclTensor *MhcPreSinkhornPremixAiCore(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                                   const aclTensor *bias, const aclTensor *premix, int64_t hcMult,
+static const aclTensor* MhcPreSinkhornPremixAiCore(const aclTensor* x, const aclTensor* phi, const aclTensor* alpha,
+                                                   const aclTensor* bias, const aclTensor* premix, int64_t hcMult,
                                                    int64_t numIters, double hcEps, double normEps, bool needBackward,
-                                                   aclTensor *hin, aclTensor *hPost, aclTensor *hRes, aclTensor *hPre,
-                                                   aclTensor *hcBeforeNorm, aclTensor *invRms, aclTensor *sumOut,
-                                                   aclTensor *normOut, aclOpExecutor *executor)
+                                                   aclTensor* hin, aclTensor* hPost, aclTensor* hRes, aclTensor* hPre,
+                                                   aclTensor* hcBeforeNorm, aclTensor* invRms, aclTensor* sumOut,
+                                                   aclTensor* normOut, aclOpExecutor* executor)
 {
     L0_DFX(MhcPreSinkhornPremixAiCore, x, phi, alpha, bias, premix, hcMult, numIters, hcEps, normEps, needBackward, hin,
            hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut);
@@ -49,11 +49,11 @@ static const aclTensor *MhcPreSinkhornPremixAiCore(const aclTensor *x, const acl
     return hin;
 }
 
-const aclTensor *MhcPreSinkhornPremix(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                      const aclTensor *bias, const aclTensor *premix, int64_t hcMult, int64_t numIters,
-                                      double hcEps, double normEps, bool needBackward, aclTensor *hin, aclTensor *hPost,
-                                      aclTensor *hRes, aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                      aclTensor *sumOut, aclTensor *normOut, aclOpExecutor *executor)
+const aclTensor* MhcPreSinkhornPremix(const aclTensor* x, const aclTensor* phi, const aclTensor* alpha,
+                                      const aclTensor* bias, const aclTensor* premix, int64_t hcMult, int64_t numIters,
+                                      double hcEps, double normEps, bool needBackward, aclTensor* hin, aclTensor* hPost,
+                                      aclTensor* hRes, aclTensor* hPre, aclTensor* hcBeforeNorm, aclTensor* invRms,
+                                      aclTensor* sumOut, aclTensor* normOut, aclOpExecutor* executor)
 {
     return MhcPreSinkhornPremixAiCore(x, phi, alpha, bias, premix, hcMult, numIters, hcEps, normEps, needBackward, hin,
                                       hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, executor);

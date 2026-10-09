@@ -15,11 +15,11 @@
 #include "opdev/make_op_executor.h"
 
 namespace l0op {
-const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *> MhcPreSinkhornPremixBackward(
-    const aclTensor *gradHin, const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *x,
-    const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *hPre,
-    const aclTensor *hcBeforeNorm, const aclTensor *invRms, const aclTensor *sumOut, const aclTensor *normOut,
-    const aclTensor *preMix, const aclTensor *gradPre, float hcEps, aclOpExecutor *executor);
+const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPreSinkhornPremixBackward(
+    const aclTensor* gradHin, const aclTensor* gradHPost, const aclTensor* gradHRes, const aclTensor* x,
+    const aclTensor* phi, const aclTensor* alpha, const aclTensor* bias, const aclTensor* hPre,
+    const aclTensor* hcBeforeNorm, const aclTensor* invRms, const aclTensor* sumOut, const aclTensor* normOut,
+    const aclTensor* preMix, const aclTensor* gradPre, float hcEps, aclOpExecutor* executor);
 }
 
 #endif // OP_API_OP_API_COMMON_INC_LEVEL0_OP_MHC_PRE_SINKHORN_PREMIX_BACKWARD_H

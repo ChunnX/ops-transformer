@@ -32,7 +32,7 @@ extern "C" __global__ __aicore__ void fused_gdn_gating(GM_ADDR a_log, GM_ADDR a,
     REGISTER_TILING_DEFAULT(FusedGdnGatingTilingData);
     GET_TILING_DATA(tilingData, tiling_gm);
 
-    auto tiling_ptr = reinterpret_cast<const FusedGdnGatingTilingData *>(&tilingData);
+    auto tiling_ptr = reinterpret_cast<const FusedGdnGatingTilingData*>(&tilingData);
 
 #if __CCE_AICORE__ == 200
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);

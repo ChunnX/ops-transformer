@@ -14,36 +14,67 @@ import ast
 import os
 
 EXCEL_COLUMNS = [
-    "case_name", "enable",
-    "B", "N1", "N2", "S1", "S2",
-    "cu_seqlens_q_value", "cu_seqlens_kv_value",
-    "seqused_q_value", "seqused_kv_value",
+    "case_name",
+    "enable",
+    "B",
+    "N1",
+    "N2",
+    "S1",
+    "S2",
+    "cu_seqlens_q_value",
+    "cu_seqlens_kv_value",
+    "seqused_q_value",
+    "seqused_kv_value",
     "D",
-    "sparse_q_block_size", "sparse_kv_block_size",
-    "sparse_mode", "sparse_pattern",
+    "sparse_q_block_size",
+    "sparse_kv_block_size",
+    "sparse_mode",
+    "sparse_pattern",
     "block_table_pattern",
     "block_num",
     "max_block_per_batch",
-    "q_datarange", "k_datarange", "v_datarange",
-    "layout_q", "layout_kv", "layout_sparse_indices", "layout_out",  "output_dtype",
-    "quant_mode", "mask_mode",
-    "p_scale_value", "softmax_scale",
-    "return_softmax_lse", "seed",
+    "q_datarange",
+    "k_datarange",
+    "v_datarange",
+    "layout_q",
+    "layout_kv",
+    "layout_sparse_indices",
+    "layout_out",
+    "output_dtype",
+    "quant_mode",
+    "mask_mode",
+    "p_scale_value",
+    "softmax_scale",
+    "return_softmax_lse",
+    "seed",
 ]
 
 PA_BLOCK_PADDING_BYTES = 0
 
 EXCEL_FILENAME = "cases.csv,cases_stc.csv,cases_generalized.csv"
 
-_INT_COLS = {"B", "N1", "N2", "S1", "S2", "D",
-             "sparse_q_block_size", "sparse_kv_block_size",
-             "quant_mode", "mask_mode", "seed",
-             "block_num", "max_block_per_batch"}
+_INT_COLS = {
+    "B",
+    "N1",
+    "N2",
+    "S1",
+    "S2",
+    "D",
+    "sparse_q_block_size",
+    "sparse_kv_block_size",
+    "quant_mode",
+    "mask_mode",
+    "seed",
+    "block_num",
+    "max_block_per_batch",
+}
 _FLOAT_COLS = {"p_scale_value", "softmax_scale"}
 _BOOL_COLS = {"return_softmax_lse"}
 _INT_LIST_COLS = {
-    "cu_seqlens_q_value", "cu_seqlens_kv_value",
-    "seqused_q_value", "seqused_kv_value",
+    "cu_seqlens_q_value",
+    "cu_seqlens_kv_value",
+    "seqused_q_value",
+    "seqused_kv_value",
 }
 
 
@@ -75,6 +106,7 @@ def _get_excel_path():
 
 def _get_dtype_map():
     import torch as _torch
+
     return {
         "bfloat16": _torch.bfloat16,
         "float16": _torch.float16,
@@ -120,6 +152,7 @@ def _parse_int_list(val):
 
 def _load_cases_from_one_csv(csv_path):
     import csv
+
     with open(csv_path, "r", encoding="utf-8", newline="") as f:
         reader = csv.reader(f)
         rows = list(reader)
@@ -128,6 +161,7 @@ def _load_cases_from_one_csv(csv_path):
     header = [c.strip() for c in rows[0]]
     dtype_map = _get_dtype_map()
     import torch as _torch
+
     cases = {}
     for row in rows[1:]:
         record = dict(zip(header, row))
@@ -160,7 +194,11 @@ def _load_cases_from_one_csv(csv_path):
             elif col in _INT_LIST_COLS:
                 val = _parse_int_list(val)
             elif col == "output_dtype":
-                val = dtype_map.get(str(val).strip(), _torch.bfloat16) if val is not None else _torch.bfloat16
+                val = (
+                    dtype_map.get(str(val).strip(), _torch.bfloat16)
+                    if val is not None
+                    else _torch.bfloat16
+                )
             params[col] = [val]
 
         params["pa_block_padding_bytes"] = [PA_BLOCK_PADDING_BYTES]

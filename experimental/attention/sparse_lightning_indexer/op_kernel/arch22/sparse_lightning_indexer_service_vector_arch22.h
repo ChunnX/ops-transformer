@@ -59,11 +59,11 @@ public:
     using MM1_OUT_T = float;
 
     __aicore__ inline SparseLightningIndexerServiceVector() {}
-    __aicore__ inline void ProcessVec(const SparseLICommon::RunInfo &info);
+    __aicore__ inline void ProcessVec(const SparseLICommon::RunInfo& info);
     __aicore__ inline void ProcessLD();
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void InitParams(const struct SparseLICommon::ConstInfo &constInfo,
-                                      const SparseLITilingData *__restrict tilingData);
+    __aicore__ inline void InitBuffers(TPipe* pipe);
+    __aicore__ inline void InitParams(const struct SparseLICommon::ConstInfo& constInfo,
+                                      const SparseLITilingData* __restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
                                                 GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
                                                 GlobalTensor<int32_t> indiceOutGm, GlobalTensor<OUT_V_T> valueOutGm);
@@ -72,18 +72,18 @@ public:
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
-    __aicore__ inline void InitLDBuffers(TPipe *pipe);
+    __aicore__ inline void InitLDBuffers(TPipe* pipe);
     // candidate (two-level topk) consumer 链 S4a：候选掩码构建（产出 candIsOutUb_，leak pen 链在 ProcessVec）
-    __aicore__ inline void BuildCandidateMask(const SparseLICommon::RunInfo &info, int32_t cuS1Idx, int32_t cuBaseS2Idx,
+    __aicore__ inline void BuildCandidateMask(const SparseLICommon::RunInfo& info, int32_t cuS1Idx, int32_t cuBaseS2Idx,
                                               int32_t innerS1Idx);
     // S4a：块级 isOut 表构建（每行一次，覆盖 [0, blkCnt)）
-    __aicore__ inline void BuildCandBlockTable(const SparseLICommon::RunInfo &info, int32_t cuS1Idx, int32_t blkCnt,
+    __aicore__ inline void BuildCandBlockTable(const SparseLICommon::RunInfo& info, int32_t cuS1Idx, int32_t blkCnt,
                                                int32_t innerS1Idx);
     // S4a：块级 isOut 表 → 位置级 candIsOutUb_ 展开（Brcb 向量展开 / 标量展开）
     __aicore__ inline void ExpandCandMaskToPosition(int32_t tileBlockBase, int32_t tileBlkNum, int32_t blockSize,
                                                     int32_t innerS1Idx);
     // S4a 回退：blkCnt 超块级表容量时走 2026-09-21 已验收的纯标量逐 tile 实现
-    __aicore__ inline void BuildCandidateMaskLegacyTile(const SparseLICommon::RunInfo &info, int32_t cuS1Idx,
+    __aicore__ inline void BuildCandidateMaskLegacyTile(const SparseLICommon::RunInfo& info, int32_t cuS1Idx,
                                                         int32_t cuBaseS2Idx, int32_t innerS1Idx);
 
 protected:
@@ -173,7 +173,7 @@ private:
 };
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void SparseLightningIndexerServiceVector<LIT>::InitBuffers(TPipe* pipe)
 {
     uint32_t outNeedBufSize = (BASE_TOPK * 2) * 2 * sizeof(float);
     uint32_t reduceCacheSize = REDUCE_BANK_CONFLICT_OFFSETS + groupInner_ * s2BaseSize_ * sizeof(float);
@@ -231,7 +231,7 @@ __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::InitBuffers(TPi
 }
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerServiceVector<LIT>::InitLDBuffers(TPipe *pipe)
+__aicore__ inline void SparseLightningIndexerServiceVector<LIT>::InitLDBuffers(TPipe* pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(ldToBeMrgBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float)); // 2：value + index
@@ -242,7 +242,7 @@ __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::InitLDBuffers(T
 
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::InitParams(
-    const struct SparseLICommon::ConstInfo &constInfo, const SparseLITilingData *__restrict tilingData)
+    const struct SparseLICommon::ConstInfo& constInfo, const SparseLITilingData* __restrict tilingData)
 {
     this->constInfo_ = constInfo;
     blockS2StartIdx_ = 0;
@@ -315,7 +315,7 @@ __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::CleanInvalidOut
         valueULocal = outQueue_.DeQue<uint32_t>();
 
         GlobalTensor<uint32_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
+        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t*)valueOutGm.GetPhyAddr());
         LIServiceVec::CopyOut(valueOutGmTmp[invalidS1offset], valueULocal, constInfo_.sparseCount);
         outQueue_.FreeTensor(valueULocal);
     }
@@ -442,7 +442,7 @@ __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::ExpandCandMaskT
 // 全程仅 S pipe 写（初始化 + 命中置位同管道 → 无跨管道 WAW）；候选装载区独立于表区（candBuf_ 尾部）。
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::BuildCandBlockTable(
-    const SparseLICommon::RunInfo &info, int32_t cuS1Idx, int32_t blkCnt, int32_t innerS1Idx)
+    const SparseLICommon::RunInfo& info, int32_t cuS1Idx, int32_t blkCnt, int32_t innerS1Idx)
 {
     const int32_t candBlocks = static_cast<int32_t>(constInfo_.candidateTopkBlocks);
     LocalTensor<int32_t> tbl =
@@ -509,7 +509,7 @@ __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::BuildCandBlockT
 // SLI_CAND_MASK_LEGACY=1 时全形态启用）。语义与快路径一致，仅无性能收益。
 template <typename LIT>
 __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::BuildCandidateMaskLegacyTile(
-    const SparseLICommon::RunInfo &info, int32_t cuS1Idx, int32_t cuBaseS2Idx, int32_t innerS1Idx)
+    const SparseLICommon::RunInfo& info, int32_t cuS1Idx, int32_t cuBaseS2Idx, int32_t innerS1Idx)
 {
     int32_t candBlocks = static_cast<int32_t>(constInfo_.candidateTopkBlocks);
     int32_t blockSize = static_cast<int32_t>(constInfo_.candidateBlockSize);
@@ -559,7 +559,7 @@ __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::BuildCandidateM
 }
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerServiceVector<LIT>::BuildCandidateMask(const SparseLICommon::RunInfo &info,
+__aicore__ inline void SparseLightningIndexerServiceVector<LIT>::BuildCandidateMask(const SparseLICommon::RunInfo& info,
                                                                                     int32_t cuS1Idx,
                                                                                     int32_t cuBaseS2Idx,
                                                                                     int32_t innerS1Idx)
@@ -589,7 +589,7 @@ __aicore__ inline void SparseLightningIndexerServiceVector<LIT>::BuildCandidateM
 }
 
 template <typename LIT>
-__aicore__ inline void SparseLightningIndexerServiceVector<LIT>::ProcessVec(const SparseLICommon::RunInfo &info)
+__aicore__ inline void SparseLightningIndexerServiceVector<LIT>::ProcessVec(const SparseLICommon::RunInfo& info)
 {
     int32_t cuBaseS1Idx = info.gS1Idx * s1BaseSize_;
     int32_t cuBaseS2Idx = info.s2Idx * s2BaseSize_;

@@ -54,7 +54,7 @@ static TestStats g_stats;
 
 // 将稀疏模式生成器改为生成严格的 UINT8 4D 块掩码
 void GenerateSparsePattern(int64_t batch, int32_t qBlockNum, int32_t kvBlockNum, int32_t numHeads, float sparsity,
-                           std::vector<uint8_t> &maskData)
+                           std::vector<uint8_t>& maskData)
 {
     std::random_device rd;
     std::mt19937 gen(42);
@@ -82,7 +82,7 @@ void GenerateSparsePattern(int64_t batch, int32_t qBlockNum, int32_t kvBlockNum,
 }
 
 // 辅助函数：运行单个测试
-TestResult RunTest(const TestConfig &config)
+TestResult RunTest(const TestConfig& config)
 {
     std::cout << "\n--- Test: " << config.testName << " ---" << std::endl;
     std::cout << "Config: batch=" << config.batch << ", qSeq=" << config.qSeqlen << ", kvSeq=" << config.kvSeqlen
@@ -98,18 +98,18 @@ TestResult RunTest(const TestConfig &config)
     void *doutDev = nullptr, *qDev = nullptr, *kDev = nullptr, *vDev = nullptr;
     void *outDev = nullptr, *lseDev = nullptr;
     void *dqDev = nullptr, *dkDev = nullptr, *dvDev = nullptr;
-    void *maskDev = nullptr; // 替换了原本的 selIdxDev
+    void* maskDev = nullptr; // 替换了原本的 selIdxDev
 
     // 声明 aclTensors 以便在 catch 中清理
     aclTensor *doutTensor = nullptr, *qTensor = nullptr, *kTensor = nullptr, *vTensor = nullptr;
     aclTensor *outTensor = nullptr, *lseTensor = nullptr;
     aclTensor *dqTensor = nullptr, *dkTensor = nullptr, *dvTensor = nullptr;
-    aclTensor *maskTensor = nullptr; // 替换了原本的 selIdxTensor
+    aclTensor* maskTensor = nullptr; // 替换了原本的 selIdxTensor
 
-    aclIntArray *blockShapeArray = nullptr;
-    aclIntArray *qSeqLenArray = nullptr;
-    aclIntArray *kvSeqLenArray = nullptr;
-    void *workspace = nullptr;
+    aclIntArray* blockShapeArray = nullptr;
+    aclIntArray* qSeqLenArray = nullptr;
+    aclIntArray* kvSeqLenArray = nullptr;
+    void* workspace = nullptr;
 
     try {
         // 1. 分配内存大小
@@ -189,7 +189,7 @@ TestResult RunTest(const TestConfig &config)
 
         // 4. 调用算子
         uint64_t workspaceSize = 0;
-        aclOpExecutor *executor = nullptr;
+        aclOpExecutor* executor = nullptr;
 
         // --- 属性参数准备 ---
         char qLayout[] = "BNSD";
@@ -267,7 +267,7 @@ TestResult RunTest(const TestConfig &config)
 
         return TEST_PASS;
 
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         std::cerr << "Result: FAIL - " << e.what() << std::endl;
 
         // 异常情况下的资源清理 (防止显存泄漏)

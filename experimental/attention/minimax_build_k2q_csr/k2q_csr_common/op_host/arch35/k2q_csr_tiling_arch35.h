@@ -38,7 +38,7 @@ inline bool IsArch35Soc(NpuArch npuArch)
 }
 
 /** q 维多核划分：G = min(aivNum, T)，每核一段连续 q（MC 路径） */
-inline void FillMultiCoreGroups(int64_t T, int64_t aivNum, int64_t &numGroups, int64_t &qPerGroup)
+inline void FillMultiCoreGroups(int64_t T, int64_t aivNum, int64_t& numGroups, int64_t& qPerGroup)
 {
     if (T <= 0) {
         numGroups = 1;
@@ -62,7 +62,7 @@ inline void FillMultiCoreGroups(int64_t T, int64_t aivNum, int64_t &numGroups, i
  *   NPU AIV-only：G ≤ aiv（blockDim 上限）；关键差异相对 MC 是加大 q_per_cta。
  *   q_per_cta = ceil(T/G)，再回写 G = ceil(T/q_per_cta)。
  */
-inline void FillCudaLikeGroups(int64_t T, int64_t aivNum, int64_t &numGroups, int64_t &qPerGroup)
+inline void FillCudaLikeGroups(int64_t T, int64_t aivNum, int64_t& numGroups, int64_t& qPerGroup)
 {
     constexpr int64_t kMinQPerCta = 256;
     if (T <= 0) {
@@ -113,7 +113,7 @@ inline void FillCudaLikeGroups(int64_t T, int64_t aivNum, int64_t &numGroups, in
 }
 
 // 兼容旧名
-inline void FillArch35Groups(int64_t T, int64_t aivNum, int64_t &numGroups, int64_t &qPerGroup)
+inline void FillArch35Groups(int64_t T, int64_t aivNum, int64_t& numGroups, int64_t& qPerGroup)
 {
     FillMultiCoreGroups(T, aivNum, numGroups, qPerGroup);
 }

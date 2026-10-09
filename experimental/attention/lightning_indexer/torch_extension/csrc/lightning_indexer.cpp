@@ -19,9 +19,9 @@
 
 namespace op_api {
 std::tuple<at::Tensor, at::Tensor> LightningIndexer(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &weights,
-    const c10::optional<at::Tensor> &curSeqLengthsQuery, const c10::optional<at::Tensor> &curSeqLengthsKey,
-    const c10::optional<at::Tensor> &blockTable, const std::string &layoutQuery, const std::string &layoutKey,
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& weights,
+    const c10::optional<at::Tensor>& curSeqLengthsQuery, const c10::optional<at::Tensor>& curSeqLengthsKey,
+    const c10::optional<at::Tensor>& blockTable, const std::string& layoutQuery, const std::string& layoutKey,
     int64_t sparseCount, int64_t kvBlockLen, int64_t qBlockLen, int64_t initNum, int64_t localNum, int64_t sparseMode,
     int64_t preTokens, int64_t nextTokens, bool returnValue)
 {
@@ -57,8 +57,8 @@ std::tuple<at::Tensor, at::Tensor> LightningIndexer(
     if (curSeqLengthsKey.has_value() && curSeqLengthsKey->defined()) {
         seqK = curSeqLengthsKey->to(at::kLong);
     }
-    char *queryLayout = const_cast<char *>(layoutQuery.c_str());
-    char *keyLayout = const_cast<char *>(layoutKey.c_str());
+    char* queryLayout = const_cast<char*>(layoutQuery.c_str());
+    char* keyLayout = const_cast<char*>(layoutKey.c_str());
     ACLNN_CMD(aclnnLightningIndexer, query, key, weights, seqQ, seqK, blockTable, queryLayout, keyLayout, sparseCount,
               kvBlockLen, qBlockLen, initNum, localNum, sparseMode, preTokens, nextTokens, returnValue, indices,
               values);

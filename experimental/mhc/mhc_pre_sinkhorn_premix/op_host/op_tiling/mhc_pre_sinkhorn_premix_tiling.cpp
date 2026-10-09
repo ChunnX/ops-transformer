@@ -86,7 +86,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::GetPlatformInfo()
 
 ge::graphStatus MhcPreSinkhornPremixTiling::GetAttr()
 {
-    auto *attrs = context_->GetAttrs();
+    auto* attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
     auto hcMultAttr = attrs->GetAttrPointer<int64_t>(HC_MULT_ATTR_IDX);
@@ -412,7 +412,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-static void PrintTilingData(const gert::TilingContext *context, MhcPreSinkhornPremixTilingData &tiling)
+static void PrintTilingData(const gert::TilingContext* context, MhcPreSinkhornPremixTilingData& tiling)
 {
     OP_LOGD(context->GetNodeName(), ">>>>>>>>>> Start to print MhcPreSinkhornPremix tiling data <<<<<<<<<<");
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornPremix_tiling: bs is %ld.", tiling.get_bs());
@@ -629,7 +629,7 @@ ge::graphStatus MhcPreSinkhornPremixTiling::PostTiling()
 {
     context_->SetTilingKey(0); // 0: 切M分支；预留1：切M K分支
     context_->SetBlockDim(aicCoreNum_);
-    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
 
     PrintTilingData(context_, tilingData_);
@@ -639,13 +639,13 @@ ge::graphStatus MhcPreSinkhornPremixTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForMhcPreSinkhornPremix(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForMhcPreSinkhornPremix(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingForMhcPreSinkhornPremix(gert::TilingContext *context)
+ge::graphStatus TilingForMhcPreSinkhornPremix(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("MhcPreSinkhornPremix", "Tiling context is null"), return ge::GRAPH_FAILED);
 

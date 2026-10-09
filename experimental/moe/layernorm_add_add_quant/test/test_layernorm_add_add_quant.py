@@ -24,7 +24,7 @@ EPSILON = 1e-12
 blockDim = GBH  # One block per row
 dtype = torch.float16
 
-logging.info(f"Testing layernorm_add_add_quant kernel")
+logging.info("Testing layernorm_add_add_quant kernel")
 logging.info(f"Configuration: GBH={GBH}, GBW={GBW}, blockDim={blockDim}, dtype={dtype}")
 
 # Use 2D tensors: (GBH, GBW)
@@ -54,8 +54,19 @@ scale_npu = scale.npu()
 outAdd_npu = torch.empty_like(input).npu()
 outLyn_npu = torch.empty(input.shape, dtype=torch.int8).npu()
 
-torch.ops.ascend_ops.layernorm_add_add_quant(blockDim, input_npu, bias_npu, residual_npu,
-        gamma_npu, beta_npu, scale_npu, outLyn_npu, outAdd_npu, EPSILON, False)
+torch.ops.ascend_ops.layernorm_add_add_quant(
+    blockDim,
+    input_npu,
+    bias_npu,
+    residual_npu,
+    gamma_npu,
+    beta_npu,
+    scale_npu,
+    outLyn_npu,
+    outAdd_npu,
+    EPSILON,
+    False,
+)
 
 torch.npu.empty_cache()
 
@@ -63,7 +74,7 @@ torch.npu.empty_cache()
 outAdd_abs_error = torch.abs(outAdd_npu.cpu().float() - outAdd_cpu.float())
 outAdd_rel_error = outAdd_abs_error / (torch.abs(outAdd_cpu.float()) + EPSILON)
 
-logging.info(f"---------------------outAdd (layernorm) 结果对比-----------------------")
+logging.info("---------------------outAdd (layernorm) 结果对比-----------------------")
 logging.info(f"outAdd max absolute error: {outAdd_abs_error.max().item():.8f}")
 logging.info(f"outAdd average absolute error: {outAdd_abs_error.mean().item():.8f}")
 logging.info(f"outAdd max relative error: {outAdd_rel_error.max().item():.8f}")
@@ -71,13 +82,13 @@ logging.info(f"outAdd average relative error: {outAdd_rel_error.mean().item():.8
 logging.info(f"outAdd has NaN: {torch.isnan(outAdd_npu.cpu()).any().item()}")
 logging.info(f"outAdd exact match: {torch.allclose(outAdd_cpu, outAdd_npu.cpu())}")
 
-logging.info(f"-------------------outLyn (quantized) ---------------------------")
-logging.info(f"outLyn_cpu (expected quantized): {ln_out[0,:16].float()}")
-logging.info(f"outLyn_npu (actual): {outLyn_npu.cpu()[0,:16]}")
+logging.info("-------------------outLyn (quantized) ---------------------------")
+logging.info(f"outLyn_cpu (expected quantized): {ln_out[0, :16].float()}")
+logging.info(f"outLyn_npu (actual): {outLyn_npu.cpu()[0, :16]}")
 
 # Test passed criteria: outAdd must match exactly
 test_passed = torch.allclose(outAdd_cpu, outAdd_npu.cpu())
-logging.info(f"----------------------------Test Result------------------------")
+logging.info("----------------------------Test Result------------------------")
 logging.info(f"Test PASSED: {test_passed}")
 if test_passed:
-    logging.info(f"outAdd layernorm computation is correct")
+    logging.info("outAdd layernorm computation is correct")

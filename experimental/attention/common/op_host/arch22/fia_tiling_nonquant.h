@@ -26,11 +26,13 @@ namespace optiling {
 
 class FiaTilingNonQuant : public FiaTilingBase {
 public:
-    explicit FiaTilingNonQuant(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FiaTilingNonQuant(gert::TilingContext* context)
+        : FiaTilingBase(context)
+    {}
     ~FiaTilingNonQuant() override = default;
 
 protected:
-    void InitTilingInfo(TilingInfo *tilingInfo) override;
+    void InitTilingInfo(TilingInfo* tilingInfo) override;
     bool IsCapable() override;
     ge::graphStatus DoOpTiling() override;
 
@@ -43,8 +45,8 @@ private:
     void InitParams();
 
     void Split();
-    void CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitParam) const;
-    void SetSplitOutput(const SplitResult &res);
+    void CreateSplitInput(BaseInfo& baseInfo, SplitParam& splitParam) const;
+    void SetSplitOutput(const SplitResult& res);
 
     void CalcInnerSize(uint32_t s2Size);
     void CalcMBaseSize();
@@ -102,7 +104,7 @@ private:
     bool softmaxWithBrcbFlag_ = false;
 
     // Tiling Info
-    FiaTilingInfo *fiaInfo_ = nullptr;
+    FiaTilingInfo* fiaInfo_ = nullptr;
 };
 
 } // namespace optiling

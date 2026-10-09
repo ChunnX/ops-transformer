@@ -14,7 +14,7 @@ import torch
 
 # 定义测试参数组合
 TEST_PARAMS = {
-    "scfa_decode":{
+    "scfa_decode": {
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -38,9 +38,9 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "scfa_prefill":{
+    "scfa_prefill": {
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -64,9 +64,9 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "swa_decode":{
+    "swa_decode": {
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -84,9 +84,9 @@ TEST_PARAMS = {
         "softmax_scale": [0.04419417],
         "ori_mask_mode": [4],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "swa_prefill":{
+    "swa_prefill": {
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -104,9 +104,9 @@ TEST_PARAMS = {
         "softmax_scale": [0.04419417],
         "ori_mask_mode": [4],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "cfa_decode":{
+    "cfa_decode": {
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -129,9 +129,9 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
     },
-    "cfa_prefill":{
+    "cfa_prefill": {
         "layout_q": ["TND"],
         "layout_kv": ["PA_ND"],
         "q_type": [torch.bfloat16],
@@ -154,8 +154,8 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
-    }
+        "ori_win_right": [0],
+    },
 }
 
 # 按需选择要启用的测试参数（例如默认启用所有）

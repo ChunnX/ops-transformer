@@ -58,7 +58,7 @@ struct AiCoreParams {
 
 class SparseFlashAttentionGradBasicTiling {
 public:
-    explicit SparseFlashAttentionGradBasicTiling(gert::TilingContext *context)
+    explicit SparseFlashAttentionGradBasicTiling(gert::TilingContext* context)
         : context_(context) {};
     SparseFlashAttentionGradBasicTilingData tilingData;
 
@@ -79,7 +79,7 @@ private:
     ge::graphStatus DoCastTiling();
     TempParams tmpData;
 
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     std::unique_ptr<platform_ascendc::PlatformAscendC> ascendcPlatform_{nullptr};
     uint32_t blockDim_{0};
     uint64_t workspaceSize_{0};

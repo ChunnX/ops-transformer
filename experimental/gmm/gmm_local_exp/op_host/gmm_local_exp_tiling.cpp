@@ -71,12 +71,12 @@ struct PlatFormMemSize {
 class GmmLocalExpTiling {
 public:
     GmmLocalExpTilingData tilingData;
-    ge::graphStatus Init(const gert::TilingContext *context);
-    ge::graphStatus RunFusionKernelTiling(gert::TilingContext *context);
+    ge::graphStatus Init(const gert::TilingContext* context);
+    ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
 
 protected:
-    ge::graphStatus CalMMTiling(const gert::TilingContext *context, PlatFormMemSize platFormMemSize);
-    ge::graphStatus GMMSetMMTiling(const gert::TilingContext *context, uint64_t l1Size, uint64_t l0CSize,
+    ge::graphStatus CalMMTiling(const gert::TilingContext* context, PlatFormMemSize platFormMemSize);
+    ge::graphStatus GMMSetMMTiling(const gert::TilingContext* context, uint64_t l1Size, uint64_t l0CSize,
                                    matmul_tiling::DataType matmulDtype);
 
 private:
@@ -96,11 +96,11 @@ private:
     uint32_t mmDataTypeSize;
 };
 
-ge::graphStatus GmmLocalExpTiling::Init(const gert::TilingContext *context)
+ge::graphStatus GmmLocalExpTiling::Init(const gert::TilingContext* context)
 {
-    const gert::Shape &xShape = context->GetInputShape(X_INDEX)->GetStorageShape();
-    const gert::Shape &wShape = context->GetInputShape(WEIGHT_INDEX)->GetOriginShape();
-    const gert::Shape &group_list_shape = context->GetInputShape(GROUP_LIST_INDEX)->GetStorageShape();
+    const gert::Shape& xShape = context->GetInputShape(X_INDEX)->GetStorageShape();
+    const gert::Shape& wShape = context->GetInputShape(WEIGHT_INDEX)->GetOriginShape();
+    const gert::Shape& group_list_shape = context->GetInputShape(GROUP_LIST_INDEX)->GetStorageShape();
 
     trans_b = *(context->GetAttrs()->GetAttrPointer<bool>(TRANS_B_ATTR_INDEX));
     is_b_nz = *(context->GetAttrs()->GetAttrPointer<bool>(IS_B_NZ));
@@ -171,7 +171,7 @@ ge::graphStatus GmmLocalExpTiling::Init(const gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmLocalExpTiling::RunFusionKernelTiling(gert::TilingContext *context)
+ge::graphStatus GmmLocalExpTiling::RunFusionKernelTiling(gert::TilingContext* context)
 {
     enum TilingKey {
         FP16_0_0_ND_FP16 = 0,
@@ -218,7 +218,7 @@ ge::graphStatus GmmLocalExpTiling::RunFusionKernelTiling(gert::TilingContext *co
     }
     tilingData.mmTilingData.set_usedCoreNum(aicNum);
     // set workspsces
-    size_t *workspaces = context->GetWorkspaceSizes(1);
+    size_t* workspaces = context->GetWorkspaceSizes(1);
     workspaces[0] = SYS_WORKSPACE_SIZE;
     // set tilingkey
     if (is_b_nz == false) {
@@ -256,7 +256,7 @@ ge::graphStatus GmmLocalExpTiling::RunFusionKernelTiling(gert::TilingContext *co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmLocalExpTiling::GMMSetMMTiling(const gert::TilingContext *context, uint64_t l1Size, uint64_t l0CSize,
+ge::graphStatus GmmLocalExpTiling::GMMSetMMTiling(const gert::TilingContext* context, uint64_t l1Size, uint64_t l0CSize,
                                                   matmul_tiling::DataType matmulDtype)
 {
     matmul_tiling::MatmulApiTiling mm;
@@ -302,7 +302,7 @@ ge::graphStatus GmmLocalExpTiling::GMMSetMMTiling(const gert::TilingContext *con
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GmmLocalExpTiling::CalMMTiling(const gert::TilingContext *context, PlatFormMemSize platFormMemSize)
+ge::graphStatus GmmLocalExpTiling::CalMMTiling(const gert::TilingContext* context, PlatFormMemSize platFormMemSize)
 {
     baseN_ = BEST_BASEN;
     // 基于使能double buffer的L0B内存计算baseK
@@ -324,7 +324,7 @@ ge::graphStatus GmmLocalExpTiling::CalMMTiling(const gert::TilingContext *contex
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingGmmLocalExp(gert::TilingContext *context)
+ge::graphStatus TilingGmmLocalExp(gert::TilingContext* context)
 {
     GmmLocalExpTiling GMM_tiling;
     if (GMM_tiling.Init(context) != ge::GRAPH_SUCCESS) {
@@ -334,7 +334,7 @@ ge::graphStatus TilingGmmLocalExp(gert::TilingContext *context)
     return GMM_tiling.RunFusionKernelTiling(context);
 }
 
-static ge::graphStatus TilingFunc(gert::TilingContext *context)
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     return TilingGmmLocalExp(context);
 }

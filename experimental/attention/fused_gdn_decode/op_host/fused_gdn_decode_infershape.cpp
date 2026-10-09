@@ -22,7 +22,7 @@ constexpr size_t OUT_INDEX = 0;
 constexpr size_t STATE_OUT_INDEX = 1;
 } // namespace
 
-static ge::graphStatus InferShapeFusedGdnDecode(InferShapeContext *context)
+static ge::graphStatus InferShapeFusedGdnDecode(InferShapeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -55,7 +55,7 @@ static ge::graphStatus InferShapeFusedGdnDecode(InferShapeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeFusedGdnDecode(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeFusedGdnDecode(gert::InferDataTypeContext* context)
 {
     if (context == nullptr) {
         return ge::GRAPH_FAILED;

@@ -29,22 +29,22 @@ public:
     MaskChecker() = default;
     ~MaskChecker() override = default;
 
-    ge::graphStatus CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo) override;
-    ge::graphStatus CheckParaExistence(const QuantFlashAttnTilingInfo &qfaInfo) override;
-    ge::graphStatus CheckFeature(const QuantFlashAttnTilingInfo &qfaInfo) override;
-    ge::graphStatus CheckMultiPara(const QuantFlashAttnTilingInfo &qfaInfo) override;
+    ge::graphStatus CheckSinglePara(const QuantFlashAttnTilingInfo& qfaInfo) override;
+    ge::graphStatus CheckParaExistence(const QuantFlashAttnTilingInfo& qfaInfo) override;
+    ge::graphStatus CheckFeature(const QuantFlashAttnTilingInfo& qfaInfo) override;
+    ge::graphStatus CheckMultiPara(const QuantFlashAttnTilingInfo& qfaInfo) override;
 
 private:
     // --- SinglePara ---
-    ge::graphStatus CheckSingleParaMaskMode(const QuantFlashAttnTilingInfo &qfaInfo);
-    ge::graphStatus CheckSingleParaAttnMask(const QuantFlashAttnTilingInfo &qfaInfo);
-    ge::graphStatus CheckSingleParaWindowParams(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckSingleParaMaskMode(const QuantFlashAttnTilingInfo& qfaInfo);
+    ge::graphStatus CheckSingleParaAttnMask(const QuantFlashAttnTilingInfo& qfaInfo);
+    ge::graphStatus CheckSingleParaWindowParams(const QuantFlashAttnTilingInfo& qfaInfo);
 
     // --- MultiPara: mask_mode 与 attn_mask 的存在性关系校验 ---
-    ge::graphStatus CheckMaskModeAttnMaskConsistency(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckMaskModeAttnMaskConsistency(const QuantFlashAttnTilingInfo& qfaInfo);
 
     // --- Feature: quant_mode 与 mask_mode 取值约束 ---
-    ge::graphStatus CheckMaskModeQuantMode(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckMaskModeQuantMode(const QuantFlashAttnTilingInfo& qfaInfo);
 };
 
 } // namespace quant_flash_attn

@@ -23,7 +23,7 @@ bool KnownMismatch(int64_t lhs, int64_t rhs)
     return lhs >= 0 && rhs >= 0 && lhs != rhs;
 }
 
-bool IsValidScaleShape(const gert::Shape &scale, int64_t heads)
+bool IsValidScaleShape(const gert::Shape& scale, int64_t heads)
 {
     if (scale.GetDimNum() == 1) {
         return !KnownMismatch(scale.GetDim(0), heads);
@@ -36,15 +36,15 @@ bool IsValidScaleShape(const gert::Shape &scale, int64_t heads)
 }
 } // namespace
 
-static ge::graphStatus InferShapeScaledCosineAttentionScore(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeScaledCosineAttentionScore(gert::InferShapeContext* context)
 {
-    const gert::Shape *query = context->GetInputShape(IN_QUERY);
+    const gert::Shape* query = context->GetInputShape(IN_QUERY);
     OP_CHECK_NULL_WITH_CONTEXT(context, query);
-    const gert::Shape *key = context->GetInputShape(IN_KEY);
+    const gert::Shape* key = context->GetInputShape(IN_KEY);
     OP_CHECK_NULL_WITH_CONTEXT(context, key);
-    const gert::Shape *scale = context->GetInputShape(IN_SCALE);
+    const gert::Shape* scale = context->GetInputShape(IN_SCALE);
     OP_CHECK_NULL_WITH_CONTEXT(context, scale);
-    gert::Shape *output = context->GetOutputShape(OUT_SCORE);
+    gert::Shape* output = context->GetOutputShape(OUT_SCORE);
     OP_CHECK_NULL_WITH_CONTEXT(context, output);
 
     OP_CHECK_IF(query->GetDimNum() != 4 || key->GetDimNum() != 4,
@@ -66,7 +66,7 @@ static ge::graphStatus InferShapeScaledCosineAttentionScore(gert::InferShapeCont
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeScaledCosineAttentionScore(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeScaledCosineAttentionScore(gert::InferDataTypeContext* context)
 {
     context->SetOutputDataType(OUT_SCORE, context->GetInputDataType(IN_QUERY));
     return ge::GRAPH_SUCCESS;

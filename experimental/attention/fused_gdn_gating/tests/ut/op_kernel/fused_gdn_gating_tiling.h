@@ -22,7 +22,7 @@
 
 #include "fused_gdn_gating_tiling_data.h"
 
-inline void InitFusedGdnGatingTilingData(uint8_t *tiling, FusedGdnGating::FusedGdnGatingTilingData *tilingData)
+inline void InitFusedGdnGatingTilingData(uint8_t* tiling, FusedGdnGating::FusedGdnGatingTilingData* tilingData)
 {
     std::memcpy(tilingData, tiling, sizeof(FusedGdnGating::FusedGdnGatingTilingData));
 }
@@ -33,7 +33,7 @@ inline void InitFusedGdnGatingTilingData(uint8_t *tiling, FusedGdnGating::FusedG
 
 #define GET_TILING_DATA(tilingData, tilingArg) \
     FusedGdnGating::FusedGdnGatingTilingData tilingData; \
-    InitFusedGdnGatingTilingData(reinterpret_cast<uint8_t *>(tilingArg), &tilingData)
+    InitFusedGdnGatingTilingData(reinterpret_cast<uint8_t*>(tilingArg), &tilingData)
 
 #ifdef GET_TILING_DATA_WITH_STRUCT
 #undef GET_TILING_DATA_WITH_STRUCT
@@ -41,7 +41,7 @@ inline void InitFusedGdnGatingTilingData(uint8_t *tiling, FusedGdnGating::FusedG
 
 #define GET_TILING_DATA_WITH_STRUCT(tilingStruct, tilingData, tilingArg) \
     tilingStruct tilingData; \
-    InitFusedGdnGatingTilingData(reinterpret_cast<uint8_t *>(tilingArg), &tilingData)
+    InitFusedGdnGatingTilingData(reinterpret_cast<uint8_t*>(tilingArg), &tilingData)
 
 #ifdef REGISTER_TILING_DEFAULT
 #undef REGISTER_TILING_DEFAULT

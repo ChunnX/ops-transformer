@@ -64,13 +64,13 @@ public:
     using MM2_OUT_T = T;
 
     __aicore__ inline TurboQuantSparseFlashAttentionMla(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *keyScale, __gm__ uint8_t *valueScale,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
-                                __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
-                                const TurboQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-                                __gm__ uint8_t *gmTiling, TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
+                                __gm__ uint8_t* sparseIndices, __gm__ uint8_t* keyScale, __gm__ uint8_t* valueScale,
+                                __gm__ uint8_t* blockTable, __gm__ uint8_t* actualSeqLengthsQ,
+                                __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* attentionOut,
+                                __gm__ uint8_t* softmaxMax, __gm__ uint8_t* softmaxSum, __gm__ uint8_t* workspace,
+                                const TurboQuantSparseFlashAttentionTilingDataMla* __restrict tiling,
+                                __gm__ uint8_t* gmTiling, TPipe* tPipe);
 
     __aicore__ inline void Process();
 
@@ -99,9 +99,9 @@ private:
 
     static constexpr uint32_t dbWorkspaceRatio = PRELOAD_NUM;
 
-    const TurboQuantSparseFlashAttentionTilingDataMla *__restrict tilingData = nullptr;
+    const TurboQuantSparseFlashAttentionTilingDataMla* __restrict tilingData = nullptr;
 
-    TPipe *pipe = nullptr;
+    TPipe* pipe = nullptr;
 
     uint64_t mSizeVStart = 0ULL;
     int64_t threshold = 0;
@@ -117,8 +117,8 @@ private:
     uint32_t aiCoreIdx = 0U;
     uint32_t usedCoreNum = 0U;
 
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
+    __gm__ uint8_t* keyPtr = nullptr;
+    __gm__ uint8_t* valuePtr = nullptr;
 
     ConstInfo constInfo{};
     TempLoopInfo tempLoopInfo{};
@@ -159,7 +159,7 @@ private:
     __aicore__ inline void InitTilingData();
     __aicore__ inline void InitCalcParamsEach();
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengths);
     __aicore__ inline void InitOutputSingleCore();
     // ================================Process functions================================
     __aicore__ inline void ProcessBalance();
@@ -170,20 +170,20 @@ private:
     __aicore__ inline void GetSparseActualSeqLen(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
     __aicore__ inline void UpdateInnerLoopCond();
     __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
-    __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo &info);
-    __aicore__ inline void CalcMSizeInfo(RunInfo &info);
-    __aicore__ inline void CalcFirstTensorOffsets(RunInfo &info, uint64_t qsfaActualSeqQPrefixSum,
+    __aicore__ inline void CalcParams(uint32_t loop, uint64_t s2Start, uint32_t s2LoopIdx, RunInfo& info);
+    __aicore__ inline void CalcMSizeInfo(RunInfo& info);
+    __aicore__ inline void CalcFirstTensorOffsets(RunInfo& info, uint64_t qsfaActualSeqQPrefixSum,
                                                   uint64_t actualSeqKVPrefixSum);
     __aicore__ inline void GetAxisStartIdx(uint32_t bN2EndPrev, uint32_t gS1EndPrev, uint32_t s2EndPrev);
-    __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths, uint32_t bIdx);
+    __aicore__ inline uint64_t GetBalanceActualSeqLengths(GlobalTensor<int32_t>& actualSeqLengths, uint32_t bIdx);
     __aicore__ inline uint32_t GetActualSeqLenKV(uint32_t bIdx);
-    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx, uint32_t &n2Idx);
+    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, uint32_t& bIdx, uint32_t& n2Idx);
     __aicore__ inline void GetPreNextTokensLeftUp();
     // ================================Mm1==============================================
-    __aicore__ inline void ComputeMm1(const RunInfo &info);
+    __aicore__ inline void ComputeMm1(const RunInfo& info);
     // ================================Mm2==============================================
     __aicore__ inline void InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
-    __aicore__ inline void ComputeMm2(const RunInfo &info);
+    __aicore__ inline void ComputeMm2(const RunInfo& info);
 };
 
 template <typename QSFAT>
@@ -241,16 +241,16 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::InitBuffers()
 }
 
 template <typename QSFAT>
-__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
-                                                                                  __gm__ uint8_t *actualSeqLengths)
+__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::InitActualSeqLen(__gm__ uint8_t* actualSeqLengthsQ,
+                                                                                  __gm__ uint8_t* actualSeqLengths)
 {
     constInfo.actualLenDimsQ = tilingData->baseParams.actualLenDimsQ;
     constInfo.actualLenDimsKV = tilingData->baseParams.actualLenDimsKV;
     if (constInfo.actualLenDimsQ != 0) {
-        actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ, constInfo.actualLenDimsQ);
+        actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsQ, constInfo.actualLenDimsQ);
     }
     if (constInfo.actualLenDimsKV != 0) {
-        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths, constInfo.actualLenDimsKV);
+        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengths, constInfo.actualLenDimsKV);
     }
 }
 
@@ -411,11 +411,11 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::UpdateInnerLoop
 
 template <typename QSFAT>
 __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::Init(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *keyScale, __gm__ uint8_t *valueScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
-    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
-    const TurboQuantSparseFlashAttentionTilingDataMla *__restrict tiling, __gm__ uint8_t *gmTiling, TPipe *tPipe)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* sparseIndices,
+    __gm__ uint8_t* keyScale, __gm__ uint8_t* valueScale, __gm__ uint8_t* blockTable, __gm__ uint8_t* actualSeqLengthsQ,
+    __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxMax,
+    __gm__ uint8_t* softmaxSum, __gm__ uint8_t* workspace,
+    const TurboQuantSparseFlashAttentionTilingDataMla* __restrict tiling, __gm__ uint8_t* gmTiling, TPipe* tPipe)
 {
     if ASCEND_IS_AIC {
         tmpBlockIdx = GetBlockIdx(); // cube:0-23
@@ -438,13 +438,13 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::Init(
     pipe = tPipe;
 
     // init global buffer
-    queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
-    keyGm.SetGlobalBuffer((__gm__ KV_T *)keyPtr);
-    valueGm.SetGlobalBuffer((__gm__ KV_T *)valuePtr);
+    queryGm.SetGlobalBuffer((__gm__ Q_T*)query);
+    keyGm.SetGlobalBuffer((__gm__ KV_T*)keyPtr);
+    valueGm.SetGlobalBuffer((__gm__ KV_T*)valuePtr);
 
-    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
-    softmaxMaxGm.SetGlobalBuffer((__gm__ T *)softmaxMax);
-    softmaxSumGm.SetGlobalBuffer((__gm__ T *)softmaxSum);
+    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)attentionOut);
+    softmaxMaxGm.SetGlobalBuffer((__gm__ T*)softmaxMax);
+    softmaxSumGm.SetGlobalBuffer((__gm__ T*)softmaxSum);
 
     if ASCEND_IS_AIV {
         if (constInfo.needInit && LAYOUT_T != QSFA_LAYOUT::TND) {
@@ -453,52 +453,52 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::Init(
     }
 
     if constexpr (PAGE_ATTENTION) {
-        blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+        blockTableGm.SetGlobalBuffer((__gm__ int32_t*)blockTable);
     }
-    topKGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
+    topKGm.SetGlobalBuffer((__gm__ int32_t*)sparseIndices);
 
     // workspace 内存排布
     // |Q--|mm1ResGm(存S)|vec1ResGm(存A1,A2)|mm2ResGm(存O)|vec2ResGm
     // |Core0_Q1-Core0_Q2-Core1_Q1-Core1_Q2....Core32_Q1-Core32_Q2|Core0_mmRes
     uint64_t qsfaOffset = 0;
     mm1ResGm.SetGlobalBuffer(
-        (__gm__ MM1_OUT_T *)(workspace + qsfaOffset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
+        (__gm__ MM1_OUT_T*)(workspace + qsfaOffset +
+                            aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
     qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T);
 
     vec1ResGm.SetGlobalBuffer(
-        (__gm__ K_ROPE_T *)(workspace + qsfaOffset +
-                            aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(K_ROPE_T)));
+        (__gm__ K_ROPE_T*)(workspace + qsfaOffset +
+                           aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(K_ROPE_T)));
     qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(K_ROPE_T);
 
     mm2ResGm.SetGlobalBuffer(
-        (__gm__ MM2_OUT_T *)(workspace + qsfaOffset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
+        (__gm__ MM2_OUT_T*)(workspace + qsfaOffset +
+                            aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
     qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
-    mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(mm2ResGm.GetPhyAddr(0)));
+    mm2ResInt32Gm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(mm2ResGm.GetPhyAddr(0)));
 
     vec2ResGm.SetGlobalBuffer(
-        (__gm__ T *)(workspace + qsfaOffset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
+        (__gm__ T*)(workspace + qsfaOffset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
     qsfaOffset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
 
     if constexpr (TEMPLATE_MODE == V_TEMPLATE) {
         // s2  d+rope bufNum
         kvMergeGm_.SetGlobalBuffer(
-            (__gm__ K_ROPE_T *)(workspace + qsfaOffset +
-                                aiCoreIdx * 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T)));
+            (__gm__ K_ROPE_T*)(workspace + qsfaOffset +
+                               aiCoreIdx * 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T)));
         qsfaOffset += GetBlockNum() * 512 * constInfo.combineHeadDim * 4 * sizeof(K_ROPE_T);
 
         // 每核占 2048 个 int32：[0, 1024) 为 kvValidSize，[1024, 2048) 为 [TQ4] per-column scale
         // （按 half 视图是 [2048, 4096)，布局 slot(loop%4) × s2BaseSize(512)）。
         kvValidSizeGm_.SetGlobalBuffer(
-            (__gm__ int32_t *)(workspace + qsfaOffset + (aiCoreIdx * 4) * 128 * 4 * sizeof(int32_t)));
+            (__gm__ int32_t*)(workspace + qsfaOffset + (aiCoreIdx * 4) * 128 * 4 * sizeof(int32_t)));
     }
 
     if constexpr (FLASH_DECODE) {
-        accumOutGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset));
+        accumOutGm.SetGlobalBuffer((__gm__ float*)(workspace + qsfaOffset));
         qsfaOffset = qsfaOffset + tilingData->splitKVParams.accumOutSize * sizeof(float);
-        lseSumFdGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset));
-        lseMaxFdGm.SetGlobalBuffer((__gm__ float *)(workspace + qsfaOffset) +
+        lseSumFdGm.SetGlobalBuffer((__gm__ float*)(workspace + qsfaOffset));
+        lseMaxFdGm.SetGlobalBuffer((__gm__ float*)(workspace + qsfaOffset) +
                                    tilingData->splitKVParams.logSumExpSize / 2);
         qsfaOffset = qsfaOffset + tilingData->splitKVParams.logSumExpSize * sizeof(float);
     }
@@ -607,7 +607,7 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::InitCalcParamsE
 
 template <typename QSFAT>
 __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint32_t loop, uint64_t s2Start,
-                                                                            uint32_t s2LoopIdx, RunInfo &info)
+                                                                            uint32_t s2LoopIdx, RunInfo& info)
 {
     info.loop = loop;
     info.bIdx = tempLoopInfo.bIdx;
@@ -674,7 +674,7 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::CalcParams(uint
 }
 
 template <typename QSFAT>
-__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::CalcMSizeInfo(RunInfo &info)
+__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::CalcMSizeInfo(RunInfo& info)
 {
     if ASCEND_IS_AIV {
         info.mSize = info.actMBaseSize;
@@ -689,7 +689,7 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::CalcMSizeInfo(R
 
 template <typename QSFAT>
 __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::CalcFirstTensorOffsets(
-    RunInfo &info, uint64_t qsfaActualSeqQPrefixSum, uint64_t actualSeqKVPrefixSum)
+    RunInfo& info, uint64_t qsfaActualSeqQPrefixSum, uint64_t actualSeqKVPrefixSum)
 {
     if (info.isFirstSInnerLoop) {
         tensorACoreOffset = info.tndBIdxOffsetForQ + info.gS1Idx * constInfo.combineHeadDim;
@@ -733,7 +733,7 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::CalcFirstTensor
 }
 
 template <typename QSFAT>
-__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::ComputeMm1(const RunInfo &info)
+__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::ComputeMm1(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -747,7 +747,7 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::ComputeMm1(cons
 }
 
 template <typename QSFAT>
-__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::ComputeMm2(const RunInfo &info)
+__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::ComputeMm2(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -783,8 +783,8 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::Process()
 }
 
 template <typename QSFAT>
-__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx,
-                                                                           uint32_t &n2Idx)
+__aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::GetBN2Idx(uint32_t bN2Idx, uint32_t& bIdx,
+                                                                           uint32_t& n2Idx)
 {
     bIdx = bN2Idx / kvHeadNum;
     n2Idx = bN2Idx % kvHeadNum;
@@ -859,9 +859,9 @@ template <typename QSFAT>
 __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::PreloadPipeline(
     uint32_t loop, uint64_t s2Start, uint64_t s2LoopIdx, RunInfo extraInfo[QSFA_PRELOAD_TASK_CACHE_SIZE])
 {
-    RunInfo &extraInfo0 = extraInfo[loop % QSFA_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
-    RunInfo &extraInfo2 = extraInfo[(loop + 2) % QSFA_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
-    RunInfo &extraInfo1 = extraInfo[(loop + 1) % QSFA_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
+    RunInfo& extraInfo0 = extraInfo[loop % QSFA_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
+    RunInfo& extraInfo2 = extraInfo[(loop + 2) % QSFA_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
+    RunInfo& extraInfo1 = extraInfo[(loop + 1) % QSFA_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
 
     CalcParams(loop, s2Start, s2LoopIdx, extraInfo0);
 
@@ -900,7 +900,7 @@ __aicore__ inline void TurboQuantSparseFlashAttentionMla<QSFAT>::PreloadPipeline
 
 template <typename QSFAT>
 __aicore__ inline uint64_t TurboQuantSparseFlashAttentionMla<QSFAT>::GetBalanceActualSeqLengths(
-    GlobalTensor<int32_t> &actualSeqLengths, uint32_t bIdx)
+    GlobalTensor<int32_t>& actualSeqLengths, uint32_t bIdx)
 {
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
         if (bIdx > 0) {

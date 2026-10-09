@@ -50,7 +50,7 @@ std::pair<int, int> getTmpSize(int M, int N, int blockSize, int numLevels)
         localM = numBlocks * N;
     }
     qOffset += 2 * N * N;
-    return { qOffset, rOffset * N * N };
+    return {qOffset, rOffset * N * N};
 }
 
 int getBlockSize(gert::TilingContext* context, int M, int N)
@@ -63,23 +63,20 @@ int getBlockSize(gert::TilingContext* context, int M, int N)
     }
     if (!blockSize) {
         blockSize = 16;
-        if (blockSize < N * 2) blockSize = N * 2;
-        if (M / 4 > 1024) blockSize = 1024;
+        if (blockSize < N * 2)
+            blockSize = N * 2;
+        if (M / 4 > 1024)
+            blockSize = 1024;
     }
     return blockSize;
 }
 
 bool checkLimitations(int M, int N, int blockSize, int numBlocks)
 {
-    return (
-        M >= 128 && N >= 16 // MIN Shape
-        && M <= 8 * 1024 * 1024 && N <= 160 // MAX Shape
-        && M >= N * 8
-        && blockSize > 0
-        && N * 2 <= blockSize && blockSize <= M / 4
-        && N % 8 == 0 && N <= 168
-        && M % blockSize == 0
-        && ((numBlocks & (numBlocks - 1)) == 0) // Is Power Of Two
+    return (M >= 128 && N >= 16                 // MIN Shape
+            && M <= 8 * 1024 * 1024 && N <= 160 // MAX Shape
+            && M >= N * 8 && blockSize > 0 && N * 2 <= blockSize && blockSize <= M / 4 && N % 8 == 0 && N <= 168 &&
+            M % blockSize == 0 && ((numBlocks & (numBlocks - 1)) == 0) // Is Power Of Two
     );
 }
 
@@ -125,16 +122,16 @@ bool setMatmulTilingData(gert::TilingContext* context, TsqrTilingData& tilingDat
     return true;
 }
 
-int64_t allocWorkspace(TsqrTilingData& tilingData, int M, int N, int blockSize,
-                       int numLevels, int batchSize, int coreNum)
+int64_t allocWorkspace(TsqrTilingData& tilingData, int M, int N, int blockSize, int numLevels, int batchSize,
+                       int coreNum)
 {
     auto tmpSize = getTmpSize(M, N, blockSize, numLevels);
     int64_t tmpQSize = tmpSize.first + 2 * N * N;
     int64_t tmpRSize = tmpSize.second;
     int64_t bufferQSize = M * N;
     int64_t maxQrWorkspace = N * blockSize;
-    int64_t totalWorkspaceSize = tmpQSize * (batchSize > 1 ? 2 : 1) + bufferQSize + tmpRSize +
-                                 maxQrWorkspace * coreNum * 2;
+    int64_t totalWorkspaceSize =
+        tmpQSize * (batchSize > 1 ? 2 : 1) + bufferQSize + tmpRSize + maxQrWorkspace * coreNum * 2;
 
     tilingData.set_tmpQSize(tmpQSize);
     tilingData.set_tmpRSize(tmpRSize);
@@ -207,8 +204,6 @@ ge::graphStatus TilingPrepareForTsqr(gert::TilingParseContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(Tsqr)
-.Tiling(TilingTsqr)
-.TilingParse<TsqrCompileInfo>(TilingPrepareForTsqr);
+IMPL_OP(Tsqr).Tiling(TilingTsqr).TilingParse<TsqrCompileInfo>(TilingPrepareForTsqr);
 
 } // namespace optiling

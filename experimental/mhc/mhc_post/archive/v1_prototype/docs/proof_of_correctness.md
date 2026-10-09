@@ -50,15 +50,15 @@ output[(b × num_streams + s), seq, d] = branch_output[b, seq, d] × h_post[s]
 ```python
 def depth_connection(self, branch_output, residuals, *, beta):
     # beta就是h_post
-    
+
     # einsum: "b ... d, s -> b ... s d"
     # 含义: 对每个位置，branch_output乘以每个stream的权重
     output = einsum(branch_output, beta, "b ... d, s -> b ... s d")
-    
+
     # rearrange: "b ... s d -> (b s) ... d"
     # 含义: 将batch和stream维度合并
     output = rearrange(output, "b ... s d -> (b s) ... d")
-    
+
     return output
 ```
 

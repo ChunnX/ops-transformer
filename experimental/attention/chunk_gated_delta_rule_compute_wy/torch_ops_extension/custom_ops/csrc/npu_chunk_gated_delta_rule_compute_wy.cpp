@@ -27,8 +27,8 @@ constexpr int64_t MAX_HEAD_DIM = 128;
 constexpr int64_t MAX_BATCH = 32;
 constexpr int64_t MAX_VALUE_HEADS = 64;
 
-void check_chunk_gated_delta_rule_compute_wy(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
-                                             const at::Tensor &g, const at::Tensor &beta, int64_t chunk_size)
+void check_chunk_gated_delta_rule_compute_wy(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                                             const at::Tensor& g, const at::Tensor& beta, int64_t chunk_size)
 {
     TORCH_CHECK(q.dim() == DIM_FOUR, "q must be [B, T, Hk, K], got ", q.sizes());
     TORCH_CHECK(k.sizes() == q.sizes(), "k must have the same shape as q, got k=", k.sizes(), " q=", q.sizes());
@@ -62,7 +62,7 @@ void check_chunk_gated_delta_rule_compute_wy(const at::Tensor &q, const at::Tens
 
 // q/k -> [B, Hk, T, K]; w -> [B, Hv, T, K]; u -> [B, Hv, T, V]; g -> [B, Hv, T] fp32.
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> construct_compute_wy_output_tensors(
-    const at::Tensor &q, const at::Tensor &v, const at::Tensor &g)
+    const at::Tensor& q, const at::Tensor& v, const at::Tensor& g)
 {
     const int64_t b = q.size(0);
     const int64_t t = q.size(1);
@@ -82,16 +82,16 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> construct
 
 // 为NPU设备实现前向接口（函数形参顺序 = schema 顺序）
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_chunk_gated_delta_rule_compute_wy_npu(
-    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &g, const at::Tensor &beta,
+    const at::Tensor& q, const at::Tensor& k, const at::Tensor& v, const at::Tensor& g, const at::Tensor& beta,
     int64_t chunk_size)
 {
     check_chunk_gated_delta_rule_compute_wy(q, k, v, g, beta, chunk_size);
     auto outputs = construct_compute_wy_output_tensors(q, v, g);
-    at::Tensor &qKernel = std::get<0>(outputs);
-    at::Tensor &kKernel = std::get<1>(outputs);
-    at::Tensor &wKernel = std::get<2>(outputs);
-    at::Tensor &uKernel = std::get<3>(outputs);
-    at::Tensor &gKernel = std::get<4>(outputs);
+    at::Tensor& qKernel = std::get<0>(outputs);
+    at::Tensor& kKernel = std::get<1>(outputs);
+    at::Tensor& wKernel = std::get<2>(outputs);
+    at::Tensor& uKernel = std::get<3>(outputs);
+    at::Tensor& gKernel = std::get<4>(outputs);
 
     EXEC_NPU_CMD_V1(aclnnChunkGatedDeltaRuleComputeWy, q, k, v, g, beta, chunk_size, qKernel, kKernel, wKernel, uKernel,
                     gKernel);
@@ -100,7 +100,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_chunk
 
 // 为META设备实现前向接口
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> npu_chunk_gated_delta_rule_compute_wy_meta(
-    const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const at::Tensor &g, const at::Tensor &beta,
+    const at::Tensor& q, const at::Tensor& k, const at::Tensor& v, const at::Tensor& g, const at::Tensor& beta,
     int64_t chunk_size)
 {
     check_chunk_gated_delta_rule_compute_wy(q, k, v, g, beta, chunk_size);

@@ -27,10 +27,13 @@ logger = logging.getLogger(__name__)
 
 try:
     import mhc_pre_ext
+
     _USE_CPP_EXT = True
 except ImportError:
     _USE_CPP_EXT = False
-    logger.warning("mhc_pre_ext not found. Run 'python setup.py build_ext --inplace' to build.")
+    logger.warning(
+        "mhc_pre_ext not found. Run 'python setup.py build_ext --inplace' to build."
+    )
 
 
 def mhc_pre(x: torch.Tensor, h_pre: torch.Tensor) -> torch.Tensor:
@@ -65,10 +68,10 @@ def mhc_pre_einsum(x: torch.Tensor, h_pre: torch.Tensor) -> torch.Tensor:
     seq_len = x.size(1)
     dim = x.size(2)
     x_4d = x.view(batch, num_streams, seq_len, dim)
-    return torch.einsum('bnsd,n->bsd', x_4d, h_pre)
+    return torch.einsum("bnsd,n->bsd", x_4d, h_pre)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     torch.npu.set_device(0)
 

@@ -41,4 +41,3 @@ export NUM_CORES="${NumCoresMap[$SOC_VERSION]}"
 # Verify that everything is correctly set:
 source $script_dir/check_cann.sh
 check_cann_environment true
-

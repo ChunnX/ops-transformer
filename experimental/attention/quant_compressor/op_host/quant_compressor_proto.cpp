@@ -66,8 +66,8 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
-ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *context,
-                                           QuantCompressorProtoShapeParam &shapeParam)
+ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext* context,
+                                           QuantCompressorProtoShapeParam& shapeParam)
 {
     auto xShape = context->GetRequiredInputShape(TOKEN_X_INPUT_INDEX); // (B, S, H) | (T, H)
     OPS_LOG_E_IF_NULL(context, xShape, return ge::GRAPH_FAILED)
@@ -75,11 +75,11 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
     OPS_LOG_E_IF_NULL(context, wkvShape, return ge::GRAPH_FAILED)
 
     auto attr = context->GetAttrs();
-    const int *cmpRatioPtr = attr->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
+    const int* cmpRatioPtr = attr->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
     int cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
     OPS_LOG_E_IF(cmpRatio <= 0, context, return ge::GRAPH_FAILED, "cmp_ratio should be greater than 0");
 
-    const int *coffPtr = attr->GetAttrPointer<int>(COFF_ATTR_INDEX);
+    const int* coffPtr = attr->GetAttrPointer<int>(COFF_ATTR_INDEX);
     int coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
     OPS_LOG_E_IF(coff <= 0, context, return ge::GRAPH_FAILED, "coff should be greater than 0");
 
@@ -90,7 +90,7 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
         shapeParam.Sr = (xShape->GetDim(DIM_INDEX_1) + cmpRatio - 1) / cmpRatio;
         shapeParam.H = xShape->GetDim(DIM_INDEX_2);
         shapeParam.T = shapeParam.B * shapeParam.S;
-    } else { // T
+    } else {                                                                          // T
         auto cuSeqlensShape = context->GetRequiredInputShape(CU_SEQ_LEN_INPUT_INDEX); // (B+1,)
         OPS_LOG_E_IF_NULL(context, cuSeqlensShape, return ge::GRAPH_FAILED)
         shapeParam.isBsMerge = true;
@@ -105,8 +105,8 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext *contex
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus SetQuantCompressorShapeDim(const QuantCompressorProtoShapeParam &shapeParam,
-                                           gert::InferShapeContext *context)
+ge::graphStatus SetQuantCompressorShapeDim(const QuantCompressorProtoShapeParam& shapeParam,
+                                           gert::InferShapeContext* context)
 {
     auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX); // query: (B, S, N, Hckv) | (T, N, Hckv)
     OPS_LOG_E_IF_NULL(context, cmpKvShape, return ge::GRAPH_FAILED)
@@ -125,7 +125,7 @@ ge::graphStatus SetQuantCompressorShapeDim(const QuantCompressorProtoShapeParam 
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeQuantCompressor(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeQuantCompressor(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("QuantCompressor", "Context is nullptr."),
                 return ge::GRAPH_FAILED);
@@ -136,7 +136,7 @@ ge::graphStatus InferDataTypeQuantCompressor(gert::InferDataTypeContext *context
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferShapeQuantCompressor(gert::InferShapeContext *context)
+ge::graphStatus InferShapeQuantCompressor(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("QuantCompressor", "Context is nullptr."),
                 return ge::GRAPH_FAILED);

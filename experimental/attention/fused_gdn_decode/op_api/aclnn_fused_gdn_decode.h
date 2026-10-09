@@ -18,14 +18,14 @@
 extern "C" {
 #endif
 
-ACLNN_API aclnnStatus aclnnFusedGdnDecodeGetWorkspaceSize(const aclTensor *mixedQkv, const aclTensor *a,
-                                                          const aclTensor *b, const aclTensor *aLog,
-                                                          const aclTensor *dtBias, aclTensor *stateRef,
-                                                          const aclTensor *ssmStateIndices, float scale,
-                                                          float softplusThreshold, aclTensor *out,
-                                                          uint64_t *workspaceSize, aclOpExecutor **executor);
+ACLNN_API aclnnStatus aclnnFusedGdnDecodeGetWorkspaceSize(const aclTensor* mixedQkv, const aclTensor* a,
+                                                          const aclTensor* b, const aclTensor* aLog,
+                                                          const aclTensor* dtBias, aclTensor* stateRef,
+                                                          const aclTensor* ssmStateIndices, float scale,
+                                                          float softplusThreshold, aclTensor* out,
+                                                          uint64_t* workspaceSize, aclOpExecutor** executor);
 
-ACLNN_API aclnnStatus aclnnFusedGdnDecode(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+ACLNN_API aclnnStatus aclnnFusedGdnDecode(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                           aclrtStream stream);
 
 #ifdef __cplusplus

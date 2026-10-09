@@ -279,8 +279,8 @@ public:
 
     __aicore__ inline void CopyOut(const AscendC::GlobalTensor<C_T>& cGlobal,
                                    const AscendC::GlobalTensor<float>& workspaceGlobal,
-                                   const AscendC::LocalTensor<float>& c1Local,
-                                   uint64_t baseM, uint64_t baseN, bool checkIsSkScene)
+                                   const AscendC::LocalTensor<float>& c1Local, uint64_t baseM, uint64_t baseN,
+                                   bool checkIsSkScene)
     {
         AscendC::DataCopyCO12DstParams intriParams;
         intriParams.nSize = baseN;
@@ -317,8 +317,8 @@ public:
 
     __aicore__ inline void operator()(AscendC::GlobalTensor<C_T> cGlobal, AscendC::GlobalTensor<A_T> aGlobal,
                                       AscendC::GlobalTensor<B_T> bGlobal, AscendC::GlobalTensor<Bias_T> biasGlobal,
-                                      AscendC::GlobalTensor<float> workspaceGlobal,
-                                      TupleShape tileShape, int64_t kCntIndex, bool checkIsSkScene)
+                                      AscendC::GlobalTensor<float> workspaceGlobal, TupleShape tileShape,
+                                      int64_t kCntIndex, bool checkIsSkScene)
     {
         // mL1_ == ml0, nL1_ == nl0
         uint64_t curML1 = Get<0>(tileShape);
@@ -381,8 +381,8 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0PingPong_ & 0x1);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0PingPong_ & 0x1);
                 mmadParams.k = curK0;
-                mmadParams.unitFlag = (iter0 + 1 == curKL1Iter && iter1 + 1 == kL0Iter) ? FINAL_ACCUMULATION :
-                                                                                          NON_FINAL_ACCUMULATION;
+                mmadParams.unitFlag =
+                    (iter0 + 1 == curKL1Iter && iter1 + 1 == kL0Iter) ? FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
                 mmadParams.cmatrixInitVal = (iter0 == 0 && iter1 == 0 && (!isBias_ || (isBias_ && kCntIndex != 0)));
 
                 if (NeedBias(iter0, iter1, kCntIndex)) {

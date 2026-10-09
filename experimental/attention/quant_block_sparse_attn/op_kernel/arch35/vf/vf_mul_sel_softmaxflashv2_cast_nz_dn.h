@@ -53,12 +53,12 @@ constexpr float VF_QBSA_SAFE_PAD_VALUE = -25690112.0F;
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+    __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb, __ubuf__ float* qScaleUb, __ubuf__ float* kScaleUb,
+    __ubuf__ uint8_t* indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f, const uint32_t ubN_div_8 = 0, const uint32_t ubN_m_m_div_4 = 0,
-    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t* qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -114,17 +114,17 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + m;
-    __ubuf__ float *src_ub2 = src_ub0 + m * 2;
-    __ubuf__ float *src_ub3 = src_ub0 + m * 3;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + m;
+    __ubuf__ float* src_ub2 = src_ub0 + m * 2;
+    __ubuf__ float* src_ub3 = src_ub0 + m * 3;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -198,7 +198,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
@@ -244,32 +244,32 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -280,17 +280,17 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     Add(vreg_x_sum2, vreg_x_sum2, vreg_x_sum3, preg_134);
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_x_sum0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+    __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb, __ubuf__ float* qScaleUb, __ubuf__ float* kScaleUb,
+    __ubuf__ uint8_t* indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f, const uint32_t ubN_div_8 = 0, const uint32_t ubN_m_m_div_4 = 0,
-    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t* qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -347,17 +347,17 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + m;
-    __ubuf__ float *src_ub2 = src_ub0 + m * 2;
-    __ubuf__ float *src_ub3 = src_ub0 + m * 3;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + m;
+    __ubuf__ float* src_ub2 = src_ub0 + m * 2;
+    __ubuf__ float* src_ub3 = src_ub0 + m * 3;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -371,7 +371,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -432,7 +432,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -444,7 +444,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
@@ -491,32 +491,32 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -527,35 +527,35 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     Add(vreg_x_sum2, vreg_x_sum2, vreg_x_sum3, preg_134);
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_x_sum0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
-__aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                                             const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                                             const LocalTensor<T> &expMaxTensor,
-                                             const LocalTensor<uint8_t> &vselrIndexesBuf,
-                                             const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor,
-                                             const LocalTensor<T> &kScaleTensor, const uint32_t m, const uint32_t n,
+__aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+                                             const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+                                             const LocalTensor<T>& expMaxTensor,
+                                             const LocalTensor<uint8_t>& vselrIndexesBuf,
+                                             const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor,
+                                             const LocalTensor<T>& kScaleTensor, const uint32_t m, const uint32_t n,
                                              const uint32_t originN, const T scale, const T minValue, bool needAtten,
-                                             const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+                                             const float pScale = 1.0f, __ubuf__ uint32_t* qGatherIdxUb = nullptr)
 {
-    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
-    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
-    __ubuf__ float *qScaleUb = (__ubuf__ T *)qScaleTensor.GetPhyAddr();
-    __ubuf__ float *kScaleUb = (__ubuf__ T *)kScaleTensor.GetPhyAddr();
-    __ubuf__ uint8_t *indexesUb = nullptr;
+    __ubuf__ T2* x_exp = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ float* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* new_global_sum = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float* new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t* maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+    __ubuf__ float* qScaleUb = (__ubuf__ T*)qScaleTensor.GetPhyAddr();
+    __ubuf__ float* kScaleUb = (__ubuf__ T*)kScaleTensor.GetPhyAddr();
+    __ubuf__ uint8_t* indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale;
     blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
-    indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
     uint32_t ubN_div_8 = ubN >> 3;
     uint32_t ubN_m_m_div_4 = (ubN * m) >> 2;
     uint32_t ubN_m_m_div_2 = (ubN * m) >> 1;
@@ -586,12 +586,12 @@ __aicore__ inline void ProcessVec1DnNoUpdate(const LocalTensor<T2> &dstTensor, c
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnUpdateVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+    __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb, __ubuf__ float* qScaleUb, __ubuf__ float* kScaleUb,
+    __ubuf__ uint8_t* indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f, const uint32_t ubN_div_8 = 0, const uint32_t ubN_m_m_div_4 = 0,
-    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t* qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -648,17 +648,17 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + m;
-    __ubuf__ float *src_ub2 = src_ub0 + m * 2;
-    __ubuf__ float *src_ub3 = src_ub0 + m * 3;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + m;
+    __ubuf__ float* src_ub2 = src_ub0 + m * 2;
+    __ubuf__ float* src_ub3 = src_ub0 + m * 3;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -735,8 +735,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_1, 0, preg_134);
@@ -783,32 +783,32 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -824,17 +824,17 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
     Select(vreg_l0, vreg_zero, vreg_l0, preg_previous_sum_zero);
     Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_l0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = true, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+    __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb, __ubuf__ float* qScaleUb, __ubuf__ float* kScaleUb,
+    __ubuf__ uint8_t* indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f, const uint32_t ubN_div_8 = 0, const uint32_t ubN_m_m_div_4 = 0,
-    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+    const uint32_t ubN_m_m_div_2 = 0, const uint32_t ubN_m_m_mul3_div_4 = 0, __ubuf__ uint32_t* qGatherIdxUb = nullptr)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -892,17 +892,17 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + m;
-    __ubuf__ float *src_ub2 = src_ub0 + m * 2;
-    __ubuf__ float *src_ub3 = src_ub0 + m * 3;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + m;
+    __ubuf__ float* src_ub2 = src_ub0 + m * 2;
+    __ubuf__ float* src_ub3 = src_ub0 + m * 3;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -916,7 +916,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -977,7 +977,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * m, vreg_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -992,8 +992,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_1, 0, preg_134);
@@ -1040,32 +1040,32 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -1081,35 +1081,35 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
     Select(vreg_l0, vreg_zero, vreg_l0, preg_previous_sum_zero);
     Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_l0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
-__aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                                           const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                                           const LocalTensor<T> &expMaxTensor,
-                                           const LocalTensor<uint8_t> &vselrIndexesBuf,
-                                           const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor,
-                                           const LocalTensor<T> &kScaleTensor, const uint32_t m, const uint32_t n,
+__aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+                                           const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+                                           const LocalTensor<T>& expMaxTensor,
+                                           const LocalTensor<uint8_t>& vselrIndexesBuf,
+                                           const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor,
+                                           const LocalTensor<T>& kScaleTensor, const uint32_t m, const uint32_t n,
                                            const uint32_t originN, const T scale, const T minValue, bool needAtten,
-                                           const float pScale = 1.0f, __ubuf__ uint32_t *qGatherIdxUb = nullptr)
+                                           const float pScale = 1.0f, __ubuf__ uint32_t* qGatherIdxUb = nullptr)
 {
-    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
-    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
-    __ubuf__ float *qScaleUb = (__ubuf__ T *)qScaleTensor.GetPhyAddr();
-    __ubuf__ float *kScaleUb = (__ubuf__ T *)kScaleTensor.GetPhyAddr();
-    __ubuf__ uint8_t *indexesUb = nullptr;
+    __ubuf__ T2* x_exp = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ float* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* new_global_sum = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float* new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t* maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+    __ubuf__ float* qScaleUb = (__ubuf__ T*)qScaleTensor.GetPhyAddr();
+    __ubuf__ float* kScaleUb = (__ubuf__ T*)kScaleTensor.GetPhyAddr();
+    __ubuf__ uint8_t* indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale;
     blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
-    indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
     uint32_t ubN_div_8 = ubN >> 3;
     uint32_t ubN_m_m_div_4 = (ubN * m) >> 2;
     uint32_t ubN_m_m_div_2 = (ubN * m) >> 1;
@@ -1157,18 +1157,18 @@ __aicore__ inline void ProcessVec1DnUpdate(const LocalTensor<T2> &dstTensor, con
  */
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint32_t ubN = 256>
-__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                                       const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                                       const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
-                                       const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor,
-                                       const LocalTensor<T> &kScaleTensor, const uint32_t m, const uint32_t n,
+__aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+                                       const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+                                       const LocalTensor<T>& expMaxTensor, TBuf<>* vselrIndexesBuf,
+                                       const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor,
+                                       const LocalTensor<T>& kScaleTensor, const uint32_t m, const uint32_t n,
                                        const uint32_t originN, const T scale, const T minValue, bool needAtten,
                                        const float pScale = 1.0f)
 {
-    __ubuf__ uint32_t *qGatherIdxUb =
-        (__ubuf__ uint32_t *)(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::QSCALE_GATHER_INDEX)]
-                                  .template Get<uint32_t>()
-                                  .GetPhyAddr());
+    __ubuf__ uint32_t* qGatherIdxUb =
+        (__ubuf__ uint32_t*)(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::QSCALE_GATHER_INDEX)]
+                                 .template Get<uint32_t>()
+                                 .GetPhyAddr());
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
@@ -1186,9 +1186,9 @@ __aicore__ inline void ProcessVec1VfDn(const LocalTensor<T2> &dstTensor, const L
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+    __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb, __ubuf__ float* qScaleUb, __ubuf__ float* kScaleUb,
+    __ubuf__ uint8_t* indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f)
 {
@@ -1255,17 +1255,17 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + mConst;
-    __ubuf__ float *src_ub2 = src_ub0 + m2Const;
-    __ubuf__ float *src_ub3 = src_ub0 + m3Const;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + mConst;
+    __ubuf__ float* src_ub2 = src_ub0 + m2Const;
+    __ubuf__ float* src_ub3 = src_ub0 + m3Const;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -1327,7 +1327,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
@@ -1372,32 +1372,32 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -1408,14 +1408,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     Add(vreg_x_sum2, vreg_x_sum2, vreg_x_sum3, preg_134);
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_x_sum0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+    __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb, __ubuf__ float* qScaleUb, __ubuf__ float* kScaleUb,
+    __ubuf__ uint8_t* indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f)
 {
@@ -1483,17 +1483,17 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + mConst;
-    __ubuf__ float *src_ub2 = src_ub0 + m2Const;
-    __ubuf__ float *src_ub3 = src_ub0 + m3Const;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + mConst;
+    __ubuf__ float* src_ub2 = src_ub0 + m2Const;
+    __ubuf__ float* src_ub3 = src_ub0 + m3Const;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -1507,7 +1507,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_safe_min,
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * mConst, vreg_safe_min,
                                                      preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -1558,7 +1558,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     // 第二个 sparse block 不存在时，尾部列可能对应零 scale。
     // q/k scale 处理后重新写入 minValue，避免无效列进入 softmax。
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_min, preg_135);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * mConst, vreg_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -1570,7 +1570,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Select(max0, max0, vreg_empty_lse, preg_invalid_cur);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
@@ -1615,32 +1615,32 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -1651,33 +1651,33 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     Add(vreg_x_sum2, vreg_x_sum2, vreg_x_sum3, preg_134);
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_x_sum0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
 __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t>& vselrIndexesBuf,
+    const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, const LocalTensor<T>& kScaleTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue, bool needAtten,
     const float pScale = 1.0f)
 {
-    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
-    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
-    __ubuf__ float *qScaleUb = (__ubuf__ T *)qScaleTensor.GetPhyAddr();
-    __ubuf__ float *kScaleUb = (__ubuf__ T *)kScaleTensor.GetPhyAddr();
-    __ubuf__ uint8_t *indexesUb = nullptr;
+    __ubuf__ T2* x_exp = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ float* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* new_global_sum = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float* new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t* maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+    __ubuf__ float* qScaleUb = (__ubuf__ T*)qScaleTensor.GetPhyAddr();
+    __ubuf__ float* kScaleUb = (__ubuf__ T*)kScaleTensor.GetPhyAddr();
+    __ubuf__ uint8_t* indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale;
     blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
-    indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
 
     if (needAtten && originN < ubN) {
         ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, true, ubN>(
@@ -1700,9 +1700,9 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+    __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb, __ubuf__ float* qScaleUb, __ubuf__ float* kScaleUb,
+    __ubuf__ uint8_t* indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f)
 {
@@ -1770,17 +1770,17 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + mConst;
-    __ubuf__ float *src_ub2 = src_ub0 + m2Const;
-    __ubuf__ float *src_ub3 = src_ub0 + m3Const;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + mConst;
+    __ubuf__ float* src_ub2 = src_ub0 + m2Const;
+    __ubuf__ float* src_ub3 = src_ub0 + m3Const;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -1846,8 +1846,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_1, 0, preg_134);
@@ -1892,32 +1892,32 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -1933,14 +1933,14 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
     Select(vreg_l0, vreg_zero, vreg_l0, preg_previous_sum_zero);
     Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_l0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
-    __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-    __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
-    __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
+    __ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB, __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+    __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb, __ubuf__ float* qScaleUb, __ubuf__ float* kScaleUb,
+    __ubuf__ uint8_t* indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN, const T scale,
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f)
 {
@@ -2009,17 +2009,17 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + mConst;
-    __ubuf__ float *src_ub2 = src_ub0 + m2Const;
-    __ubuf__ float *src_ub3 = src_ub0 + m3Const;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + mConst;
+    __ubuf__ float* src_ub2 = src_ub0 + m2Const;
+    __ubuf__ float* src_ub3 = src_ub0 + m3Const;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -2033,7 +2033,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_safe_min,
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * mConst, vreg_safe_min,
                                                      preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
@@ -2084,7 +2084,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_min, preg_135);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * mConst, vreg_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -2099,8 +2099,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_1, 0, preg_134);
@@ -2145,32 +2145,32 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
         if constexpr (!IsSameType<T2, hifloat8_t>::value) {
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
             Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-            Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-            Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-            Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+            Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+            Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+            Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
         }
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -2186,33 +2186,33 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
     Select(vreg_l0, vreg_zero, vreg_l0, preg_previous_sum_zero);
     Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_l0, preg_134);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
 __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<T> &qScaleTensor, const LocalTensor<T> &kScaleTensor,
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t>& vselrIndexesBuf,
+    const LocalTensor<uint8_t>& maskTensor, const LocalTensor<T>& qScaleTensor, const LocalTensor<T>& kScaleTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, const T minValue, bool needAtten,
     const float pScale = 1.0f)
 {
-    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
-    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
-    __ubuf__ float *qScaleUb = (__ubuf__ T *)qScaleTensor.GetPhyAddr();
-    __ubuf__ float *kScaleUb = (__ubuf__ T *)kScaleTensor.GetPhyAddr();
-    __ubuf__ uint8_t *indexesUb = nullptr;
+    __ubuf__ T2* x_exp = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ float* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* new_global_sum = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float* new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t* maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+    __ubuf__ float* qScaleUb = (__ubuf__ T*)qScaleTensor.GetPhyAddr();
+    __ubuf__ float* kScaleUb = (__ubuf__ T*)kScaleTensor.GetPhyAddr();
+    __ubuf__ uint8_t* indexesUb = nullptr;
     float dScale;
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale;
     blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
-    indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
 
     if (needAtten && originN < ubN) {
         ProcessVec1DnUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, true, ubN>(
@@ -2234,12 +2234,12 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
 }
 
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint32_t ubN = 256>
-__aicore__ inline void ProcessVec1VfDnPerTokenHead(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                                                   const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                                                   const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
-                                                   const LocalTensor<uint8_t> &maskTensor,
-                                                   const LocalTensor<T> &qScaleTensor,
-                                                   const LocalTensor<T> &kScaleTensor, const uint32_t m,
+__aicore__ inline void ProcessVec1VfDnPerTokenHead(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+                                                   const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+                                                   const LocalTensor<T>& expMaxTensor, TBuf<>* vselrIndexesBuf,
+                                                   const LocalTensor<uint8_t>& maskTensor,
+                                                   const LocalTensor<T>& qScaleTensor,
+                                                   const LocalTensor<T>& kScaleTensor, const uint32_t m,
                                                    const uint32_t n, const uint32_t originN, const T scale,
                                                    const T minValue, bool needAtten, const float pScale = 1.0f)
 {
@@ -2259,10 +2259,10 @@ __aicore__ inline void ProcessVec1VfDnPerTokenHead(const LocalTensor<T2> &dstTen
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
-__simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
-                                                     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-                                                     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                                                     __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
+__simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB,
+                                                     __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+                                                     __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb,
+                                                     __ubuf__ uint8_t* indexesUb, __ubuf__ fp8_e8m0_t* pScaleSubLoop0,
                                                      const uint32_t originN, const float dScale, float pScale,
                                                      const T minValue)
 {
@@ -2326,21 +2326,21 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16;
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32;
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
 
     // Each packed register writes 32 bytes per block; the second stream
     // starts in the adjacent block, independently of the S2 tile width.
     x_exp_1 = x_exp + blockBytesU8;
 
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + mConst;
-    __ubuf__ float *src_ub2 = src_ub0 + m2Const;
-    __ubuf__ float *src_ub3 = src_ub0 + m3Const;
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + mConst;
+    __ubuf__ float* src_ub2 = src_ub0 + m2Const;
+    __ubuf__ float* src_ub3 = src_ub0 + m3Const;
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -2351,7 +2351,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_min, preg_135);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * mConst, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -2407,7 +2407,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     }
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
@@ -2474,32 +2474,32 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         // Interleave two independent FP8 pack chains to cover Cast/Or/Gather RAW latency.
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-        Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-        Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-        Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-        Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-        Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-        Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+        Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+        Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+        Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+        Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+        Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+        Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
 
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -2510,18 +2510,18 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Add(vreg_x_sum0, vreg_x_sum0, vreg_x_sum2, preg_134);
 
     if constexpr (SUB_LOOP == 0U) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_x_sum0, preg_134);
         // pscale update
         RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
         Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_134);
-        StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
+        StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t*&)pScaleSubLoop0),
                                                              vreg_p_scale_f8e8m0, preg_134);
     } else {
         RegTensor<float> first_loop_sum;
         LoadAlign(first_loop_sum, new_global_sum);
         Mul(first_loop_sum, vreg_x_max_f32_b, first_loop_sum, preg_134);
         Add(vreg_x_sum0, first_loop_sum, vreg_x_sum0, preg_134);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_x_sum0, preg_134);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_x_sum0, preg_134);
         // pscale update
         RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
         RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
@@ -2533,31 +2533,31 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_108);
         Cast<bfloat16_t, T, castTraitRintNoSatOne>(vreg_p_scale_bf16_1, vreg_x_max_f32_b, preg_135);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_108);
-        Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
-           (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t>&)vreg_p_scale_f8e8m0_0,
+           (RegTensor<uint8_t>&)vreg_p_scale_f8e8m0_1, preg_134);
         DeInterleave(vreg_p_scale_f8e8m0_dst0, vreg_p_scale_f8e8m0_dst1, vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0);
-        StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
+        StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t*&)pScaleSubLoop0),
                                                              vreg_p_scale_f8e8m0_dst0, preg_134);
     }
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
-__aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor,
-                                                  const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor,
-                                                  const LocalTensor<T> &expMaxTensor,
-                                                  const LocalTensor<uint8_t> &vselrIndexesBuf,
-                                                  const LocalTensor<uint8_t> &maskTensor, const uint32_t originN,
+__aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor,
+                                                  const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
+                                                  const LocalTensor<T>& expMaxTensor,
+                                                  const LocalTensor<uint8_t>& vselrIndexesBuf,
+                                                  const LocalTensor<uint8_t>& maskTensor, const uint32_t originN,
                                                   const float dScale, float pScale, const T minValue,
-                                                  const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
+                                                  const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor)
 {
-    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
-    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
-    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
-    __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    __ubuf__ T2* x_exp = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ float* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* new_global_sum = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float* new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ uint32_t* maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+    __ubuf__ fp8_e8m0_t* pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t*)pScaleSubLoop0Tensor.GetPhyAddr();
+    __ubuf__ uint8_t* indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
 
     ProcessVec1DnNoUpdateMxfp8VF<T, T2, hasAtten, ubN, SUB_LOOP>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum,
                                                                  new_global_max, maskUb, indexesUb, pScaleSubLoop0Ub,
@@ -2565,13 +2565,13 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(const LocalTensor<T2> &dstTens
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
-__simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB,
-                                                   __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
-                                                   __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb,
-                                                   __ubuf__ uint8_t *indexesUb, __ubuf__ fp8_e8m0_t *pScaleSubLoop0,
+__simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2* x_exp, __ubuf__ float* input_x_local_UB,
+                                                   __ubuf__ float* exp_max_fp32, __ubuf__ float* new_global_sum,
+                                                   __ubuf__ float* new_global_max, __ubuf__ uint32_t* maskUb,
+                                                   __ubuf__ uint8_t* indexesUb, __ubuf__ fp8_e8m0_t* pScaleSubLoop0,
                                                    const uint32_t originN, const float dScale, float pScale,
-                                                   const T minValue, __ubuf__ float *pre_loop_max,
-                                                   __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum)
+                                                   const T minValue, __ubuf__ float* pre_loop_max,
+                                                   __ubuf__ float* pre_loop_sum, __ubuf__ float* first_loop_sum)
 {
     static_assert(SUB_LOOP < 2U, "MX V1 only supports subLoop 0/1");
     constexpr uint32_t mConst = 64;                                                        // m = 64
@@ -2633,18 +2633,18 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     RegTensor<T2> vreg_x_exp_fp8_0, vreg_x_exp_f8_pack_0;
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
-    __ubuf__ T2 *x_exp_1;
+    __ubuf__ T2* x_exp_1;
     // Each packed register writes 32 bytes per block; the second stream
     // starts in the adjacent block, independently of the S2 tile width.
     x_exp_1 = x_exp + blockBytesU8;
-    __ubuf__ float *src_ub0 = input_x_local_UB;
-    __ubuf__ float *src_ub1 = src_ub0 + mConst;
-    __ubuf__ float *src_ub2 = src_ub0 + m2Const;
-    __ubuf__ float *src_ub3 = src_ub0 + m3Const;
-    __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ float* src_ub0 = input_x_local_UB;
+    __ubuf__ float* src_ub1 = src_ub0 + mConst;
+    __ubuf__ float* src_ub2 = src_ub0 + m2Const;
+    __ubuf__ float* src_ub3 = src_ub0 + m3Const;
+    __ubuf__ uint32_t* mask_ub0 = maskUb;
+    __ubuf__ uint32_t* mask_ub1 = maskUb + 16;
+    __ubuf__ uint32_t* mask_ub2 = maskUb + 32;
+    __ubuf__ uint32_t* mask_ub3 = maskUb + 48;
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -2655,7 +2655,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_min, preg_135);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)input_x_local_UB + i * mConst, vreg_min, preg_135);
     }
     mem_bar(VST_VLD);
 
@@ -2708,7 +2708,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     if constexpr (SUB_LOOP == 0U) {
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)pre_loop_max, vreg_x_max_f32_b, preg_108);
         FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     } else {
         FusedExpSub(vreg_subloop_update, vreg_x_max_f32_b, max0, preg_134);
@@ -2716,10 +2716,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     }
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)new_global_max, max0, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
 
-    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
+    StoreAlign<T, Reg::StoreDist::DIST_NORM_B16>((__ubuf__ T*&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, Reg::MaskMergeMode::ZEROING, float>(vreg_x_sum_1, 0, preg_134);
@@ -2787,32 +2787,32 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         // Interleave two independent FP8 pack chains to cover Cast/Or/Gather RAW latency.
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_0, vreg_x_exp_0, preg_135);
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
-        Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_0, vreg_x_exp_1, preg_135);
-        Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
-        Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_1, vreg_x_exp_2, preg_135);
-        Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
-        Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_2, vreg_x_exp_3, preg_135);
-        Cast<T2, T, castTraitRintThree>((RegTensor<T2> &)vreg_x_exp_6, vreg_x_exp_7, preg_135);
+        Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_0, vreg_x_exp_1, preg_135);
+        Cast<T2, T, castTraitRintOne>((RegTensor<T2>&)vreg_x_exp_4, vreg_x_exp_5, preg_135);
+        Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_1, vreg_x_exp_2, preg_135);
+        Cast<T2, T, castTraitRintTwo>((RegTensor<T2>&)vreg_x_exp_5, vreg_x_exp_6, preg_135);
+        Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_2, vreg_x_exp_3, preg_135);
+        Cast<T2, T, castTraitRintThree>((RegTensor<T2>&)vreg_x_exp_6, vreg_x_exp_7, preg_135);
 
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_0, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_4, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_1, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_5, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_0, (RegTensor<uint8_t> &)vreg_x_exp_fp8_0,
-           (RegTensor<uint8_t> &)vreg_x_exp_2, preg_134);
-        Or((RegTensor<uint8_t> &)vreg_x_exp_fp8_1, (RegTensor<uint8_t> &)vreg_x_exp_fp8_1,
-           (RegTensor<uint8_t> &)vreg_x_exp_6, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_0, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_4, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_5, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_0, (RegTensor<uint8_t>&)vreg_x_exp_fp8_0,
+           (RegTensor<uint8_t>&)vreg_x_exp_2, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_x_exp_fp8_1, (RegTensor<uint8_t>&)vreg_x_exp_fp8_1,
+           (RegTensor<uint8_t>&)vreg_x_exp_6, preg_134);
 
         Gather(vreg_x_exp_f8_pack_0, vreg_x_exp_fp8_0, idx_nd2nz);
         Gather(vreg_x_exp_f8_pack_1, vreg_x_exp_fp8_1, idx_nd2nz);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
         StoreAlign<T2, Reg::DataCopyMode::DATA_BLOCK_COPY, Reg::PostLiteral::POST_MODE_UPDATE>(
-            ((__ubuf__ T2 *&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
+            ((__ubuf__ T2*&)x_exp_1), vreg_x_exp_f8_pack_1, blockStride, repeatStride, preg_134);
     }
     Add(vreg_x_sum0, vreg_x_sum_2, vreg_x_sum_0, preg_134);
     Add(vreg_x_sum1, vreg_x_sum_3, vreg_x_sum_1, preg_134);
@@ -2828,15 +2828,15 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     RegTensor<float> vreg_l0;
     if constexpr (SUB_LOOP == 0U) {
         LoadAlign(vreg_l0, new_global_sum);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)pre_loop_sum, vreg_l0, preg_134);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)pre_loop_sum, vreg_l0, preg_134);
         Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
         Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)first_loop_sum, vreg_x_sum0, preg_134);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_l0, preg_134);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)first_loop_sum, vreg_x_sum0, preg_134);
         // pscale update
         RegTensor<fp8_e8m0_t> vreg_p_scale_f8e8m0;
         Duplicate(vreg_p_scale_f8e8m0, 0x7f, preg_134);
-        StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
+        StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t*&)pScaleSubLoop0),
                                                              vreg_p_scale_f8e8m0, preg_134);
     } else {
         RegTensor<float> vreg_l1;
@@ -2846,7 +2846,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         Add(vreg_x_sum0, vreg_l0, vreg_x_sum0, preg_134);
         Mul(vreg_l1, vreg_x_max_f32_b, vreg_l1, preg_134);
         Add(vreg_l0, vreg_x_sum0, vreg_l1, preg_134);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)new_global_sum, vreg_l0, preg_134);
         // pscale update
         RegTensor<bfloat16_t> vreg_p_scale_bf16_0;
         RegTensor<bfloat16_t> vreg_p_scale_bf16_1;
@@ -2858,33 +2858,33 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_0, vreg_p_scale_bf16_0, preg_108);
         Cast<bfloat16_t, T, castTraitRintNoSatOne>(vreg_p_scale_bf16_1, vreg_subloop_update, preg_135);
         Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_f8e8m0_1, vreg_p_scale_bf16_1, preg_108);
-        Or((RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_0,
-           (RegTensor<uint8_t> &)vreg_p_scale_f8e8m0_1, preg_134);
+        Or((RegTensor<uint8_t>&)vreg_p_scale_f8e8m0_0, (RegTensor<uint8_t>&)vreg_p_scale_f8e8m0_0,
+           (RegTensor<uint8_t>&)vreg_p_scale_f8e8m0_1, preg_134);
         DeInterleave(vreg_p_scale_f8e8m0_dst0, vreg_p_scale_f8e8m0_dst1, vreg_p_scale_f8e8m0_0, vreg_p_scale_f8e8m0_0);
-        StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
+        StoreAlign<fp8_e8m0_t, Reg::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t*&)pScaleSubLoop0),
                                                              vreg_p_scale_f8e8m0_dst0, preg_134);
     }
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128, uint32_t SUB_LOOP = 0U>
 __aicore__ inline void ProcessVec1DnUpdateMxfp8(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf,
-    const LocalTensor<uint8_t> &maskTensor, const uint32_t originN, const float dScale, float pScale, const T minValue,
-    const LocalTensor<float> &preLoopMaxTensor, const LocalTensor<float> &preLoopSumTensor,
-    const LocalTensor<float> &firstLoopSumTensor, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor)
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t>& vselrIndexesBuf,
+    const LocalTensor<uint8_t>& maskTensor, const uint32_t originN, const float dScale, float pScale, const T minValue,
+    const LocalTensor<float>& preLoopMaxTensor, const LocalTensor<float>& preLoopSumTensor,
+    const LocalTensor<float>& firstLoopSumTensor, const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor)
 {
-    __ubuf__ T2 *x_exp = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
-    __ubuf__ float *input_x_local_UB = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ float *exp_max_fp32 = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
-    __ubuf__ float *new_global_sum = (__ubuf__ T *)expSumTensor.GetPhyAddr();
-    __ubuf__ float *new_global_max = (__ubuf__ T *)maxTensor.GetPhyAddr();
-    __ubuf__ float *pre_loop_max = (__ubuf__ T *)preLoopMaxTensor.GetPhyAddr();
-    __ubuf__ float *pre_loop_sum = (__ubuf__ T *)preLoopSumTensor.GetPhyAddr();
-    __ubuf__ float *first_loop_sum = (__ubuf__ T *)firstLoopSumTensor.GetPhyAddr();
-    __ubuf__ uint32_t *maskUb = (__ubuf__ uint32_t *)maskTensor.GetPhyAddr();
-    __ubuf__ fp8_e8m0_t *pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t *)pScaleSubLoop0Tensor.GetPhyAddr();
-    __ubuf__ uint8_t *indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
+    __ubuf__ T2* x_exp = (__ubuf__ T2*)dstTensor.GetPhyAddr();
+    __ubuf__ float* input_x_local_UB = (__ubuf__ T*)srcTensor.GetPhyAddr();
+    __ubuf__ float* exp_max_fp32 = (__ubuf__ T*)expMaxTensor.GetPhyAddr();
+    __ubuf__ float* new_global_sum = (__ubuf__ T*)expSumTensor.GetPhyAddr();
+    __ubuf__ float* new_global_max = (__ubuf__ T*)maxTensor.GetPhyAddr();
+    __ubuf__ float* pre_loop_max = (__ubuf__ T*)preLoopMaxTensor.GetPhyAddr();
+    __ubuf__ float* pre_loop_sum = (__ubuf__ T*)preLoopSumTensor.GetPhyAddr();
+    __ubuf__ float* first_loop_sum = (__ubuf__ T*)firstLoopSumTensor.GetPhyAddr();
+    __ubuf__ uint32_t* maskUb = (__ubuf__ uint32_t*)maskTensor.GetPhyAddr();
+    __ubuf__ fp8_e8m0_t* pScaleSubLoop0Ub = (__ubuf__ fp8_e8m0_t*)pScaleSubLoop0Tensor.GetPhyAddr();
+    __ubuf__ uint8_t* indexesUb = (__ubuf__ uint8_t*)vselrIndexesBuf.GetPhyAddr();
 
     ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN, SUB_LOOP>(
         x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, indexesUb, pScaleSubLoop0Ub,
@@ -2910,11 +2910,11 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
 template <typename T, typename T2, bool isUpdate = false, bool hasAtten = false, uint16_t ubN = 256,
           uint32_t SUB_LOOP = 0U>
 __aicore__ inline void ProcessVec1VfDnMxfp8(
-    const LocalTensor<T2> &dstTensor, const LocalTensor<T> &expSumTensor, const LocalTensor<T> &maxTensor,
-    const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor, TBuf<> *vselrIndexesBuf,
-    const LocalTensor<uint8_t> &maskTensor, const LocalTensor<fp8_e8m0_t> &pScaleSubLoop0Tensor, const uint32_t originN,
-    const float dScale, float pScale, const T minValue, const LocalTensor<T> &preLoopMaxTensor,
-    const LocalTensor<T> &preLoopSumTensor, const LocalTensor<T> &firstLoopSumTensor)
+    const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
+    const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, TBuf<>* vselrIndexesBuf,
+    const LocalTensor<uint8_t>& maskTensor, const LocalTensor<fp8_e8m0_t>& pScaleSubLoop0Tensor, const uint32_t originN,
+    const float dScale, float pScale, const T minValue, const LocalTensor<T>& preLoopMaxTensor,
+    const LocalTensor<T>& preLoopSumTensor, const LocalTensor<T>& firstLoopSumTensor)
 {
     // 将 256-column C1 转为 P(e4m3)/PScale(e8m0)；isUpdate 控制 online-softmax 更新。
     LocalTensor<uint8_t> indexesTensor;
@@ -2931,22 +2931,22 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(
 }
 
 template <typename T>
-__simd_vf__ inline void BroadCastMaxSumVF(__ubuf__ float *out_ub, __ubuf__ float *ori_ub, const uint16_t loopM)
+__simd_vf__ inline void BroadCastMaxSumVF(__ubuf__ float* out_ub, __ubuf__ float* ori_ub, const uint16_t loopM)
 {
     RegTensor<float> broadcast_reg;
     MaskReg preg_all = CreateMask<T, MaskPattern::ALL>();
     for (uint16_t i = 0; i < loopM; ++i) {
         LoadAlign<T, Reg::LoadDist::DIST_E2B_B32>(broadcast_reg, ori_ub + i * 8);
-        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)out_ub + i * 64, broadcast_reg, preg_all);
+        StoreAlign<T, Reg::StoreDist::DIST_NORM_B32>((__ubuf__ T*&)out_ub + i * 64, broadcast_reg, preg_all);
     }
 }
 
 template <typename T>
-__aicore__ inline void BroadcastMaxSum(const LocalTensor<T> &outTensor, const LocalTensor<T> &oriTensor,
+__aicore__ inline void BroadcastMaxSum(const LocalTensor<T>& outTensor, const LocalTensor<T>& oriTensor,
                                        uint32_t vecS1RealSize)
 {
-    __ubuf__ float *out_ub = (__ubuf__ T *)outTensor.GetPhyAddr();
-    __ubuf__ float *ori_ub = (__ubuf__ T *)oriTensor.GetPhyAddr();
+    __ubuf__ float* out_ub = (__ubuf__ T*)outTensor.GetPhyAddr();
+    __ubuf__ float* ori_ub = (__ubuf__ T*)oriTensor.GetPhyAddr();
 
     // Align8, broadcast one element to 8 elements, one register can store 64 elements,
     // so we can handle 64 / 8 = 8 elements per loop.

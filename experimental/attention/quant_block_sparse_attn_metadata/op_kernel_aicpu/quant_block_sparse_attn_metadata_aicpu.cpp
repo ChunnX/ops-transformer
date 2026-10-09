@@ -25,7 +25,7 @@
 #define KERNEL_STATUS_PARAM_INVALID 1
 
 namespace aicpu {
-uint32_t QuantBlockSparseAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+uint32_t QuantBlockSparseAttnMetadataCpuKernel::Compute(CpuKernelContext& ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
@@ -36,7 +36,7 @@ uint32_t QuantBlockSparseAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool QuantBlockSparseAttnMetadataCpuKernel::Prepare(CpuKernelContext& ctx)
 {
     context_ = &ctx;
     // input
@@ -196,7 +196,7 @@ uint32_t QuantBlockSparseAttnMetadataCpuKernel::GetRowBlockNum(uint32_t bIdx, ui
         sparseSeqLen_ == nullptr || sparseSeqLen_->GetData() == nullptr) {
         return 0U;
     }
-    const int32_t *sparseSeqLenData = static_cast<const int32_t *>(sparseSeqLen_->GetData());
+    const int32_t* sparseSeqLenData = static_cast<const int32_t*>(sparseSeqLen_->GetData());
     uint64_t idx = 0U;
     if (sparseSeqLenDimNum_ == 3U) {
         idx = (static_cast<uint64_t>(bIdx) * static_cast<uint32_t>(numHeadsQ_) + n1Idx) * Qbmax_ + s1Idx;
@@ -242,7 +242,7 @@ uint64_t QuantBlockSparseAttnMetadataCpuKernel::GetBN1BlockNum(uint32_t bIdx, ui
 }
 
 uint32_t QuantBlockSparseAttnMetadataCpuKernel::CalcValidS1Rows(uint32_t bIdx, uint32_t n1Idx,
-                                                                uint32_t &maxS2BlockNum) const
+                                                                uint32_t& maxS2BlockNum) const
 {
     uint32_t validRows = 0U;
     maxS2BlockNum = 0U;
@@ -276,7 +276,7 @@ uint64_t QuantBlockSparseAttnMetadataCpuKernel::CalcBN1Cost(uint32_t bIdx, uint3
     return s1Cost + s2Cost;
 }
 
-bool QuantBlockSparseAttnMetadataCpuKernel::CalcSectionBoundaries(std::vector<SectionInfo> &sectionResults) const
+bool QuantBlockSparseAttnMetadataCpuKernel::CalcSectionBoundaries(std::vector<SectionInfo>& sectionResults) const
 {
     constexpr uint64_t L2_BYTE = 120U * 1024U * 1024U;
     const uint32_t totalBN1 = static_cast<uint32_t>(batchSize_) * static_cast<uint32_t>(numHeadsQ_);
@@ -318,7 +318,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::CalcSectionBoundaries(std::vector<Se
     return true;
 }
 
-bool QuantBlockSparseAttnMetadataCpuKernel::AdvanceToValidRow(AssignContext &assignContext) const
+bool QuantBlockSparseAttnMetadataCpuKernel::AdvanceToValidRow(AssignContext& assignContext) const
 {
     if (assignContext.isFinished) {
         return false;
@@ -347,7 +347,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::AdvanceToValidRow(AssignContext &ass
     return false;
 }
 
-void QuantBlockSparseAttnMetadataCpuKernel::AssignByBatch(AssignContext &assignContext) const
+void QuantBlockSparseAttnMetadataCpuKernel::AssignByBatch(AssignContext& assignContext) const
 {
     if (assignContext.isFinished) {
         return;
@@ -383,7 +383,7 @@ void QuantBlockSparseAttnMetadataCpuKernel::AssignByBatch(AssignContext &assignC
     assignContext.isFinished = true;
 }
 
-void QuantBlockSparseAttnMetadataCpuKernel::AssignByRow(AssignContext &assignContext) const
+void QuantBlockSparseAttnMetadataCpuKernel::AssignByRow(AssignContext& assignContext) const
 {
     while (!assignContext.isFinished) {
         if (!AdvanceToValidRow(assignContext)) {
@@ -402,7 +402,7 @@ void QuantBlockSparseAttnMetadataCpuKernel::AssignByRow(AssignContext &assignCon
 }
 
 void QuantBlockSparseAttnMetadataCpuKernel::ScheduleFa(uint32_t bn1Start, uint32_t bn1End, uint64_t blockNum,
-                                                       SplitResult &result)
+                                                       SplitResult& result)
 {
     AssignContext assignContext{};
     assignContext.unassignedBlock = blockNum;
@@ -448,7 +448,7 @@ void QuantBlockSparseAttnMetadataCpuKernel::ScheduleFa(uint32_t bn1Start, uint32
     result.usedCoreNum = std::max(result.usedCoreNum, 1U);
 }
 
-bool QuantBlockSparseAttnMetadataCpuKernel::ScheduleSections(std::vector<SectionInfo> &sectionResults)
+bool QuantBlockSparseAttnMetadataCpuKernel::ScheduleSections(std::vector<SectionInfo>& sectionResults)
 {
     CalcSectionBoundaries(sectionResults);
     if (sectionResults.empty()) {
@@ -461,7 +461,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::ScheduleSections(std::vector<Section
         sectionResults.emplace_back(std::move(emptySection));
         return true;
     }
-    for (auto &section : sectionResults) {
+    for (auto& section : sectionResults) {
         if (section.blockNum == 0U) {
             section.splitResult.usedCoreNum = 1U;
             section.splitResult.bN1End[0] = section.bn1End;
@@ -475,7 +475,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::ScheduleSections(std::vector<Section
     return true;
 }
 
-bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const std::vector<SectionInfo> &sectionResults)
+bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const std::vector<SectionInfo>& sectionResults)
 {
     if (metadata_ == nullptr || metadata_->GetData() == nullptr) {
         KERNEL_LOG_ERROR("metadata is empty");
@@ -487,8 +487,8 @@ bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const std::vector<Sectio
     qbsaMetadata.SetHeadMetadata(optiling::QBSA_HEAD_SECTION_NUM_INDEX, sectionNum);
 
     for (uint32_t secIdx = 0; secIdx < sectionNum; ++secIdx) {
-        const auto &section = sectionResults[secIdx];
-        const auto &splitRes = section.splitResult;
+        const auto& section = sectionResults[secIdx];
+        const auto& splitRes = section.splitResult;
         for (uint32_t i = 0; i < splitRes.usedCoreNum; i++) {
             qbsaMetadata.SetQbsaMetadata(secIdx, i, optiling::QBSA_CORE_ENABLE_INDEX, 1U);
             uint32_t bn1Start = (i == 0) ? section.bn1Start : splitRes.bN1End[i - 1];
@@ -510,7 +510,7 @@ bool QuantBlockSparseAttnMetadataCpuKernel::GenMetadata(const std::vector<Sectio
 }
 
 namespace {
-static const char *kernelType = "QuantBlockSparseAttnMetadata";
+static const char* kernelType = "QuantBlockSparseAttnMetadata";
 REGISTER_CPU_KERNEL(kernelType, QuantBlockSparseAttnMetadataCpuKernel);
 } // namespace
 

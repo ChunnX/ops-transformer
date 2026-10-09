@@ -24,7 +24,7 @@
 
 namespace K2qCsrScratch {
 
-__aicore__ inline int64_t TileElems(const K2qCsrTilingData *tiling)
+__aicore__ inline int64_t TileElems(const K2qCsrTilingData* tiling)
 {
     int64_t G = tiling->numGroups > 0 ? tiling->numGroups : 1;
     int64_t H = tiling->H > 0 ? tiling->H : 1;
@@ -33,8 +33,8 @@ __aicore__ inline int64_t TileElems(const K2qCsrTilingData *tiling)
     return n > 0 ? n : 1;
 }
 
-__aicore__ inline void Split(GM_ADDR scratch, const K2qCsrTilingData *tiling, GM_ADDR &rowMap, GM_ADDR &tokenBatch,
-                             GM_ADDR &histScratch)
+__aicore__ inline void Split(GM_ADDR scratch, const K2qCsrTilingData* tiling, GM_ADDR& rowMap, GM_ADDR& tokenBatch,
+                             GM_ADDR& histScratch)
 {
     int64_t rowMapBytes = tiling->rowMapElems * static_cast<int64_t>(sizeof(int32_t));
     int64_t tokenBytes = tiling->T * static_cast<int64_t>(sizeof(int32_t));
@@ -44,7 +44,7 @@ __aicore__ inline void Split(GM_ADDR scratch, const K2qCsrTilingData *tiling, GM
 }
 
 /** histScratch 内：tile_counts | abs_base | row_counts */
-__aicore__ inline GM_ADDR RowCountsAddr(GM_ADDR histScratch, const K2qCsrTilingData *tiling)
+__aicore__ inline GM_ADDR RowCountsAddr(GM_ADDR histScratch, const K2qCsrTilingData* tiling)
 {
     int64_t tileBytes = TileElems(tiling) * static_cast<int64_t>(sizeof(int32_t));
     return histScratch + tileBytes * 2;

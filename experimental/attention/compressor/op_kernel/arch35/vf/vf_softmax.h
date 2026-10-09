@@ -22,7 +22,7 @@ using namespace AscendC;
 using namespace Reg;
 
 template <typename T>
-__simd_vf__ inline void SoftmaxDndBase128(__ubuf__ T *inputAddr, __ubuf__ float *outputAddr, const uint32_t RowSize,
+__simd_vf__ inline void SoftmaxDndBase128(__ubuf__ T* inputAddr, __ubuf__ float* outputAddr, const uint32_t RowSize,
                                           const uint32_t ReduceSize, const uint32_t vScRealSize, const T minValue)
 {
     RegTensor<float> vregSum00;
@@ -91,31 +91,31 @@ __simd_vf__ inline void SoftmaxDndBase128(__ubuf__ T *inputAddr, __ubuf__ float 
     RegTensor<float> max00, max10, max20, max30, max01, max11, max21, max31, max02, max12, max22, max32, max03, max13,
         max23, max33;
 
-    __ubuf__ float *srcUb00 = outputAddr;
-    __ubuf__ float *srcUb01 = outputAddr + RowSize / 2;
-    __ubuf__ float *srcUb02 = outputAddr + RowSize;
-    __ubuf__ float *srcUb03 = outputAddr + RowSize + RowSize / 2;
-    __ubuf__ float *srcUb10 = srcUb00 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize / 2;
-    __ubuf__ float *srcUb12 = srcUb00 + ReduceSize * RowSize + RowSize;
-    __ubuf__ float *srcUb13 = srcUb00 + ReduceSize * RowSize + RowSize + RowSize / 2;
-    __ubuf__ float *srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize / 2;
-    __ubuf__ float *srcUb22 = srcUb00 + ReduceSize * RowSize * 2 + RowSize;
-    __ubuf__ float *srcUb23 = srcUb00 + ReduceSize * RowSize * 2 + RowSize + RowSize / 2;
-    __ubuf__ float *srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
-    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize / 2;
-    __ubuf__ float *srcUb32 = srcUb00 + ReduceSize * RowSize * 3 + RowSize;
-    __ubuf__ float *srcUb33 = srcUb00 + ReduceSize * RowSize * 3 + RowSize + RowSize / 2;
+    __ubuf__ float* srcUb00 = outputAddr;
+    __ubuf__ float* srcUb01 = outputAddr + RowSize / 2;
+    __ubuf__ float* srcUb02 = outputAddr + RowSize;
+    __ubuf__ float* srcUb03 = outputAddr + RowSize + RowSize / 2;
+    __ubuf__ float* srcUb10 = srcUb00 + ReduceSize * RowSize;
+    __ubuf__ float* srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize / 2;
+    __ubuf__ float* srcUb12 = srcUb00 + ReduceSize * RowSize + RowSize;
+    __ubuf__ float* srcUb13 = srcUb00 + ReduceSize * RowSize + RowSize + RowSize / 2;
+    __ubuf__ float* srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
+    __ubuf__ float* srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize / 2;
+    __ubuf__ float* srcUb22 = srcUb00 + ReduceSize * RowSize * 2 + RowSize;
+    __ubuf__ float* srcUb23 = srcUb00 + ReduceSize * RowSize * 2 + RowSize + RowSize / 2;
+    __ubuf__ float* srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
+    __ubuf__ float* srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize / 2;
+    __ubuf__ float* srcUb32 = srcUb00 + ReduceSize * RowSize * 3 + RowSize;
+    __ubuf__ float* srcUb33 = srcUb00 + ReduceSize * RowSize * 3 + RowSize + RowSize / 2;
 
-    __ubuf__ float *inputAddr00 = inputAddr;
-    __ubuf__ float *inputAddr01 = inputAddr + RowSize / 2;
-    __ubuf__ float *inputAddr10 = inputAddr + (ReduceSize * RowSize);
-    __ubuf__ float *inputAddr11 = inputAddr + (ReduceSize * RowSize) + RowSize / 2;
-    __ubuf__ float *inputAddr20 = inputAddr + (ReduceSize * RowSize * 2);
-    __ubuf__ float *inputAddr21 = inputAddr + (ReduceSize * RowSize * 2) + RowSize / 2;
-    __ubuf__ float *inputAddr30 = inputAddr + (ReduceSize * RowSize * 3);
-    __ubuf__ float *inputAddr31 = inputAddr + (ReduceSize * RowSize * 3) + RowSize / 2;
+    __ubuf__ float* inputAddr00 = inputAddr;
+    __ubuf__ float* inputAddr01 = inputAddr + RowSize / 2;
+    __ubuf__ float* inputAddr10 = inputAddr + (ReduceSize * RowSize);
+    __ubuf__ float* inputAddr11 = inputAddr + (ReduceSize * RowSize) + RowSize / 2;
+    __ubuf__ float* inputAddr20 = inputAddr + (ReduceSize * RowSize * 2);
+    __ubuf__ float* inputAddr21 = inputAddr + (ReduceSize * RowSize * 2) + RowSize / 2;
+    __ubuf__ float* inputAddr30 = inputAddr + (ReduceSize * RowSize * 3);
+    __ubuf__ float* inputAddr31 = inputAddr + (ReduceSize * RowSize * 3) + RowSize / 2;
 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 4); ++loopSc) {
         Duplicate(max00, minValue);
@@ -254,37 +254,37 @@ __simd_vf__ inline void SoftmaxDndBase128(__ubuf__ T *inputAddr, __ubuf__ float 
             Add(vregSum33, vregExp33, vregSum33, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp00, pregAll);
+                ((__ubuf__ T*&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp00, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb01 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp01, pregAll);
+                ((__ubuf__ T*&)srcUb01 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp01, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb02 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp02, pregAll);
+                ((__ubuf__ T*&)srcUb02 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp02, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb03 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp03, pregAll);
+                ((__ubuf__ T*&)srcUb03 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp03, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp10, pregAll);
+                ((__ubuf__ T*&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp10, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb11 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp11, pregAll);
+                ((__ubuf__ T*&)srcUb11 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp11, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb12 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp12, pregAll);
+                ((__ubuf__ T*&)srcUb12 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp12, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb13 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp13, pregAll);
+                ((__ubuf__ T*&)srcUb13 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp13, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp20, pregAll);
+                ((__ubuf__ T*&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp20, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb21 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp21, pregAll);
+                ((__ubuf__ T*&)srcUb21 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp21, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb22 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp22, pregAll);
+                ((__ubuf__ T*&)srcUb22 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp22, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb23 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp23, pregAll);
+                ((__ubuf__ T*&)srcUb23 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp23, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp30, pregAll);
+                ((__ubuf__ T*&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp30, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb31 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp31, pregAll);
+                ((__ubuf__ T*&)srcUb31 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp31, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb32 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp32, pregAll);
+                ((__ubuf__ T*&)srcUb32 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp32, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb33 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp33, pregAll);
+                ((__ubuf__ T*&)srcUb33 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp33, pregAll);
         }
         Add(vregSum00, vregSum00, vregSum02, pregAll);
         Add(vregSum01, vregSum01, vregSum03, pregAll);
@@ -316,28 +316,28 @@ __simd_vf__ inline void SoftmaxDndBase128(__ubuf__ T *inputAddr, __ubuf__ float 
             Div(vregStore31, vregExp31, vregSum31, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore00,
+                ((__ubuf__ T*&)inputAddr00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore00,
                 pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr01 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore01,
+                ((__ubuf__ T*&)inputAddr01 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore01,
                 pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore10,
+                ((__ubuf__ T*&)inputAddr10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore10,
                 pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr11 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore11,
+                ((__ubuf__ T*&)inputAddr11 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore11,
                 pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore20,
+                ((__ubuf__ T*&)inputAddr20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore20,
                 pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr21 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore21,
+                ((__ubuf__ T*&)inputAddr21 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore21,
                 pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore30,
+                ((__ubuf__ T*&)inputAddr30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore30,
                 pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr31 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore31,
+                ((__ubuf__ T*&)inputAddr31 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore31,
                 pregAll);
         }
     }
@@ -387,16 +387,16 @@ __simd_vf__ inline void SoftmaxDndBase128(__ubuf__ T *inputAddr, __ubuf__ float 
             Add(vregSum03, vregExp03, vregSum03, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp00, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb01 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb01 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp01, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb02 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb02 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp02, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb03 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb03 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp03, pregAll);
         }
         Add(vregSum00, vregSum00, vregSum02, pregAll);
@@ -411,17 +411,17 @@ __simd_vf__ inline void SoftmaxDndBase128(__ubuf__ T *inputAddr, __ubuf__ float 
             Div(vregStore01, vregExp01, vregSum01, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)inputAddr00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregStore00, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)inputAddr01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregStore01, pregAll);
         }
     }
 }
 
 template <typename T>
-__simd_vf__ inline void SoftmaxDndBase64(__ubuf__ T *inputAddr, __ubuf__ float *outputAddr, const uint32_t RowSize,
+__simd_vf__ inline void SoftmaxDndBase64(__ubuf__ T* inputAddr, __ubuf__ float* outputAddr, const uint32_t RowSize,
                                          const uint32_t ReduceSize, const uint32_t vScRealSize, const T minValue)
 {
     RegTensor<float> vregSum00;
@@ -460,19 +460,19 @@ __simd_vf__ inline void SoftmaxDndBase64(__ubuf__ T *inputAddr, __ubuf__ float *
     RegTensor<float> src00, src10, src20, src30, src01, src11, src21, src31;
     RegTensor<float> max00, max10, max20, max30, max01, max11, max21, max31;
 
-    __ubuf__ float *srcUb00 = outputAddr;
-    __ubuf__ float *srcUb01 = outputAddr + RowSize;
-    __ubuf__ float *srcUb10 = srcUb00 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize;
-    __ubuf__ float *srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize;
-    __ubuf__ float *srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
-    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize;
+    __ubuf__ float* srcUb00 = outputAddr;
+    __ubuf__ float* srcUb01 = outputAddr + RowSize;
+    __ubuf__ float* srcUb10 = srcUb00 + ReduceSize * RowSize;
+    __ubuf__ float* srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize;
+    __ubuf__ float* srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
+    __ubuf__ float* srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize;
+    __ubuf__ float* srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
+    __ubuf__ float* srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize;
 
-    __ubuf__ float *inputAddr0 = inputAddr;
-    __ubuf__ float *inputAddr1 = inputAddr + (ReduceSize * RowSize);
-    __ubuf__ float *inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
-    __ubuf__ float *inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
+    __ubuf__ float* inputAddr0 = inputAddr;
+    __ubuf__ float* inputAddr1 = inputAddr + (ReduceSize * RowSize);
+    __ubuf__ float* inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
+    __ubuf__ float* inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 4); ++loopSc) {
         Duplicate(max00, minValue);
@@ -551,21 +551,21 @@ __simd_vf__ inline void SoftmaxDndBase64(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum31, vregExp31, vregSum31, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp00, pregAll);
+                ((__ubuf__ T*&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp00, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb01 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp01, pregAll);
+                ((__ubuf__ T*&)srcUb01 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp01, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp10, pregAll);
+                ((__ubuf__ T*&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp10, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb11 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp11, pregAll);
+                ((__ubuf__ T*&)srcUb11 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp11, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp20, pregAll);
+                ((__ubuf__ T*&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp20, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb21 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp21, pregAll);
+                ((__ubuf__ T*&)srcUb21 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp21, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp30, pregAll);
+                ((__ubuf__ T*&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp30, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb31 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp31, pregAll);
+                ((__ubuf__ T*&)srcUb31 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp31, pregAll);
         }
         Add(vregSum00, vregSum00, vregSum01, pregAll);
         Add(vregSum10, vregSum10, vregSum11, pregAll);
@@ -585,13 +585,13 @@ __simd_vf__ inline void SoftmaxDndBase64(__ubuf__ T *inputAddr, __ubuf__ float *
             Div(vregStore3, vregExp30, vregSum30, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0, pregAll);
+                ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1, pregAll);
+                ((__ubuf__ T*&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2, pregAll);
+                ((__ubuf__ T*&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3, pregAll);
+                ((__ubuf__ T*&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3, pregAll);
         }
     }
     // 尾块处理
@@ -623,10 +623,10 @@ __simd_vf__ inline void SoftmaxDndBase64(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum01, vregExp01, vregSum01, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp00, pregAll);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb01 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb01 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp01, pregAll);
         }
         Add(vregSum00, vregSum00, vregSum01, pregAll);
@@ -637,14 +637,14 @@ __simd_vf__ inline void SoftmaxDndBase64(__ubuf__ T *inputAddr, __ubuf__ float *
             Div(vregStore0, vregExp00, vregSum00, pregAll);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregStore0, pregAll);
         }
     }
 }
 
 template <typename T>
-__simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *inputAddr, __ubuf__ float *outputAddr, const uint32_t RowSize,
+__simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T* inputAddr, __ubuf__ float* outputAddr, const uint32_t RowSize,
                                          const uint32_t ReduceSize, const uint32_t vScRealSize, const T minValue)
 {
     RegTensor<float> vregSum00;
@@ -689,19 +689,19 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *inputAddr, __ubuf__ float *
     RegTensor<float> src00, src10, src20, src30, src01, src11, src21, src31;
     RegTensor<float> max00, max10, max20, max30, max01, max11, max21, max31;
 
-    __ubuf__ float *srcUb00 = outputAddr;
-    __ubuf__ float *srcUb01 = outputAddr + RowSize * 2;
-    __ubuf__ float *srcUb10 = srcUb00 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 2;
-    __ubuf__ float *srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 2;
-    __ubuf__ float *srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
-    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 2;
+    __ubuf__ float* srcUb00 = outputAddr;
+    __ubuf__ float* srcUb01 = outputAddr + RowSize * 2;
+    __ubuf__ float* srcUb10 = srcUb00 + ReduceSize * RowSize;
+    __ubuf__ float* srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * 2;
+    __ubuf__ float* srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
+    __ubuf__ float* srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * 2;
+    __ubuf__ float* srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
+    __ubuf__ float* srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * 2;
 
-    __ubuf__ float *inputAddr0 = inputAddr;
-    __ubuf__ float *inputAddr1 = inputAddr + (ReduceSize * RowSize);
-    __ubuf__ float *inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
-    __ubuf__ float *inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
+    __ubuf__ float* inputAddr0 = inputAddr;
+    __ubuf__ float* inputAddr1 = inputAddr + (ReduceSize * RowSize);
+    __ubuf__ float* inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
+    __ubuf__ float* inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 4); ++loopSc) {
         Duplicate(max0, minValue);
@@ -800,28 +800,28 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum31, vregExp31, vregSum31, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp00,
+                ((__ubuf__ T*&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp00,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp01,
+                ((__ubuf__ T*&)srcUb00 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp01,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp10,
+                ((__ubuf__ T*&)srcUb10 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp10,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb10 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp11,
+                ((__ubuf__ T*&)srcUb10 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp11,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp20,
+                ((__ubuf__ T*&)srcUb20 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp20,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb20 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp21,
+                ((__ubuf__ T*&)srcUb20 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp21,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp30,
+                ((__ubuf__ T*&)srcUb30 + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp30,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb30 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp31,
+                ((__ubuf__ T*&)srcUb30 + RowSize + loopM * RowSize * 2 + ReduceSize * RowSize * loopSc * 4), vregExp31,
                 pregLHalf);
         }
         Add(vregSum00, vregSum00, vregSum01, pregLHalf);
@@ -842,16 +842,16 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *inputAddr, __ubuf__ float *
             Div(vregStore3, vregExp30, vregSum30, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0,
+                ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1,
+                ((__ubuf__ T*&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2,
+                ((__ubuf__ T*&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3,
+                ((__ubuf__ T*&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3,
                 pregLHalf);
         }
     }
@@ -889,9 +889,9 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum01, vregExp01, vregSum01, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb00 + loopM * RowSize * 2 + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp00, pregLHalf);
-            StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)srcUb00 + RowSize + loopM * RowSize * 2 +
+            StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T*&)srcUb00 + RowSize + loopM * RowSize * 2 +
                                                       ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                                                      vregExp01, pregLHalf);
         }
@@ -904,14 +904,14 @@ __simd_vf__ inline void SoftmaxDndBase32(__ubuf__ T *inputAddr, __ubuf__ float *
             Div(vregStore0, vregExp00, vregSum00, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregStore0, pregLHalf);
         }
     }
 }
 
 template <typename T>
-__simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *outputAddr, const uint32_t RowSize,
+__simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T* inputAddr, __ubuf__ float* outputAddr, const uint32_t RowSize,
                                         const uint32_t ReduceSize, const uint32_t vScRealSize, const T minValue)
 {
     RegTensor<float> vregSum0;
@@ -939,15 +939,15 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
     RegTensor<float> src0, src1, src2, src3;
     RegTensor<float> max0, max1, max2, max3;
 
-    __ubuf__ float *srcUb0 = outputAddr;
-    __ubuf__ float *srcUb1 = srcUb0 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb2 = srcUb0 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb3 = srcUb0 + ReduceSize * RowSize * 3;
+    __ubuf__ float* srcUb0 = outputAddr;
+    __ubuf__ float* srcUb1 = srcUb0 + ReduceSize * RowSize;
+    __ubuf__ float* srcUb2 = srcUb0 + ReduceSize * RowSize * 2;
+    __ubuf__ float* srcUb3 = srcUb0 + ReduceSize * RowSize * 3;
 
-    __ubuf__ float *inputAddr0 = inputAddr;
-    __ubuf__ float *inputAddr1 = inputAddr + (ReduceSize * RowSize);
-    __ubuf__ float *inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
-    __ubuf__ float *inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
+    __ubuf__ float* inputAddr0 = inputAddr;
+    __ubuf__ float* inputAddr1 = inputAddr + (ReduceSize * RowSize);
+    __ubuf__ float* inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
+    __ubuf__ float* inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 4); ++loopSc) {
         Duplicate(max0, minValue);
@@ -989,13 +989,13 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
             Add(vregSum3, vregExp3, vregSum3, pregL8);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp0, pregL8);
+                ((__ubuf__ T*&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp0, pregL8);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp1, pregL8);
+                ((__ubuf__ T*&)srcUb1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp1, pregL8);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp2, pregL8);
+                ((__ubuf__ T*&)srcUb2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp2, pregL8);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp3, pregL8);
+                ((__ubuf__ T*&)srcUb3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp3, pregL8);
         }
 
         LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
@@ -1011,13 +1011,13 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
             Div(vregStore3, vregExp3, vregSum3, pregL8);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0, pregL8);
+                ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0, pregL8);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1, pregL8);
+                ((__ubuf__ T*&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1, pregL8);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2, pregL8);
+                ((__ubuf__ T*&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2, pregL8);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3, pregL8);
+                ((__ubuf__ T*&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3, pregL8);
         }
     }
 
@@ -1036,7 +1036,7 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
             Add(vregSum0, vregExp0, vregSum0, pregL8);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp0, pregL8);
         }
 
@@ -1046,14 +1046,14 @@ __simd_vf__ inline void SoftmaxDndBase8(__ubuf__ T *inputAddr, __ubuf__ float *o
             Div(vregStore0, vregExp0, vregSum0, pregL8);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregStore0, pregL8);
         }
     }
 }
 
 template <typename T>
-__simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *outputAddr, const uint32_t RowSize,
+__simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T* inputAddr, __ubuf__ float* outputAddr, const uint32_t RowSize,
                                          const uint32_t ReduceSize, const uint32_t vScRealSize, const T minValue)
 {
     RegTensor<float> vregSum00;
@@ -1098,19 +1098,19 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
     RegTensor<float> src00, src10, src20, src30, src01, src11, src21, src31;
     RegTensor<float> max00, max10, max20, max30, max01, max11, max21, max31;
 
-    __ubuf__ float *srcUb00 = outputAddr;
-    __ubuf__ float *srcUb01 = outputAddr + RowSize * (ReduceSize / 2);
-    __ubuf__ float *srcUb10 = srcUb00 + ReduceSize * RowSize;
-    __ubuf__ float *srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * (ReduceSize / 2);
-    __ubuf__ float *srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
-    __ubuf__ float *srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * (ReduceSize / 2);
-    __ubuf__ float *srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
-    __ubuf__ float *srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * (ReduceSize / 2);
+    __ubuf__ float* srcUb00 = outputAddr;
+    __ubuf__ float* srcUb01 = outputAddr + RowSize * (ReduceSize / 2);
+    __ubuf__ float* srcUb10 = srcUb00 + ReduceSize * RowSize;
+    __ubuf__ float* srcUb11 = srcUb00 + ReduceSize * RowSize + RowSize * (ReduceSize / 2);
+    __ubuf__ float* srcUb20 = srcUb00 + ReduceSize * RowSize * 2;
+    __ubuf__ float* srcUb21 = srcUb00 + ReduceSize * RowSize * 2 + RowSize * (ReduceSize / 2);
+    __ubuf__ float* srcUb30 = srcUb00 + ReduceSize * RowSize * 3;
+    __ubuf__ float* srcUb31 = srcUb00 + ReduceSize * RowSize * 3 + RowSize * (ReduceSize / 2);
 
-    __ubuf__ float *inputAddr0 = inputAddr;
-    __ubuf__ float *inputAddr1 = inputAddr + (ReduceSize * RowSize);
-    __ubuf__ float *inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
-    __ubuf__ float *inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
+    __ubuf__ float* inputAddr0 = inputAddr;
+    __ubuf__ float* inputAddr1 = inputAddr + (ReduceSize * RowSize);
+    __ubuf__ float* inputAddr2 = inputAddr + (ReduceSize * RowSize * 2);
+    __ubuf__ float* inputAddr3 = inputAddr + (ReduceSize * RowSize * 3);
 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 4); ++loopSc) {
         Duplicate(max0, minValue);
@@ -1193,21 +1193,21 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum31, vregExp31, vregSum31, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp00, pregLHalf);
+                ((__ubuf__ T*&)srcUb00 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp00, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb01 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp01, pregLHalf);
+                ((__ubuf__ T*&)srcUb01 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp01, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp10, pregLHalf);
+                ((__ubuf__ T*&)srcUb10 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp10, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb11 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp11, pregLHalf);
+                ((__ubuf__ T*&)srcUb11 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp11, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp20, pregLHalf);
+                ((__ubuf__ T*&)srcUb20 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp20, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb21 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp21, pregLHalf);
+                ((__ubuf__ T*&)srcUb21 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp21, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp30, pregLHalf);
+                ((__ubuf__ T*&)srcUb30 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp30, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb31 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp31, pregLHalf);
+                ((__ubuf__ T*&)srcUb31 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp31, pregLHalf);
         }
         Add(vregSum00, vregSum00, vregSum01, pregLHalf);
         Add(vregSum10, vregSum10, vregSum11, pregLHalf);
@@ -1227,16 +1227,16 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
             Div(vregStore3, vregExp30, vregSum30, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0,
+                ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1,
+                ((__ubuf__ T*&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2,
+                ((__ubuf__ T*&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2,
                 pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3,
+                ((__ubuf__ T*&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3,
                 pregLHalf);
         }
     }
@@ -1268,10 +1268,10 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
             Add(vregSum01, vregExp01, vregSum01, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb00 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp00, pregLHalf);
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)srcUb01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)srcUb01 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregExp01, pregLHalf);
         }
 
@@ -1284,14 +1284,14 @@ __simd_vf__ inline void SoftmaxDndBase16(__ubuf__ T *inputAddr, __ubuf__ float *
             Div(vregStore0, vregExp00, vregSum00, pregLHalf);
 
             StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                 vregStore0, pregLHalf);
         }
     }
 }
 
 template <typename T>
-__simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float *outputAddr, const uint32_t RowSize,
+__simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T* inputAddr, __ubuf__ float* outputAddr, const uint32_t RowSize,
                                           const uint32_t ReduceSize, const uint32_t vScRealSize, const T minValue)
 {
     RegTensor<float> vregSum0;
@@ -1322,15 +1322,15 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 4); ++loopSc) {
         for (uint16_t dChunk = 0; dChunk < 4; ++dChunk) {
             uint32_t dOffset = dChunk * 64;
-            __ubuf__ float *srcUb0 = outputAddr + dOffset;
-            __ubuf__ float *srcUb1 = srcUb0 + ReduceSize * RowSize;
-            __ubuf__ float *srcUb2 = srcUb0 + ReduceSize * RowSize * 2;
-            __ubuf__ float *srcUb3 = srcUb0 + ReduceSize * RowSize * 3;
+            __ubuf__ float* srcUb0 = outputAddr + dOffset;
+            __ubuf__ float* srcUb1 = srcUb0 + ReduceSize * RowSize;
+            __ubuf__ float* srcUb2 = srcUb0 + ReduceSize * RowSize * 2;
+            __ubuf__ float* srcUb3 = srcUb0 + ReduceSize * RowSize * 3;
 
-            __ubuf__ float *inputAddr0 = inputAddr + dOffset;
-            __ubuf__ float *inputAddr1 = inputAddr + dOffset + (ReduceSize * RowSize);
-            __ubuf__ float *inputAddr2 = inputAddr + dOffset + (ReduceSize * RowSize * 2);
-            __ubuf__ float *inputAddr3 = inputAddr + dOffset + (ReduceSize * RowSize * 3);
+            __ubuf__ float* inputAddr0 = inputAddr + dOffset;
+            __ubuf__ float* inputAddr1 = inputAddr + dOffset + (ReduceSize * RowSize);
+            __ubuf__ float* inputAddr2 = inputAddr + dOffset + (ReduceSize * RowSize * 2);
+            __ubuf__ float* inputAddr3 = inputAddr + dOffset + (ReduceSize * RowSize * 3);
 
             Duplicate(max0, minValue);
             Duplicate(max1, minValue);
@@ -1371,13 +1371,13 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
                 Add(vregSum3, vregExp3, vregSum3, pregAll);
 
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp0, pregAll);
+                    ((__ubuf__ T*&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp0, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp1, pregAll);
+                    ((__ubuf__ T*&)srcUb1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp1, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp2, pregAll);
+                    ((__ubuf__ T*&)srcUb2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp2, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp3, pregAll);
+                    ((__ubuf__ T*&)srcUb3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp3, pregAll);
             }
 
             LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
@@ -1393,16 +1393,16 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
                 Div(vregStore3, vregExp3, vregSum3, pregAll);
 
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0,
+                    ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0,
                     pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1,
+                    ((__ubuf__ T*&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1,
                     pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2,
+                    ((__ubuf__ T*&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2,
                     pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3,
+                    ((__ubuf__ T*&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3,
                     pregAll);
             }
         }
@@ -1411,8 +1411,8 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize % 4); ++loopSc) {
         for (uint16_t dChunk = 0; dChunk < 4; ++dChunk) {
             uint32_t dOffset = dChunk * 64;
-            __ubuf__ float *srcUb0 = outputAddr + dOffset;
-            __ubuf__ float *inputAddr0 = inputAddr + dOffset;
+            __ubuf__ float* srcUb0 = outputAddr + dOffset;
+            __ubuf__ float* inputAddr0 = inputAddr + dOffset;
 
             Duplicate(max0, minValue);
             Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vregSum0, 0, pregAll);
@@ -1428,7 +1428,7 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
                 Add(vregSum0, vregExp0, vregSum0, pregAll);
 
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                    ((__ubuf__ T*&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                     vregExp0, pregAll);
             }
 
@@ -1437,7 +1437,7 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
                 LoadAlign(vregExp0, srcUb0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
                 Div(vregStore0, vregExp0, vregSum0, pregAll);
 
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr0 + loopM * RowSize +
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T*&)inputAddr0 + loopM * RowSize +
                                                           ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                                                          vregStore0, pregAll);
             }
@@ -1446,7 +1446,7 @@ __simd_vf__ inline void SoftmaxDndBase256(__ubuf__ T *inputAddr, __ubuf__ float 
 }
 
 template <typename T>
-__simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float *outputAddr, const uint32_t RowSize,
+__simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T* inputAddr, __ubuf__ float* outputAddr, const uint32_t RowSize,
                                           const uint32_t ReduceSize, const uint32_t vScRealSize, const T minValue)
 {
     RegTensor<float> vregSum0;
@@ -1477,15 +1477,15 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize / 4); ++loopSc) {
         for (uint16_t dChunk = 0; dChunk < 8; ++dChunk) {
             uint32_t dOffset = dChunk * 64;
-            __ubuf__ float *srcUb0 = outputAddr + dOffset;
-            __ubuf__ float *srcUb1 = srcUb0 + ReduceSize * RowSize;
-            __ubuf__ float *srcUb2 = srcUb0 + ReduceSize * RowSize * 2;
-            __ubuf__ float *srcUb3 = srcUb0 + ReduceSize * RowSize * 3;
+            __ubuf__ float* srcUb0 = outputAddr + dOffset;
+            __ubuf__ float* srcUb1 = srcUb0 + ReduceSize * RowSize;
+            __ubuf__ float* srcUb2 = srcUb0 + ReduceSize * RowSize * 2;
+            __ubuf__ float* srcUb3 = srcUb0 + ReduceSize * RowSize * 3;
 
-            __ubuf__ float *inputAddr0 = inputAddr + dOffset;
-            __ubuf__ float *inputAddr1 = inputAddr + dOffset + (ReduceSize * RowSize);
-            __ubuf__ float *inputAddr2 = inputAddr + dOffset + (ReduceSize * RowSize * 2);
-            __ubuf__ float *inputAddr3 = inputAddr + dOffset + (ReduceSize * RowSize * 3);
+            __ubuf__ float* inputAddr0 = inputAddr + dOffset;
+            __ubuf__ float* inputAddr1 = inputAddr + dOffset + (ReduceSize * RowSize);
+            __ubuf__ float* inputAddr2 = inputAddr + dOffset + (ReduceSize * RowSize * 2);
+            __ubuf__ float* inputAddr3 = inputAddr + dOffset + (ReduceSize * RowSize * 3);
 
             Duplicate(max0, minValue);
             Duplicate(max1, minValue);
@@ -1526,13 +1526,13 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
                 Add(vregSum3, vregExp3, vregSum3, pregAll);
 
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp0, pregAll);
+                    ((__ubuf__ T*&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp0, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp1, pregAll);
+                    ((__ubuf__ T*&)srcUb1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp1, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp2, pregAll);
+                    ((__ubuf__ T*&)srcUb2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp2, pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp3, pregAll);
+                    ((__ubuf__ T*&)srcUb3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregExp3, pregAll);
             }
 
             LocalMemBar<AscendC::Reg::MemType::VEC_STORE, AscendC::Reg::MemType::VEC_LOAD>();
@@ -1548,16 +1548,16 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
                 Div(vregStore3, vregExp3, vregSum3, pregAll);
 
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0,
+                    ((__ubuf__ T*&)inputAddr0 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore0,
                     pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1,
+                    ((__ubuf__ T*&)inputAddr1 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore1,
                     pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2,
+                    ((__ubuf__ T*&)inputAddr2 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore2,
                     pregAll);
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3,
+                    ((__ubuf__ T*&)inputAddr3 + loopM * RowSize + ReduceSize * RowSize * loopSc * 4), vregStore3,
                     pregAll);
             }
         }
@@ -1566,8 +1566,8 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
     for (uint16_t loopSc = 0; loopSc < uint16_t(vScRealSize % 4); ++loopSc) {
         for (uint16_t dChunk = 0; dChunk < 8; ++dChunk) {
             uint32_t dOffset = dChunk * 64;
-            __ubuf__ float *srcUb0 = outputAddr + dOffset;
-            __ubuf__ float *inputAddr0 = inputAddr + dOffset;
+            __ubuf__ float* srcUb0 = outputAddr + dOffset;
+            __ubuf__ float* inputAddr0 = inputAddr + dOffset;
 
             Duplicate(max0, minValue);
             Duplicate<T, Reg::MaskMergeMode::ZEROING, T>(vregSum0, 0, pregAll);
@@ -1583,7 +1583,7 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
                 Add(vregSum0, vregExp0, vregSum0, pregAll);
 
                 StoreAlign<T, Reg::StoreDist::DIST_NORM>(
-                    ((__ubuf__ T *&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
+                    ((__ubuf__ T*&)srcUb0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                     vregExp0, pregAll);
             }
 
@@ -1592,7 +1592,7 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
                 LoadAlign(vregExp0, srcUb0 + loopM * RowSize + ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4));
                 Div(vregStore0, vregExp0, vregSum0, pregAll);
 
-                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T *&)inputAddr0 + loopM * RowSize +
+                StoreAlign<T, Reg::StoreDist::DIST_NORM>(((__ubuf__ T*&)inputAddr0 + loopM * RowSize +
                                                           ReduceSize * RowSize * (loopSc + vScRealSize / 4 * 4)),
                                                          vregStore0, pregAll);
             }
@@ -1613,12 +1613,12 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
  */
 
 template <typename T>
-__aicore__ inline void SoftmaxDnVF(const LocalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor,
+__aicore__ inline void SoftmaxDnVF(const LocalTensor<T>& dstTensor, const LocalTensor<T>& srcTensor,
                                    const uint32_t RowSize, const uint32_t ReduceSize, const uint32_t vScRealSize,
                                    const T minValue, const uint32_t dDealSize)
 {
-    __ubuf__ T *inputAddr = (__ubuf__ T *)dstTensor.GetPhyAddr();
-    __ubuf__ T *outputAddr = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T* inputAddr = (__ubuf__ T*)dstTensor.GetPhyAddr();
+    __ubuf__ T* outputAddr = (__ubuf__ T*)srcTensor.GetPhyAddr();
     if (dDealSize == 8) {
         SoftmaxDndBase8<T>(inputAddr, outputAddr, RowSize, ReduceSize, vScRealSize, minValue);
     } else if (dDealSize == 16) {

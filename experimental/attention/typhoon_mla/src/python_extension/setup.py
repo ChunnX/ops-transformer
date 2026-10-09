@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -17,8 +17,9 @@ import time
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 
 
 class CMakeExtension(Extension):
@@ -34,12 +35,11 @@ class CMakeBuild(build_ext):
             self.generate_pyi(ext)
 
     def build_cmake(self, ext):
-        extdir = os.path.abspath(os.path.dirname(
-            self.get_ext_fullpath(ext.name)))
+        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
         cmake_args = [
             "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + extdir + "/torch_catlass",
             "-DPython3_EXECUTABLE=" + sys.executable,
-            "-DBUILD_PYBIND=True"
+            "-DBUILD_PYBIND=True",
         ]
 
         build_args = []
@@ -48,20 +48,16 @@ class CMakeBuild(build_ext):
 
         # Use sp to invoke CMake for configuring and building the extension.
         # This executes external build commands in a controlled build directory.
-        sp.check_call(["cmake", ext.sourcedir] +
-                              cmake_args, cwd=self.build_temp)
-        
+        sp.check_call(["cmake", ext.sourcedir] + cmake_args, cwd=self.build_temp)
+
         # Build the project using CMake-generated build files
-        sp.check_call(
-            ["cmake", "--build", ".", "-j"] + build_args, cwd=self.build_temp)
+        sp.check_call(["cmake", "--build", ".", "-j"] + build_args, cwd=self.build_temp)
 
     def generate_pyi(self, ext):
-        extdir = os.path.abspath(os.path.dirname(
-            self.get_ext_fullpath(ext.name)))
+        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
         module_name = ext.name.split(".")[-1]
         stubgen_args = [module_name, "--output-dir", extdir]
-        stubgen_bin = os.path.join(os.path.dirname(
-            sys.executable), "pybind11-stubgen")
+        stubgen_bin = os.path.join(os.path.dirname(sys.executable), "pybind11-stubgen")
         try:
             # Run pybind11-stubgen
             sp.check_call([stubgen_bin] + stubgen_args, cwd=extdir)

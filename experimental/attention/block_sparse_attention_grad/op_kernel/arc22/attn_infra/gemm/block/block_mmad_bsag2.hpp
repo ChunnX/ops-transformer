@@ -85,7 +85,7 @@ public:
 
     static_assert(std::is_same_v<LayoutC, layout::RowMajor>, "LayoutC only support RowMajor yet!");
 
-    __aicore__ inline BlockMmad(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart = 0,
+    __aicore__ inline BlockMmad(Arch::Resource<ArchTag>& resource, uint32_t l1BufAddrStart = 0,
                                 uint32_t pingpongFlagOffset = 0, bool isAtomicAdd_ = false, bool fullL1Cache_ = false,
                                 bool splitB8Cache_ = false, bool pairedA4Cache_ = false, uint32_t residentCacheMode = 0)
     {
@@ -272,7 +272,7 @@ public:
 
     __aicore__ inline void WithCachedA(uint32_t cacheSlot, AscendC::GlobalTensor<ElementB> gB,
                                        AscendC::GlobalTensor<ElementC> gC, LayoutA layoutA, LayoutB layoutB,
-                                       LayoutC layoutC, GemmCoord actualShape, uint32_t &pingpongFlag)
+                                       LayoutC layoutC, GemmCoord actualShape, uint32_t& pingpongFlag)
     {
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);
@@ -319,7 +319,7 @@ public:
 
     __aicore__ inline void WithCachedB(uint32_t cacheSlot, AscendC::GlobalTensor<ElementA> gA,
                                        AscendC::GlobalTensor<ElementC> gC, LayoutA layoutA, LayoutB layoutB,
-                                       LayoutC layoutC, GemmCoord actualShape, uint32_t &pingpongFlag)
+                                       LayoutC layoutC, GemmCoord actualShape, uint32_t& pingpongFlag)
     {
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);
@@ -367,8 +367,8 @@ public:
     // preserving the logical extents in actualShape.
     __aicore__ inline void WithCachedBNz(uint32_t cacheSlot, AscendC::GlobalTensor<ElementA> gA,
                                          AscendC::GlobalTensor<ElementC> gC, LayoutA layoutA, LayoutB layoutB,
-                                         GemmCoord actualShape, uint32_t &pingpongFlag,
-                                         const AscendC::LocalTensor<ElementA> *externalA = nullptr,
+                                         GemmCoord actualShape, uint32_t& pingpongFlag,
+                                         const AscendC::LocalTensor<ElementA>* externalA = nullptr,
                                          bool releaseB = false)
     {
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
@@ -425,7 +425,7 @@ public:
     // Accumulate all KV contributions for one dQ tile in L0C slot 0.  Each
     // Q task has one AIC owner, so the final GM store does not need atomics.
     __aicore__ inline void Accumulate(AscendC::GlobalTensor<ElementA> gA, AscendC::GlobalTensor<ElementB> gB,
-                                      LayoutA layoutA, LayoutB layoutB, GemmCoord actualShape, uint32_t &pingpongFlag,
+                                      LayoutA layoutA, LayoutB layoutB, GemmCoord actualShape, uint32_t& pingpongFlag,
                                       bool initC, bool finalC, uint32_t accumulatorSlot = 0)
     {
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
@@ -650,7 +650,7 @@ public:
 
     __aicore__ inline void operator()(AscendC::GlobalTensor<ElementA> gA, AscendC::GlobalTensor<ElementB> gB,
                                       AscendC::GlobalTensor<ElementC> gC, LayoutA layoutA, LayoutB layoutB,
-                                      LayoutC layoutC, GemmCoord actualShape, uint32_t &pingpongFlag)
+                                      LayoutC layoutC, GemmCoord actualShape, uint32_t& pingpongFlag)
     {
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(L1TileShape::M, L1TileShape::K);
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(L1TileShape::K, L1TileShape::N);

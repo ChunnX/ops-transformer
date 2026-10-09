@@ -27,7 +27,7 @@ using namespace std;
 // ---------------------------------------------------------------------------
 // Helper: factor video dims (matches FactorVideoDims in tiling.cpp)
 // ---------------------------------------------------------------------------
-static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
+static void FactorVideoDims(int64_t seqLen, int64_t& T, int64_t& H, int64_t& W)
 {
     if (seqLen <= 1) {
         T = 1;
@@ -57,7 +57,7 @@ static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
 // ---------------------------------------------------------------------------
 // Helper: compute 2:1:1 band dims (matches ComputeBandDims in tiling.cpp)
 // ---------------------------------------------------------------------------
-static void ComputeBandDimsHelper(int64_t headDim, int64_t &tBand, int64_t &hBand, int64_t &wBand)
+static void ComputeBandDimsHelper(int64_t headDim, int64_t& tBand, int64_t& hBand, int64_t& wBand)
 {
     // 2:1:1 ratio: T = D/2, H = D/4, W = D/4, all even
     int64_t unit = headDim / 4;
@@ -90,8 +90,8 @@ static void ComputeBandDimsHelper(int64_t headDim, int64_t &tBand, int64_t &hBan
 // Matches the Python gen_data.py / gen_tiling.py logic with seed=42
 // ---------------------------------------------------------------------------
 template <typename T>
-static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uint8_t *cosSinBuf, uint8_t *goldenBuf,
-                             uint8_t *tilingBuf)
+static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t* xBuf, uint8_t* cosSinBuf, uint8_t* goldenBuf,
+                             uint8_t* tilingBuf)
 {
     const int64_t halfD = D / 2;
     const float freqBase = 10000.0f;
@@ -125,13 +125,13 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uin
     // 4. Generate x with fixed seed 42 (matches Python's np.random.default_rng(42))
     std::mt19937 rng(42);
     std::uniform_real_distribution<float> dist(-3.0f, 3.0f);
-    T *x = reinterpret_cast<T *>(xBuf);
+    T* x = reinterpret_cast<T*>(xBuf);
     for (int64_t i = 0; i < B * S * D; i++) {
         x[i] = static_cast<T>(dist(rng));
     }
 
     // 5. Compute cos_sin
-    T *cs = reinterpret_cast<T *>(cosSinBuf);
+    T* cs = reinterpret_cast<T*>(cosSinBuf);
     for (int64_t batch = 0; batch < B; batch++) {
         for (int64_t pos = 0; pos < S; pos++) {
             int64_t tCoord = pos / hw;
@@ -158,7 +158,7 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uin
     }
 
     // 6. Compute golden (in float, then cast to T for storage to match golden file format)
-    T *golden = reinterpret_cast<T *>(goldenBuf);
+    T* golden = reinterpret_cast<T*>(goldenBuf);
     for (int64_t batch = 0; batch < B; batch++) {
         for (int64_t pos = 0; pos < S; pos++) {
             int64_t tCoord = pos / hw;
@@ -214,7 +214,7 @@ static void GenerateTestData(int64_t B, int64_t S, int64_t D, uint8_t *xBuf, uin
     double rrh = pow(freqBase, -2.0 / hb);
     double rrw = pow(freqBase, -2.0 / wb);
 
-    RotaryPositionEmbedding3dTilingData *td = reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tilingBuf);
+    RotaryPositionEmbedding3dTilingData* td = reinterpret_cast<RotaryPositionEmbedding3dTilingData*>(tilingBuf);
     td->totalLength = total;
     td->headDim = D;
     td->seqLen = S;
@@ -254,30 +254,29 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
     size_t outputZByteSize = B * S * D * sizeof(float);
     size_t tilingDataSize = sizeof(RotaryPositionEmbedding3dTilingData);
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputXByteSize);
-    uint8_t *cos_sin = (uint8_t *)AscendC::GmAlloc(inputCosSinByteSize);
-    uint8_t *z = (uint8_t *)AscendC::GmAlloc(outputZByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputXByteSize);
+    uint8_t* cos_sin = (uint8_t*)AscendC::GmAlloc(inputCosSinByteSize);
+    uint8_t* z = (uint8_t*)AscendC::GmAlloc(outputZByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    uint8_t *goldenBuf = new uint8_t[outputZByteSize];
+    uint8_t* goldenBuf = new uint8_t[outputZByteSize];
     GenerateTestData<float>(B, S, D, x, cos_sin, goldenBuf, tiling);
-    RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
-        reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
+    RotaryPositionEmbedding3dTilingData* tilingDatafromBin =
+        reinterpret_cast<RotaryPositionEmbedding3dTilingData*>(tiling);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(0);
     auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling) {
         rotary_position_embedding3d<0>(x, y, z, workspace, tiling);
     };
-    ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace, (uint8_t*)(tilingDatafromBin));
 
     // Verify against golden reference
-    float *z_f32 = (float *)z;
+    float* z_f32 = (float*)z;
     size_t numElts = outputZByteSize / sizeof(float);
-    float *golden = reinterpret_cast<float *>(goldenBuf);
+    float* golden = reinterpret_cast<float*>(goldenBuf);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
@@ -311,30 +310,29 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
     size_t outputZByteSize = B * S * D * sizeof(half);
     size_t tilingDataSize = sizeof(RotaryPositionEmbedding3dTilingData);
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputXByteSize);
-    uint8_t *cos_sin = (uint8_t *)AscendC::GmAlloc(inputCosSinByteSize);
-    uint8_t *z = (uint8_t *)AscendC::GmAlloc(outputZByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputXByteSize);
+    uint8_t* cos_sin = (uint8_t*)AscendC::GmAlloc(inputCosSinByteSize);
+    uint8_t* z = (uint8_t*)AscendC::GmAlloc(outputZByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    uint8_t *goldenBuf = new uint8_t[outputZByteSize];
+    uint8_t* goldenBuf = new uint8_t[outputZByteSize];
     GenerateTestData<half>(B, S, D, x, cos_sin, goldenBuf, tiling);
-    RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
-        reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
+    RotaryPositionEmbedding3dTilingData* tilingDatafromBin =
+        reinterpret_cast<RotaryPositionEmbedding3dTilingData*>(tiling);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1);
     auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling) {
         rotary_position_embedding3d<1>(x, y, z, workspace, tiling);
     };
-    ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace, (uint8_t*)(tilingDatafromBin));
 
     // Verify against golden reference
-    float *z_f32 = (float *)z;
+    float* z_f32 = (float*)z;
     size_t numElts = outputZByteSize / sizeof(float);
-    half *golden = reinterpret_cast<half *>(goldenBuf);
+    half* golden = reinterpret_cast<half*>(goldenBuf);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {
@@ -368,30 +366,29 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
     size_t outputZByteSize = B * S * D * sizeof(float);
     size_t tilingDataSize = sizeof(RotaryPositionEmbedding3dTilingData);
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputXByteSize);
-    uint8_t *cos_sin = (uint8_t *)AscendC::GmAlloc(inputCosSinByteSize);
-    uint8_t *z = (uint8_t *)AscendC::GmAlloc(outputZByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputXByteSize);
+    uint8_t* cos_sin = (uint8_t*)AscendC::GmAlloc(inputCosSinByteSize);
+    uint8_t* z = (uint8_t*)AscendC::GmAlloc(outputZByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize);
     uint32_t blockDim = 8;
 
-    uint8_t *goldenBuf = new uint8_t[outputZByteSize];
+    uint8_t* goldenBuf = new uint8_t[outputZByteSize];
     GenerateTestData<float>(B, S, D, x, cos_sin, goldenBuf, tiling);
-    RotaryPositionEmbedding3dTilingData *tilingDatafromBin =
-        reinterpret_cast<RotaryPositionEmbedding3dTilingData *>(tiling);
+    RotaryPositionEmbedding3dTilingData* tilingDatafromBin =
+        reinterpret_cast<RotaryPositionEmbedding3dTilingData*>(tiling);
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(0);
     auto rotary_position_embedding3d_wrapper = [](GM_ADDR x, GM_ADDR y, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling) {
         rotary_position_embedding3d<0>(x, y, z, workspace, tiling);
     };
-    ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace, (uint8_t*)(tilingDatafromBin));
 
     // Verify against golden reference
-    float *z_f32 = (float *)z;
+    float* z_f32 = (float*)z;
     size_t numElts = outputZByteSize / sizeof(float);
-    float *golden = reinterpret_cast<float *>(goldenBuf);
+    float* golden = reinterpret_cast<float*>(goldenBuf);
     bool utPass = true;
     float maxDiff = 0.0f;
     for (size_t i = 0; i < numElts; i++) {

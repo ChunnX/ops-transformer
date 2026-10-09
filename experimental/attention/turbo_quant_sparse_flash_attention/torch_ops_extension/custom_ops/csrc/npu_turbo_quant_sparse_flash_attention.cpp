@@ -26,7 +26,7 @@ const int64_t QUERY_DIM = 3;
 
 // query is TND: [T, N, D] where D = nope(512) + rope(64).
 // attention_out drops the rope tail: [T, N, D - rope_head_dim].
-static at::Tensor ConstructAttentionOut(const at::Tensor &query, int64_t ropeHeadDim)
+static at::Tensor ConstructAttentionOut(const at::Tensor& query, int64_t ropeHeadDim)
 {
     auto queryShape = query.sizes();
     return at::empty({queryShape[DIM_0], queryShape[DIM_1], queryShape[DIM_2] - ropeHeadDim}, query.options());
@@ -34,8 +34,8 @@ static at::Tensor ConstructAttentionOut(const at::Tensor &query, int64_t ropeHea
 
 // softmax_max/softmax_sum mirror kv_quant's TND shape so a DCP decode merge can consume them.
 // Empty {0} when the caller does not ask for them.
-static at::SmallVector<int64_t, 8> ConstructSoftmaxSize(const at::Tensor &query, const at::Tensor &key,
-                                                        const std::string &layoutKv, bool returnSoftmaxLse)
+static at::SmallVector<int64_t, 8> ConstructSoftmaxSize(const at::Tensor& query, const at::Tensor& key,
+                                                        const std::string& layoutKv, bool returnSoftmaxLse)
 {
     at::SmallVector<int64_t, 8> softmaxSize;
     if (returnSoftmaxLse) {
@@ -50,8 +50,8 @@ static at::SmallVector<int64_t, 8> ConstructSoftmaxSize(const at::Tensor &query,
 }
 
 // Runtime and Meta implementations share these checks to keep validation and output inference aligned.
-static void CheckInputsAndLayout(const at::Tensor &query, const at::Tensor &key, const std::string &layoutQuery,
-                                 const std::string &layoutKv, int64_t ropeHeadDim)
+static void CheckInputsAndLayout(const at::Tensor& query, const at::Tensor& key, const std::string& layoutQuery,
+                                 const std::string& layoutKv, int64_t ropeHeadDim)
 {
     TORCH_CHECK(query.defined(), "Check query != nullptr failed");
     TORCH_CHECK(key.defined(), "Check key != nullptr failed");
@@ -64,9 +64,9 @@ static void CheckInputsAndLayout(const at::Tensor &query, const at::Tensor &key,
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_turbo_quant_sparse_flash_attention_npu(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &sparseIndices,
-    const c10::optional<at::Tensor> &keyDequantScale, const c10::optional<at::Tensor> &valueDequantScale,
-    const at::Tensor &blockTable, const at::Tensor &actualSeqLengthsQuery, const at::Tensor &actualSeqLengthsKv,
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value, const at::Tensor& sparseIndices,
+    const c10::optional<at::Tensor>& keyDequantScale, const c10::optional<at::Tensor>& valueDequantScale,
+    const at::Tensor& blockTable, const at::Tensor& actualSeqLengthsQuery, const at::Tensor& actualSeqLengthsKv,
     double scaleValue, int64_t keyQuantMode, int64_t valueQuantMode, int64_t sparseBlockSize,
     c10::string_view layoutQuery, c10::string_view layoutKv, int64_t sparseMode, int64_t preTokens, int64_t nextTokens,
     int64_t attentionMode, int64_t quantScaleRepoMode, int64_t tileSize, int64_t ropeHeadDim, bool returnSoftmaxLse)
@@ -74,8 +74,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_turbo_quant_sparse_flash_atte
     std::string layoutQueryStr(layoutQuery);
     std::string layoutKvStr(layoutKv);
     CheckInputsAndLayout(query, key, layoutQueryStr, layoutKvStr, ropeHeadDim);
-    char *layoutQueryPtr = const_cast<char *>(layoutQueryStr.c_str());
-    char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
+    char* layoutQueryPtr = const_cast<char*>(layoutQueryStr.c_str());
+    char* layoutKvPtr = const_cast<char*>(layoutKvStr.c_str());
 
     at::Tensor attentionOut = ConstructAttentionOut(query, ropeHeadDim);
     auto softmaxSize = ConstructSoftmaxSize(query, key, layoutKvStr, returnSoftmaxLse);
@@ -92,9 +92,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_turbo_quant_sparse_flash_atte
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> npu_turbo_quant_sparse_flash_attention_meta(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &, const at::Tensor &,
-    const c10::optional<at::Tensor> &, const c10::optional<at::Tensor> &, const at::Tensor &, const at::Tensor &,
-    const at::Tensor &, double, int64_t, int64_t, int64_t, c10::string_view layoutQuery, c10::string_view layoutKv,
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor&, const at::Tensor&,
+    const c10::optional<at::Tensor>&, const c10::optional<at::Tensor>&, const at::Tensor&, const at::Tensor&,
+    const at::Tensor&, double, int64_t, int64_t, int64_t, c10::string_view layoutQuery, c10::string_view layoutKv,
     int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t ropeHeadDim, bool returnSoftmaxLse)
 {
     std::string layoutQueryStr(layoutQuery);

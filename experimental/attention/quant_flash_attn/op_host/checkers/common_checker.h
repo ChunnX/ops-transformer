@@ -29,31 +29,31 @@ public:
     CommonChecker() = default;
     ~CommonChecker() override = default;
 
-    ge::graphStatus CheckSinglePara(const QuantFlashAttnTilingInfo &qfaInfo) override;
-    ge::graphStatus CheckParaExistence(const QuantFlashAttnTilingInfo &qfaInfo) override;
-    ge::graphStatus CheckFeature(const QuantFlashAttnTilingInfo &qfaInfo) override;
-    ge::graphStatus CheckMultiPara(const QuantFlashAttnTilingInfo &qfaInfo) override;
+    ge::graphStatus CheckSinglePara(const QuantFlashAttnTilingInfo& qfaInfo) override;
+    ge::graphStatus CheckParaExistence(const QuantFlashAttnTilingInfo& qfaInfo) override;
+    ge::graphStatus CheckFeature(const QuantFlashAttnTilingInfo& qfaInfo) override;
+    ge::graphStatus CheckMultiPara(const QuantFlashAttnTilingInfo& qfaInfo) override;
 
 private:
     // --- Layout checks ---
-    ge::graphStatus CheckSingleParaLayout(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckSingleParaLayout(const QuantFlashAttnTilingInfo& qfaInfo);
 
     // --- Dtype/shapeDim checks (SinglePara) ---
-    ge::graphStatus CheckSingleParaDtype(const QuantFlashAttnTilingInfo &qfaInfo);
-    ge::graphStatus CheckSingleParaShapeDim(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckSingleParaDtype(const QuantFlashAttnTilingInfo& qfaInfo);
+    ge::graphStatus CheckSingleParaShapeDim(const QuantFlashAttnTilingInfo& qfaInfo);
 
     // --- Attr checks (SinglePara) ---
-    ge::graphStatus CheckSingleParaSoftmaxScale(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckSingleParaSoftmaxScale(const QuantFlashAttnTilingInfo& qfaInfo);
 
     // --- ParaExistence: metadata (公共参数组) ---
-    ge::graphStatus CheckMetadataExistence(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckMetadataExistence(const QuantFlashAttnTilingInfo& qfaInfo);
 
     // --- MultiPara: dtype consistency ---
-    ge::graphStatus CheckDtypeConsistency(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckDtypeConsistency(const QuantFlashAttnTilingInfo& qfaInfo);
 
     // --- Feature: axis & headNum cross-check ---
-    ge::graphStatus CheckAxis(const QuantFlashAttnTilingInfo &qfaInfo);
-    ge::graphStatus CheckHeadNum(const QuantFlashAttnTilingInfo &qfaInfo);
+    ge::graphStatus CheckAxis(const QuantFlashAttnTilingInfo& qfaInfo);
+    ge::graphStatus CheckHeadNum(const QuantFlashAttnTilingInfo& qfaInfo);
 };
 
 } // namespace quant_flash_attn

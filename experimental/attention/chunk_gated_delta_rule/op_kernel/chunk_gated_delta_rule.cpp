@@ -31,7 +31,7 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_A
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
 
-    __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
+    __gm__ uint8_t* user = GetUserWorkspace(workspaceGM);
 
     CGDRInitParams initParams{query, key, value, beta, initialState, seqlens, gOptional, out, finalState};
     // gOptional 由 tilingKey 编译期分发

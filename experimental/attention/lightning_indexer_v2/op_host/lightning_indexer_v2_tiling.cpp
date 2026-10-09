@@ -70,7 +70,7 @@ std::string LIV2DataTypeToSerialString(ge::DataType type)
     }
 }
 
-static std::vector<int64_t> ToVector(const gert::Shape &shape)
+static std::vector<int64_t> ToVector(const gert::Shape& shape)
 {
     size_t shapeSize = shape.GetDimNum();
     std::vector<int64_t> shapeVec(shapeSize, 0);
@@ -81,7 +81,7 @@ static std::vector<int64_t> ToVector(const gert::Shape &shape)
     return shapeVec;
 }
 
-static std::string ToStringRaw(const gert::Shape &shape)
+static std::string ToStringRaw(const gert::Shape& shape)
 {
     std::ostringstream oss;
     auto v = ToVector(shape);
@@ -578,7 +578,7 @@ ge::graphStatus LIV2InfoParser::CheckKeyContiguous() const
     // Non-PA_BBND: check starts from axis 0
     size_t checkStartIdx = (kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
-        auto &shape = opParamInfo_.key.shape->GetStorageShape();
+        auto& shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
         if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3), shape.GetDim(2) * shape.GetDim(3),
@@ -615,8 +615,8 @@ ge::graphStatus LIV2InfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                    const std::string &actualSeqLenName) const
+ge::graphStatus LIV2InfoParser::GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor,
+                                                    const std::string& actualSeqLenName) const
 {
     // 【R16 修复 2026-09-23】原 uint32_t size + `size <= 0` 对 ShapeSize-1 的 0 下溢不设防
     // （cuSeqlens shape [0] → size=2^32-1 被放行 → bSize=2^32-1 透传 tiling/GM 越界面）。
@@ -991,7 +991,7 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatch()
     return ge::GRAPH_SUCCESS;
 }
 
-void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
+void LIV2InfoParser::GenerateInfo(LIV2TilingInfo& liInfo)
 {
     liInfo.opName = opName_;
     liInfo.platformInfo = platformInfo_;
@@ -1039,7 +1039,7 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
     liInfo.inputKLayout = kLayout_;
 }
 
-ge::graphStatus LIV2InfoParser::ParseAndCheck(LIV2TilingInfo &liInfo)
+ge::graphStatus LIV2InfoParser::ParseAndCheck(LIV2TilingInfo& liInfo)
 {
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
@@ -1070,13 +1070,13 @@ ge::graphStatus LIV2InfoParser::ParseAndCheck(LIV2TilingInfo &liInfo)
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForLightningIndexerV2(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForLightningIndexerV2(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // --------------------------LightningIndexerV2Tiling类成员函数定义-----------------------
-ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
+ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo* tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -1108,7 +1108,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
     // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
     workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
 
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
@@ -1151,7 +1151,7 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
+ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("LightningIndexerV2", "Tiling context is null."),
                 return ge::GRAPH_FAILED);

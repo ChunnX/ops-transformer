@@ -65,7 +65,7 @@ TEST_F(MhcPreSinkhornPremixBackwardOpapiUt, aclnn_mhc_pre_sinkhorn_premix_backwa
     auto ut = OP_API_UT(aclnnMhcPreSinkhornPremixBackward,
                         INPUT(gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm, invRms, sumOut,
                               normOut, nullptr, nullptr, eps),
-                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor *)nullptr));
+                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor*)nullptr));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -103,7 +103,7 @@ TEST_F(MhcPreSinkhornPremixBackwardOpapiUt, aclnn_mhc_pre_sinkhorn_premix_backwa
     auto ut = OP_API_UT(aclnnMhcPreSinkhornPremixBackward,
                         INPUT(gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm, invRms, sumOut,
                               normOut, nullptr, nullptr, eps),
-                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor *)nullptr));
+                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor*)nullptr));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -142,7 +142,7 @@ TEST_F(MhcPreSinkhornPremixBackwardOpapiUt, aclnn_mhc_pre_sinkhorn_premix_backwa
     auto ut = OP_API_UT(aclnnMhcPreSinkhornPremixBackward,
                         INPUT(gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm, invRms, sumOut,
                               normOut, nullptr, nullptr, eps),
-                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor *)nullptr));
+                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor*)nullptr));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -182,7 +182,7 @@ TEST_F(MhcPreSinkhornPremixBackwardOpapiUt, aclnn_mhc_pre_sinkhorn_premix_backwa
     auto ut = OP_API_UT(aclnnMhcPreSinkhornPremixBackward,
                         INPUT(gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm, invRms, sumOut,
                               normOut, nullptr, nullptr, eps),
-                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor *)nullptr));
+                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor*)nullptr));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -221,7 +221,7 @@ TEST_F(MhcPreSinkhornPremixBackwardOpapiUt, aclnn_mhc_pre_sinkhorn_premix_backwa
     auto ut = OP_API_UT(aclnnMhcPreSinkhornPremixBackward,
                         INPUT(gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm, invRms, sumOut,
                               normOut, nullptr, nullptr, eps),
-                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor *)nullptr));
+                        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor*)nullptr));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);

@@ -13,7 +13,7 @@ mhc_post: output[b*s+i, seq, d] = branch_output[b, seq, d] × h_post[i]
 
 def depth_connection(self, branch_output, residuals, *, beta):
     # beta就是h_post, shape [num_streams]
-    
+
     # Step 1: einsum广播乘法
     # "b ... d, s -> b ... s d"的含义:
     #   - 输入1 branch_output: [batch, seq, dim]
@@ -21,14 +21,14 @@ def depth_connection(self, branch_output, residuals, *, beta):
     #   - 输出: [batch, seq, streams, dim]
     #   - 计算: out[b,seq,s,d] = branch_output[b,seq,d] * beta[s]
     output = einsum(branch_output, beta, "b ... d, s -> b ... s d")
-    
+
     # Step 2: reshape合并batch和stream维度
     # "b ... s d -> (b s) ... d"的含义:
     #   - 输入: [batch, seq, streams, dim]
     #   - 输出: [batch*streams, seq, dim]
     #   - 计算: out[b*s+i, seq, d] = in[b, seq, i, d]
     output = rearrange(output, "b ... s d -> (b s) ... d")
-    
+
     return output
 ```
 
@@ -52,20 +52,20 @@ void mhc_post_cpu(
         for (int64_t s = 0; s < num_streams; ++s) {
             // 获取当前stream的权重
             float weight = h_post[s];
-            
+
             // 计算输出的batch索引: b*num_streams + s
             // 这对应rearrange "b s -> (b s)"的语义
             int64_t out_batch_idx = b * num_streams + s;
-            
+
             // 遍历每个序列位置和维度
             for (int64_t seq = 0; seq < seq_len; ++seq) {
                 for (int64_t d = 0; d < dim; ++d) {
                     // 输入索引: branch_output[b, seq, d]
                     int64_t in_idx = b * seq_len * dim + seq * dim + d;
-                    
+
                     // 输出索引: output[b*s+i, seq, d]
                     int64_t out_idx = out_batch_idx * seq_len * dim + seq * dim + d;
-                    
+
                     // 核心计算: 乘法
                     // 对应论文公式: output[b*s+i] = branch_output[b] * h_post[i]
                     output[out_idx] = branch_output[in_idx] * weight;
@@ -96,38 +96,38 @@ public:
         // 每个block处理一个(batch, stream)组合
         // block_idx范围: [0, batch * num_streams)
         int64_t block_idx = GetBlockIdx();
-        
+
         // 解析batch索引和stream索引
         // 这对应"(b s)" -> "b, s"的反向操作
         this->batch_idx = block_idx / num_streams;
         this->stream_idx = block_idx % num_streams;
-        
+
         // 输入偏移: 只依赖batch_idx
         // 对应论文公式中branch_output[b, ...]
         int64_t input_offset = this->batch_idx * this->batch_elements;
-        
+
         // 输出偏移: 依赖batch_idx和stream_idx
         // 对应论文公式中output[b*s+i, ...]
         int64_t output_offset = (this->batch_idx * num_streams + this->stream_idx) * this->batch_elements;
-        
+
         // 设置GM指针...
     }
-    
+
     __aicore__ inline void LoadWeight() {
         // 加载当前stream的权重
         // 对应论文公式中h_post[i]
         this->weight_value = this->gm_h_post.GetValue(this->stream_idx);
     }
-    
+
     __aicore__ inline void Compute(int64_t length) {
         LocalTensor<float> inLocal = inQueue.DeQue<float>();
         LocalTensor<float> outLocal = outQueue.AllocTensor<float>();
-        
+
         // 核心计算: 向量乘标量
         // 对应论文公式: output = branch_output * h_post[i]
         // Muls是AscendC的向量乘标量指令
         Muls(outLocal, inLocal, this->weight_value, length);
-        
+
         outQueue.EnQue(outLocal);
         inQueue.FreeTensor(inLocal);
     }
@@ -183,7 +183,7 @@ block_idx ∈ [0, B*N):
   b = block_idx / N               // ← 解析batch索引
   n = block_idx % N               // ← 解析stream索引
   weight = h_post[n]              // ← 对应h_post[n]
-  
+
   // 向量化: 处理整个[S, D]平面
   output[block_idx, :, :] = branch_output[b, :, :] * weight
   //                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

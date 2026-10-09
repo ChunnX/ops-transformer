@@ -40,7 +40,7 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_premix(GM_ADDR x, GM_ADDR
     }
 
     GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornPremixTilingData, tiling_data_in, tiling);
-    const MhcPreSinkhornPremixTilingData *__restrict tilingData = &tiling_data_in;
+    const MhcPreSinkhornPremixTilingData* __restrict tilingData = &tiling_data_in;
 
     if (TILING_KEY_IS(0)) {
         // -----------split m--------------

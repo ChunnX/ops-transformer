@@ -27,10 +27,13 @@ logger = logging.getLogger(__name__)
 
 try:
     import mhc_post_ext
+
     _USE_CPP_EXT = True
 except ImportError:
     _USE_CPP_EXT = False
-    logger.warning("mhc_post_ext not found. Run 'python setup.py build_ext --inplace' to build.")
+    logger.warning(
+        "mhc_post_ext not found. Run 'python setup.py build_ext --inplace' to build."
+    )
 
 
 def mhc_post(x: torch.Tensor, h_post: torch.Tensor) -> torch.Tensor:
@@ -61,10 +64,12 @@ def mhc_post_einsum(x: torch.Tensor, h_post: torch.Tensor) -> torch.Tensor:
     num_streams = h_post.size(0)
     if num_streams == 0:
         raise ValueError("num_streams must be > 0, got 0")
-    return torch.einsum('bsd,n->bnsd', x, h_post).reshape(batch * num_streams, -1, x.size(-1))
+    return torch.einsum("bsd,n->bnsd", x, h_post).reshape(
+        batch * num_streams, -1, x.size(-1)
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     torch.npu.set_device(0)
 

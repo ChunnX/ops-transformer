@@ -68,7 +68,7 @@ class KernelComputeWy {
 public:
     __aicore__ inline void Init(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR g, GM_ADDR beta, GM_ADDR qKernel,
                                 GM_ADDR kKernel, GM_ADDR wKernel, GM_ADDR uKernel, GM_ADDR gKernel, GM_ADDR workspace,
-                                const ChunkGatedDeltaRuleComputeWyTilingData *tiling, TPipe *pipe)
+                                const ChunkGatedDeltaRuleComputeWyTilingData* tiling, TPipe* pipe)
     {
         valid_ = false;
         pipe_ = pipe;
@@ -101,17 +101,17 @@ public:
             return;
         }
 
-        qGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(q));
-        kGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(k));
-        vGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(v));
-        gGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(g));
-        betaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(beta));
-        qKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(qKernel));
-        kKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(kKernel));
-        wKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(wKernel));
-        uKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half *>(uKernel));
-        gKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(gKernel));
-        iNzGm_.SetGlobalBuffer(const_cast<__gm__ float *>(WY_IDENTITY_NZ));
+        qGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(q));
+        kGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(k));
+        vGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v));
+        gGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(g));
+        betaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(beta));
+        qKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(qKernel));
+        kKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(kKernel));
+        wKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(wKernel));
+        uKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(uKernel));
+        gKernelGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(gKernel));
+        iNzGm_.SetGlobalBuffer(const_cast<__gm__ float*>(WY_IDENTITY_NZ));
 
         const uint32_t localWsBytes = localWorkspaceSize_ == 0 ? (32 * 1024) : localWorkspaceSize_;
         pipe_->InitBuffer(mmLocalWsBuf_, localWsBytes);
@@ -181,7 +181,7 @@ public:
         // Table is compile-time GM constant data; one 16KB MTE2 burst replaces the
         // 4096-iteration scalar SetValue loop every core paid on every launch.
         GlobalTensor<uint32_t> tabGm;
-        tabGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t *>(const_cast<__gm__ uint32_t *>(WY_LAMBDA_OFF_TABLE)));
+        tabGm.SetGlobalBuffer(reinterpret_cast<__gm__ uint32_t*>(const_cast<__gm__ uint32_t*>(WY_LAMBDA_OFF_TABLE)));
         DataCopy(lamOffBuf_.Get<uint32_t>(), tabGm, ATTEN_ELEMS);
         SyncEvent<HardEvent::MTE2_S>(HardEvent::MTE2_S);
         gBuf_.Get<float>().SetValue(FIXED_CHUNK_SIZE, -1.0e20f);
@@ -885,7 +885,7 @@ private:
         return true;
     }
 
-    TPipe *pipe_{nullptr};
+    TPipe* pipe_{nullptr};
     bool valid_{false};
     // Max |row sum| of A from the last gate check; NaN when the data was NaN.
     float gateMaxRowSum_{0.0f};

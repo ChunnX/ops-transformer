@@ -20,14 +20,14 @@ extern "C" {
 
 namespace {
 
-void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
-                                const aclTensor *&placeHolder)
+void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor* softmaxLse, const aclTensor*& tempTensor,
+                                const aclTensor*& placeHolder)
 {
     if (returnSoftmaxLse == false) {
         std::vector<int64_t> shape = {0};
         int64_t addr = 0xff;
         tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
-                                     shape.data(), shape.size(), static_cast<void *>(&addr));
+                                     shape.data(), shape.size(), static_cast<void*>(&addr));
         placeHolder = tempTensor;
     } else {
         placeHolder = softmaxLse;
@@ -35,10 +35,10 @@ void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softm
 }
 
 // sinks shape为{0}时置nullptr
-void FlashAttnProcessSinks(const aclTensor *&sinksOptional)
+void FlashAttnProcessSinks(const aclTensor*& sinksOptional)
 {
     if (sinksOptional != nullptr) {
-        const auto &shape = sinksOptional->GetViewShape();
+        const auto& shape = sinksOptional->GetViewShape();
         if (shape.GetDimNum() == 1U && shape[0] == 0) {
             OP_LOGD("sinks shape is {0}, treat as nullptr.");
             sinksOptional = nullptr;

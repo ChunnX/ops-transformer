@@ -40,8 +40,8 @@ static constexpr uint32_t STAGING_B_BYTES = FIXED_CHUNK * MAX_HEAD_DIM * sizeof(
 static constexpr uint32_t SNAP_BYTES = FIXED_CHUNK * FIXED_CHUNK * sizeof(float);
 static constexpr uint32_t PER_CORE_STAGING_BYTES = STAGING_A_BYTES + STAGING_B_BYTES + SNAP_BYTES;
 
-static ge::graphStatus FillCubeTiling(gert::TilingContext *context, int64_t m, int64_t n, int64_t k, bool bTranspose,
-                                      TCubeTiling &out, bool abFromUb = false)
+static ge::graphStatus FillCubeTiling(gert::TilingContext* context, int64_t m, int64_t n, int64_t k, bool bTranspose,
+                                      TCubeTiling& out, bool abFromUb = false)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     matmul_tiling::MatmulApiTiling mm(ascendcPlatform);
@@ -65,7 +65,7 @@ static ge::graphStatus FillCubeTiling(gert::TilingContext *context, int64_t m, i
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus Tiling4ChunkGatedDeltaRuleComputeWy(gert::TilingContext *context)
+ge::graphStatus Tiling4ChunkGatedDeltaRuleComputeWy(gert::TilingContext* context)
 {
     ChunkGatedDeltaRuleComputeWyTilingData tiling;
 
@@ -159,13 +159,13 @@ ge::graphStatus Tiling4ChunkGatedDeltaRuleComputeWy(gert::TilingContext *context
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
-    size_t *workspace = context->GetWorkspaceSizes(1);
+    size_t* workspace = context->GetWorkspaceSizes(1);
     workspace[0] = static_cast<size_t>(workspaceOffset) +
                    static_cast<size_t>(usedCoreNum) * static_cast<size_t>(PER_CORE_STAGING_BYTES);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForChunkGatedDeltaRuleComputeWy(gert::TilingParseContext *context)
+ge::graphStatus TilingPrepareForChunkGatedDeltaRuleComputeWy(gert::TilingParseContext* context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;

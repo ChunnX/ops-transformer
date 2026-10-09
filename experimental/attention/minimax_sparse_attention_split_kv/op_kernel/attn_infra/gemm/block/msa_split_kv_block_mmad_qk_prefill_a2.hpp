@@ -97,7 +97,7 @@ struct BlockMmadQKPrefillA2 {
     // WAIT: CrossCoreWaitFlag (non-templated, MODE=0/PIPE_S — generic sync pipe).
     // MODE_4 with PIPE_FIX↔PIPE_V pairing does NOT work on A2 hardware.
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void SetCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 0x2U) {
             Arch::CrossCoreSetFlag<MODE, PIPE>(crossCoreFlag);
@@ -105,7 +105,7 @@ struct BlockMmadQKPrefillA2 {
     }
 
     template <uint32_t MODE, pipe_t PIPE>
-    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag &crossCoreFlag)
+    __aicore__ inline void WaitCrossCoreSync(Arch::CrossCoreFlag& crossCoreFlag)
     {
         if constexpr (MODE == 0x2U) {
             // A2 CUBE: must use MODE=0x2 with a CUBE-available pipe (PIPE_FIX etc).
@@ -115,8 +115,8 @@ struct BlockMmadQKPrefillA2 {
         }
     }
 
-    __aicore__ inline void Init(Arch::Resource<ArchTag> &resource, uint32_t blockSize, uint32_t D,
-                                AscendC::GlobalTensor<ElementS> &gmSWorkspace)
+    __aicore__ inline void Init(Arch::Resource<ArchTag>& resource, uint32_t blockSize, uint32_t D,
+                                AscendC::GlobalTensor<ElementS>& gmSWorkspace)
     {
         uint32_t kBufBytes = blockSize * D * sizeof(ElementK);
         uint32_t qBufBytes = L0_TILE_M * D * sizeof(ElementQ);
@@ -137,7 +137,7 @@ struct BlockMmadQKPrefillA2 {
     }
 
     template <class TensorK>
-    __aicore__ inline void LoadKResident(TensorK &gmKTensor, uint32_t validSize, uint32_t D)
+    __aicore__ inline void LoadKResident(TensorK& gmKTensor, uint32_t validSize, uint32_t D)
     {
         using CopyGmToL1K = typename TileCopy::template CopyGmToL1B<TensorK>;
         CopyGmToL1K copyGmToL1K;
@@ -169,10 +169,10 @@ struct BlockMmadQKPrefillA2 {
     // which fixpipes L0C→UB directly (CopyL0CToUBTla with subBlockId), A2 has no L0C→UB path.
     // CUBE has no MTE3 pipe — DataCopyPad and PIPE_MTE3 are CUBE-invalid.
     template <class TensorQ, class TensorS>
-    __aicore__ inline void operator()(TensorQ &gQ, const uint32_t *qTokens, uint32_t groupCount, uint32_t groupRows,
-                                      TensorS &ubSTensor, uint32_t validSize, uint32_t D, uint64_t perQTokenStrideQ,
+    __aicore__ inline void operator()(TensorQ& gQ, const uint32_t* qTokens, uint32_t groupCount, uint32_t groupRows,
+                                      TensorS& ubSTensor, uint32_t validSize, uint32_t D, uint64_t perQTokenStrideQ,
                                       uint64_t qHeadStartBase, uint32_t numBatches, uint32_t bi,
-                                      Arch::CrossCoreFlag &mm1ToSmFlag)
+                                      Arch::CrossCoreFlag& mm1ToSmFlag)
     {
         uint32_t M = groupCount * groupRows;
         uint32_t N = validSize;

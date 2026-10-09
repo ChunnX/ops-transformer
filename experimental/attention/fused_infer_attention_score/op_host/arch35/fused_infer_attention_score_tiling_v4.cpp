@@ -30,7 +30,8 @@
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
-ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext *context) {
+ge::graphStatus TilingFusedInferAttentionScoreV4(gert::TilingContext* context)
+{
     // Parse -> Check -> DoOpTiling
     FiaTilingInfo fiaInfo;
     FiaInfoParser fiaInfoParser(context);

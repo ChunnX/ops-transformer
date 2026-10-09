@@ -25,38 +25,38 @@ namespace optiling {
 
 class PagedAttentionChecker : public BaseChecker {
 public:
-    PagedAttentionChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    PagedAttentionChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant)
+    {}
     ~PagedAttentionChecker() override = default;
 
-    ge::graphStatus CheckSinglePara(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckParaExistence(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckCrossFeature(const FiaTilingInfo &fiaInfo) override;
-    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo) override;
+    ge::graphStatus CheckSinglePara(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckParaExistence(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckCrossFeature(const FiaTilingInfo& fiaInfo) override;
+    ge::graphStatus CheckMultiParaConsistency(const FiaTilingInfo& fiaInfo) override;
 
 private:
     // 公共校验函数
 
-    ge::graphStatus CheckBlockTableDtype(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckBlockTableShapeSize(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckBlockSize(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckBlockTableDtype(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckBlockTableShapeSize(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckBlockSize(const FiaTilingInfo& fiaInfo);
 
+    ge::graphStatus CheckBlockTableExistence(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckFeatureSupport(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckSeqLengthKVExistence(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckQDtypeSupport(const FiaTilingInfo& fiaInfo);
 
-    ge::graphStatus CheckBlockTableExistence(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckFeatureSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckSeqLengthKVExistence(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckQDtypeSupport(const FiaTilingInfo &fiaInfo);
+    int64_t GetMaxBlockNumPerBatch(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckMaskShape(const FiaTilingInfo& fiaInfo);
 
-    int64_t GetMaxBlockNumPerBatch(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckMaskShape(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckBlockTableShape(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckBlockSizeSupport(const FiaTilingInfo& fiaInfo);
+    ge::graphStatus CheckKVLayout(const FiaTilingInfo& fiaInfo);
 
-    ge::graphStatus CheckBlockTableShape(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckBlockSizeSupport(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckKVLayout(const FiaTilingInfo &fiaInfo);
-
-    ge::graphStatus CheckPACacheShape(const FiaTilingInfo &fiaInfo, const gert::Shape tempShape,
-        const std::string& inputName);
-    ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckPACacheShape(const FiaTilingInfo& fiaInfo, const gert::Shape tempShape,
+                                      const std::string& inputName);
+    ge::graphStatus CheckFeatureQueryS(const FiaTilingInfo& fiaInfo);
 };
 
 } // namespace optiling

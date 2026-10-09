@@ -72,7 +72,7 @@ std::string SparseLIDataTypeToSerialString(ge::DataType type)
     }
 }
 
-static std::vector<int64_t> ToVector(const gert::Shape &shape)
+static std::vector<int64_t> ToVector(const gert::Shape& shape)
 {
     size_t shapeSize = shape.GetDimNum();
     std::vector<int64_t> shapeVec(shapeSize, 0);
@@ -83,7 +83,7 @@ static std::vector<int64_t> ToVector(const gert::Shape &shape)
     return shapeVec;
 }
 
-static std::string ToStringRaw(const gert::Shape &shape)
+static std::string ToStringRaw(const gert::Shape& shape)
 {
     std::ostringstream oss;
     auto v = ToVector(shape);
@@ -511,7 +511,7 @@ ge::graphStatus SparseLIInfoParser::GetAndCheckCandidateInput()
 {
     // C2：输入 shape。BSND：B × s1Size × N2 × candBlocks；TND：query.dim0 × N2 × candBlocks
     // （dim0 专式，与 s1Size 解耦——本算子 GetS1Size 的 TND 分支已取 dim0，二者一致，N8）。
-    const gert::Shape &candShape = opParamInfo_.candidateTopkIndices.shape->GetStorageShape();
+    const gert::Shape& candShape = opParamInfo_.candidateTopkIndices.shape->GetStorageShape();
     uint32_t candDimNum = candShape.GetDimNum();
     uint32_t expectDimNum = (qLayout_ == DataLayout::TND) ? DIM_NUM_THREE : DIM_NUM_FOUR;
     OP_CHECK_IF(candDimNum != expectDimNum,
@@ -620,7 +620,7 @@ ge::graphStatus SparseLIInfoParser::CheckKeyContiguous() const
     // PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 从0轴开始检查
     size_t checkStartIdx = (kLayout_ == DataLayout::PA_BBND) ? 1 : 0;
     if (!keyStridesVec_.empty() && opParamInfo_.key.shape != nullptr) {
-        auto &shape = opParamInfo_.key.shape->GetStorageShape();
+        auto& shape = opParamInfo_.key.shape->GetStorageShape();
         std::vector<uint32_t> expectedStrides;
         if (kLayout_ == DataLayout::BSND || kLayout_ == DataLayout::PA_BBND) {
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2) * shape.GetDim(3), shape.GetDim(2) * shape.GetDim(3),
@@ -657,8 +657,8 @@ ge::graphStatus SparseLIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SparseLIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-                                                        const std::string &actualSeqLenName) const
+ge::graphStatus SparseLIInfoParser::GetActualSeqLenSize(uint32_t& size, const gert::Tensor* tensor,
+                                                        const std::string& actualSeqLenName) const
 {
     // 【R16 修复 2026-09-23】uint32_t + size<=0 对 ShapeSize-1 的 0 下溢不设防（cuSeqlens shape [0]
     // → size=2^32-1 放行）。int64_t 中间量 + 至少 [start,total] 两元素（batch≥1）
@@ -991,7 +991,7 @@ ge::graphStatus SparseLIInfoParser::ValidateInputShapesMatch()
     return ge::GRAPH_SUCCESS;
 }
 
-void SparseLIInfoParser::GenerateInfo(SparseLITilingInfo &liInfo)
+void SparseLIInfoParser::GenerateInfo(SparseLITilingInfo& liInfo)
 {
     liInfo.opName = opName_;
     liInfo.platformInfo = platformInfo_;
@@ -1039,7 +1039,7 @@ void SparseLIInfoParser::GenerateInfo(SparseLITilingInfo &liInfo)
     liInfo.inputKLayout = kLayout_;
 }
 
-ge::graphStatus SparseLIInfoParser::ParseAndCheck(SparseLITilingInfo &liInfo)
+ge::graphStatus SparseLIInfoParser::ParseAndCheck(SparseLITilingInfo& liInfo)
 {
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
@@ -1074,13 +1074,13 @@ ge::graphStatus SparseLIInfoParser::ParseAndCheck(SparseLITilingInfo &liInfo)
 }
 
 // --------------------------TilingPrepare函数定义-------------------------------------
-static ge::graphStatus TilingPrepareForSparseLightningIndexer(gert::TilingParseContext * /* context */)
+static ge::graphStatus TilingPrepareForSparseLightningIndexer(gert::TilingParseContext* /* context */)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 // --------------------------SparseLightningIndexerTiling类成员函数定义-----------------------
-ge::graphStatus SparseLightningIndexerTiling::DoTiling(SparseLITilingInfo *tilingInfo)
+ge::graphStatus SparseLightningIndexerTiling::DoTiling(SparseLITilingInfo* tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -1113,7 +1113,7 @@ ge::graphStatus SparseLightningIndexerTiling::DoTiling(SparseLITilingInfo *tilin
     // 临时存储Decode中间参数信息大小: 2(头/尾)*8(s1Base)*16(paramNum)*sizeof(int64_t)*24=48k
     workspaceSize += V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
 
-    size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    size_t* workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
     // -------------set tilingdata-----------------
@@ -1157,7 +1157,7 @@ ge::graphStatus SparseLightningIndexerTiling::DoTiling(SparseLITilingInfo *tilin
 }
 
 // --------------------------Tiling函数定义---------------------------
-ge::graphStatus TilingForSparseLightningIndexer(gert::TilingContext *context)
+ge::graphStatus TilingForSparseLightningIndexer(gert::TilingContext* context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("SparseLightningIndexer", "Tiling context is null."),
                 return ge::GRAPH_FAILED);

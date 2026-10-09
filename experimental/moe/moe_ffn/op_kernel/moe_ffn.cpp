@@ -23,7 +23,7 @@ extern "C" __global__ __aicore__ void moe_ffn(GM_ADDR x, GM_ADDR quantized_weigh
 {
     AscendC::SetAtomicNone();
     GET_TILING_DATA(tiling_data, moeTiling);
-    const MoeFFNTilingData *__restrict tilingData = &tiling_data;
+    const MoeFFNTilingData* __restrict tilingData = &tiling_data;
     if (TILING_KEY_IS(10000001)) {
         MOEW4A16<half> moe_handle;
         moe_handle.Init(x, quantized_weight_13, weight_scale_13, weight_offset_13, quantized_weight_2, weight_scale_2,

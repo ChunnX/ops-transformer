@@ -28,7 +28,7 @@ namespace {
         (void)printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -37,7 +37,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -58,8 +58,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -85,28 +85,28 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 }
 
 struct TensorResources {
-    void *queryDeviceAddr = nullptr;
-    void *keyDeviceAddr = nullptr;
-    void *weightsDeviceAddr = nullptr;
-    void *cmpResidualKDeviceAddr = nullptr;
-    void *sparseIndicesDeviceAddr = nullptr;
-    void *sparseValuesDeviceAddr = nullptr;
+    void* queryDeviceAddr = nullptr;
+    void* keyDeviceAddr = nullptr;
+    void* weightsDeviceAddr = nullptr;
+    void* cmpResidualKDeviceAddr = nullptr;
+    void* sparseIndicesDeviceAddr = nullptr;
+    void* sparseValuesDeviceAddr = nullptr;
 
-    aclTensor *queryTensor = nullptr;
-    aclTensor *keyTensor = nullptr;
-    aclTensor *weightsTensor = nullptr;
-    aclTensor *cmpResidualKTensor = nullptr;
-    aclTensor *sparseIndicesTensor = nullptr;
-    aclTensor *sparseValuesTensor = nullptr;
+    aclTensor* queryTensor = nullptr;
+    aclTensor* keyTensor = nullptr;
+    aclTensor* weightsTensor = nullptr;
+    aclTensor* cmpResidualKTensor = nullptr;
+    aclTensor* sparseIndicesTensor = nullptr;
+    aclTensor* sparseValuesTensor = nullptr;
     // candidate (two-level topk)：off 模式输出为 (0,) 空 tensor（预留接口占位）
-    aclTensor *candidateTopkIndicesTensor = nullptr;
-    aclTensor *candidateBlockLengthTensor = nullptr;
+    aclTensor* candidateTopkIndicesTensor = nullptr;
+    aclTensor* candidateBlockLengthTensor = nullptr;
     // candidate source 模式输出：on 时为 [B,S1,N2,candTopkBlocks] 实 tensor（block_length 仍恒空）
-    void *candidateSrcIndicesDeviceAddr = nullptr;
-    aclTensor *candidateSrcIndicesTensor = nullptr;
+    void* candidateSrcIndicesDeviceAddr = nullptr;
+    aclTensor* candidateSrcIndicesTensor = nullptr;
 };
 
-int CreateEmptyAclTensor(aclTensor **tensor)
+int CreateEmptyAclTensor(aclTensor** tensor)
 {
     std::vector<int64_t> shape = {0};
     std::vector<int64_t> strides = {1};
@@ -115,7 +115,7 @@ int CreateEmptyAclTensor(aclTensor **tensor)
     return 0;
 }
 
-int InitializeTensors(TensorResources &resources)
+int InitializeTensors(TensorResources& resources)
 {
     int64_t B = 2;
     int64_t S1 = 64;
@@ -200,7 +200,7 @@ int InitializeTensors(TensorResources &resources)
 
 // candidate source 模式输出构造：candidateTopkIndicesOut 为 [B,S1,N2,candTopkBlocks] int32
 // （block_length 恒空，复用 off 模式的 (0,) 占位 tensor）。仅在 source 调用前创建。
-int InitializeCandidateSourceTensors(TensorResources &resources)
+int InitializeCandidateSourceTensors(TensorResources& resources)
 {
     constexpr int64_t CAND_TOPK_BLOCKS = 64; // (0, 2048] 且 64 的倍数
     int64_t B = 2;
@@ -213,8 +213,8 @@ int InitializeCandidateSourceTensors(TensorResources &resources)
                            aclDataType::ACL_INT32, &resources.candidateSrcIndicesTensor);
 }
 
-int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, void **workspaceAddr,
-                              uint64_t *workspaceSize)
+int ExecuteLightningIndexerV2(TensorResources& resources, aclrtStream stream, void** workspaceAddr,
+                              uint64_t* workspaceSize)
 {
     int64_t topk = 32;
     int64_t maxSeqlenQ = -1;
@@ -237,7 +237,7 @@ int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, vo
         LOG_PRINT("memcpy_s layoutKey failed. ERROR: %d\n", memcpyRet);
         return -1;
     }
-    aclOpExecutor *executor;
+    aclOpExecutor* executor;
 
     int ret = aclnnLightningIndexerV2GetWorkspaceSize(
         resources.queryTensor, resources.keyTensor, resources.weightsTensor, nullptr, nullptr, nullptr, nullptr,
@@ -273,8 +273,8 @@ int ExecuteLightningIndexerV2(TensorResources &resources, aclrtStream stream, vo
 // 时开启，candidate_topk_indices 输出候选块索引（块号或 -1、无序、相对块号），
 // candidate_block_length 为预留接口恒空。candidate 仅 ascend910b/ascend910_93（DAV_2201）支持，
 // arch35（ascend950）会被 host 校验拒绝，调用方需按 arch 门控。
-int ExecuteLightningIndexerV2CandidateSource(TensorResources &resources, aclrtStream stream, void **workspaceAddr,
-                                             uint64_t *workspaceSize)
+int ExecuteLightningIndexerV2CandidateSource(TensorResources& resources, aclrtStream stream, void** workspaceAddr,
+                                             uint64_t* workspaceSize)
 {
     int64_t topk = 32;
     int64_t maxSeqlenQ = -1;
@@ -299,7 +299,7 @@ int ExecuteLightningIndexerV2CandidateSource(TensorResources &resources, aclrtSt
         LOG_PRINT("memcpy_s layoutKey failed. ERROR: %d\n", memcpyRet);
         return -1;
     }
-    aclOpExecutor *executor;
+    aclOpExecutor* executor;
 
     int ret = aclnnLightningIndexerV2GetWorkspaceSize(
         resources.queryTensor, resources.keyTensor, resources.weightsTensor, nullptr, nullptr, nullptr, nullptr,
@@ -330,7 +330,7 @@ int ExecuteLightningIndexerV2CandidateSource(TensorResources &resources, aclrtSt
     return ACL_SUCCESS;
 }
 
-int PrintOutResult(const char *name, std::vector<int64_t> &shape, void **deviceAddr)
+int PrintOutResult(const char* name, std::vector<int64_t>& shape, void** deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<int32_t> resultData(size, 0);
@@ -346,7 +346,7 @@ int PrintOutResult(const char *name, std::vector<int64_t> &shape, void **deviceA
     return ACL_SUCCESS;
 }
 
-void CleanupResources(TensorResources &resources, void *workspaceAddr, aclrtStream stream, int32_t deviceId)
+void CleanupResources(TensorResources& resources, void* workspaceAddr, aclrtStream stream, int32_t deviceId)
 {
     if (resources.queryTensor) {
         aclDestroyTensor(resources.queryTensor);
@@ -423,7 +423,7 @@ int main()
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;
     TensorResources resources = {};
-    void *workspaceAddr = nullptr;
+    void* workspaceAddr = nullptr;
     uint64_t workspaceSize = 0;
     int64_t B = 2;
     int64_t S1 = 64;

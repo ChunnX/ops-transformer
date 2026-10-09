@@ -45,16 +45,16 @@ output = einsum(streams, alpha, "b s ... d, s -> b ... d")
 def width_connection(self, streams, *, alpha):
     # alpha is h_pre, shape [num_streams]
     # streams shape: [batch * num_streams, seq, dim]
-    
+
     # Step 1: "(b s) ... d -> b s ... d"
     # Reshape: [B×N, S, D] -> [B, N, S, D]
     streams = rearrange(streams, "(b s) ... d -> b s ... d", s=num_streams)
-    
+
     # Step 2: "b s ... d, s -> b ... d"
     # Weighted sum: [B, N, S, D] × [N] -> [B, S, D]
     # out[b,seq,d] = Σ_s streams[b,s,seq,d] × alpha[s]
     output = einsum(streams, alpha, "b s ... d, s -> b ... d")
-    
+
     return output
 ```
 
@@ -88,15 +88,15 @@ void cpu_reference_fp32(
 __aicore__ inline void ProcessOneTile(int64_t batch_idx, int64_t tile_off, int64_t len) {
     LocalTensor<T> acc = outQue.AllocTensor<T>();
     LocalTensor<T> tmp = tmpBuf.Get<T>();
-    
+
     for (int64_t s = 0; s < num_streams; ++s) {
         int64_t in_off = (batch_idx * num_streams + s) * batch_elements + tile_off;
         gm_in.SetGlobalBuffer(gm_input + in_off, len);
-        
+
         CopyIn(len);
         LocalTensor<T> in = inQue.DeQue<T>();
         T weight = gm_h.GetValue(s);
-        
+
         if (s == 0) {
             Muls(acc, in, weight, len);
         } else {

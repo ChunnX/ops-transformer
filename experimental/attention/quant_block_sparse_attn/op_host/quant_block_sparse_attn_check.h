@@ -23,7 +23,7 @@ namespace optiling {
 
 class QuantBlockSparseAttnCheck {
 public:
-    explicit QuantBlockSparseAttnCheck(const QuantBlockSparseAttnTilingInfo &tilingInfo);
+    explicit QuantBlockSparseAttnCheck(const QuantBlockSparseAttnTilingInfo& tilingInfo);
     ~QuantBlockSparseAttnCheck() = default;
 
     ge::graphStatus Process();
@@ -43,7 +43,7 @@ private:
     ge::graphStatus CheckAttenMask() const;
     ge::graphStatus CheckMXFP8FullQuantShape() const;
 
-    const QuantBlockSparseAttnTilingInfo &tilingInfo_;
+    const QuantBlockSparseAttnTilingInfo& tilingInfo_;
 };
 
 } // namespace optiling

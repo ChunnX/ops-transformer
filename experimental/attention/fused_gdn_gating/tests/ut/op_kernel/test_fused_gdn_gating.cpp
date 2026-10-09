@@ -36,14 +36,14 @@ extern "C" __global__ __aicore__ void fused_gdn_gating(GM_ADDR a_log, GM_ADDR a,
                                                        GM_ADDR beta_output, GM_ADDR workspace, GM_ADDR tiling_gm);
 
 template <typename T>
-T *GmAllocWrapper(size_t size)
+T* GmAllocWrapper(size_t size)
 {
-    T *ptr = reinterpret_cast<T *>(AscendC::GmAlloc(size));
+    T* ptr = reinterpret_cast<T*>(AscendC::GmAlloc(size));
     assert(ptr != nullptr && "GM allocation failed");
     return ptr;
 }
 
-void InitTilingData(FusedGdnGatingTilingData *td, uint32_t numHeads, uint32_t numBatches, float beta, float threshold)
+void InitTilingData(FusedGdnGatingTilingData* td, uint32_t numHeads, uint32_t numBatches, float beta, float threshold)
 {
     td->numHeads = numHeads;
     td->beta = beta;
@@ -58,8 +58,8 @@ void InitTilingData(FusedGdnGatingTilingData *td, uint32_t numHeads, uint32_t nu
     td->threshold = threshold;
 }
 
-void InitInputData(uint8_t *aLogGm, size_t shapeALog, uint8_t *aGm, size_t shapeA, uint8_t *bGm, size_t shapeB,
-                   uint8_t *dtBiasGm, size_t shapeDtBias, uint8_t *gGm, size_t shapeG, uint8_t *betaOutputGm,
+void InitInputData(uint8_t* aLogGm, size_t shapeALog, uint8_t* aGm, size_t shapeA, uint8_t* bGm, size_t shapeB,
+                   uint8_t* dtBiasGm, size_t shapeDtBias, uint8_t* gGm, size_t shapeG, uint8_t* betaOutputGm,
                    size_t shapeBetaOutput)
 {
     memset(aLogGm, 0, shapeALog);
@@ -88,14 +88,14 @@ protected:
     size_t allWorkspaceSize = 196608;
     size_t tilingSize = sizeof(FusedGdnGatingTilingData);
 
-    uint8_t *aLogGm = nullptr;
-    uint8_t *aGm = nullptr;
-    uint8_t *bGm = nullptr;
-    uint8_t *dtBiasGm = nullptr;
-    uint8_t *gGm = nullptr;
-    uint8_t *betaOutputGm = nullptr;
-    uint8_t *workspace = nullptr;
-    uint8_t *tiling = nullptr;
+    uint8_t* aLogGm = nullptr;
+    uint8_t* aGm = nullptr;
+    uint8_t* bGm = nullptr;
+    uint8_t* dtBiasGm = nullptr;
+    uint8_t* gGm = nullptr;
+    uint8_t* betaOutputGm = nullptr;
+    uint8_t* workspace = nullptr;
+    uint8_t* tiling = nullptr;
 
     void SetUp() override
     {
@@ -113,7 +113,7 @@ protected:
                       shapeBetaOutput);
 
         auto params = GetParam();
-        FusedGdnGatingTilingData *td = reinterpret_cast<FusedGdnGatingTilingData *>(tiling);
+        FusedGdnGatingTilingData* td = reinterpret_cast<FusedGdnGatingTilingData*>(tiling);
         InitTilingData(td, numHeads, batch, 1.0f, 20.0f);
     }
 
@@ -159,14 +159,14 @@ protected:
     size_t allWorkspaceSize = 196608;
     size_t tilingSize = sizeof(FusedGdnGatingTilingData);
 
-    uint8_t *aLogGm = nullptr;
-    uint8_t *aGm = nullptr;
-    uint8_t *bGm = nullptr;
-    uint8_t *dtBiasGm = nullptr;
-    uint8_t *gGm = nullptr;
-    uint8_t *betaOutputGm = nullptr;
-    uint8_t *workspace = nullptr;
-    uint8_t *tiling = nullptr;
+    uint8_t* aLogGm = nullptr;
+    uint8_t* aGm = nullptr;
+    uint8_t* bGm = nullptr;
+    uint8_t* dtBiasGm = nullptr;
+    uint8_t* gGm = nullptr;
+    uint8_t* betaOutputGm = nullptr;
+    uint8_t* workspace = nullptr;
+    uint8_t* tiling = nullptr;
 
     void SetUp() override
     {
@@ -183,7 +183,7 @@ protected:
         InitInputData(aLogGm, shapeALog, aGm, shapeA, bGm, shapeB, dtBiasGm, shapeDtBias, gGm, shapeG, betaOutputGm,
                       shapeBetaOutput);
 
-        FusedGdnGatingTilingData *td = reinterpret_cast<FusedGdnGatingTilingData *>(tiling);
+        FusedGdnGatingTilingData* td = reinterpret_cast<FusedGdnGatingTilingData*>(tiling);
         td->numHeads = numHeads;
         td->beta = 1.0f;
         td->numBatches = batch;

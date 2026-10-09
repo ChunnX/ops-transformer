@@ -25,24 +25,24 @@ constexpr uint32_t LAYOUT_QUERY_ATTR_INDEX = 4;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 10;
 constexpr uint32_t ATTENTION_MODE_ATTR_INDEX = 7;
 
-ge::graphStatus InferShapeSparseFlashAttentionAntiquant(gert::InferShapeContext *context)
+ge::graphStatus InferShapeSparseFlashAttentionAntiquant(gert::InferShapeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashAttentionAntiquant", "InferShapeContext is nullptr"),
                return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
+    const gert::Shape* queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED);
-    gert::Shape *attentionOutShape = context->GetOutputShape(0);
+    gert::Shape* attentionOutShape = context->GetOutputShape(0);
     OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
-    const char *inputLayoutQueryPtr = attrs->GetAttrPointer<char>(LAYOUT_QUERY_ATTR_INDEX);
+    const char* inputLayoutQueryPtr = attrs->GetAttrPointer<char>(LAYOUT_QUERY_ATTR_INDEX);
     OPS_LOG_E_IF_NULL(context, inputLayoutQueryPtr, return ge::GRAPH_FAILED);
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
 
-    const int64_t *attentionModePtr = attrs->GetAttrPointer<int64_t>(ATTENTION_MODE_ATTR_INDEX);
+    const int64_t* attentionModePtr = attrs->GetAttrPointer<int64_t>(ATTENTION_MODE_ATTR_INDEX);
     OPS_LOG_E_IF_NULL(context, attentionModePtr, return ge::GRAPH_FAILED);
     const int64_t attentionMode = *attentionModePtr;
 
-    const int64_t *ropeHeadDimPtr = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    const int64_t* ropeHeadDimPtr = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
     int64_t ropeHeadDim = 0;
     if (attentionMode != 0) {
         OPS_LOG_E_IF_NULL(context, ropeHeadDimPtr, return ge::GRAPH_FAILED);
@@ -53,18 +53,18 @@ ge::graphStatus InferShapeSparseFlashAttentionAntiquant(gert::InferShapeContext 
         attentionOutShape->SetDim(0, queryShape->GetDim(0));
         attentionOutShape->SetDim(1, queryShape->GetDim(1));
         attentionOutShape->SetDim(2, queryShape->GetDim(2)); // 2:dim2
-        int64_t outHeadDim = (attentionMode == 0)? queryShape->GetDim(3) : queryShape->GetDim(3) - ropeHeadDim;
+        int64_t outHeadDim = (attentionMode == 0) ? queryShape->GetDim(3) : queryShape->GetDim(3) - ropeHeadDim;
         attentionOutShape->SetDim(3, outHeadDim); // 3:dim3
-    } else { // TND
+    } else {                                      // TND
         attentionOutShape->SetDim(0, queryShape->GetDim(0));
         attentionOutShape->SetDim(1, queryShape->GetDim(1));
-        int64_t outHeadDim = (attentionMode == 0)? queryShape->GetDim(2) : queryShape->GetDim(2) - ropeHeadDim;
+        int64_t outHeadDim = (attentionMode == 0) ? queryShape->GetDim(2) : queryShape->GetDim(2) - ropeHeadDim;
         attentionOutShape->SetDim(2, outHeadDim); // 2:dim2
     }
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeSparseFlashAttentionAntiquant(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeSparseFlashAttentionAntiquant(gert::InferDataTypeContext* context)
 {
     OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashAttentionAntiquant", "InferShapeContext is nullptr"),
                return ge::GRAPH_FAILED);
@@ -77,4 +77,3 @@ IMPL_OP(SparseFlashAttentionAntiquant)
     .InferShape(InferShapeSparseFlashAttentionAntiquant)
     .InferDataType(InferDataTypeSparseFlashAttentionAntiquant);
 } // namespace ops
-  

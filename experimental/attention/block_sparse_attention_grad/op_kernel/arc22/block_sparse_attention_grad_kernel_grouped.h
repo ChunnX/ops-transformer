@@ -23,7 +23,7 @@ __aicore__ inline void updateNextGroupedTaskInfo(AscendC::GlobalTensor<int64_t> 
                                                  AscendC::GlobalTensor<int64_t> gActualKvseqlen, uint32_t numHeads,
                                                  uint32_t kvHeads, uint32_t groupSize, uint32_t headDim,
                                                  uint32_t blockShapeX, uint32_t basicQBlockSize, uint32_t inputLayout,
-                                                 const TaskInfo &taskInfo, TaskInfo &nextTask)
+                                                 const TaskInfo& taskInfo, TaskInfo& nextTask)
 {
     if (inputLayout == 1) {
         updateNextTaskInfo(gActualQseqlen, gActualKvseqlen, numHeads, kvHeads, groupSize, headDim, blockShapeX,
@@ -60,7 +60,7 @@ __aicore__ inline void updateNextGroupedTaskInfo(AscendC::GlobalTensor<int64_t> 
     UpdateTaskInfoCalQSize(blockShapeX, basicQBlockSize, nextTask);
 }
 
-__aicore__ inline uint32_t GetPackedFragmentCapacity(const __gm__ BlockSparseAttentionGradTilingData *tilingData) const
+__aicore__ inline uint32_t GetPackedFragmentCapacity(const __gm__ BlockSparseAttentionGradTilingData* tilingData) const
 {
     // Bound one Q's dK/dV FP32 Fixpipe burst to roughly 64 KiB.  The
     // result is rounded to fragment pairs because two sub-128 KV
@@ -79,8 +79,8 @@ __aicore__ inline uint32_t GetPackedFragmentCapacity(const __gm__ BlockSparseAtt
     return capacity & ~1U;
 }
 
-__aicore__ inline void ClearGroupedPadding(const Params &params,
-                                           const __gm__ BlockSparseAttentionGradTilingData *tilingData) const
+__aicore__ inline void ClearGroupedPadding(const Params& params,
+                                           const __gm__ BlockSparseAttentionGradTilingData* tilingData) const
 {
     if (tilingData->basicKVBlockSize >= 128 || tilingData->blockShapeX < 16) {
         return;
@@ -95,18 +95,18 @@ __aicore__ inline void ClearGroupedPadding(const Params &params,
                                    static_cast<uint64_t>(GROUPED_TILES - 1) * GROUPED_TILE_ELEMENTS;
     AscendC::GlobalTensor<ElementInput> gPaddingP;
     AscendC::GlobalTensor<ElementInput> gPaddingDs;
-    gPaddingP.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + groupedFp32Bytes));
-    gPaddingDs.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + tilingData->sOutSize + groupedFp32Bytes));
+    gPaddingP.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + groupedFp32Bytes));
+    gPaddingDs.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + tilingData->sOutSize + groupedFp32Bytes));
     AscendC::InitOutput<ElementInput>(gPaddingP[paddingOffset], GROUPED_TILE_ELEMENTS, 0);
     AscendC::InitOutput<ElementInput>(gPaddingDs[paddingOffset], GROUPED_TILE_ELEMENTS, 0);
 }
 
-__aicore__ inline void BuildGroupedSegment(const Params &params,
-                                           const __gm__ BlockSparseAttentionGradTilingData *tilingData,
-                                           const TaskInfo *qInfos, const uint32_t *qLimits, uint32_t qCount,
-                                           uint32_t kvStart, uint32_t kvCount, uint32_t *packedKvStarts,
-                                           const uint64_t *maskRowOffsets, uint64_t workspaceBase,
-                                           SegmentInfo &segment) const
+__aicore__ inline void BuildGroupedSegment(const Params& params,
+                                           const __gm__ BlockSparseAttentionGradTilingData* tilingData,
+                                           const TaskInfo* qInfos, const uint32_t* qLimits, uint32_t qCount,
+                                           uint32_t kvStart, uint32_t kvCount, uint32_t* packedKvStarts,
+                                           const uint64_t* maskRowOffsets, uint64_t workspaceBase,
+                                           SegmentInfo& segment) const
 {
     segment.tileCount = 0;
     segment.uniqueKvCount = 0;
@@ -135,7 +135,7 @@ __aicore__ inline void BuildGroupedSegment(const Params &params,
                                       static_cast<uint64_t>(tilingData->kvHeads) * tilingData->headDim :
                                       tilingData->headDim;
         for (uint32_t qLocal = 0; qLocal < qCount; ++qLocal) {
-            const TaskInfo &qInfo = qInfos[qLocal];
+            const TaskInfo& qInfo = qInfos[qLocal];
             const uint32_t kvTileCount =
                 (qInfo.kvSeqlen + tilingData->basicKVBlockSize - 1) / tilingData->basicKVBlockSize;
             uint32_t fragment = 0;
@@ -145,7 +145,7 @@ __aicore__ inline void BuildGroupedSegment(const Params &params,
                 const uint32_t firstSize = firstKv + 1 < kvTileCount ?
                                                tilingData->basicKVBlockSize :
                                                qInfo.kvSeqlen - firstKv * tilingData->basicKVBlockSize;
-                TaskInfo &tile = segment.tiles[segment.tileCount];
+                TaskInfo& tile = segment.tiles[segment.tileCount];
                 tile = qInfo;
                 tile.kvBasicIdx = firstKv;
                 tile.kvBasicIdxSecond = 0;
@@ -237,7 +237,7 @@ __aicore__ inline void BuildGroupedSegment(const Params &params,
         // The AIV completion protocol publishes one event per Q run,
         // so materialize selected columns in Q-major order.
         for (uint32_t qLocal = 0; qLocal < qCount; ++qLocal) {
-            const TaskInfo &qInfo = qInfos[qLocal];
+            const TaskInfo& qInfo = qInfos[qLocal];
             for (uint32_t kvLocal = 0; kvLocal < selectedKvCount; ++kvLocal) {
                 const uint32_t selectedKv = selectedKvIndices[kvLocal];
                 if (!selectedEnabled[kvLocal][qLocal]) {
@@ -245,7 +245,7 @@ __aicore__ inline void BuildGroupedSegment(const Params &params,
                 }
                 const uint32_t kvTileCount =
                     (qInfo.kvSeqlen + tilingData->basicKVBlockSize - 1) / tilingData->basicKVBlockSize;
-                TaskInfo &tile = segment.tiles[segment.tileCount];
+                TaskInfo& tile = segment.tiles[segment.tileCount];
                 tile = qInfo;
                 tile.curCalKVSize = selectedKv + 1 < kvTileCount ?
                                         tilingData->basicKVBlockSize :
@@ -298,7 +298,7 @@ __aicore__ inline void BuildGroupedSegment(const Params &params,
         segment.nextKvStart = kvBasicIdx;
         segment.uniqueKvCount = selectedKvCount;
         for (uint32_t qLocal = 0; qLocal < qCount; ++qLocal) {
-            const TaskInfo &qInfo = qInfos[qLocal];
+            const TaskInfo& qInfo = qInfos[qLocal];
             for (uint32_t kvLocal = 0; kvLocal < selectedKvCount; ++kvLocal) {
                 const uint32_t selectedKv = selectedKvIndices[kvLocal];
                 if (!selectedEnabled[kvLocal][qLocal]) {
@@ -306,7 +306,7 @@ __aicore__ inline void BuildGroupedSegment(const Params &params,
                 }
                 const uint32_t kvTileCount =
                     (qInfo.kvSeqlen + tilingData->basicKVBlockSize - 1) / tilingData->basicKVBlockSize;
-                TaskInfo &tile = segment.tiles[segment.tileCount];
+                TaskInfo& tile = segment.tiles[segment.tileCount];
                 tile = qInfo;
                 tile.curCalKVSize = selectedKv + 1 < kvTileCount ?
                                         tilingData->basicKVBlockSize :
@@ -332,10 +332,10 @@ __aicore__ inline void BuildGroupedSegment(const Params &params,
 }
 
 __aicore__ inline void RunGroupedCube1CachedB(
-    SegmentInfo &segment, const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+    SegmentInfo& segment, const __gm__ BlockSparseAttentionGradTilingData* tilingData,
     AscendC::GlobalTensor<ElementInput> gQ, AscendC::GlobalTensor<ElementInput> gK,
     AscendC::GlobalTensor<ElementInput> gV, AscendC::GlobalTensor<ElementA1> gDout, AscendC::GlobalTensor<float> gS,
-    AscendC::GlobalTensor<float> gDp, BlockMmadBSAG1 &blockMmad1, uint32_t &mmadFlag)
+    AscendC::GlobalTensor<float> gDp, BlockMmadBSAG1& blockMmad1, uint32_t& mmadFlag)
 {
     const uint32_t headDim = tilingData->headDim;
     const uint64_t qStride =
@@ -353,14 +353,14 @@ __aicore__ inline void RunGroupedCube1CachedB(
         if (first < 0) {
             continue;
         }
-        TaskInfo &firstTile = segment.tiles[first];
+        TaskInfo& firstTile = segment.tiles[first];
         LayoutB1 layoutB(headDim, firstTile.curCalKVSize, kvStride);
         GemmCoord preloadShape{firstTile.curCalQSize, firstTile.curCalKVSize, headDim};
         const uint64_t packedKvOffset = GroupedKvHeadOffset(firstTile, tilingData);
         blockMmad1.PreloadB(gK[packedKvOffset], layoutB, preloadShape, 0);
         blockMmad1.PreloadB(gV[packedKvOffset], layoutB, preloadShape, 1);
         for (uint32_t t = 0; t < segment.tileCount; ++t) {
-            TaskInfo &tile = segment.tiles[t];
+            TaskInfo& tile = segment.tiles[t];
             if (tile.groupKvIdx != kvLocal) {
                 continue;
             }
@@ -376,11 +376,11 @@ __aicore__ inline void RunGroupedCube1CachedB(
 }
 
 __aicore__ inline void RunGroupedCube1Packed(
-    SegmentInfo &segment, const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+    SegmentInfo& segment, const __gm__ BlockSparseAttentionGradTilingData* tilingData,
     AscendC::GlobalTensor<ElementInput> gQ, AscendC::GlobalTensor<ElementInput> gK,
     AscendC::GlobalTensor<ElementInput> gV, AscendC::GlobalTensor<ElementA1> gDout, AscendC::GlobalTensor<float> gS,
-    AscendC::GlobalTensor<float> gDp, AscendC::GlobalTensor<ElementInput> gZero, BlockMmadBSAG1 &blockMmad1,
-    uint32_t &mmadFlag)
+    AscendC::GlobalTensor<float> gDp, AscendC::GlobalTensor<ElementInput> gZero, BlockMmadBSAG1& blockMmad1,
+    uint32_t& mmadFlag)
 {
     const uint32_t headDim = tilingData->headDim;
     const uint64_t qStride =
@@ -390,7 +390,7 @@ __aicore__ inline void RunGroupedCube1Packed(
     const uint64_t zeroOffset =
         segment.tiles[0].sOffset + static_cast<uint64_t>(GROUPED_TILES - 1) * GROUPED_TILE_ELEMENTS;
     for (uint32_t t = 0; t < segment.tileCount; ++t) {
-        TaskInfo &tile = segment.tiles[t];
+        TaskInfo& tile = segment.tiles[t];
         LayoutB1 firstLayout(headDim, tile.kvFirstSize, kvStride);
         LayoutB1 secondLayout(headDim, tile.kvSecondSize, kvStride);
         LayoutB1 paddingLayout(headDim, tile.curCalKVSize - tile.kvValidSize, headDim);
@@ -411,12 +411,12 @@ __aicore__ inline void RunGroupedCube1Packed(
 }
 
 __aicore__ inline void RunGroupedPackedGrad(
-    SegmentInfo &segment, const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+    SegmentInfo& segment, const __gm__ BlockSparseAttentionGradTilingData* tilingData,
     AscendC::GlobalTensor<ElementInput> gK, AscendC::GlobalTensor<ElementInput> gQ,
     AscendC::GlobalTensor<ElementA1> gDout, AscendC::GlobalTensor<ElementInput> gP,
     AscendC::GlobalTensor<ElementInput> gDs, AscendC::GlobalTensor<float> gDq, AscendC::GlobalTensor<float> gDk,
-    AscendC::GlobalTensor<float> gDv, BlockMmadBSAG2 &blockMmad2, BlockMmadBSAG3 &blockMmad3, uint32_t &mmadFlag,
-    uint64_t *cachedQOffsets, uint32_t &cachedQMask, bool finalSegment)
+    AscendC::GlobalTensor<float> gDv, BlockMmadBSAG2& blockMmad2, BlockMmadBSAG3& blockMmad3, uint32_t& mmadFlag,
+    uint64_t* cachedQOffsets, uint32_t& cachedQMask, bool finalSegment)
 {
     const uint32_t headDim = tilingData->headDim;
     const uint64_t kvInputStride =
@@ -444,7 +444,7 @@ __aicore__ inline void RunGroupedPackedGrad(
         if (first < 0) {
             continue;
         }
-        TaskInfo &tile = segment.tiles[first];
+        TaskInfo& tile = segment.tiles[first];
         LayoutB3 layoutB(tile.curCalQSize, headDim, qInputStride);
         GemmCoord shape{tile.curCalKVSize, headDim, tile.curCalQSize};
         if (((cachedQMask >> qLocal) & 1U) == 0 || cachedQOffsets[qLocal] != tile.qOffset) {
@@ -479,7 +479,7 @@ __aicore__ inline void RunGroupedPackedGrad(
         }
         AscendC::WaitEvent(VEC2CUBE);
         for (uint32_t i = 0; i < matches; ++i) {
-            TaskInfo &tile = segment.tiles[tileIndices[i]];
+            TaskInfo& tile = segment.tiles[tileIndices[i]];
             LayoutB2 firstLayout(tile.kvFirstSize, headDim, kvInputStride);
             LayoutB2 secondLayout(tile.kvSecondSize, headDim, kvInputStride);
             LayoutB2 paddingLayout(tile.curCalKVSize - tile.kvValidSize, headDim, headDim);
@@ -490,7 +490,7 @@ __aicore__ inline void RunGroupedPackedGrad(
         }
         const uint32_t accumulatorSlot = qLocal & 1U;
         for (uint32_t i = 0; i < matches; ++i) {
-            TaskInfo &tile = segment.tiles[tileIndices[i]];
+            TaskInfo& tile = segment.tiles[tileIndices[i]];
             LayoutA2 layoutA(tile.curCalQSize, tile.curCalKVSize);
             LayoutB2 layoutB(tile.curCalKVSize, headDim);
             GemmCoord shape{tile.curCalQSize, headDim, tile.curCalKVSize};
@@ -517,7 +517,7 @@ __aicore__ inline void RunGroupedPackedGrad(
                                                      secondLayout, dkShape, tile.kvFirstSize, true, dkAccumulatorSlot);
             }
         }
-        TaskInfo &last = segment.tiles[tileIndices[matches - 1]];
+        TaskInfo& last = segment.tiles[tileIndices[matches - 1]];
         LayoutC2 layoutC(last.curCalQSize, headDim, qOutputStride);
         GemmCoord outShape{last.curCalQSize, headDim, last.curCalKVSize};
         blockMmad2.FlushAccumulator(gDq[last.qOffset], layoutC, outShape, !firstKvSegment, accumulatorSlot);
@@ -531,7 +531,7 @@ __aicore__ inline void RunGroupedPackedGrad(
     // computes dV from its persistent dOut cache.
     for (uint32_t pass = 0; pass < 1; ++pass) {
         for (uint32_t t = 0; t < segment.tileCount; ++t) {
-            TaskInfo &tile = segment.tiles[t];
+            TaskInfo& tile = segment.tiles[t];
             // All gathered fragments are contiguous in the logical
             // compute tile even when their GM destinations differ.
             // Accumulate them with one MMAD, then either issue one
@@ -569,14 +569,14 @@ __aicore__ inline void RunGroupedPackedGrad(
     }
 }
 
-__aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+__aicore__ inline void RunGroupedGrad(SegmentInfo& segment, const __gm__ BlockSparseAttentionGradTilingData* tilingData,
                                       AscendC::GlobalTensor<ElementInput> gK, AscendC::GlobalTensor<ElementInput> gQ,
                                       AscendC::GlobalTensor<ElementA1> gDout, AscendC::GlobalTensor<ElementInput> gP,
                                       AscendC::GlobalTensor<ElementInput> gDs, AscendC::GlobalTensor<float> gDq,
                                       AscendC::GlobalTensor<float> gDk, AscendC::GlobalTensor<float> gDv,
-                                      BlockMmadBSAG2 &blockMmad2, BlockMmadBSAG3 &blockMmad3, uint32_t &mmadFlag,
-                                      bool exclusiveKvOwner, uint64_t &writtenKvBlocks, uint64_t *cachedQOffsets,
-                                      uint32_t &cachedQMask, bool finalSegment)
+                                      BlockMmadBSAG2& blockMmad2, BlockMmadBSAG3& blockMmad3, uint32_t& mmadFlag,
+                                      bool exclusiveKvOwner, uint64_t& writtenKvBlocks, uint64_t* cachedQOffsets,
+                                      uint32_t& cachedQMask, bool finalSegment)
 {
     const uint32_t headDim = tilingData->headDim;
     const uint64_t qInputStride =
@@ -608,7 +608,7 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
             if (first < 0) {
                 continue;
             }
-            TaskInfo &tile = segment.tiles[first];
+            TaskInfo& tile = segment.tiles[first];
             LayoutB2 layoutB(tile.curCalKVSize, headDim, kvInputStride);
             GemmCoord shape{tile.curCalQSize, headDim, tile.curCalKVSize};
             blockMmad2.PreloadB(gK[GroupedKvHeadOffset(tile, tilingData)], layoutB, shape, kvLocal);
@@ -635,7 +635,7 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
                 }
             }
             for (uint32_t t = 0; t < segment.tileCount; ++t) {
-                TaskInfo &tile = segment.tiles[t];
+                TaskInfo& tile = segment.tiles[t];
                 if (tile.groupQIdx < qStart || tile.groupQIdx >= qStart + 2) {
                     continue;
                 }
@@ -672,7 +672,7 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
                 }
                 firstStreamKBatch = false;
                 for (uint32_t cacheSlot = 0; cacheSlot < batchCount; ++cacheSlot) {
-                    TaskInfo &tile = segment.tiles[batchFirstTile[cacheSlot]];
+                    TaskInfo& tile = segment.tiles[batchFirstTile[cacheSlot]];
                     LayoutB2 layoutB(tile.curCalKVSize, headDim, kvInputStride);
                     GemmCoord shape{tile.curCalQSize, headDim, tile.curCalKVSize};
                     blockMmad2.PreloadFullB(gK[GroupedKvHeadOffset(tile, tilingData)], layoutB, shape, cacheSlot);
@@ -712,14 +712,14 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
                     }
                     const uint32_t initialPreloads = matches < 2 ? matches : 2;
                     for (uint32_t i = 0; i < initialPreloads; ++i) {
-                        TaskInfo &tile = segment.tiles[batchTiles[i]];
+                        TaskInfo& tile = segment.tiles[batchTiles[i]];
                         LayoutA2 layoutA(tile.curCalQSize, tile.curCalKVSize);
                         GemmCoord shape{tile.curCalQSize, headDim, tile.curCalKVSize};
                         blockMmad2.PreloadAccumA(gDs[tile.sOffset], layoutA, shape, i);
                     }
                     for (uint32_t i = 0; i < matches; ++i) {
                         const uint32_t slot = i & 1U;
-                        TaskInfo &tile = segment.tiles[batchTiles[i]];
+                        TaskInfo& tile = segment.tiles[batchTiles[i]];
                         LayoutA2 layoutA(tile.curCalQSize, tile.curCalKVSize);
                         LayoutB2 layoutB(tile.curCalKVSize, headDim);
                         GemmCoord shape{tile.curCalQSize, headDim, tile.curCalKVSize};
@@ -729,7 +729,7 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
                                                         finalC, qPair);
                         ++issued[qPair];
                         if (i + 2 < matches) {
-                            TaskInfo &nextTile = segment.tiles[batchTiles[i + 2]];
+                            TaskInfo& nextTile = segment.tiles[batchTiles[i + 2]];
                             LayoutA2 nextLayoutA(nextTile.curCalQSize, nextTile.curCalKVSize);
                             GemmCoord nextShape{nextTile.curCalQSize, headDim, nextTile.curCalKVSize};
                             blockMmad2.PreloadAccumA(gDs[nextTile.sOffset], nextLayoutA, nextShape, slot);
@@ -742,7 +742,7 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
                 if (total[qPair] == 0) {
                     continue;
                 }
-                TaskInfo &tile = segment.tiles[lastTileIndex[qPair]];
+                TaskInfo& tile = segment.tiles[lastTileIndex[qPair]];
                 LayoutC2 layoutC(tile.curCalQSize, headDim, qOutputStride);
                 GemmCoord outShape{tile.curCalQSize, headDim, tile.curCalKVSize};
                 blockMmad2.FlushAccumulator(gDq[tile.qOffset], layoutC, outShape, !firstKvSegment[qPair], qPair);
@@ -772,27 +772,27 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
             const uint32_t accumulatorSlot = qLocal & 1U;
             const uint32_t initialPreloads = matches < 2 ? matches : 2;
             for (uint32_t i = 0; i < initialPreloads; ++i) {
-                TaskInfo &tile = segment.tiles[tileIndices[i]];
+                TaskInfo& tile = segment.tiles[tileIndices[i]];
                 LayoutA2 layoutA(tile.curCalQSize, tile.curCalKVSize);
                 GemmCoord shape{tile.curCalQSize, headDim, tile.curCalKVSize};
                 blockMmad2.PreloadAccumA(gDs[tile.sOffset], layoutA, shape, i);
             }
             for (uint32_t i = 0; i < matches; ++i) {
                 const uint32_t slot = i & 1U;
-                TaskInfo &tile = segment.tiles[tileIndices[i]];
+                TaskInfo& tile = segment.tiles[tileIndices[i]];
                 LayoutA2 layoutA(tile.curCalQSize, tile.curCalKVSize);
                 LayoutB2 layoutB(tile.curCalKVSize, headDim);
                 GemmCoord shape{tile.curCalQSize, headDim, tile.curCalKVSize};
                 blockMmad2.AccumulatePreloadedA(slot, tile.groupKvIdx, layoutA, layoutB, shape, i == 0,
                                                 i + 1 == matches, accumulatorSlot);
                 if (i + 2 < matches) {
-                    TaskInfo &nextTile = segment.tiles[tileIndices[i + 2]];
+                    TaskInfo& nextTile = segment.tiles[tileIndices[i + 2]];
                     LayoutA2 nextLayoutA(nextTile.curCalQSize, nextTile.curCalKVSize);
                     GemmCoord nextShape{nextTile.curCalQSize, headDim, nextTile.curCalKVSize};
                     blockMmad2.PreloadAccumA(gDs[nextTile.sOffset], nextLayoutA, nextShape, slot);
                 }
             }
-            TaskInfo &tile = segment.tiles[tileIndices[matches - 1]];
+            TaskInfo& tile = segment.tiles[tileIndices[matches - 1]];
             LayoutC2 layoutC(tile.curCalQSize, headDim, qOutputStride);
             GemmCoord outShape{tile.curCalQSize, headDim, tile.curCalKVSize};
             blockMmad2.FlushAccumulator(gDq[tile.qOffset], layoutC, outShape, !firstKvSegment, accumulatorSlot);
@@ -818,7 +818,7 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
         if (first < 0) {
             continue;
         }
-        TaskInfo &tile = segment.tiles[first];
+        TaskInfo& tile = segment.tiles[first];
         LayoutB3 layoutB(tile.curCalQSize, headDim, qInputStride);
         GemmCoord shape{tile.curCalKVSize, headDim, tile.curCalQSize};
         if (((cachedQMask >> qLocal) & 1U) == 0 || cachedQOffsets[qLocal] != tile.qOffset) {
@@ -851,27 +851,27 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
         firstKvOutput[kvLocal] = exclusiveKvOwner && kvBasicIdx < 64 && ((writtenKvBlocks >> kvBasicIdx) & 1ULL) == 0;
         const uint32_t initialPreloads = matches < 2 ? matches : 2;
         for (uint32_t i = 0; i < initialPreloads; ++i) {
-            TaskInfo &tile = segment.tiles[tileIndices[i]];
+            TaskInfo& tile = segment.tiles[tileIndices[i]];
             LayoutA3 layoutA(tile.curCalKVSize, tile.curCalQSize);
             GemmCoord shape{tile.curCalKVSize, headDim, tile.curCalQSize};
             blockMmad3.PreloadAccumA(gP[tile.sOffset], layoutA, shape, i);
         }
         for (uint32_t i = 0; i < matches; ++i) {
             const uint32_t slot = i & 1U;
-            TaskInfo &tile = segment.tiles[tileIndices[i]];
+            TaskInfo& tile = segment.tiles[tileIndices[i]];
             LayoutA3 layoutA(tile.curCalKVSize, tile.curCalQSize);
             LayoutB3 layoutB(tile.curCalQSize, headDim);
             GemmCoord shape{tile.curCalKVSize, headDim, tile.curCalQSize};
             blockMmad3.AccumulatePreloadedA(slot, tile.groupQIdx, layoutA, layoutB, shape, i == 0, i + 1 == matches,
                                             accumulatorSlot);
             if (i + 2 < matches) {
-                TaskInfo &nextTile = segment.tiles[tileIndices[i + 2]];
+                TaskInfo& nextTile = segment.tiles[tileIndices[i + 2]];
                 LayoutA3 nextLayoutA(nextTile.curCalKVSize, nextTile.curCalQSize);
                 GemmCoord nextShape{nextTile.curCalKVSize, headDim, nextTile.curCalQSize};
                 blockMmad3.PreloadAccumA(gP[nextTile.sOffset], nextLayoutA, nextShape, slot);
             }
         }
-        TaskInfo &lastTile = segment.tiles[tileIndices[matches - 1]];
+        TaskInfo& lastTile = segment.tiles[tileIndices[matches - 1]];
         LayoutC3 layoutC(lastTile.curCalKVSize, headDim, kvOutputStride);
         GemmCoord outShape{lastTile.curCalKVSize, headDim, lastTile.curCalQSize};
         blockMmad3.FlushAccumulator(gDv[lastTile.kvOffset], layoutC, outShape, !firstKvOutput[kvLocal],
@@ -897,27 +897,27 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
 
         const uint32_t initialPreloads = matches < 2 ? matches : 2;
         for (uint32_t i = 0; i < initialPreloads; ++i) {
-            TaskInfo &tile = segment.tiles[tileIndices[i]];
+            TaskInfo& tile = segment.tiles[tileIndices[i]];
             LayoutA3 layoutA(tile.curCalKVSize, tile.curCalQSize);
             GemmCoord shape{tile.curCalKVSize, headDim, tile.curCalQSize};
             blockMmad3.PreloadAccumA(gDs[tile.sOffset], layoutA, shape, i);
         }
         for (uint32_t i = 0; i < matches; ++i) {
             const uint32_t slot = i & 1U;
-            TaskInfo &tile = segment.tiles[tileIndices[i]];
+            TaskInfo& tile = segment.tiles[tileIndices[i]];
             LayoutA3 layoutA(tile.curCalKVSize, tile.curCalQSize);
             LayoutB3 layoutB(tile.curCalQSize, headDim);
             GemmCoord shape{tile.curCalKVSize, headDim, tile.curCalQSize};
             blockMmad3.AccumulatePreloadedA(slot, tile.groupQIdx + GROUPED_Q_BLOCKS, layoutA, layoutB, shape, i == 0,
                                             i + 1 == matches, accumulatorSlot);
             if (i + 2 < matches) {
-                TaskInfo &nextTile = segment.tiles[tileIndices[i + 2]];
+                TaskInfo& nextTile = segment.tiles[tileIndices[i + 2]];
                 LayoutA3 nextLayoutA(nextTile.curCalKVSize, nextTile.curCalQSize);
                 GemmCoord nextShape{nextTile.curCalKVSize, headDim, nextTile.curCalQSize};
                 blockMmad3.PreloadAccumA(gDs[nextTile.sOffset], nextLayoutA, nextShape, slot);
             }
         }
-        TaskInfo &lastTile = segment.tiles[tileIndices[matches - 1]];
+        TaskInfo& lastTile = segment.tiles[tileIndices[matches - 1]];
         LayoutC3 layoutC(lastTile.curCalKVSize, headDim, kvOutputStride);
         GemmCoord outShape{lastTile.curCalKVSize, headDim, lastTile.curCalQSize};
         blockMmad3.FlushAccumulator(gDk[lastTile.kvOffset], layoutC, outShape, !firstKvOutput[kvLocal],
@@ -929,12 +929,12 @@ __aicore__ inline void RunGroupedGrad(SegmentInfo &segment, const __gm__ BlockSp
 }
 
 __aicore__ inline void RunGroupedGradDispatch(
-    SegmentInfo &segment, const __gm__ BlockSparseAttentionGradTilingData *tilingData,
+    SegmentInfo& segment, const __gm__ BlockSparseAttentionGradTilingData* tilingData,
     AscendC::GlobalTensor<ElementInput> gK, AscendC::GlobalTensor<ElementInput> gQ,
     AscendC::GlobalTensor<ElementA1> gDout, AscendC::GlobalTensor<ElementInput> gP,
     AscendC::GlobalTensor<ElementInput> gDs, AscendC::GlobalTensor<float> gDq, AscendC::GlobalTensor<float> gDk,
-    AscendC::GlobalTensor<float> gDv, BlockMmadBSAG2 &blockMmad2, BlockMmadBSAG3 &blockMmad3, uint32_t &mmadFlag,
-    bool exclusiveKvOwner, uint64_t &writtenKvBlocks, uint64_t *cachedQOffsets, uint32_t &cachedQMask,
+    AscendC::GlobalTensor<float> gDv, BlockMmadBSAG2& blockMmad2, BlockMmadBSAG3& blockMmad3, uint32_t& mmadFlag,
+    bool exclusiveKvOwner, uint64_t& writtenKvBlocks, uint64_t* cachedQOffsets, uint32_t& cachedQMask,
     bool finalSegment)
 {
     if (tilingData->basicKVBlockSize < 128 && tilingData->blockShapeX >= 16) {
@@ -946,7 +946,7 @@ __aicore__ inline void RunGroupedGradDispatch(
     }
 }
 
-__aicore__ inline void ProcessGroupedAic(const Params &params, __gm__ BlockSparseAttentionGradTilingData *tilingData)
+__aicore__ inline void ProcessGroupedAic(const Params& params, __gm__ BlockSparseAttentionGradTilingData* tilingData)
 {
     const uint32_t coreIdx = AscendC::GetBlockIdx();
     const uint32_t groupSize = tilingData->numHeads / tilingData->kvHeads;
@@ -967,21 +967,21 @@ __aicore__ inline void ProcessGroupedAic(const Params &params, __gm__ BlockSpars
     AscendC::GlobalTensor<float> gDq;
     AscendC::GlobalTensor<float> gDk;
     AscendC::GlobalTensor<float> gDv;
-    gQ.SetGlobalBuffer((__gm__ ElementInput *)params.q);
-    gK.SetGlobalBuffer((__gm__ ElementInput *)params.k);
-    gV.SetGlobalBuffer((__gm__ ElementInput *)params.v);
-    gDout.SetGlobalBuffer((__gm__ ElementInput *)params.dout);
-    gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
-    gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
-    gS.SetGlobalBuffer((__gm__ float *)params.workspace);
-    gP.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + WORKSPACE_P16_OFFSET));
-    gDp.SetGlobalBuffer((__gm__ float *)(params.workspace + tilingData->sOutSize));
-    gDs.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + tilingData->sOutSize + WORKSPACE_P16_OFFSET));
-    gDq.SetGlobalBuffer((__gm__ float *)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize));
+    gQ.SetGlobalBuffer((__gm__ ElementInput*)params.q);
+    gK.SetGlobalBuffer((__gm__ ElementInput*)params.k);
+    gV.SetGlobalBuffer((__gm__ ElementInput*)params.v);
+    gDout.SetGlobalBuffer((__gm__ ElementInput*)params.dout);
+    gActualQseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualQseqlen);
+    gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualKvseqlen);
+    gS.SetGlobalBuffer((__gm__ float*)params.workspace);
+    gP.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + WORKSPACE_P16_OFFSET));
+    gDp.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->sOutSize));
+    gDs.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + tilingData->sOutSize + WORKSPACE_P16_OFFSET));
+    gDq.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize));
     gDk.SetGlobalBuffer(
-        (__gm__ float *)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize + tilingData->dQOutSize));
-    gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize +
-                                         tilingData->dQOutSize + tilingData->dKOutSize));
+        (__gm__ float*)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize + tilingData->dQOutSize));
+    gDv.SetGlobalBuffer((__gm__ float*)(params.workspace + tilingData->sOutSize + tilingData->dPOutSize +
+                                        tilingData->dQOutSize + tilingData->dKOutSize));
 
     TaskInfo current;
     initTaskInfo(gActualQseqlen, gActualKvseqlen, tilingData, tilingData->numHeads, tilingData->kvHeads, groupSize,
@@ -996,8 +996,8 @@ __aicore__ inline void ProcessGroupedAic(const Params &params, __gm__ BlockSpars
     BlockMmadBSAG1 blockMmad1(resource);
     BlockMmadBSAG2 blockMmad2(resource, 0, PINGPONG_OFFSET_2, true);
     BlockMmadBSAG3 blockMmad3(resource, L1_SIZE_OFFSET * 7 / 2, PINGPONG_OFFSET_4, true, false, true);
-    gP.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + groupedFp32Bytes));
-    gDs.SetGlobalBuffer((__gm__ ElementInput *)(params.workspace + tilingData->sOutSize + groupedFp32Bytes));
+    gP.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + groupedFp32Bytes));
+    gDs.SetGlobalBuffer((__gm__ ElementInput*)(params.workspace + tilingData->sOutSize + groupedFp32Bytes));
     uint32_t mmapFlag = 0;
     SegmentInfo segments[2];
     uint32_t stage = 0;
@@ -1089,7 +1089,7 @@ __aicore__ inline void ProcessGroupedAic(const Params &params, __gm__ BlockSpars
             }
             const uint32_t kvCount =
                 maxKvLimit - kvStart < GROUPED_KV_BLOCKS ? maxKvLimit - kvStart : GROUPED_KV_BLOCKS;
-            SegmentInfo &segment = segments[stage];
+            SegmentInfo& segment = segments[stage];
             const uint64_t workspaceBase = static_cast<uint64_t>(coreIdx) * GROUPED_WORKSPACE_CORE_SIZE +
                                            static_cast<uint64_t>(stage) * GROUPED_WORKSPACE_STAGE_SIZE;
             BuildGroupedSegment(params, tilingData, qInfos, qLimits, qCount, kvStart, kvCount, packedKvStarts,
@@ -1144,7 +1144,7 @@ __aicore__ inline void ProcessGroupedAic(const Params &params, __gm__ BlockSpars
     AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
 }
 
-__aicore__ inline void ProcessGroupedAiv(const Params &params, __gm__ BlockSparseAttentionGradTilingData *tilingData)
+__aicore__ inline void ProcessGroupedAiv(const Params& params, __gm__ BlockSparseAttentionGradTilingData* tilingData)
 {
     const uint32_t vecCoreIdx = AscendC::GetBlockIdx();
     const uint32_t coreIdx = vecCoreIdx / 2;
@@ -1156,8 +1156,8 @@ __aicore__ inline void ProcessGroupedAiv(const Params &params, __gm__ BlockSpars
 
     AscendC::GlobalTensor<int64_t> gActualQseqlen;
     AscendC::GlobalTensor<int64_t> gActualKvseqlen;
-    gActualQseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualQseqlen);
-    gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualKvseqlen);
+    gActualQseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualQseqlen);
+    gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t*)params.actualKvseqlen);
     TaskInfo current;
     initTaskInfo(gActualQseqlen, gActualKvseqlen, tilingData, tilingData->numHeads, tilingData->kvHeads, groupSize,
                  tilingData->headDim, tilingData->maxQSeqlen, tilingData->maxKvSeqlen, tilingData->blockShapeX,
@@ -1267,7 +1267,7 @@ __aicore__ inline void ProcessGroupedAiv(const Params &params, __gm__ BlockSpars
             // slots retain D/LSE for the complete q group.
             SfmParams tileParams[GROUPED_TILES];
             for (uint32_t t = 0; t < segment.tileCount; ++t) {
-                TaskInfo &tile = segment.tiles[t];
+                TaskInfo& tile = segment.tiles[t];
                 const uint64_t firstHalfRows = (tile.curCalQSize + 1) / 2;
                 const uint64_t executeRow = subBlockIdx == 0 ? firstHalfRows : tile.curCalQSize - firstHalfRows;
                 const uint64_t coreOffset = subBlockIdx * firstHalfRows * tile.curCalKVSize;

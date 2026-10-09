@@ -27,12 +27,12 @@ import custom ops as torch_npu ops to support the following usage:
 """
 
 # get torch.ops.npu_linalg module
-custom_ops_module = getattr(torch.ops, 'npu_linalg', None)
+custom_ops_module = getattr(torch.ops, "npu_linalg", None)
 
 
 if custom_ops_module is not None:
     for op_name in dir(custom_ops_module):
-        if op_name.startswith('_'):
+        if op_name.startswith("_"):
             # skip built-in method, such as __name__, __doc__
             continue
 
@@ -41,7 +41,9 @@ if custom_ops_module is not None:
         setattr(torch_npu, op_name, custom_op_func)
 
 else:
-    WARN_MSG = "torch.ops.npu_linalg module is not found, mount custom ops to torch_npu failed." \
-               "Calling by torch_npu.xxx for custom ops is unsupported, please use torch.ops.npu_linalg.xxx."
+    WARN_MSG = (
+        "torch.ops.npu_linalg module is not found, mount custom ops to torch_npu failed."
+        "Calling by torch_npu.xxx for custom ops is unsupported, please use torch.ops.npu_linalg.xxx."
+    )
     warnings.warn(WARN_MSG)
     warnings.filterwarnings("ignore", message=WARN_MSG)

@@ -35,13 +35,13 @@ namespace {
 constexpr int64_t GSA_METADATA_TOTAL_SIZE = 1024;
 
 // Design doc: layoutQ/layoutKv are String attrs (unlike SAS int). Keep as string end-to-end.
-static std::string ConvertLayoutString(char *layoutStr)
+static std::string ConvertLayoutString(char* layoutStr)
 {
     return op::ToString(layoutStr).GetString();
 }
 
 // Align SMLA / FlashAttn consumer checks: required INT32 1D shell of fixed size.
-static aclnnStatus CheckMetadata(const aclTensor *metadata)
+static aclnnStatus CheckMetadata(const aclTensor* metadata)
 {
     if (metadata == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "metadata must be provided.");
@@ -67,13 +67,13 @@ static aclnnStatus CheckMetadata(const aclTensor *metadata)
 // Contiguous most inputs. Do not touch key/value here: PAGED_NZ carries a
 // hardware-defined FRACTAL_NZ storage layout that must reach tiling/kernel
 // unchanged.
-static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&sparseBlockIdx,
-                                  const aclTensor *&sparseBlockCount, const aclTensor *&metadataOptional,
-                                  const aclTensor *&qDequantScaleOptional, const aclTensor *&kDequantScaleOptional,
-                                  const aclTensor *&vDequantScaleOptional, const aclTensor *&cuSeqLengthsQOptional,
-                                  const aclTensor *&cuSeqLengthsKvOptional, const aclTensor *&sequsedQOptional,
-                                  const aclTensor *&sequsedKvOptional, const aclTensor *&blockTableOptional,
-                                  aclOpExecutor *executor)
+static aclnnStatus MakeContiguous(const aclTensor*& query, const aclTensor*& sparseBlockIdx,
+                                  const aclTensor*& sparseBlockCount, const aclTensor*& metadataOptional,
+                                  const aclTensor*& qDequantScaleOptional, const aclTensor*& kDequantScaleOptional,
+                                  const aclTensor*& vDequantScaleOptional, const aclTensor*& cuSeqLengthsQOptional,
+                                  const aclTensor*& cuSeqLengthsKvOptional, const aclTensor*& sequsedQOptional,
+                                  const aclTensor*& sequsedKvOptional, const aclTensor*& blockTableOptional,
+                                  aclOpExecutor* executor)
 {
     query = l0op::Contiguous(query, executor);
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -122,8 +122,8 @@ static aclnnStatus MakeContiguous(const aclTensor *&query, const aclTensor *&spa
 // If ATK/aclTensor reports storage==view while dim0 stride has holes, GE will
 // rewrite storage to a degenerate shape (e.g. dim0=stride0, dim1=0). Expand dim0
 // so storage covers the last viewed element and keeps inner dims.
-static op::Shape MakeKvStorageShape(const op::Shape &viewShape, const op::Shape &storageShape, int64_t viewOffset,
-                                    const int64_t *strides, size_t strideN)
+static op::Shape MakeKvStorageShape(const op::Shape& viewShape, const op::Shape& storageShape, int64_t viewOffset,
+                                    const int64_t* strides, size_t strideN)
 {
     const size_t dimNum = viewShape.GetDimNum();
     op::Shape out = storageShape;
@@ -168,14 +168,14 @@ static op::Shape MakeKvStorageShape(const op::Shape &viewShape, const op::Shape 
 }
 
 // Expose KV view shape/stride to GE tiling for the paged NZ cache.
-static const aclTensor *CreateKvView(const aclTensor *tensor, aclOpExecutor *executor)
+static const aclTensor* CreateKvView(const aclTensor* tensor, aclOpExecutor* executor)
 {
-    const auto &viewShape = tensor->GetViewShape();
-    const auto &storageShape = tensor->GetStorageShape();
-    const auto &viewStrides = tensor->GetViewStrides();
+    const auto& viewShape = tensor->GetViewShape();
+    const auto& storageShape = tensor->GetStorageShape();
+    const auto& viewStrides = tensor->GetViewStrides();
     const int64_t viewOffset = tensor->GetViewOffset();
     const size_t strideN = viewStrides.size();
-    const int64_t *stridePtr = (strideN > 0) ? &viewStrides[0] : nullptr;
+    const int64_t* stridePtr = (strideN > 0) ? &viewStrides[0] : nullptr;
     const op::Shape storageForView = MakeKvStorageShape(viewShape, storageShape, viewOffset, stridePtr, strideN);
     return executor->CreateView(tensor, viewShape, storageForView, viewStrides, viewOffset);
 }
@@ -183,13 +183,13 @@ static const aclTensor *CreateKvView(const aclTensor *tensor, aclOpExecutor *exe
 } // namespace
 
 __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttentionGetWorkspaceSize(
-    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *sparseBlockIdx,
-    const aclTensor *sparseBlockCount, const aclTensor *metadataOptional, const aclTensor *qDequantScaleOptional,
-    const aclTensor *kDequantScaleOptional, const aclTensor *vDequantScaleOptional,
-    const aclTensor *cuSeqLengthsQOptional, const aclTensor *cuSeqLengthsKvOptional, const aclTensor *sequsedQOptional,
-    const aclTensor *sequsedKvOptional, const aclTensor *blockTableOptional, const aclIntArray *blockShape,
-    int64_t isPackedGQA, char *layoutQ, char *layoutKv, double scaleValue, int64_t maskType, int64_t softmaxPrecision,
-    aclTensor *attentionOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor* query, const aclTensor* key, const aclTensor* value, const aclTensor* sparseBlockIdx,
+    const aclTensor* sparseBlockCount, const aclTensor* metadataOptional, const aclTensor* qDequantScaleOptional,
+    const aclTensor* kDequantScaleOptional, const aclTensor* vDequantScaleOptional,
+    const aclTensor* cuSeqLengthsQOptional, const aclTensor* cuSeqLengthsKvOptional, const aclTensor* sequsedQOptional,
+    const aclTensor* sequsedKvOptional, const aclTensor* blockTableOptional, const aclIntArray* blockShape,
+    int64_t isPackedGQA, char* layoutQ, char* layoutKv, double scaleValue, int64_t maskType, int64_t softmaxPrecision,
+    aclTensor* attentionOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     CHECK_RET(query != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(key != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -220,7 +220,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
 
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto *executorImpl = uniqueExecutor.get();
+    auto* executorImpl = uniqueExecutor.get();
 
     aclnnStatus ret =
         MakeContiguous(query, sparseBlockIdx, sparseBlockCount, metadataOptional, qDequantScaleOptional,
@@ -233,9 +233,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     std::string layoutQStr = ConvertLayoutString(layoutQ);
     std::string layoutKvStr = ConvertLayoutString(layoutKv);
 
-    const aclTensor *keyFinal = CreateKvView(key, executorImpl);
+    const aclTensor* keyFinal = CreateKvView(key, executorImpl);
     CHECK_RET(keyFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    const aclTensor *valueFinal = CreateKvView(value, executorImpl);
+    const aclTensor* valueFinal = CreateKvView(value, executorImpl);
     CHECK_RET(valueFinal != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     auto outputs = l0op::GenericBlockSparseAttention(
@@ -257,9 +257,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttent
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttention(void *workspace,
+__attribute__((visibility("default"))) aclnnStatus aclnnGenericBlockSparseAttention(void* workspace,
                                                                                     uint64_t workspaceSize,
-                                                                                    aclOpExecutor *executor,
+                                                                                    aclOpExecutor* executor,
                                                                                     aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGenericBlockSparseAttention);

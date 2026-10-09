@@ -15,7 +15,7 @@
 
 namespace op_api {
 
-at::Tensor local_exp_gmm_with_zero(const at::Tensor &a, const at::Tensor &b, const at::Tensor &problemList,
+at::Tensor local_exp_gmm_with_zero(const at::Tensor& a, const at::Tensor& b, const at::Tensor& problemList,
                                    const int64_t expStartIdx, const int64_t expEndIdx, const bool trans_a,
                                    const bool trans_b, const bool is_b_nz, bool type_promotion)
 {

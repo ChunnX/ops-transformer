@@ -93,8 +93,7 @@ public:
     __aicore__ SwigluGatedMlpCubeMatmulStage() = default;
     __aicore__ ~SwigluGatedMlpCubeMatmulStage() = default;
 
-    __aicore__ void Init(GM_ADDR xGm, GM_ADDR weightGm, GM_ADDR yGm,
-        const SwigluGatedMlpTilingData &tilingData)
+    __aicore__ void Init(GM_ADDR xGm, GM_ADDR weightGm, GM_ADDR yGm, const SwigluGatedMlpTilingData& tilingData)
     {
         tiling_.Parse(tilingData);
         xGm_ = xGm;
@@ -129,13 +128,10 @@ private:
         using L1TileShape = AscendC::Shape<MTile, Act::Gemm::_256, Act::Gemm::_64>;
         using L0TileShape = AscendC::Shape<MTile, Act::Gemm::_256, Act::Gemm::_64>;
         using Scheduler = Act::Gemm::IterateKScheduler;
-        using BlockMmad = Act::Gemm::Block::BlockMmadBuilder<
-            T, Act::Gemm::layout::RowMajor,
-            T, Act::Gemm::layout::RowMajor,
-            T, Act::Gemm::layout::RowMajor,
-            T, Act::Gemm::layout::RowMajor,
-            L1TileShape, L0TileShape, Scheduler,
-            Act::Gemm::MatmulMultiBlockWithLayout<>>;
+        using BlockMmad =
+            Act::Gemm::Block::BlockMmadBuilder<T, Act::Gemm::layout::RowMajor, T, Act::Gemm::layout::RowMajor, T,
+                                               Act::Gemm::layout::RowMajor, T, Act::Gemm::layout::RowMajor, L1TileShape,
+                                               L0TileShape, Scheduler, Act::Gemm::MatmulMultiBlockWithLayout<>>;
         using Epilogue = Act::Gemm::Block::BlockEpilogueEmpty;
         using MatmulKernel = Act::Gemm::Kernel::KernelMatmul<Act::Gemm::MatmulShape, BlockMmad, Epilogue, Scheduler>;
         using MmadArgs = typename BlockMmad::Arguments;
@@ -145,18 +141,17 @@ private:
 
         MmadArgs mmArgs{xGm_, weightGm_, yGm_, nullptr};
         EpilogueArgs epilogueArgs{};
-        Arguments args{
-            {static_cast<int64_t>(tiling_.totalRows), static_cast<int64_t>(tiling_.outSize),
-             static_cast<int64_t>(tiling_.hiddenSize), 1},
-            mmArgs,
-            epilogueArgs};
+        Arguments args{{static_cast<int64_t>(tiling_.totalRows), static_cast<int64_t>(tiling_.outSize),
+                        static_cast<int64_t>(tiling_.hiddenSize), 1},
+                       mmArgs,
+                       epilogueArgs};
         Params params = MatmulKernel::InitParams(args, nullptr);
         AscendC::TPipe pipe;
         MatmulKernel op;
         op(params);
     }
 
-    GluTilingInfo tiling_ {};
+    GluTilingInfo tiling_{};
     GM_ADDR xGm_ = nullptr;
     GM_ADDR weightGm_ = nullptr;
     GM_ADDR yGm_ = nullptr;
@@ -167,23 +162,23 @@ public:
     __aicore__ SwigluGatedMlpFusedFloatStage() = default;
     __aicore__ ~SwigluGatedMlpFusedFloatStage() = default;
 
-    __aicore__ void Init(GM_ADDR xGm, GM_ADDR gateUpWeightGm, GM_ADDR downWeightGm,
-        GM_ADDR yGm, GM_ADDR workspaceGm, const SwigluGatedMlpTilingData &tilingData)
+    __aicore__ void Init(GM_ADDR xGm, GM_ADDR gateUpWeightGm, GM_ADDR downWeightGm, GM_ADDR yGm, GM_ADDR workspaceGm,
+                         const SwigluGatedMlpTilingData& tilingData)
     {
         tiling_.Parse(tilingData);
-        xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(xGm), tiling_.totalRows * tiling_.hiddenSize);
-        gateUpWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(gateUpWeightGm),
-            tiling_.hiddenSize * tiling_.gateUpSize);
-        downWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(downWeightGm),
-            tiling_.intermediateSize * tiling_.outSize);
-        yGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(yGm), tiling_.totalRows * tiling_.outSize);
+        xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(xGm), tiling_.totalRows * tiling_.hiddenSize);
+        gateUpWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(gateUpWeightGm),
+                                        tiling_.hiddenSize * tiling_.gateUpSize);
+        downWeightGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(downWeightGm),
+                                      tiling_.intermediateSize * tiling_.outSize);
+        yGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(yGm), tiling_.totalRows * tiling_.outSize);
         (void)workspaceGm;
     }
 
     __aicore__ void Process()
     {
-        if (tiling_.totalRows == 0 || tiling_.hiddenSize == 0 ||
-            tiling_.intermediateSize == 0 || tiling_.outSize == 0) {
+        if (tiling_.totalRows == 0 || tiling_.hiddenSize == 0 || tiling_.intermediateSize == 0 ||
+            tiling_.outSize == 0) {
             return;
         }
 
@@ -218,7 +213,7 @@ private:
         }
     }
 
-    GluTilingInfo tiling_ {};
+    GluTilingInfo tiling_{};
     AscendC::GlobalTensor<float> xGm_;
     AscendC::GlobalTensor<float> gateUpWeightGm_;
     AscendC::GlobalTensor<float> downWeightGm_;
@@ -231,13 +226,11 @@ public:
     __aicore__ SwigluGatedMlpScalarSwigluStage() = default;
     __aicore__ ~SwigluGatedMlpScalarSwigluStage() = default;
 
-    __aicore__ void Init(GM_ADDR gateUpGm, GM_ADDR hiddenGm,
-        const SwigluGatedMlpTilingData &tilingData)
+    __aicore__ void Init(GM_ADDR gateUpGm, GM_ADDR hiddenGm, const SwigluGatedMlpTilingData& tilingData)
     {
         tiling_.Parse(tilingData);
-        gateUpGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(gateUpGm), tiling_.totalRows * tiling_.gateUpSize);
-        hiddenGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(hiddenGm),
-            tiling_.totalRows * tiling_.intermediateSize);
+        gateUpGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(gateUpGm), tiling_.totalRows * tiling_.gateUpSize);
+        hiddenGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(hiddenGm), tiling_.totalRows * tiling_.intermediateSize);
     }
 
     __aicore__ void Process()
@@ -262,7 +255,7 @@ public:
     }
 
 private:
-    GluTilingInfo tiling_ {};
+    GluTilingInfo tiling_{};
     AscendC::GlobalTensor<T> gateUpGm_;
     AscendC::GlobalTensor<T> hiddenGm_;
 };
@@ -273,13 +266,11 @@ public:
     __aicore__ SwigluGatedMlpSwigluStage() = default;
     __aicore__ ~SwigluGatedMlpSwigluStage() = default;
 
-    __aicore__ void Init(GM_ADDR gateUpGm, GM_ADDR hiddenGm,
-        const SwigluGatedMlpTilingData &tilingData)
+    __aicore__ void Init(GM_ADDR gateUpGm, GM_ADDR hiddenGm, const SwigluGatedMlpTilingData& tilingData)
     {
         tiling_.Parse(tilingData);
-        gateUpGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(gateUpGm), tiling_.totalRows * tiling_.gateUpSize);
-        hiddenGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(hiddenGm),
-            tiling_.totalRows * tiling_.intermediateSize);
+        gateUpGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(gateUpGm), tiling_.totalRows * tiling_.gateUpSize);
+        hiddenGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(hiddenGm), tiling_.totalRows * tiling_.intermediateSize);
 
         alignElems_ = (tiling_.dtypeSize == 0) ? 1U : ScalarMax<uint32_t>(1U, 32U / tiling_.dtypeSize);
         baseRows_ = ScalarMax<uint32_t>(1U, tiling_.swiBaseRows);
@@ -330,7 +321,7 @@ public:
 
 private:
     __aicore__ void CopyIn(uint64_t rowStart, uint64_t colStart, uint32_t curRows, uint32_t curCols,
-        uint32_t alignedCols)
+                           uint32_t alignedCols)
     {
         AscendC::LocalTensor<T> gateLocal = gateQueue_.template AllocTensor<T>();
         AscendC::LocalTensor<T> upLocal = upQueue_.template AllocTensor<T>();
@@ -338,14 +329,11 @@ private:
         const uint64_t gateOffset = rowStart * tiling_.gateUpSize + colStart;
         const uint64_t upOffset = gateOffset + tiling_.intermediateSize;
         const uint32_t rightPad = static_cast<uint32_t>(alignedCols - curCols);
-        AscendC::DataCopyExtParams copyParams{
-            static_cast<uint16_t>(curRows),
-            static_cast<uint32_t>(curCols * sizeof(T)),
-            static_cast<uint32_t>((tiling_.gateUpSize - curCols) * sizeof(T)),
-            static_cast<uint32_t>(rightPad * sizeof(T)),
-            0};
-        AscendC::DataCopyPadExtParams<T> padParams{
-            rightPad != 0U, 0, static_cast<uint8_t>(rightPad), ZeroValue<T>()};
+        AscendC::DataCopyExtParams copyParams{static_cast<uint16_t>(curRows),
+                                              static_cast<uint32_t>(curCols * sizeof(T)),
+                                              static_cast<uint32_t>((tiling_.gateUpSize - curCols) * sizeof(T)),
+                                              static_cast<uint32_t>(rightPad * sizeof(T)), 0};
+        AscendC::DataCopyPadExtParams<T> padParams{rightPad != 0U, 0, static_cast<uint8_t>(rightPad), ZeroValue<T>()};
 
         DataCopyPad(gateLocal, gateUpGm_[gateOffset], copyParams, padParams);
         DataCopyPad(upLocal, gateUpGm_[upOffset], copyParams, padParams);
@@ -396,16 +384,14 @@ private:
     }
 
     __aicore__ void CopyOut(uint64_t rowStart, uint64_t colStart, uint32_t curRows, uint32_t curCols,
-        uint32_t alignedCols)
+                            uint32_t alignedCols)
     {
         AscendC::LocalTensor<T> outLocal = outQueue_.template DeQue<T>();
         const uint64_t outOffset = rowStart * tiling_.intermediateSize + colStart;
         AscendC::DataCopyExtParams copyParams{
-            static_cast<uint16_t>(curRows),
-            static_cast<uint32_t>(curCols * sizeof(T)),
+            static_cast<uint16_t>(curRows), static_cast<uint32_t>(curCols * sizeof(T)),
             static_cast<uint32_t>((alignedCols - curCols) * sizeof(T)),
-            static_cast<uint32_t>((tiling_.intermediateSize - curCols) * sizeof(T)),
-            0};
+            static_cast<uint32_t>((tiling_.intermediateSize - curCols) * sizeof(T)), 0};
         DataCopyPad(hiddenGm_[outOffset], outLocal, copyParams);
         outQueue_.template FreeTensor<T>(outLocal);
     }
@@ -416,7 +402,7 @@ private:
     AscendC::TQue<AscendC::QuePosition::VECOUT, BUFFER_NUM> outQueue_;
     AscendC::TBuf<AscendC::TPosition::VECCALC> calcBuf_;
 
-    GluTilingInfo tiling_ {};
+    GluTilingInfo tiling_{};
     AscendC::GlobalTensor<T> gateUpGm_;
     AscendC::GlobalTensor<T> hiddenGm_;
 
@@ -428,19 +414,16 @@ private:
 };
 
 template <int BUFFER_NUM>
-class SwigluGatedMlpKernelFp16 : public SwigluGatedMlpSwigluStage<half, BUFFER_NUM> {
-};
+class SwigluGatedMlpKernelFp16 : public SwigluGatedMlpSwigluStage<half, BUFFER_NUM> {};
 
 template <int BUFFER_NUM>
-class SwigluGatedMlpKernelFp32 : public SwigluGatedMlpSwigluStage<float, BUFFER_NUM> {
-};
+class SwigluGatedMlpKernelFp32 : public SwigluGatedMlpSwigluStage<float, BUFFER_NUM> {};
 
 template <int BUFFER_NUM>
-class SwigluGatedMlpKernelBf16 : public SwigluGatedMlpSwigluStage<bfloat16_t, BUFFER_NUM> {
-};
+class SwigluGatedMlpKernelBf16 : public SwigluGatedMlpSwigluStage<bfloat16_t, BUFFER_NUM> {};
 
-}  // namespace swiglu_gated_mlp_kernel
+} // namespace swiglu_gated_mlp_kernel
 
 #include "swiglu_gated_mlp_scalar_matmul.hpp"
 
-#endif  // OP_KERNEL_SWIGLU_GATED_MLP_IMPL_HPP_
+#endif // OP_KERNEL_SWIGLU_GATED_MLP_IMPL_HPP_

@@ -18,41 +18,16 @@
 
 namespace CatlassKernelWrapper {
 
-at::Tensor RunMLA(
-    const at::Tensor &,
-    const at::Tensor &,
-    const at::Tensor &,
-    const at::Tensor &,
-    const int32_t,
-    const std::vector<int32_t> &,
-    const at::Tensor &,
-    const at::Tensor &,
-    const at::Tensor &,
-    const at::Tensor &,
-    const at::Tensor &,
-    const at::Tensor &,
-    const at::Tensor &,
-    const std::string &,
-    const float
-);
+at::Tensor RunMLA(const at::Tensor&, const at::Tensor&, const at::Tensor&, const at::Tensor&, const int32_t,
+                  const std::vector<int32_t>&, const at::Tensor&, const at::Tensor&, const at::Tensor&,
+                  const at::Tensor&, const at::Tensor&, const at::Tensor&, const at::Tensor&, const std::string&,
+                  const float);
 
 using ConstTensorRef = const at::Tensor&;
-std::vector<uint64_t> KernelGetKVSplit(
-    ConstTensorRef,
-    ConstTensorRef,
-    ConstTensorRef,
-    ConstTensorRef,
-    const int32_t,
-    const std::vector<int32_t> &,
-    ConstTensorRef,
-    ConstTensorRef,
-    ConstTensorRef,
-    ConstTensorRef,
-    ConstTensorRef,
-    ConstTensorRef,
-    ConstTensorRef,
-    const std::string &
-);
+std::vector<uint64_t> KernelGetKVSplit(ConstTensorRef, ConstTensorRef, ConstTensorRef, ConstTensorRef, const int32_t,
+                                       const std::vector<int32_t>&, ConstTensorRef, ConstTensorRef, ConstTensorRef,
+                                       ConstTensorRef, ConstTensorRef, ConstTensorRef, ConstTensorRef,
+                                       const std::string&);
 
 } // namespace CatlassKernelWrapper
 

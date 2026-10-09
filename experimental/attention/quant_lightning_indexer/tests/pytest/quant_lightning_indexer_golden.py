@@ -21,70 +21,95 @@ import ctypes
 import copy
 import custom_ops as ops
 
-FP32_FRACTION_BITS = 23        # fp32尾数位数
+FP32_FRACTION_BITS = 23  # fp32尾数位数
 
 HIF8_EXP_ZERO_THRESHOLD = -23  # 边界值
-HIF8_EXP_DML_MIN = -22         # DML最小指数
-HIF8_EXP_DML_MAX = -15         # DML最大指数
-HIF8_EXP_D0 = 0                # D0指数值
-HIF8_EXP_D1_BOUNDARY = 1       # D1指数值
-HIF8_EXP_D2_MIN, HIF8_EXP_D2_MAX = 2, 3   # D2指数范围
-HIF8_EXP_D3_MIN, HIF8_EXP_D3_MAX = 4, 7   # D3指数范围
+HIF8_EXP_DML_MIN = -22  # DML最小指数
+HIF8_EXP_DML_MAX = -15  # DML最大指数
+HIF8_EXP_D0 = 0  # D0指数值
+HIF8_EXP_D1_BOUNDARY = 1  # D1指数值
+HIF8_EXP_D2_MIN, HIF8_EXP_D2_MAX = 2, 3  # D2指数范围
+HIF8_EXP_D3_MIN, HIF8_EXP_D3_MAX = 4, 7  # D3指数范围
 HIF8_EXP_D4_MIN, HIF8_EXP_D4_MAX = 8, 15  # D4指数范围
 
-HIF8_DOT_DML = 0               # DML: Denormal Low, 指数范围 -22 ~ -16, 0位尾数
-HIF8_DOT_D0 = 1                # D0: 指数为0，3位尾数（最高精度）
-HIF8_DOT_D1 = 2                # D1: 指数为±1，3位尾数
-HIF8_DOT_D2 = 4                # D2: 指数为±2 ~ ±3，3位尾数
-HIF8_DOT_D3 = 8                # D3: 指数为±4 ~ ±7，2位尾数
-HIF8_DOT_D4 = 12               # D4: 指数为±8 ~ ±15，1位尾数（最低精度）
-HIF8_DOT_INVALID = -1          # 无效状态
+HIF8_DOT_DML = 0  # DML: Denormal Low, 指数范围 -22 ~ -16, 0位尾数
+HIF8_DOT_D0 = 1  # D0: 指数为0，3位尾数（最高精度）
+HIF8_DOT_D1 = 2  # D1: 指数为±1，3位尾数
+HIF8_DOT_D2 = 4  # D2: 指数为±2 ~ ±3，3位尾数
+HIF8_DOT_D3 = 8  # D3: 指数为±4 ~ ±7，2位尾数
+HIF8_DOT_D4 = 12  # D4: 指数为±8 ~ ±15，1位尾数（最低精度）
+HIF8_DOT_INVALID = -1  # 无效状态
 
-HIF8_FRAC_BITS_DML = 0         # DML档位尾数位数
-HIF8_FRAC_BITS_D0 = 3          # D0档位尾数位数
-HIF8_FRAC_BITS_D1 = 3          # D1档位尾数位数
-HIF8_FRAC_BITS_D2 = 3          # D2档位尾数位数
-HIF8_FRAC_BITS_D3 = 2          # D3档位尾数位数
-HIF8_FRAC_BITS_D4 = 1          # D4档位尾数位数
+HIF8_FRAC_BITS_DML = 0  # DML档位尾数位数
+HIF8_FRAC_BITS_D0 = 3  # D0档位尾数位数
+HIF8_FRAC_BITS_D1 = 3  # D1档位尾数位数
+HIF8_FRAC_BITS_D2 = 3  # D2档位尾数位数
+HIF8_FRAC_BITS_D3 = 2  # D3档位尾数位数
+HIF8_FRAC_BITS_D4 = 1  # D4档位尾数位数
 
-HIF8_EXP_BITS_DML = 3          # DML档位指数位数
-HIF8_EXP_BITS_D0 = 0           # D0档位指数位数
-HIF8_EXP_BITS_D1 = 1           # D1档位指数位数
-HIF8_EXP_BITS_D2 = 2           # D2档位指数位数
-HIF8_EXP_BITS_D3 = 3           # D3档位指数位数
-HIF8_EXP_BITS_D4 = 4           # D4档位指数位数
+HIF8_EXP_BITS_DML = 3  # DML档位指数位数
+HIF8_EXP_BITS_D0 = 0  # D0档位指数位数
+HIF8_EXP_BITS_D1 = 1  # D1档位指数位数
+HIF8_EXP_BITS_D2 = 2  # D2档位指数位数
+HIF8_EXP_BITS_D3 = 3  # D3档位指数位数
+HIF8_EXP_BITS_D4 = 4  # D4档位指数位数
 
 HIF8_ZERO = 0
-HIF8_NAN = 128                 # 0b10000000, NaN
-HIF8_NEG_INF = 239             # 0b11101111, -inf
-HIF8_NEG_MAX = 238             # 0b11101110, 负极大值
-HIF8_POS_INF = 111             # 0b01101111, +inf
-HIF8_POS_MAX = 110             # 0b01101110, 正极大值
+HIF8_NAN = 128  # 0b10000000, NaN
+HIF8_NEG_INF = 239  # 0b11101111, -inf
+HIF8_NEG_MAX = 238  # 0b11101110, 负极大值
+HIF8_POS_INF = 111  # 0b01101111, +inf
+HIF8_POS_MAX = 110  # 0b01101110, 正极大值
 
-HIF8_SIGN_MASK = 128           # 0b10000000, 符号位掩码
-HIF8_DOT_MASK = 120            # 0b01110000, dot值掩码
-HIF8_FRAC_MASK_3BIT = 7        # 0b00000111, 3位尾数掩码（D0/D1/D2）
-HIF8_FRAC_MASK_2BIT = 3        # 0b00000011, 2位尾数掩码（D3）
-HIF8_FRAC_MASK_1BIT = 1        # 0b00000001, 1位尾数掩码（D4）
-HIF8_EXP_MASK_DML = 7          # 0b00000111, DML指数掩码（bit0-2）
-HIF8_EXP_MASK_D4 = 30          # 0b00011110, D4指数掩码（bit1-4）
-HIF8_EXP_MASK_D3 = 28          # 0b00011100, D3指数掩码（bit2-4）
-HIF8_EXP_MASK_D2 = 24          # 0b00011000, D2指数掩码（bit3-4）
-HIF8_EXP_SIGN_MASK_D1 = 8      # 0b00001000, D1指数掩码（bit3）
+HIF8_SIGN_MASK = 128  # 0b10000000, 符号位掩码
+HIF8_DOT_MASK = 120  # 0b01110000, dot值掩码
+HIF8_FRAC_MASK_3BIT = 7  # 0b00000111, 3位尾数掩码（D0/D1/D2）
+HIF8_FRAC_MASK_2BIT = 3  # 0b00000011, 2位尾数掩码（D3）
+HIF8_FRAC_MASK_1BIT = 1  # 0b00000001, 1位尾数掩码（D4）
+HIF8_EXP_MASK_DML = 7  # 0b00000111, DML指数掩码（bit0-2）
+HIF8_EXP_MASK_D4 = 30  # 0b00011110, D4指数掩码（bit1-4）
+HIF8_EXP_MASK_D3 = 28  # 0b00011100, D3指数掩码（bit2-4）
+HIF8_EXP_MASK_D2 = 24  # 0b00011000, D2指数掩码（bit3-4）
+HIF8_EXP_SIGN_MASK_D1 = 8  # 0b00001000, D1指数掩码（bit3）
 
-HIF8_DOT_BIT_SHIFT = 3         # Dot值在HiF8中的起始位置(bit3)
-HIF8_DML_EXP_OFFSET = 23       # DML指数偏移值
-HIF8_OVERFLOW_SCALE = 1.25     # 溢出阈值缩放因子
+HIF8_DOT_BIT_SHIFT = 3  # Dot值在HiF8中的起始位置(bit3)
+HIF8_DML_EXP_OFFSET = 23  # DML指数偏移值
+HIF8_OVERFLOW_SCALE = 1.25  # 溢出阈值缩放因子
 HIF8_MAX_FINITE_VALUE = 32768  # 最大有限值（非饱和模式下的边界值, 2^15
 
-SSR_T14_MASK = 16383           # 0b0011 1111 1111 1111, 14位低位掩码
-SSR_F14_OFFSET = 8192          # 0b0010 0000 0000 0000, F14偏移值
-SSR_DML_SHIFT = 10             # SSR舍入移位值
-SSR_RESERVED_BITS = 14         # SSR舍入保留位数
-HYBRID_ROUND_EXP_THRESHOLD = 4 # 混合舍入的指数分界点
+SSR_T14_MASK = 16383  # 0b0011 1111 1111 1111, 14位低位掩码
+SSR_F14_OFFSET = 8192  # 0b0010 0000 0000 0000, F14偏移值
+SSR_DML_SHIFT = 10  # SSR舍入移位值
+SSR_RESERVED_BITS = 14  # SSR舍入保留位数
+HYBRID_ROUND_EXP_THRESHOLD = 4  # 混合舍入的指数分界点
+
 
 class GeneralizedQLI:
-    def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, qk_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode, key_quant_mode, layout_query, layout_key, sparse_count, sparse_mode, cmp_ratio):
+    def __init__(
+        self,
+        batch_size,
+        q_seq,
+        k_seq,
+        q_t_size,
+        k_t_size,
+        q_head_num,
+        k_head_num,
+        head_dim,
+        block_size,
+        block_num,
+        qk_dtype,
+        dequant_dtype,
+        actual_seq_dtype,
+        act_seq_q,
+        act_seq_k,
+        query_quant_mode,
+        key_quant_mode,
+        layout_query,
+        layout_key,
+        sparse_count,
+        sparse_mode,
+        cmp_ratio,
+    ):
         self.batch_size = batch_size
         self.q_seq = q_seq
         self.k_seq = k_seq
@@ -151,44 +176,83 @@ class GeneralizedQLI:
 
         out_shape_bnss = copy.deepcopy(self.q_bnsd_shape)
         out_shape_bnss[1] = n2
-        out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k)/cmp_ratio)
+        out_shape_bnss[-1] = math.floor(max(actualSeqLengths_k) / cmp_ratio)
 
-        y = torch.full(out_shape_bnsd,-1,dtype = torch.int32)
-        y_value = torch.full(out_shape_bnss,-float('inf'), dtype=torch.float32)
+        y = torch.full(out_shape_bnsd, -1, dtype=torch.int32)
+        y_value = torch.full(out_shape_bnss, -float("inf"), dtype=torch.float32)
 
         for b_idx in range(batch_size):
             curr_actualSeq_q = actualSeqLengths_q[b_idx]
-            curr_actualSeq_k = math.floor(actualSeqLengths_k[b_idx] /cmp_ratio)
+            curr_actualSeq_k = math.floor(actualSeqLengths_k[b_idx] / cmp_ratio)
             self.cur_actseq_q = curr_actualSeq_q
             self.cur_actseq_k = curr_actualSeq_k
-            self.cur_q = q_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
-            self.cur_k = k_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k, :]
-            self.cur_wt = wt_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
-            self.cur_q_scale = q_scale_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :]
-            self.cur_k_scale = k_scale_bnsd_tensor[b_idx:(b_idx + 1), :, :curr_actualSeq_k]
+            self.cur_q = q_bnsd_tensor[b_idx : (b_idx + 1), :, :curr_actualSeq_q, :]
+            self.cur_k = k_bnsd_tensor[b_idx : (b_idx + 1), :, :curr_actualSeq_k, :]
+            self.cur_wt = wt_bnsd_tensor[b_idx : (b_idx + 1), :, :curr_actualSeq_q, :]
+            self.cur_q_scale = q_scale_bnsd_tensor[
+                b_idx : (b_idx + 1), :, :curr_actualSeq_q, :
+            ]
+            self.cur_k_scale = k_scale_bnsd_tensor[
+                b_idx : (b_idx + 1), :, :curr_actualSeq_k
+            ]
             if self.sparse_mode != 0:
-                self.cur_m = mask_tensor[b_idx:(b_idx + 1), :curr_actualSeq_q, :curr_actualSeq_k]
+                self.cur_m = mask_tensor[
+                    b_idx : (b_idx + 1), :curr_actualSeq_q, :curr_actualSeq_k
+                ]
             self.cur_b_idx = b_idx
 
             if curr_actualSeq_q != 0:
                 actual_selected_count = min(curr_actualSeq_k, self.sparse_count)
                 if self.qk_dtype == torch.int8:
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
-                                                                                        :curr_actualSeq_q,
-                                                                                        :curr_actualSeq_k] = self.cal_atten_per_batch_int8(b_idx)
+                    (
+                        y[
+                            b_idx : (b_idx + 1),
+                            :,
+                            :curr_actualSeq_q,
+                            :actual_selected_count,
+                        ],
+                        y_value[
+                            b_idx : (b_idx + 1), :, :curr_actualSeq_q, :curr_actualSeq_k
+                        ],
+                    ) = self.cal_atten_per_batch_int8(b_idx)
                 elif self.qk_dtype == torch.float8_e4m3fn:
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
-                                                                                        :curr_actualSeq_q,
-                                                                                        :curr_actualSeq_k] = self.cal_atten_per_batch_fp8(b_idx)
+                    (
+                        y[
+                            b_idx : (b_idx + 1),
+                            :,
+                            :curr_actualSeq_q,
+                            :actual_selected_count,
+                        ],
+                        y_value[
+                            b_idx : (b_idx + 1), :, :curr_actualSeq_q, :curr_actualSeq_k
+                        ],
+                    ) = self.cal_atten_per_batch_fp8(b_idx)
                 elif self.qk_dtype == torch.uint8:
-                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
-                                                                                        :curr_actualSeq_q,
-                                                                                        :curr_actualSeq_k] = self.cal_atten_per_batch_hifp8(b_idx)
+                    (
+                        y[
+                            b_idx : (b_idx + 1),
+                            :,
+                            :curr_actualSeq_q,
+                            :actual_selected_count,
+                        ],
+                        y_value[
+                            b_idx : (b_idx + 1), :, :curr_actualSeq_q, :curr_actualSeq_k
+                        ],
+                    ) = self.cal_atten_per_batch_hifp8(b_idx)
             else:
                 pass
         return y, y_value
 
-    def trans_shape_to_bnsd(self, tensor, shape, layout, headnums=None, act_seq=None, is_weights=False, tensor_name=None):
+    def trans_shape_to_bnsd(
+        self,
+        tensor,
+        shape,
+        layout,
+        headnums=None,
+        act_seq=None,
+        is_weights=False,
+        tensor_name=None,
+    ):
         if layout in ["BSND"]:
             B = shape[0]
             S = shape[1]
@@ -231,7 +295,9 @@ class GeneralizedQLI:
                 if act_s == 0:
                     continue
                 for n_index in range(N):
-                    new_tensor[b_index, n_index, 0:act_s, :] = tensor[t_start:t_end, n_index, :]
+                    new_tensor[b_index, n_index, 0:act_s, :] = tensor[
+                        t_start:t_end, n_index, :
+                    ]
                 t_start += act_s
             return new_tensor, [B, N, S, D]
         elif layout == "TN":
@@ -248,16 +314,18 @@ class GeneralizedQLI:
                 if act_s == 0:
                     continue
                 for n_index in range(N):
-                    new_tensor[b_index, n_index, 0:act_s] = tensor[t_start:t_end, n_index]
+                    new_tensor[b_index, n_index, 0:act_s] = tensor[
+                        t_start:t_end, n_index
+                    ]
                 t_start += act_s
             return new_tensor, [B, N, S]
         else:
             return tensor, shape
 
-    def trans_tnd_actseq(self,list):
+    def trans_tnd_actseq(self, list):
         list_len = len(list)
         if list_len == 0:
-            raise ValueError(f'TND情况下 act_seq需要必传')
+            raise ValueError("TND情况下 act_seq需要必传")
         list_new = []
         list_new.append(list[0])
         for i in range(list_len - 1):
@@ -265,10 +333,12 @@ class GeneralizedQLI:
             if new_item >= 0:
                 list_new.append(new_item)
             else:
-                raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
+                raise ValueError(
+                    f"TND情况下 act_seq_len 为非递减数列 act_seq_len={list}"
+                )
         return list_new
 
-    def cal_atten_per_batch_hifp8(self,b_idx):
+    def cal_atten_per_batch_hifp8(self, b_idx):
         cur_q = self.cur_q
         cur_k = self.cur_k
         cur_wt = self.cur_wt.to(dtype=torch.float32)
@@ -280,14 +350,13 @@ class GeneralizedQLI:
         cur_q = trans_hifuint8_tensor_to_float(cur_q)
         cur_k = trans_hifuint8_tensor_to_float(cur_k)
         qk_bmm_res = torch.bmm(
-            cur_q.squeeze(0),
-            cur_k.permute(0, 1, 3, 2).squeeze(0)
+            cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
         ).unsqueeze(0)
         cur_w = cur_wt * cur_q_scale
         qk_relu_out = (qk_bmm_res.to(dtype=torch.float32)).clamp_min(0.0)
         brc_vmul = torch.bmm(
-            cur_w.permute(0,2,3,1).to(dtype=torch.float32).squeeze(0),
-            qk_relu_out.permute(0,2,1,3).to(dtype = torch.float32).squeeze(0)
+            cur_w.permute(0, 2, 3, 1).to(dtype=torch.float32).squeeze(0),
+            qk_relu_out.permute(0, 2, 1, 3).to(dtype=torch.float32).squeeze(0),
         ).unsqueeze(0)
         temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
         temp_g = self.group_size
@@ -300,40 +369,40 @@ class GeneralizedQLI:
         if sparse_mode == 3:
             cur_m = self.cur_m
             cur_m_broadcasted = cur_m.reshape(1, 1, temp_s1, temp_s2)
-            cur_m_broadcasted = torch.broadcast_to(cur_m_broadcasted, (1, temp_n2, temp_s1, temp_s2))
+            cur_m_broadcasted = torch.broadcast_to(
+                cur_m_broadcasted, (1, temp_n2, temp_s1, temp_s2)
+            )
             # 根据布尔矩阵置-inf
-            reduce_sum[cur_m_broadcasted.to(dtype = torch.bool)] = -torch.inf
+            reduce_sum[cur_m_broadcasted.to(dtype=torch.bool)] = -torch.inf
         to_be_sort_ele = reduce_sum.clone()
         to_be_sort_ele = to_be_sort_ele.to(torch.bfloat16)
         # 稳定排序
         b_sorted_indices = torch.full(to_be_sort_ele.shape, -1, dtype=torch.int32)
         if sparse_mode == 3:
             for i in range(temp_s1):
-                row_mask = cur_m_broadcasted[0, 0, i, :].to(dtype = torch.bool)
+                row_mask = cur_m_broadcasted[0, 0, i, :].to(dtype=torch.bool)
                 true_indices = torch.where(~row_mask)[0]
                 row_ele = to_be_sort_ele[0, 0, i, true_indices]
-                indices = torch.arange(len(row_ele), device = row_ele.device)
+                indices = torch.arange(len(row_ele), device=row_ele.device)
 
                 sorted_vals, sorted_idx = torch.sort(
-                    torch.stack([-row_ele, indices],dim=1),
-                    dim=0,
-                    stable=True
+                    torch.stack([-row_ele, indices], dim=1), dim=0, stable=True
                 )
-                b_sorted_indices[0, 0, i, true_indices] = true_indices[sorted_idx[:, 0]].to(torch.int32)
+                b_sorted_indices[0, 0, i, true_indices] = true_indices[
+                    sorted_idx[:, 0]
+                ].to(torch.int32)
         else:
             for i in range(temp_s1):
                 row_ele = to_be_sort_ele[0, 0, i, :]
-                indices = torch.arange(len(row_ele),device = row_ele.device)
+                indices = torch.arange(len(row_ele), device=row_ele.device)
                 sorted_vals, sorted_idx = torch.sort(
-                    torch.stack([-row_ele, indices],dim=1),
-                    dim=0,
-                    stable=True
+                    torch.stack([-row_ele, indices], dim=1), dim=0, stable=True
                 )
-                b_sorted_indices[0, 0, i, :] = sorted_idx[:,0]
+                b_sorted_indices[0, 0, i, :] = sorted_idx[:, 0]
         topk_indices = b_sorted_indices[..., :actual_selected_count]
         return topk_indices, to_be_sort_ele
 
-    def cal_atten_per_batch_fp8(self,b_idx):
+    def cal_atten_per_batch_fp8(self, b_idx):
         cur_q = self.cur_q
         cur_k = self.cur_k
         cur_wt = self.cur_wt.to(dtype=torch.float32)
@@ -343,14 +412,14 @@ class GeneralizedQLI:
         sparse_mode = self.sparse_mode
         cmp_ratio = self.cmp_ratio
         qk_bmm_res = torch.bmm(
-            cur_q.to(dtype = torch.float32).squeeze(0),
-            cur_k.to(dtype = torch.float32).permute(0, 1, 3, 2).squeeze(0)
+            cur_q.to(dtype=torch.float32).squeeze(0),
+            cur_k.to(dtype=torch.float32).permute(0, 1, 3, 2).squeeze(0),
         ).unsqueeze(0)
         cur_w = cur_wt * cur_q_scale
         qk_relu_out = (qk_bmm_res.to(dtype=torch.float32)).clamp_min(0.0)
         brc_vmul = torch.bmm(
-            cur_w.permute(0,2,3,1).to(dtype=torch.float32).squeeze(0),
-            qk_relu_out.permute(0,2,1,3).to(dtype = torch.float32).squeeze(0)
+            cur_w.permute(0, 2, 3, 1).to(dtype=torch.float32).squeeze(0),
+            qk_relu_out.permute(0, 2, 1, 3).to(dtype=torch.float32).squeeze(0),
         ).unsqueeze(0)
         temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
         temp_g = self.group_size
@@ -363,40 +432,40 @@ class GeneralizedQLI:
         if sparse_mode == 3:
             cur_m = self.cur_m
             cur_m_broadcasted = cur_m.reshape(1, 1, temp_s1, temp_s2)
-            cur_m_broadcasted = torch.broadcast_to(cur_m_broadcasted, (1, temp_n2, temp_s1, temp_s2))
+            cur_m_broadcasted = torch.broadcast_to(
+                cur_m_broadcasted, (1, temp_n2, temp_s1, temp_s2)
+            )
             # 根据布尔矩阵置-inf
-            reduce_sum[cur_m_broadcasted.to(dtype = torch.bool)] = -torch.inf
+            reduce_sum[cur_m_broadcasted.to(dtype=torch.bool)] = -torch.inf
         to_be_sort_ele = reduce_sum.clone()
         to_be_sort_ele = to_be_sort_ele.to(torch.bfloat16)
         # 稳定排序
         b_sorted_indices = torch.full(to_be_sort_ele.shape, -1, dtype=torch.int32)
         if sparse_mode == 3:
             for i in range(temp_s1):
-                row_mask = cur_m_broadcasted[0, 0, i, :].to(dtype = torch.bool)
+                row_mask = cur_m_broadcasted[0, 0, i, :].to(dtype=torch.bool)
                 true_indices = torch.where(~row_mask)[0]
                 row_ele = to_be_sort_ele[0, 0, i, true_indices]
-                indices = torch.arange(len(row_ele), device = row_ele.device)
+                indices = torch.arange(len(row_ele), device=row_ele.device)
 
                 sorted_vals, sorted_idx = torch.sort(
-                    torch.stack([-row_ele, indices],dim=1),
-                    dim=0,
-                    stable=True
+                    torch.stack([-row_ele, indices], dim=1), dim=0, stable=True
                 )
-                b_sorted_indices[0, 0, i, true_indices] = true_indices[sorted_idx[:, 0]].to(torch.int32)
+                b_sorted_indices[0, 0, i, true_indices] = true_indices[
+                    sorted_idx[:, 0]
+                ].to(torch.int32)
         else:
             for i in range(temp_s1):
                 row_ele = to_be_sort_ele[0, 0, i, :]
-                indices = torch.arange(len(row_ele),device = row_ele.device)
+                indices = torch.arange(len(row_ele), device=row_ele.device)
                 sorted_vals, sorted_idx = torch.sort(
-                    torch.stack([-row_ele, indices],dim=1),
-                    dim=0,
-                    stable=True
+                    torch.stack([-row_ele, indices], dim=1), dim=0, stable=True
                 )
-                b_sorted_indices[0, 0, i, :] = sorted_idx[:,0]
+                b_sorted_indices[0, 0, i, :] = sorted_idx[:, 0]
         topk_indices = b_sorted_indices[..., :actual_selected_count]
         return topk_indices, to_be_sort_ele
 
-    def cal_atten_per_batch_int8(self,b_idx):
+    def cal_atten_per_batch_int8(self, b_idx):
         cur_q = self.cur_q
         cur_k = self.cur_k
         cur_wt = self.cur_wt.to(dtype=torch.float16)
@@ -406,14 +475,18 @@ class GeneralizedQLI:
         sparse_mode = self.sparse_mode
         cmp_ratio = self.cmp_ratio
         qk_bmm_res = torch.bmm(
-            cur_q.to(dtype = torch.int32).squeeze(0),
-            cur_k.to(dtype = torch.int32).permute(0, 1, 3, 2).squeeze(0)
+            cur_q.to(dtype=torch.int32).squeeze(0),
+            cur_k.to(dtype=torch.int32).permute(0, 1, 3, 2).squeeze(0),
         ).unsqueeze(0)
         cur_w = cur_wt * cur_q_scale
-        qk_relu_out = (qk_bmm_res.to(dtype=torch.float32) / 1024.0).clamp_min(0.0).to(torch.float16)
+        qk_relu_out = (
+            (qk_bmm_res.to(dtype=torch.float32) / 1024.0)
+            .clamp_min(0.0)
+            .to(torch.float16)
+        )
         brc_vmul = torch.bmm(
-            cur_w.permute(0,2,3,1).to(dtype=torch.float32).squeeze(0),
-            qk_relu_out.permute(0,2,1,3).to(dtype = torch.float32).squeeze(0)
+            cur_w.permute(0, 2, 3, 1).to(dtype=torch.float32).squeeze(0),
+            qk_relu_out.permute(0, 2, 1, 3).to(dtype=torch.float32).squeeze(0),
         ).unsqueeze(0)
         temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
         temp_g = self.group_size
@@ -426,41 +499,40 @@ class GeneralizedQLI:
         if sparse_mode == 3:
             cur_m = self.cur_m
             cur_m_broadcasted = cur_m.reshape(1, 1, temp_s1, temp_s2)
-            cur_m_broadcasted = torch.broadcast_to(cur_m_broadcasted, (1, temp_n2, temp_s1, temp_s2))
+            cur_m_broadcasted = torch.broadcast_to(
+                cur_m_broadcasted, (1, temp_n2, temp_s1, temp_s2)
+            )
             # 根据布尔矩阵置-inf
-            reduce_sum[cur_m_broadcasted.to(dtype = torch.bool)] = -torch.inf
-
+            reduce_sum[cur_m_broadcasted.to(dtype=torch.bool)] = -torch.inf
 
         to_be_sort_ele = reduce_sum.clone()
         # 稳定排序
         b_sorted_indices = torch.full(to_be_sort_ele.shape, -1, dtype=torch.int32)
         if sparse_mode == 3:
             for i in range(temp_s1):
-                row_mask = cur_m_broadcasted[0, 0, i, :].to(dtype = torch.bool)
+                row_mask = cur_m_broadcasted[0, 0, i, :].to(dtype=torch.bool)
                 true_indices = torch.where(~row_mask)[0]
                 row_ele = to_be_sort_ele[0, 0, i, true_indices]
-                indices = torch.arange(len(row_ele), device = row_ele.device)
+                indices = torch.arange(len(row_ele), device=row_ele.device)
 
                 sorted_vals, sorted_idx = torch.sort(
-                    torch.stack([-row_ele, indices],dim=1),
-                    dim=0,
-                    stable=True
+                    torch.stack([-row_ele, indices], dim=1), dim=0, stable=True
                 )
-                b_sorted_indices[0, 0, i, true_indices] = true_indices[sorted_idx[:, 0]].to(torch.int32)
+                b_sorted_indices[0, 0, i, true_indices] = true_indices[
+                    sorted_idx[:, 0]
+                ].to(torch.int32)
         else:
             for i in range(temp_s1):
                 row_ele = to_be_sort_ele[0, 0, i, :]
-                indices = torch.arange(len(row_ele),device = row_ele.device)
+                indices = torch.arange(len(row_ele), device=row_ele.device)
                 sorted_vals, sorted_idx = torch.sort(
-                    torch.stack([-row_ele, indices],dim=1),
-                    dim=0,
-                    stable=True
+                    torch.stack([-row_ele, indices], dim=1), dim=0, stable=True
                 )
-                b_sorted_indices[0, 0, i, :] = sorted_idx[:,0]
+                b_sorted_indices[0, 0, i, :] = sorted_idx[:, 0]
         topk_indices = b_sorted_indices[..., :actual_selected_count]
         return topk_indices, to_be_sort_ele
 
-    def trans_bnsd_to_layout(self,tensor, shape, layout, act_q=None):
+    def trans_bnsd_to_layout(self, tensor, shape, layout, act_q=None):
         # 此时的输出D轴是K轴
         if layout == "BSH":
             output = tensor.permute(0, 2, 1, 3).contiguous().view(shape)
@@ -484,7 +556,9 @@ class GeneralizedQLI:
                 if act_s == 0:
                     continue
                 for n_index in range(N):
-                    output[t_start:t_end, n_index, :] = tensor[b_index, n_index, :act_s, :]
+                    output[t_start:t_end, n_index, :] = tensor[
+                        b_index, n_index, :act_s, :
+                    ]
                 t_start += act_s
             if layout == "TND_NTD":
                 output = output.permute(1, 0, 2).contiguous()
@@ -492,7 +566,7 @@ class GeneralizedQLI:
         else:
             return tensor
 
-    def broadcast_n_axis(self,n1, n2, temp_tensor, input_dtype):
+    def broadcast_n_axis(self, n1, n2, temp_tensor, input_dtype):
         g = n1 // n2
         temp_shape = temp_tensor.shape
         B = temp_shape[0]
@@ -501,7 +575,7 @@ class GeneralizedQLI:
         modify_tensor = torch.zeros([B, n1, S, D], dtype=temp_tensor.dtype)
         for i in range(n1):
             j = i // g
-            modify_tensor[:, i:i + 1, :, :] = temp_tensor[:, j:j + 1, :, :]
+            modify_tensor[:, i : i + 1, :, :] = temp_tensor[:, j : j + 1, :, :]
         return modify_tensor, modify_tensor.shape
 
     def create_mask(self, m_shape, act_k, S1):
@@ -510,13 +584,15 @@ class GeneralizedQLI:
         tmp_pos_orig = act_k - S1
 
         for i in range(S1):
-            if(((tmp_pos_orig+i+1)/cmp_ratio) < 0):
-               atten_masks[i,:] = 1
+            if ((tmp_pos_orig + i + 1) / cmp_ratio) < 0:
+                atten_masks[i, :] = 1
             else:
-               atten_masks[i, math.floor((tmp_pos_orig+i+1)/cmp_ratio):] = 1
+                atten_masks[i, math.floor((tmp_pos_orig + i + 1) / cmp_ratio) :] = 1
         return atten_masks
 
-    def create_mask_right_down(self, m_shape, actualSeqLengthsQ, actualSeqLengthsK, batch):
+    def create_mask_right_down(
+        self, m_shape, actualSeqLengthsQ, actualSeqLengthsK, batch
+    ):
         mask_s_q = m_shape[0]
         mask_s_kv = m_shape[1]
         cmp_ratio = self.cmp_ratio
@@ -532,8 +608,8 @@ class GeneralizedQLI:
             if len(actualSeqLengthsK) == 0:
                 S2 = mask_s_kv
             else:
-                S2 = math.floor(actualSeqLengthsK[i]/cmp_ratio)
-            next_tokens = S2-S1
+                S2 = math.floor(actualSeqLengthsK[i] / cmp_ratio)
+            next_tokens = S2 - S1
             next_tokens_list.append(next_tokens)
             act_k = actualSeqLengthsK[i]
             atten_masks = self.create_mask(m_shape, act_k, S1)
@@ -542,8 +618,17 @@ class GeneralizedQLI:
         cpu_mask = torch.from_numpy(re_mask_np)
         return cpu_mask, next_tokens_list
 
-
-    def forward(self, query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table):
+    def forward(
+        self,
+        query,
+        key,
+        weights,
+        query_dequant_scale,
+        key_dequant_scale,
+        actual_seq_lengths_query,
+        actual_seq_lengths_key,
+        block_table,
+    ):
         print("cpu执行中...")
 
         # 参数的初始化
@@ -604,7 +689,7 @@ class GeneralizedQLI:
             self.actual_seq_lengths_key = actual_seq_lengths_key
             actualSeqLengths_k = self.actual_seq_lengths_key
             layout_key_scale = layout_key
-            k_max_s2 = math.floor(max(actualSeqLengths_k)/self.cmp_ratio)
+            k_max_s2 = math.floor(max(actualSeqLengths_k) / self.cmp_ratio)
             k_shape = [batch_size, k_head_num, k_max_s2, head_dim]
             k_scale_shape = [batch_size, k_head_num, k_max_s2]
         query = query.cpu()
@@ -615,31 +700,47 @@ class GeneralizedQLI:
 
         # 将输入转化为BNSD
         ## BSND / TND -> BNSD
-        q_bnsd_tensor, q_bnsd_shape = self.trans_shape_to_bnsd(query, q_shape, layout_query,
-                                                        q_head_num, actualSeqLengths_q)
+        q_bnsd_tensor, q_bnsd_shape = self.trans_shape_to_bnsd(
+            query, q_shape, layout_query, q_head_num, actualSeqLengths_q
+        )
 
         ## BSND/TND/ -> BNSD
-        k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(key, k_shape, layout_key,
-                                                        k_head_num, torch.floor(actualSeqLengths_k/cmp_ratio).to(actual_seq_dtype))
+        k_bnsd_tensor, k_bnsd_shape = self.trans_shape_to_bnsd(
+            key,
+            k_shape,
+            layout_key,
+            k_head_num,
+            torch.floor(actualSeqLengths_k / cmp_ratio).to(actual_seq_dtype),
+        )
 
-
-
-        k_scale_bnsd_tensor, k_scale_bnsd_shape = self.trans_shape_to_bnsd(key_dequant_scale, k_scale_shape,
-                                                                    layout_key_scale,
-                                                                    k_head_num, torch.floor(actualSeqLengths_k/cmp_ratio).to(actual_seq_dtype))
+        k_scale_bnsd_tensor, k_scale_bnsd_shape = self.trans_shape_to_bnsd(
+            key_dequant_scale,
+            k_scale_shape,
+            layout_key_scale,
+            k_head_num,
+            torch.floor(actualSeqLengths_k / cmp_ratio).to(actual_seq_dtype),
+        )
 
         ## BSN1 -> BNS1   TN1 -> BNS1
         is_weights = True
-        wt_bnsd_tensor, wt_bnsd_shape = self.trans_shape_to_bnsd(weights, w_shape, layout_query,
-                                                            q_head_num, actualSeqLengths_q, is_weights)
+        wt_bnsd_tensor, wt_bnsd_shape = self.trans_shape_to_bnsd(
+            weights, w_shape, layout_query, q_head_num, actualSeqLengths_q, is_weights
+        )
 
         # BSN1 -> BNS1
-        q_scale_bnsd_tensor, q_scale_bnsd_shape = self.trans_shape_to_bnsd(query_dequant_scale, q_scale_shape,
-                                                                    layout_query,
-                                                                    q_head_num, actualSeqLengths_q, is_weights)
+        q_scale_bnsd_tensor, q_scale_bnsd_shape = self.trans_shape_to_bnsd(
+            query_dequant_scale,
+            q_scale_shape,
+            layout_query,
+            q_head_num,
+            actualSeqLengths_q,
+            is_weights,
+        )
         # 将 k n2轴 广播为 n1
         if q_head_num != k_head_num:
-            k_bnsd_tensor, k_bnsd_shape = self.broadcast_n_axis(q_head_num, k_head_num, k_bnsd_tensor, k_dtype)
+            k_bnsd_tensor, k_bnsd_shape = self.broadcast_n_axis(
+                q_head_num, k_head_num, k_bnsd_tensor, k_dtype
+            )
         self.q_bnsd_tensor = q_bnsd_tensor
         self.q_bnsd_shape = q_bnsd_shape
         self.k_bnsd_tensor = k_bnsd_tensor
@@ -651,11 +752,13 @@ class GeneralizedQLI:
         self.k_scale_bnsd_tensor = k_scale_bnsd_tensor
         self.k_scale_bnsd_shape = k_scale_bnsd_shape
         # 生成mask, sparse_mode=3时使能
-        m_shape_std = [q_bnsd_shape[2], k_bnsd_shape[2]] #m_shape应该是[s1,s2]
+        m_shape_std = [q_bnsd_shape[2], k_bnsd_shape[2]]  # m_shape应该是[s1,s2]
         batch = q_bnsd_shape[0]
         m_tensor = []
         if sparse_mode == 3:
-            m_tensor, next_tokens_list = self.create_mask_right_down(m_shape_std, actualSeqLengths_q, actualSeqLengths_k, batch)
+            m_tensor, next_tokens_list = self.create_mask_right_down(
+                m_shape_std, actualSeqLengths_q, actualSeqLengths_k, batch
+            )
         elif sparse_mode == 0:
             pass
         else:
@@ -666,103 +769,359 @@ class GeneralizedQLI:
         out_shape_bnsd = copy.deepcopy(self.q_bnsd_shape)
         out_shape_bnsd[1] = k_head_num
         out_shape_bnsd[-1] = sparse_count
-        y = self.trans_bnsd_to_layout(y, out_shape_bnsd, layout_query, actualSeqLengths_q)
+        y = self.trans_bnsd_to_layout(
+            y, out_shape_bnsd, layout_query, actualSeqLengths_q
+        )
         return y, y_value
 
-def trans_prefix_actseq(self,list):
-        list_len = len(list)
-        if list_len == 0:
-            raise ValueError(f'PA场景下 act_seq需要必传')
-        list_new = []
-        list_new.append(list[0])
-        for i in range(list_len - 1):
-            new_item = list[i + 1] - list[i]
-            if new_item >= 0:
-                list_new.append(new_item)
-            else:
-                raise ValueError(f'PA场景下act seq 为非递减数列 act_seq ={list}')
-        return list_new
+
+def trans_prefix_actseq(self, list):
+    list_len = len(list)
+    if list_len == 0:
+        raise ValueError("PA场景下 act_seq需要必传")
+    list_new = []
+    list_new.append(list[0])
+    for i in range(list_len - 1):
+        new_item = list[i + 1] - list[i]
+        if new_item >= 0:
+            list_new.append(new_item)
+        else:
+            raise ValueError(f"PA场景下act seq 为非递减数列 act_seq ={list}")
+    return list_new
+
 
 def qli_output_single(params):
-    batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
-    qk_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, \
-    layout_query, layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,\
-    q_scale_datarange, k_scale_datarange, cmp_ratio = params
-    
+    (
+        batch_size,
+        q_seq,
+        k_seq,
+        q_t_size,
+        k_t_size,
+        q_head_num,
+        k_head_num,
+        head_dim,
+        block_size,
+        block_num,
+        qk_dtype,
+        dequant_dtype,
+        actual_seq_dtype,
+        act_seq_q,
+        act_seq_k,
+        query_quant_mode,
+        key_quant_mode,
+        layout_query,
+        layout_key,
+        sparse_count,
+        sparse_mode,
+        query_datarange,
+        key_datarange,
+        weights_datarange,
+        q_scale_datarange,
+        k_scale_datarange,
+        cmp_ratio,
+    ) = params
+
     if qk_dtype == torch.uint8:
         hifp8mode = 1
-        query_dtype = torch_npu.hifloat8 # ACL_HIFLOAT8
-        key_dtype = torch_npu.hifloat8   # ACL_HIFLOAT8
+        query_dtype = torch_npu.hifloat8  # ACL_HIFLOAT8
+        key_dtype = torch_npu.hifloat8  # ACL_HIFLOAT8
     else:
         hifp8mode = 0
 
-    test_qli = GeneralizedQLI(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,
-                              qk_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,
-                              key_quant_mode, layout_query, layout_key, sparse_count, sparse_mode, cmp_ratio)
+    test_qli = GeneralizedQLI(
+        batch_size,
+        q_seq,
+        k_seq,
+        q_t_size,
+        k_t_size,
+        q_head_num,
+        k_head_num,
+        head_dim,
+        block_size,
+        block_num,
+        qk_dtype,
+        dequant_dtype,
+        actual_seq_dtype,
+        act_seq_q,
+        act_seq_k,
+        query_quant_mode,
+        key_quant_mode,
+        layout_query,
+        layout_key,
+        sparse_count,
+        sparse_mode,
+        cmp_ratio,
+    )
 
-    actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(actual_seq_dtype).npu() \
-                            if act_seq_q is None else torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
-    actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq*cmp_ratio, k_seq*cmp_ratio, batch_size)).to(actual_seq_dtype).npu() \
-                            if act_seq_k is None else torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
+    actual_seq_lengths_query = (
+        torch.tensor(np.random.uniform(q_seq, q_seq, batch_size))
+        .to(actual_seq_dtype)
+        .npu()
+        if act_seq_q is None
+        else torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
+    )
+    actual_seq_lengths_key = (
+        torch.tensor(
+            np.random.uniform(k_seq * cmp_ratio, k_seq * cmp_ratio, batch_size)
+        )
+        .to(actual_seq_dtype)
+        .npu()
+        if act_seq_k is None
+        else torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
+    )
 
     if layout_query == "BSND":
-        if hifp8mode ==1:
-            query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1],(batch_size, q_seq, q_head_num, head_dim))).to(torch.float)
-            query = trans_float_tensor_to_hifuint8(query, round_mode = "hybrid", over_mode = True).npu()
+        if hifp8mode == 1:
+            query = torch.tensor(
+                np.random.uniform(
+                    query_datarange[0],
+                    query_datarange[1],
+                    (batch_size, q_seq, q_head_num, head_dim),
+                )
+            ).to(torch.float)
+            query = trans_float_tensor_to_hifuint8(
+                query, round_mode="hybrid", over_mode=True
+            ).npu()
             q_scale = random.uniform(q_scale_datarange[0], q_scale_datarange[1])
-            query_dequant_scale = torch.tensor(np.random.uniform(q_scale, q_scale, (batch_size, q_seq, q_head_num))).to(dequant_dtype).npu()
+            query_dequant_scale = (
+                torch.tensor(
+                    np.random.uniform(q_scale, q_scale, (batch_size, q_seq, q_head_num))
+                )
+                .to(dequant_dtype)
+                .npu()
+            )
         else:
-            query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1],(batch_size, q_seq, q_head_num, head_dim))).to(qk_dtype).npu()
-            query_dequant_scale = torch.tensor(np.random.uniform(q_scale_datarange[0], q_scale_datarange[1], (batch_size, q_seq, q_head_num))).to(dequant_dtype).npu()
-        weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (batch_size, q_seq, q_head_num))).to(dequant_dtype).npu()
+            query = (
+                torch.tensor(
+                    np.random.uniform(
+                        query_datarange[0],
+                        query_datarange[1],
+                        (batch_size, q_seq, q_head_num, head_dim),
+                    )
+                )
+                .to(qk_dtype)
+                .npu()
+            )
+            query_dequant_scale = (
+                torch.tensor(
+                    np.random.uniform(
+                        q_scale_datarange[0],
+                        q_scale_datarange[1],
+                        (batch_size, q_seq, q_head_num),
+                    )
+                )
+                .to(dequant_dtype)
+                .npu()
+            )
+        weights = (
+            torch.tensor(
+                np.random.uniform(
+                    weights_datarange[0],
+                    weights_datarange[1],
+                    (batch_size, q_seq, q_head_num),
+                )
+            )
+            .to(dequant_dtype)
+            .npu()
+        )
 
     elif layout_query == "TND":
-        if hifp8mode ==1:
-            query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (q_t_size, q_head_num, head_dim))).to(torch.float)
-            query = trans_float_tensor_to_hifuint8(query, round_mode = "hybrid", over_mode = True).npu()
+        if hifp8mode == 1:
+            query = torch.tensor(
+                np.random.uniform(
+                    query_datarange[0],
+                    query_datarange[1],
+                    (q_t_size, q_head_num, head_dim),
+                )
+            ).to(torch.float)
+            query = trans_float_tensor_to_hifuint8(
+                query, round_mode="hybrid", over_mode=True
+            ).npu()
             q_scale = random.uniform(q_scale_datarange[0], q_scale_datarange[1])
-            query_dequant_scale = torch.tensor(np.random.uniform(q_scale, q_scale, (q_t_size, q_head_num))).to(dequant_dtype).npu()
+            query_dequant_scale = (
+                torch.tensor(
+                    np.random.uniform(q_scale, q_scale, (q_t_size, q_head_num))
+                )
+                .to(dequant_dtype)
+                .npu()
+            )
         else:
-            query = torch.tensor(np.random.uniform(query_datarange[0], query_datarange[1], (q_t_size, q_head_num, head_dim))).to(qk_dtype).npu()
-            query_dequant_scale = torch.tensor(np.random.uniform(q_scale_datarange[0], q_scale_datarange[1], (q_t_size, q_head_num))).to(dequant_dtype).npu()
-        weights = torch.tensor(np.random.uniform(weights_datarange[0], weights_datarange[1], (q_t_size, q_head_num))).to(dequant_dtype).npu()
+            query = (
+                torch.tensor(
+                    np.random.uniform(
+                        query_datarange[0],
+                        query_datarange[1],
+                        (q_t_size, q_head_num, head_dim),
+                    )
+                )
+                .to(qk_dtype)
+                .npu()
+            )
+            query_dequant_scale = (
+                torch.tensor(
+                    np.random.uniform(
+                        q_scale_datarange[0],
+                        q_scale_datarange[1],
+                        (q_t_size, q_head_num),
+                    )
+                )
+                .to(dequant_dtype)
+                .npu()
+            )
+        weights = (
+            torch.tensor(
+                np.random.uniform(
+                    weights_datarange[0], weights_datarange[1], (q_t_size, q_head_num)
+                )
+            )
+            .to(dequant_dtype)
+            .npu()
+        )
 
     if layout_key == "BSND":
-        if hifp8mode ==1:
-            key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(torch.float)
-            key = trans_float_tensor_to_hifuint8(key, round_mode = "hybrid", over_mode = True).npu()
+        if hifp8mode == 1:
+            key = torch.tensor(
+                np.random.uniform(
+                    key_datarange[0],
+                    key_datarange[1],
+                    (batch_size, k_seq, k_head_num, head_dim),
+                )
+            ).to(torch.float)
+            key = trans_float_tensor_to_hifuint8(
+                key, round_mode="hybrid", over_mode=True
+            ).npu()
             k_scale = random.uniform(k_scale_datarange[0], k_scale_datarange[1])
-            key_dequant_scale = torch.tensor(np.random.uniform(k_scale, k_scale, (batch_size, k_seq, k_head_num))).to(dequant_dtype).npu()
+            key_dequant_scale = (
+                torch.tensor(
+                    np.random.uniform(k_scale, k_scale, (batch_size, k_seq, k_head_num))
+                )
+                .to(dequant_dtype)
+                .npu()
+            )
         else:
-            key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (batch_size, k_seq, k_head_num, head_dim))).to(qk_dtype).npu()
-            key_dequant_scale = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (batch_size, k_seq, k_head_num))).to(dequant_dtype).npu()
+            key = (
+                torch.tensor(
+                    np.random.uniform(
+                        key_datarange[0],
+                        key_datarange[1],
+                        (batch_size, k_seq, k_head_num, head_dim),
+                    )
+                )
+                .to(qk_dtype)
+                .npu()
+            )
+            key_dequant_scale = (
+                torch.tensor(
+                    np.random.uniform(
+                        k_scale_datarange[0],
+                        k_scale_datarange[1],
+                        (batch_size, k_seq, k_head_num),
+                    )
+                )
+                .to(dequant_dtype)
+                .npu()
+            )
         block_table = None
-        cpu_result, topk_value = test_qli.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qli.forward(
+            query,
+            key,
+            weights,
+            query_dequant_scale,
+            key_dequant_scale,
+            actual_seq_lengths_query,
+            actual_seq_lengths_key,
+            block_table,
+        )
 
     elif layout_key == "TND":
-        if hifp8mode ==1:
-            key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim))).to(torch.float)
-            key = trans_float_tensor_to_hifuint8(key, round_mode = "hybrid", over_mode = True).npu()
+        if hifp8mode == 1:
+            key = torch.tensor(
+                np.random.uniform(
+                    key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim)
+                )
+            ).to(torch.float)
+            key = trans_float_tensor_to_hifuint8(
+                key, round_mode="hybrid", over_mode=True
+            ).npu()
             k_scale = random.uniform(k_scale_datarange[0], k_scale_datarange[1])
-            key_dequant_scale = torch.tensor(np.random.uniform(k_scale, k_scale, (k_t_size, k_head_num))).to(dequant_dtype).npu()
+            key_dequant_scale = (
+                torch.tensor(
+                    np.random.uniform(k_scale, k_scale, (k_t_size, k_head_num))
+                )
+                .to(dequant_dtype)
+                .npu()
+            )
         else:
-            key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim))).to(qk_dtype).npu()
-            key_dequant_scale = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (k_t_size, k_head_num))).to(dequant_dtype).npu()
+            key = (
+                torch.tensor(
+                    np.random.uniform(
+                        key_datarange[0],
+                        key_datarange[1],
+                        (k_t_size, k_head_num, head_dim),
+                    )
+                )
+                .to(qk_dtype)
+                .npu()
+            )
+            key_dequant_scale = (
+                torch.tensor(
+                    np.random.uniform(
+                        k_scale_datarange[0],
+                        k_scale_datarange[1],
+                        (k_t_size, k_head_num),
+                    )
+                )
+                .to(dequant_dtype)
+                .npu()
+            )
         block_table = None
-        cpu_result, topk_value = test_qli.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qli.forward(
+            query,
+            key,
+            weights,
+            query_dequant_scale,
+            key_dequant_scale,
+            actual_seq_lengths_query,
+            actual_seq_lengths_key,
+            block_table,
+        )
 
     elif layout_key == "PA_BSND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
-        k_max_s2 = math.floor(max(act_seq_k)/cmp_ratio)
-        k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
-        if hifp8mode ==1:
-            key_bnsd = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1],(batch_size, k_head_num, k_max_s2, head_dim))).to(torch.float)
-            key_bnsd = trans_float_tensor_to_hifuint8(key_bnsd, round_mode = "hybrid", over_mode = True)
+        k_max_s2 = math.floor(max(act_seq_k) / cmp_ratio)
+        k_max_block_num_per_batch = math.ceil(
+            k_max_s2 / block_size
+        )  # 遍历batch得到的最大的block num
+        if hifp8mode == 1:
+            key_bnsd = torch.tensor(
+                np.random.uniform(
+                    key_datarange[0],
+                    key_datarange[1],
+                    (batch_size, k_head_num, k_max_s2, head_dim),
+                )
+            ).to(torch.float)
+            key_bnsd = trans_float_tensor_to_hifuint8(
+                key_bnsd, round_mode="hybrid", over_mode=True
+            )
             k_scale = random.uniform(k_scale_datarange[0], k_scale_datarange[1])
-            key_dequant_scale_bns = torch.tensor(np.random.uniform(k_scale, k_scale, (batch_size, k_head_num, k_max_s2))).to(dequant_dtype)
+            key_dequant_scale_bns = torch.tensor(
+                np.random.uniform(k_scale, k_scale, (batch_size, k_head_num, k_max_s2))
+            ).to(dequant_dtype)
         else:
-            key_bnsd = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1],(batch_size, k_head_num, k_max_s2, head_dim))).to(qk_dtype)
-            key_dequant_scale_bns = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (batch_size, k_head_num, k_max_s2))).to(dequant_dtype)
+            key_bnsd = torch.tensor(
+                np.random.uniform(
+                    key_datarange[0],
+                    key_datarange[1],
+                    (batch_size, k_head_num, k_max_s2, head_dim),
+                )
+            ).to(qk_dtype)
+            key_dequant_scale_bns = torch.tensor(
+                np.random.uniform(
+                    k_scale_datarange[0],
+                    k_scale_datarange[1],
+                    (batch_size, k_head_num, k_max_s2),
+                )
+            ).to(dequant_dtype)
         key_block_num_per_batch = []
         key_block_num_sum = 0
         for cur_act_k in act_seq_k:
@@ -771,12 +1130,14 @@ def qli_output_single(params):
             key_block_num_per_batch.append(cur_key_block_num)
             key_block_num_sum += cur_key_block_num
         if block_num < key_block_num_sum:
-            raise ValueError(f"key actual block num < needed block num")
+            raise ValueError("key actual block num < needed block num")
         # 构建block table
         block_id_list = np.arange(block_num)
         block_id_list = np.random.permutation(block_id_list).astype(np.int32)
         cur_block_id = 0
-        block_table = np.full((batch_size, k_max_block_num_per_batch), fill_value = -1, dtype=np.int32)
+        block_table = np.full(
+            (batch_size, k_max_block_num_per_batch), fill_value=-1, dtype=np.int32
+        )
         batch_idx = 0
         for cur_block_id_threshold in key_block_num_per_batch:
             for i_block_id in range(cur_block_id_threshold):
@@ -785,22 +1146,14 @@ def qli_output_single(params):
             batch_idx += 1
         # 构建PA场景的key
         # [batch_size, s2, k_head_num, head_dim] expand to [batch_size, k_max_block_num_per_batch * block_size, k_head_num, head_dim]
-        key_expand = torch.zeros((batch_size, k_head_num, k_max_block_num_per_batch * block_size, head_dim), dtype = qk_dtype)
-        key_expand[:,:,:k_max_s2,:] = key_bnsd
-        key = torch.zeros((block_num, block_size, k_head_num, head_dim), dtype = qk_dtype) # hifp8时qk_dtype为uint8
-        for i_batch in range(batch_size):
-            for  i_block, cur_block_id in enumerate(block_table[i_batch]):
-                block_start_pos = i_block * block_size
-                if cur_block_id == -1:
-                    continue
-                else:
-                    for i_n in range(k_head_num):
-                        key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
-        key = key.npu()
-        # 构建PA场景的key_dequant_scale
-        key_dequant_scale_expand = torch.zeros((batch_size, k_head_num, k_max_block_num_per_batch * block_size), dtype= dequant_dtype)
-        key_dequant_scale_expand[:,:,:k_max_s2] = key_dequant_scale_bns
-        key_dequant_scale = torch.zeros((block_num, block_size, k_head_num), dtype = dequant_dtype)
+        key_expand = torch.zeros(
+            (batch_size, k_head_num, k_max_block_num_per_batch * block_size, head_dim),
+            dtype=qk_dtype,
+        )
+        key_expand[:, :, :k_max_s2, :] = key_bnsd
+        key = torch.zeros(
+            (block_num, block_size, k_head_num, head_dim), dtype=qk_dtype
+        )  # hifp8时qk_dtype为uint8
         for i_batch in range(batch_size):
             for i_block, cur_block_id in enumerate(block_table[i_batch]):
                 block_start_pos = i_block * block_size
@@ -808,73 +1161,121 @@ def qli_output_single(params):
                     continue
                 else:
                     for i_n in range(k_head_num):
-                        key_dequant_scale[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
+                        key[cur_block_id, :, i_n, :] = key_expand[
+                            i_batch,
+                            i_n,
+                            block_start_pos : block_start_pos + block_size,
+                            :,
+                        ]
+        key = key.npu()
+        # 构建PA场景的key_dequant_scale
+        key_dequant_scale_expand = torch.zeros(
+            (batch_size, k_head_num, k_max_block_num_per_batch * block_size),
+            dtype=dequant_dtype,
+        )
+        key_dequant_scale_expand[:, :, :k_max_s2] = key_dequant_scale_bns
+        key_dequant_scale = torch.zeros(
+            (block_num, block_size, k_head_num), dtype=dequant_dtype
+        )
+        for i_batch in range(batch_size):
+            for i_block, cur_block_id in enumerate(block_table[i_batch]):
+                block_start_pos = i_block * block_size
+                if cur_block_id == -1:
+                    continue
+                else:
+                    for i_n in range(k_head_num):
+                        key_dequant_scale[cur_block_id, :, i_n] = (
+                            key_dequant_scale_expand[
+                                i_batch,
+                                i_n,
+                                block_start_pos : block_start_pos + block_size,
+                            ]
+                        )
         key_dequant_scale = key_dequant_scale.npu()
-        cpu_result, topk_value = test_qli.forward(query, key_bnsd, weights, query_dequant_scale, key_dequant_scale_bns, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
+        cpu_result, topk_value = test_qli.forward(
+            query,
+            key_bnsd,
+            weights,
+            query_dequant_scale,
+            key_dequant_scale_bns,
+            actual_seq_lengths_query,
+            actual_seq_lengths_key,
+            block_table,
+        )
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32).npu()
     max_seqlen_q = actual_seq_lengths_query.max().item()
     max_seqlen_k = actual_seq_lengths_key.max().item()
     metadata = torch.ops.custom.npu_quant_lightning_indexer_metadata(
-                                    num_heads_q = q_head_num,
-                                    num_heads_k = k_head_num,
-                                    head_dim = head_dim,
-                                    query_quant_mode = query_quant_mode,
-                                    key_quant_mode = key_quant_mode,
-                                    actual_seq_lengths_query = actual_seq_lengths_query,
-                                    actual_seq_lengths_key = actual_seq_lengths_key,
-                                    batch_size = batch_size,
-                                    max_seqlen_q = max_seqlen_q,
-                                    max_seqlen_k = max_seqlen_k,
-                                    layout_query = layout_query,
-                                    layout_key = layout_key,
-                                    sparse_count = sparse_count,
-                                    sparse_mode = sparse_mode,
-                                    pre_tokens = (1<<63)-1,
-                                    next_tokens = (1<<63)-1,
-                                    cmp_ratio = cmp_ratio,
-                                    device = 'npu:0')
+        num_heads_q=q_head_num,
+        num_heads_k=k_head_num,
+        head_dim=head_dim,
+        query_quant_mode=query_quant_mode,
+        key_quant_mode=key_quant_mode,
+        actual_seq_lengths_query=actual_seq_lengths_query,
+        actual_seq_lengths_key=actual_seq_lengths_key,
+        batch_size=batch_size,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        layout_query=layout_query,
+        layout_key=layout_key,
+        sparse_count=sparse_count,
+        sparse_mode=sparse_mode,
+        pre_tokens=(1 << 63) - 1,
+        next_tokens=(1 << 63) - 1,
+        cmp_ratio=cmp_ratio,
+        device="npu:0",
+    )
 
     metadata = metadata.npu()
     if hifp8mode == 1:
-        npu_result,_ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
-                                                    query_dequant_scale,
-                                                    key_dequant_scale,
-                                                    actual_seq_lengths_query = actual_seq_lengths_query,
-                                                    actual_seq_lengths_key = actual_seq_lengths_key,
-                                                    block_table = block_table,
-                                                    metadata = metadata,
-                                                    query_quant_mode = query_quant_mode,
-                                                    key_quant_mode = key_quant_mode,
-                                                    layout_query = layout_query,
-                                                    layout_key = layout_key,
-                                                    sparse_count = sparse_count,
-                                                    sparse_mode = sparse_mode,
-                                                    pre_tokens = (1<<63)-1,
-                                                    next_tokens = (1<<63)-1,
-                                                    cmp_ratio = cmp_ratio,
-                                                    return_value = False,
-                                                    query_dtype = query_dtype,
-                                                    key_dtype = key_dtype)
+        npu_result, _ = torch.ops.custom.npu_quant_lightning_indexer(
+            query,
+            key,
+            weights,
+            query_dequant_scale,
+            key_dequant_scale,
+            actual_seq_lengths_query=actual_seq_lengths_query,
+            actual_seq_lengths_key=actual_seq_lengths_key,
+            block_table=block_table,
+            metadata=metadata,
+            query_quant_mode=query_quant_mode,
+            key_quant_mode=key_quant_mode,
+            layout_query=layout_query,
+            layout_key=layout_key,
+            sparse_count=sparse_count,
+            sparse_mode=sparse_mode,
+            pre_tokens=(1 << 63) - 1,
+            next_tokens=(1 << 63) - 1,
+            cmp_ratio=cmp_ratio,
+            return_value=False,
+            query_dtype=query_dtype,
+            key_dtype=key_dtype,
+        )
     else:
-        npu_result,_ = torch.ops.custom.npu_quant_lightning_indexer(query, key, weights,
-                                                        query_dequant_scale,
-                                                        key_dequant_scale,
-                                                        actual_seq_lengths_query = actual_seq_lengths_query,
-                                                        actual_seq_lengths_key = actual_seq_lengths_key,
-                                                        block_table = block_table,
-                                                        metadata = metadata,
-                                                        query_quant_mode = query_quant_mode,
-                                                        key_quant_mode = key_quant_mode,
-                                                        layout_query = layout_query,
-                                                        layout_key = layout_key,
-                                                        sparse_count = sparse_count,
-                                                        sparse_mode = sparse_mode,
-                                                        pre_tokens = (1<<63)-1,
-                                                        next_tokens = (1<<63)-1,
-                                                        cmp_ratio = cmp_ratio,
-                                                        return_value = False)
+        npu_result, _ = torch.ops.custom.npu_quant_lightning_indexer(
+            query,
+            key,
+            weights,
+            query_dequant_scale,
+            key_dequant_scale,
+            actual_seq_lengths_query=actual_seq_lengths_query,
+            actual_seq_lengths_key=actual_seq_lengths_key,
+            block_table=block_table,
+            metadata=metadata,
+            query_quant_mode=query_quant_mode,
+            key_quant_mode=key_quant_mode,
+            layout_query=layout_query,
+            layout_key=layout_key,
+            sparse_count=sparse_count,
+            sparse_mode=sparse_mode,
+            pre_tokens=(1 << 63) - 1,
+            next_tokens=(1 << 63) - 1,
+            cmp_ratio=cmp_ratio,
+            return_value=False,
+        )
     torch.npu.synchronize()
     return cpu_result, npu_result, topk_value
+
 
 def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
     if exponent == HIF8_EXP_ZERO_THRESHOLD:
@@ -889,6 +1290,7 @@ def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
         return False, hif8_value_tmp >> 1
     else:
         return False, hif8_value_tmp >> 1
+
 
 def fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
     t14_mask = SSR_T14_MASK
@@ -910,6 +1312,7 @@ def fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
     else:
         return False, hif8_value
 
+
 def get_hif8_fraction_bits_number(exponent):
     if exponent < HIF8_EXP_DML_MIN:
         return HIF8_DOT_INVALID, HIF8_EXP_BITS_DML, HIF8_FRAC_BITS_DML
@@ -928,7 +1331,8 @@ def get_hif8_fraction_bits_number(exponent):
     if exponent > HIF8_EXP_D4_MAX:
         return HIF8_DOT_D4, HIF8_EXP_BITS_D4, HIF8_DOT_INVALID
 
-def cvt_float32_to_hifuint8(x, round_mode = "round", over_mode = True):
+
+def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
     sign = False
     sign_int_value = 0
     x_abs = math.fabs(x)
@@ -967,19 +1371,30 @@ def cvt_float32_to_hifuint8(x, round_mode = "round", over_mode = True):
         cut_bit_type = "SSR"
     else:
         cut_bit_type = "TA"
-    fraction_int = int(x_abs * pow(2, FP32_FRACTION_BITS) * pow(2, -exponent) - pow(2, FP32_FRACTION_BITS))
-    dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits = get_hif8_fraction_bits_number(exponent)
+    fraction_int = int(
+        x_abs * pow(2, FP32_FRACTION_BITS) * pow(2, -exponent)
+        - pow(2, FP32_FRACTION_BITS)
+    )
+    dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits = (
+        get_hif8_fraction_bits_number(exponent)
+    )
     if cut_bit_type == "TA":
-        carry_exp_status, hif8_frac_value = fp32_ta_round_to_hif8(fraction_int, fraction_hif8_bits, exponent)
+        carry_exp_status, hif8_frac_value = fp32_ta_round_to_hif8(
+            fraction_int, fraction_hif8_bits, exponent
+        )
     elif cut_bit_type == "SSR":
-        carry_exp_status, hif8_frac_value = fp32_ssr_round_to_hif8(fraction_int, fraction_hif8_bits, exponent)
+        carry_exp_status, hif8_frac_value = fp32_ssr_round_to_hif8(
+            fraction_int, fraction_hif8_bits, exponent
+        )
     else:
-        print(f"unknown round type")
+        print("unknown round type")
         return 0
 
     if carry_exp_status:
         exponent += 1
-        dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits_new = get_hif8_fraction_bits_number(exponent)
+        dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits_new = (
+            get_hif8_fraction_bits_number(exponent)
+        )
         fraction_hif8_bits = fraction_hif8_bits_new
     if exponent < HIF8_EXP_ZERO_THRESHOLD:
         return 0
@@ -1001,15 +1416,22 @@ def cvt_float32_to_hifuint8(x, round_mode = "round", over_mode = True):
         exponent_int_value = abs_exponent << fraction_hif8_bits
         sig_exp = sig_exp << (exponent_hif8_bits - 1 + fraction_hif8_bits)
         dot_int_value = dot_hif8_value << HIF8_DOT_BIT_SHIFT
-        hif8_int_value = sign_int_value + dot_int_value + sig_exp + exponent_int_value + hif8_frac_value
+        hif8_int_value = (
+            sign_int_value
+            + dot_int_value
+            + sig_exp
+            + exponent_int_value
+            + hif8_frac_value
+        )
     return hif8_int_value
 
-def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = True):
+
+def trans_float_tensor_to_hifuint8(in_tensor, round_mode="round", over_mode=True):
     tensor_shape = in_tensor.shape
     tensor_shape_size = in_tensor.numel()
     if tensor_shape_size == 1.0:
         tensor_shape_size = int(tensor_shape_size)
-    
+
     out_tensor = torch.zeros(tensor_shape_size).to(torch.uint8)
     in_tensor = in_tensor.reshape(tensor_shape_size)
     for i in range(tensor_shape_size):
@@ -1018,13 +1440,14 @@ def trans_float_tensor_to_hifuint8(in_tensor, round_mode = "round", over_mode = 
     out_tensor = out_tensor.reshape(tensor_shape)
     return out_tensor
 
-def cvt_hifuint8_to_float32(x, over_mode = True):
+
+def cvt_hifuint8_to_float32(x, over_mode=True):
     x = int(x)
     if x == HIF8_ZERO:
         return float(0)
     elif x == HIF8_NAN:
         if over_mode:
-            return float('nan')
+            return float("nan")
         else:
             return float(0)
     elif x == HIF8_NEG_INF:
@@ -1097,10 +1520,11 @@ def cvt_hifuint8_to_float32(x, over_mode = True):
             exponent_value = 0
         return sign * pow(2.0, exponent_value) * m_value
 
+
 def trans_hifuint8_tensor_to_float(in_tensor):
     tensor_shape = in_tensor.shape
     tensor_shape_size = in_tensor.numel()
-    
+
     out_tensor = torch.zeros(tensor_shape_size).to(torch.float)
     in_tensor = in_tensor.reshape(tensor_shape_size)
     for i in range(tensor_shape_size):

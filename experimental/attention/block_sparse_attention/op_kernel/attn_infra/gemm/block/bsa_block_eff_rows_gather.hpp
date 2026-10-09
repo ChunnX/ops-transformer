@@ -26,8 +26,8 @@ namespace NpuArch::Gemm::Block {
 // Transposed=false 用于 V（L1B 布局为 [N, embed]，tile 坐标 (dealtLenAccum, 0)）
 // 返回实际填充的累积长度 dealtLenAccum
 template <bool Transposed, class TensorB, class TensorL1B, class CopyFn>
-__aicore__ inline uint32_t EffRowsGatherCopy(TensorB &gBTensor, TensorL1B &l1BTensorTla,
-                                             AscendC::GlobalTensor<int32_t> gSparseBlockIdx, const EffRowsCtx &ctx,
+__aicore__ inline uint32_t EffRowsGatherCopy(TensorB& gBTensor, TensorL1B& l1BTensorTla,
+                                             AscendC::GlobalTensor<int32_t> gSparseBlockIdx, const EffRowsCtx& ctx,
                                              uint32_t yBlockNumRsvd, uint32_t kvSeqlen, uint32_t blockShapeY,
                                              uint32_t embed, uint32_t targetLen, CopyFn copyFn,
                                              uint32_t tileInnerOffset = 0)

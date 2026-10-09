@@ -29,7 +29,7 @@
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape)
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -38,7 +38,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream)
+int Init(int32_t deviceId, aclrtStream* stream)
 {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n%s", ret, aclGetRecentErrMsg()); return ret);
@@ -52,8 +52,8 @@ int Init(int32_t deviceId, aclrtStream *stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor)
+int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
+                    aclDataType dataType, aclTensor** tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -76,7 +76,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 // ---- Wan2.2-style 3D RoPE reference ----
 // Three-axis frequency bands (2:1:1 split), position -> (t,i,j) decoding
 
-static void ComputeBandDims3D(int64_t headDim, int64_t &tBand, int64_t &hBand, int64_t &wBand)
+static void ComputeBandDims3D(int64_t headDim, int64_t& tBand, int64_t& hBand, int64_t& wBand)
 {
     int64_t bandUnit = headDim / 4;
     if (bandUnit % 2 != 0)
@@ -102,7 +102,7 @@ static void ComputeBandDims3D(int64_t headDim, int64_t &tBand, int64_t &hBand, i
     }
 }
 
-static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
+static void FactorVideoDims(int64_t seqLen, int64_t& T, int64_t& H, int64_t& W)
 {
     T = 1;
     H = 1;
@@ -128,7 +128,7 @@ static void FactorVideoDims(int64_t seqLen, int64_t &T, int64_t &H, int64_t &W)
 // CPU reference: true 3D spatial RoPE
 // Computes theta tables from freqBase internally, decodes l->(t,i,j)
 static void RoPE3DCore(int64_t batch, int64_t seqLen, int64_t headDim, int64_t vidT, int64_t vidH, int64_t vidW,
-                       const float *x, float *y, float freqBase)
+                       const float* x, float* y, float freqBase)
 {
     int64_t tBand, hBand, wBand;
     ComputeBandDims3D(headDim, tBand, hBand, wBand);
@@ -212,7 +212,7 @@ static void RoPE3DCore(int64_t batch, int64_t seqLen, int64_t headDim, int64_t v
 }
 
 // 自动分解网格的参考实现（1D 退化或未显式指定时使用）
-static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const float *x, float *y, float freqBase)
+static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const float* x, float* y, float freqBase)
 {
     int64_t vidT, vidH, vidW;
     FactorVideoDims(seqLen, vidT, vidH, vidW);
@@ -221,7 +221,7 @@ static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim, const floa
 
 // 显式指定真实视频网格(T/H/W)的参考实现（Wan2.2 风格）
 static void RefRoPE3DExplicit(int64_t batch, int64_t seqLen, int64_t headDim, int64_t vidT, int64_t vidH, int64_t vidW,
-                              const float *x, float *y, float freqBase)
+                              const float* x, float* y, float freqBase)
 {
     RoPE3DCore(batch, seqLen, headDim, vidT, vidH, vidW, x, y, freqBase);
 }
@@ -331,28 +331,28 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim, int testIdx, aclrtSt
     }
     LOG_PRINT("\n");
 
-    aclTensor *x1 = nullptr;
-    void *x1Dev = nullptr;
+    aclTensor* x1 = nullptr;
+    void* x1Dev = nullptr;
     ret = CreateAclTensor(x1Data, shape, &x1Dev, ACL_FLOAT, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    aclTensor *x2 = nullptr;
-    void *x2Dev = nullptr;
+    aclTensor* x2 = nullptr;
+    void* x2Dev = nullptr;
     ret = CreateAclTensor(x2Data, shape, &x2Dev, ACL_FLOAT, &x2);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    aclTensor *out = nullptr;
-    void *outDev = nullptr;
+    aclTensor* out = nullptr;
+    void* outDev = nullptr;
     std::vector<float> outInit(total, 0);
     ret = CreateAclTensor(outInit, shape, &outDev, ACL_FLOAT, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     uint64_t wsSize = 0;
-    aclOpExecutor *exec = nullptr;
+    aclOpExecutor* exec = nullptr;
     ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, 0, 0, 0, out, &wsSize, &exec);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[Test %d] GetWorkspaceSize failed. %d\n", testIdx, ret); return ret);
 
-    void *ws = nullptr;
+    void* ws = nullptr;
     if (wsSize > 0) {
         aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
     }
@@ -542,10 +542,10 @@ int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim, int 
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     uint64_t wsSize = 0;
-    aclOpExecutor *exec = nullptr;
+    aclOpExecutor* exec = nullptr;
     ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, hintT, hintH, hintW, out, &wsSize, &exec);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[3DTest %d] GetWorkspaceSize failed. %d\n", testIdx, ret); return ret);
-    void *ws = nullptr;
+    void* ws = nullptr;
     if (wsSize > 0) {
         aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST);
     }
@@ -646,7 +646,7 @@ int main()
 
     struct Case {
         int64_t b, s, d;
-        const char *desc;
+        const char* desc;
     };
     Case tests[] = {
         // 小规模
@@ -686,7 +686,7 @@ int main()
     LOG_PRINT("\n--- 3D Axis Independence Tests ---\n");
     struct Case3D {
         int64_t T, H, W, D;
-        const char *desc;
+        const char* desc;
     };
     Case3D axisTests[] = {
         {2, 4, 4, 128, "(T=2,H=4,W=4,D=128)"},

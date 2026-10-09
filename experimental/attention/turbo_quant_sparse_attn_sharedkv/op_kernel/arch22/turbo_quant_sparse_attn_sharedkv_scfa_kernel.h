@@ -83,14 +83,14 @@ public:
     using MM2_OUT_T = T;
 
     __aicore__ inline TurboQuantSparseAttnSharedkvScfaKernel(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV,
-                                __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable,
-                                __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKV,
-                                __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV,
-                                __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
-                                const TurboQuantSparseAttnSharedkvTilingData *__restrict tiling,
-                                __gm__ uint8_t *gmTiling, TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* oriKV, __gm__ uint8_t* cmpKV,
+                                __gm__ uint8_t* cmpSparseIndices, __gm__ uint8_t* oriBlockTable,
+                                __gm__ uint8_t* cmpBlockTable, __gm__ uint8_t* cuSeqlensQ, __gm__ uint8_t* cuSeqlensKV,
+                                __gm__ uint8_t* cuSeqlensCmpKV, __gm__ uint8_t* seqUsedQ, __gm__ uint8_t* seqUsedKV,
+                                __gm__ uint8_t* sinks, __gm__ uint8_t* metadata, __gm__ uint8_t* attentionOut,
+                                __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
+                                const TurboQuantSparseAttnSharedkvTilingData* __restrict tiling,
+                                __gm__ uint8_t* gmTiling, TPipe* tPipe);
 
     __aicore__ inline void Process();
 
@@ -115,9 +115,9 @@ private:
 
     static constexpr uint32_t dbWorkspaceRatio = PRELOAD_NUM;
 
-    const TurboQuantSparseAttnSharedkvTilingData *__restrict tilingData = nullptr;
+    const TurboQuantSparseAttnSharedkvTilingData* __restrict tilingData = nullptr;
 
-    TPipe *pipe = nullptr;
+    TPipe* pipe = nullptr;
     GlobalTensor<uint32_t> metadataGm;
     uint64_t mSizeVStart = 0ULL;
     uint64_t topKBaseOffset = 0ULL;
@@ -165,9 +165,9 @@ private:
     __aicore__ inline void InitTilingData();
     __aicore__ inline void InitCalcParamsEach();
     __aicore__ inline void InitBuffers();
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKV);
-    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKV,
-                                            __gm__ uint8_t *actualSeqLengthsCmpKV);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengthsKV);
+    __aicore__ inline void InitActualSeqLen(__gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengthsKV,
+                                            __gm__ uint8_t* actualSeqLengthsCmpKV);
     __aicore__ inline void InitOutputSingleCore();
     // ================================Process functions================================
     __aicore__ inline void ProcessBalance();
@@ -177,14 +177,14 @@ private:
     __aicore__ inline void GetSparseActualSeqLen();
     __aicore__ inline void UpdateInnerLoopCond();
     __aicore__ inline void CalcParams(uint32_t loop, uint32_t cmpLoop, uint64_t s2Start, uint32_t s2LoopIdx,
-                                      RunInfo &info);
+                                      RunInfo& info);
     __aicore__ inline int32_t GetActualSeqLenQ(uint32_t bIdx);
     __aicore__ inline int32_t GetActualSeqLenKV(uint32_t bIdx);
-    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx, uint32_t &n2Idx);
+    __aicore__ inline void GetBN2Idx(uint32_t bN2Idx, uint32_t& bIdx, uint32_t& n2Idx);
     // ================================Mm1==============================================
-    __aicore__ inline void ComputeMm1(const RunInfo &info);
+    __aicore__ inline void ComputeMm1(const RunInfo& info);
     // ================================Mm2==============================================
-    __aicore__ inline void ComputeMm2(const RunInfo &info);
+    __aicore__ inline void ComputeMm2(const RunInfo& info);
     __aicore__ inline void InitAllZeroOutput(uint32_t bIdx, uint32_t s1Idx, uint32_t n2Idx);
 };
 
@@ -249,26 +249,26 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitBuffers
 
 template <typename SAST>
 __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitActualSeqLen(
-    __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKV)
+    __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengthsKV)
 {
     if (constInfo.actualLenDimsKV != 0) {
-        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsKV, constInfo.actualLenDimsKV);
+        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsKV, constInfo.actualLenDimsKV);
     }
     if (constInfo.actualLenDimsQ != 0) {
-        actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ, constInfo.actualLenDimsQ);
+        actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsQ, constInfo.actualLenDimsQ);
     }
 }
 
 template <typename SAST>
 __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitActualSeqLen(
-    __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsKV, __gm__ uint8_t *actualSeqLengthsCmpKV)
+    __gm__ uint8_t* actualSeqLengthsQ, __gm__ uint8_t* actualSeqLengthsKV, __gm__ uint8_t* actualSeqLengthsCmpKV)
 {
     if (constInfo.actualLenDimsKV != 0) {
-        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsKV, constInfo.actualLenDimsKV);
-        actualSeqLengthsCmpKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsCmpKV, constInfo.actualLenDimsKV);
+        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsKV, constInfo.actualLenDimsKV);
+        actualSeqLengthsCmpKVGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsCmpKV, constInfo.actualLenDimsKV);
     }
     if (constInfo.actualLenDimsQ != 0) {
-        actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ, constInfo.actualLenDimsQ);
+        actualSeqLengthsQGm.SetGlobalBuffer((__gm__ int32_t*)actualSeqLengthsQ, constInfo.actualLenDimsQ);
     }
 }
 
@@ -389,12 +389,12 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::UpdateInner
 
 template <typename SAST>
 __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::Init(
-    __gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *cmpKV, __gm__ uint8_t *cmpSparseIndices,
-    __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
-    __gm__ uint8_t *cuSeqlensKV, __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV,
-    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace, const TurboQuantSparseAttnSharedkvTilingData *__restrict tiling,
-    __gm__ uint8_t *gmTiling, TPipe *tPipe)
+    __gm__ uint8_t* query, __gm__ uint8_t* oriKV, __gm__ uint8_t* cmpKV, __gm__ uint8_t* cmpSparseIndices,
+    __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable, __gm__ uint8_t* cuSeqlensQ,
+    __gm__ uint8_t* cuSeqlensKV, __gm__ uint8_t* cuSeqlensCmpKV, __gm__ uint8_t* seqUsedQ, __gm__ uint8_t* seqUsedKV,
+    __gm__ uint8_t* sinks, __gm__ uint8_t* metadata, __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
+    __gm__ uint8_t* workspace, const TurboQuantSparseAttnSharedkvTilingData* __restrict tiling,
+    __gm__ uint8_t* gmTiling, TPipe* tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -417,25 +417,25 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::Init(
         InitActualSeqLen(seqUsedQ, seqUsedKV);
     }
 
-    metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
+    metadataGm.SetGlobalBuffer((__gm__ uint32_t*)metadata);
     InitCalcParamsEach();
 
     pipe = tPipe;
     // init global buffer
-    queryGm.SetGlobalBuffer((__gm__ Q_T *)query);
-    oriKvGm.SetGlobalBuffer((__gm__ KV_T *)oriKV);
+    queryGm.SetGlobalBuffer((__gm__ Q_T*)query);
+    oriKvGm.SetGlobalBuffer((__gm__ KV_T*)oriKV);
     if (constInfo.kvQuantMode == 3) {
-        cmpTqGm.SetGlobalBuffer((__gm__ uint8_t *)cmpKV);
+        cmpTqGm.SetGlobalBuffer((__gm__ uint8_t*)cmpKV);
     } else {
-        cmpKvGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
+        cmpKvGm.SetGlobalBuffer((__gm__ KV_T*)cmpKV);
     }
 
     if (sinks != nullptr) {
-        sinksGm.SetGlobalBuffer((__gm__ SINKS_T *)sinks);
+        sinksGm.SetGlobalBuffer((__gm__ SINKS_T*)sinks);
     }
 
-    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T *)attentionOut);
-    softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
+    attentionOutGm.SetGlobalBuffer((__gm__ OUT_T*)attentionOut);
+    softmaxLseGm.SetGlobalBuffer((__gm__ T*)softmaxLse);
 
     if ASCEND_IS_AIV {
         if (LAYOUT_T != SAS_LAYOUT::TND) {
@@ -446,36 +446,36 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::Init(
     }
 
     if constexpr (PAGE_ATTENTION) {
-        oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)oriBlockTable);
-        cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
+        oriBlockTableGm.SetGlobalBuffer((__gm__ int32_t*)oriBlockTable);
+        cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t*)cmpBlockTable);
     }
-    topKGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
+    topKGm.SetGlobalBuffer((__gm__ int32_t*)cmpSparseIndices);
 
     // workspace 内存排布
     // |Q--|mm1ResGm|vec1ResGm|mm2ResGm|vec2ResGm
     // |Core0_Q1-Core0_Q2-Core1_Q1-Core1_Q2....Core32_Q1-Core32_Q2|Core0_mmRes
     uint64_t offset = 0;
     mm1ResGm.SetGlobalBuffer(
-        (__gm__ MM1_OUT_T *)(workspace + offset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
+        (__gm__ MM1_OUT_T*)(workspace + offset +
+                            aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(MM1_OUT_T);
 
     vec1ResGm.SetGlobalBuffer(
-        (__gm__ Q_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(KV_T)));
+        (__gm__ Q_T*)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(KV_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.mmResUbSize * sizeof(KV_T);
 
     mm2ResGm.SetGlobalBuffer(
-        (__gm__ MM2_OUT_T *)(workspace + offset +
-                             aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
+        (__gm__ MM2_OUT_T*)(workspace + offset +
+                            aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(MM2_OUT_T);
 
     vec2ResGm.SetGlobalBuffer(
-        (__gm__ T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
+        (__gm__ T*)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T)));
     offset += GetBlockNum() * dbWorkspaceRatio * constInfo.bmm2ResUbSize * sizeof(T);
 
     uint64_t mergeCacheCoreSize =
         static_cast<uint64_t>(constInfo.s2BaseSize) * constInfo.headDim * MERGE_CACHE_GM_BUF_NUM;
-    kvMergeGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + aiCoreIdx * mergeCacheCoreSize * sizeof(KV_T)));
+    kvMergeGm_.SetGlobalBuffer((__gm__ KV_T*)(workspace + offset + aiCoreIdx * mergeCacheCoreSize * sizeof(KV_T)));
     offset += static_cast<uint64_t>(tilingData->baseParams.usedCoreNum) * mergeCacheCoreSize * sizeof(KV_T);
 
     if ASCEND_IS_AIV {
@@ -514,7 +514,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::InitCalcPar
 template <typename SAST>
 __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::CalcParams(uint32_t loop, uint32_t cmpLoop,
                                                                                 uint64_t s2Start, uint32_t s2LoopIdx,
-                                                                                RunInfo &info)
+                                                                                RunInfo& info)
 {
     info.isValid = s2LoopIdx < tempLoopInfo.s2LoopTimes;
     info.loop = loop;
@@ -615,7 +615,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::CalcParams(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::ComputeMm1(const RunInfo &info)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::ComputeMm1(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = CeilDiv(info.actMBaseSize, constInfo.nBufferMBaseSize);
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -629,7 +629,7 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::ComputeMm1(
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::ComputeMm2(const RunInfo &info)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::ComputeMm2(const RunInfo& info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
@@ -665,8 +665,8 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::Process()
 }
 
 template <typename SAST>
-__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::GetBN2Idx(uint32_t bN2Idx, uint32_t &bIdx,
-                                                                               uint32_t &n2Idx)
+__aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::GetBN2Idx(uint32_t bN2Idx, uint32_t& bIdx,
+                                                                               uint32_t& n2Idx)
 {
     bIdx = bN2Idx / kvHeadNum;
     n2Idx = bN2Idx % kvHeadNum;
@@ -791,9 +791,9 @@ __aicore__ inline void TurboQuantSparseAttnSharedkvScfaKernel<SAST>::PreloadPipe
     uint32_t loop, uint32_t cmpLoop, uint64_t s2Start, uint64_t s2LoopIdx,
     RunInfo extraInfo[SAS_PRELOAD_TASK_CACHE_SIZE])
 {
-    RunInfo &extraInfo0 = extraInfo[loop % SAS_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
-    RunInfo &extraInfo2 = extraInfo[(loop + 2) % SAS_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
-    RunInfo &extraInfo1 = extraInfo[(loop + 1) % SAS_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
+    RunInfo& extraInfo0 = extraInfo[loop % SAS_PRELOAD_TASK_CACHE_SIZE];       // 本轮任务
+    RunInfo& extraInfo2 = extraInfo[(loop + 2) % SAS_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
+    RunInfo& extraInfo1 = extraInfo[(loop + 1) % SAS_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
 
     CalcParams(loop, cmpLoop, s2Start, s2LoopIdx, extraInfo0);
     if (extraInfo0.isValid) {

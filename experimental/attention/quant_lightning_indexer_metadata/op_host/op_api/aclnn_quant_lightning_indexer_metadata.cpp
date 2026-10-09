@@ -35,11 +35,11 @@ extern "C" {
 #endif
 
 __attribute__((visibility("default"))) aclnnStatus aclnnQuantLightningIndexerMetadataGetWorkspaceSize(
-    const aclTensor *actualSeqLengthsQueryOptional, const aclTensor *actualSeqLengthsKeyOptional, int64_t numHeadsQ,
+    const aclTensor* actualSeqLengthsQueryOptional, const aclTensor* actualSeqLengthsKeyOptional, int64_t numHeadsQ,
     int64_t numHeadsK, int64_t headDim, int64_t queryQuantMode, int64_t keyQuantMode, int64_t batchSize,
-    int64_t maxSeqlenQ, int64_t maxSeqlenK, char *layoutQueryOptional, char *layoutKeyOptional, int64_t sparseCount,
-    int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t cmpRatio, const aclTensor *metadata,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t maxSeqlenQ, int64_t maxSeqlenK, char* layoutQueryOptional, char* layoutKeyOptional, int64_t sparseCount,
+    int64_t sparseMode, int64_t preTokens, int64_t nextTokens, int64_t cmpRatio, const aclTensor* metadata,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     L2_DFX_PHASE_1(aclnnQuantLightningIndexerMetadata,
                    DFX_IN(actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional, numHeadsQ, numHeadsK, headDim,
@@ -50,10 +50,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantLightningIndexerMet
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
+    const op::PlatformInfo& npuInfo = op::GetCurrentPlatformInfo();
     uint32_t aicCoreNum = npuInfo.GetCubeCoreNum();
     uint32_t aivCoreNum = npuInfo.GetVectorCoreNum();
-    const char *socVersion = npuInfo.GetSocLongVersion().c_str();
+    const char* socVersion = npuInfo.GetSocLongVersion().c_str();
     auto npuArch = npuInfo.GetCurNpuArch();
 
     auto ret =
@@ -87,9 +87,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantLightningIndexerMet
     return ACLNN_SUCCESS;
 }
 
-__attribute__((visibility("default"))) aclnnStatus aclnnQuantLightningIndexerMetadata(void *workspace,
+__attribute__((visibility("default"))) aclnnStatus aclnnQuantLightningIndexerMetadata(void* workspace,
                                                                                       uint64_t workspaceSize,
-                                                                                      aclOpExecutor *executor,
+                                                                                      aclOpExecutor* executor,
                                                                                       aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnQuantLightningIndexerMetadata);

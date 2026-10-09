@@ -139,13 +139,15 @@ struct JMData {
 
 struct JMTiling {
 public:
-    explicit JMTiling(gert::TilingContext *context) : context_(context){};
+    explicit JMTiling(gert::TilingContext* context)
+        : context_(context) {};
     ge::graphStatus DoTiling();
 
 private:
-    gert::TilingContext *context_ = nullptr;
+    gert::TilingContext* context_ = nullptr;
     JMTilingData tilingData_;
     JMData jmData_;
+
 private:
     ge::graphStatus InitAInput();
     ge::graphStatus InitSOutput();

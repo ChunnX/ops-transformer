@@ -27,18 +27,18 @@ public:
     __aicore__ inline K2qCsrStageMeta() {}
 
     __aicore__ inline void Init(GM_ADDR cuQ, GM_ADDR cuB, GM_ADDR rowMap, GM_ADDR tokenBatch, GM_ADDR histScratch,
-                                const K2qCsrTilingData *tiling, TPipe *pipe);
+                                const K2qCsrTilingData* tiling, TPipe* pipe);
 
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void BuildTokenBatch(LocalTensor<int32_t> &cuQLocal);
-    __aicore__ inline void BuildRowMapConcat(LocalTensor<int32_t> &cuBLocal);
-    __aicore__ inline void BuildRowMapRoundRobin(LocalTensor<int32_t> &cuBLocal);
+    __aicore__ inline void BuildTokenBatch(LocalTensor<int32_t>& cuQLocal);
+    __aicore__ inline void BuildRowMapConcat(LocalTensor<int32_t>& cuBLocal);
+    __aicore__ inline void BuildRowMapRoundRobin(LocalTensor<int32_t>& cuBLocal);
     __aicore__ inline void ZeroRowCounts();
 
-    const K2qCsrTilingData *tiling_;
-    TPipe *pipe_;
+    const K2qCsrTilingData* tiling_;
+    TPipe* pipe_;
 
     GlobalTensor<int32_t> cuQGm_;
     GlobalTensor<int32_t> cuBGm_;
@@ -62,7 +62,7 @@ private:
 };
 
 __aicore__ inline void K2qCsrStageMeta::Init(GM_ADDR cuQ, GM_ADDR cuB, GM_ADDR rowMap, GM_ADDR tokenBatch,
-                                             GM_ADDR histScratch, const K2qCsrTilingData *tiling, TPipe *pipe)
+                                             GM_ADDR histScratch, const K2qCsrTilingData* tiling, TPipe* pipe)
 {
     tiling_ = tiling;
     pipe_ = pipe;
@@ -79,11 +79,11 @@ __aicore__ inline void K2qCsrStageMeta::Init(GM_ADDR cuQ, GM_ADDR cuB, GM_ADDR r
         rowCountElems_ = 1;
     }
 
-    cuQGm_.SetGlobalBuffer((__gm__ int32_t *)cuQ, B_ + 1);
-    cuBGm_.SetGlobalBuffer((__gm__ int32_t *)cuB, B_ + 1);
-    rowMapGm_.SetGlobalBuffer((__gm__ int32_t *)rowMap, rowMapElems_ > 0 ? rowMapElems_ : 1);
-    tokenBatchGm_.SetGlobalBuffer((__gm__ int32_t *)tokenBatch, T_ > 0 ? T_ : 1);
-    rowCountsGm_.SetGlobalBuffer((__gm__ int32_t *)K2qCsrScratch::RowCountsAddr(histScratch, tiling), rowCountElems_);
+    cuQGm_.SetGlobalBuffer((__gm__ int32_t*)cuQ, B_ + 1);
+    cuBGm_.SetGlobalBuffer((__gm__ int32_t*)cuB, B_ + 1);
+    rowMapGm_.SetGlobalBuffer((__gm__ int32_t*)rowMap, rowMapElems_ > 0 ? rowMapElems_ : 1);
+    tokenBatchGm_.SetGlobalBuffer((__gm__ int32_t*)tokenBatch, T_ > 0 ? T_ : 1);
+    rowCountsGm_.SetGlobalBuffer((__gm__ int32_t*)K2qCsrScratch::RowCountsAddr(histScratch, tiling), rowCountElems_);
 
     pipe_->InitBuffer(cuQBuf_, K2qCsrCommon::Align32((B_ + 1) * sizeof(int32_t)));
     pipe_->InitBuffer(cuBBuf_, K2qCsrCommon::Align32((B_ + 1) * sizeof(int32_t)));
@@ -91,7 +91,7 @@ __aicore__ inline void K2qCsrStageMeta::Init(GM_ADDR cuQ, GM_ADDR cuB, GM_ADDR r
     pipe_->InitBuffer(chunkBuf_, K2qCsrCommon::Align32(kChunk * sizeof(int32_t)));
 }
 
-__aicore__ inline void K2qCsrStageMeta::BuildTokenBatch(LocalTensor<int32_t> &cuQLocal)
+__aicore__ inline void K2qCsrStageMeta::BuildTokenBatch(LocalTensor<int32_t>& cuQLocal)
 {
     constexpr int64_t kChunk = 2048;
     LocalTensor<int32_t> chunk = chunkBuf_.Get<int32_t>();
@@ -112,7 +112,7 @@ __aicore__ inline void K2qCsrStageMeta::BuildTokenBatch(LocalTensor<int32_t> &cu
     }
 }
 
-__aicore__ inline void K2qCsrStageMeta::BuildRowMapConcat(LocalTensor<int32_t> &cuBLocal)
+__aicore__ inline void K2qCsrStageMeta::BuildRowMapConcat(LocalTensor<int32_t>& cuBLocal)
 {
     constexpr int64_t kChunk = 2048;
     LocalTensor<int32_t> chunk = chunkBuf_.Get<int32_t>();
@@ -137,7 +137,7 @@ __aicore__ inline void K2qCsrStageMeta::BuildRowMapConcat(LocalTensor<int32_t> &
     }
 }
 
-__aicore__ inline void K2qCsrStageMeta::BuildRowMapRoundRobin(LocalTensor<int32_t> &cuBLocal)
+__aicore__ inline void K2qCsrStageMeta::BuildRowMapRoundRobin(LocalTensor<int32_t>& cuBLocal)
 {
     // 对齐 CUDA: level 上 rows_before = Σ min(rb, level)，再按 batch 赋 active
     // 写出顺序与 [B, max_kv] 行主序一致
@@ -221,7 +221,7 @@ __aicore__ inline void K2qCsrStageMeta::Process()
     }
     maxKv_ = maxKvDev;
     rowMapElems_ = B_ * maxKv_;
-    rowMapGm_.SetGlobalBuffer((__gm__ int32_t *)rowMapAddr_, rowMapElems_ > 0 ? rowMapElems_ : 1);
+    rowMapGm_.SetGlobalBuffer((__gm__ int32_t*)rowMapAddr_, rowMapElems_ > 0 ? rowMapElems_ : 1);
 
     if (T_ > 0) {
         BuildTokenBatch(cuQLocal);

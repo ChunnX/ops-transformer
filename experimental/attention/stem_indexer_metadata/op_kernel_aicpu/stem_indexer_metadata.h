@@ -51,13 +51,13 @@ constexpr uint32_t SLI_SEC_S2_END_INDEX = 5U;
 namespace detail {
 struct SliMetadata {
     uint32_t sectionNum;
-    SLI_METADATA_T *metadata;
-    SLI_METADATA_T *headMetadata; // [HEAD_METADATA_STRIDE];
-    SLI_METADATA_T *faMetadata;   // [sectionNum][AIC_CORE_NUM][FA_METADATA_STRIDE];
-    SliMetadata(void *metadataPtr, uint32_t sectionNum)
+    SLI_METADATA_T* metadata;
+    SLI_METADATA_T* headMetadata; // [HEAD_METADATA_STRIDE];
+    SLI_METADATA_T* faMetadata;   // [sectionNum][AIC_CORE_NUM][FA_METADATA_STRIDE];
+    SliMetadata(void* metadataPtr, uint32_t sectionNum)
         : sectionNum(sectionNum),
-          metadata(static_cast<SLI_METADATA_T *>(metadataPtr)),
-          headMetadata(static_cast<SLI_METADATA_T *>(metadataPtr)),
+          metadata(static_cast<SLI_METADATA_T*>(metadataPtr)),
+          headMetadata(static_cast<SLI_METADATA_T*>(metadataPtr)),
           faMetadata(headMetadata + HEAD_METADATA_STRIDE)
     {
         headMetadata[0] = sectionNum;

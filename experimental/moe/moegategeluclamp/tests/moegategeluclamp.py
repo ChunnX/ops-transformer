@@ -12,20 +12,23 @@ import torch
 import torch_npu
 import ascend_ops
 
+
 def moegategeluclamp_cpu(x, is_clamp, clamp_value):
     """CPU侧实现: z = clamp(GELU(x_left) * x_right, -clamp_value, clamp_value)"""
     per_count = x.shape[-1]
     half_dim = per_count // 2
-    
+
     x_left = x[:, :half_dim].float()
     x_right = x[:, half_dim:].float()
-    
-    x_left = torch.nn.functional.gelu(x_left, approximate='tanh')  # 匹配Ascend C的tanh近似
+
+    x_left = torch.nn.functional.gelu(
+        x_left, approximate="tanh"
+    )  # 匹配Ascend C的tanh近似
     z = x_left * x_right
-    
+
     if is_clamp:
         z = torch.clamp(z, -clamp_value, clamp_value)
-    
+
     return z
 
 
@@ -41,7 +44,9 @@ x = torch.randn(NUM_ROWS, per_count, dtype=dtype)
 total_rows = torch.zeros(per_total_count, dtype=torch.int64)
 
 print("=== MOE Gate GELU Clamp 算子测试 ===")
-print(f"参数: NUM_ROWS={NUM_ROWS}, per_count={per_count}, is_clamp={is_clamp}, clamp_value={clamp_value}")
+print(
+    f"参数: NUM_ROWS={NUM_ROWS}, per_count={per_count}, is_clamp={is_clamp}, clamp_value={clamp_value}"
+)
 
 print("\n[CPU计算]")
 z_cpu = moegategeluclamp_cpu(x, is_clamp, clamp_value)
@@ -55,8 +60,18 @@ total_rows_npu = total_rows.npu()
 z_npu = torch.empty(NUM_ROWS, per_count // 2, dtype=dtype).npu()
 
 torch.ops.ascend_ops.moe_gate_gelu_clamp(
-    block_dim, x_npu, total_rows_npu, z_npu,
-    NUM_ROWS, per_count, per_total_count, is_clamp, clamp_value, dtype_id, use_total_rows)
+    block_dim,
+    x_npu,
+    total_rows_npu,
+    z_npu,
+    NUM_ROWS,
+    per_count,
+    per_total_count,
+    is_clamp,
+    clamp_value,
+    dtype_id,
+    use_total_rows,
+)
 
 z_npu_cpu = z_npu.cpu()
 print(f"  输出形状: {z_npu_cpu.shape}")

@@ -21,7 +21,7 @@
 namespace optiling {
 class QuantFlashAttnTilingInfoParser {
 public:
-    explicit QuantFlashAttnTilingInfoParser(const gert::TilingContext *context, QuantFlashAttnTilingInfo &faInfo)
+    explicit QuantFlashAttnTilingInfoParser(const gert::TilingContext* context, QuantFlashAttnTilingInfo& faInfo)
         : context_(context),
           tilingInfo_(faInfo)
     {}
@@ -71,8 +71,8 @@ private:
     ge::graphStatus GetEmptyTensorFlag();
 
 private:
-    const gert::TilingContext *context_ = nullptr;
-    QuantFlashAttnTilingInfo &tilingInfo_;
+    const gert::TilingContext* context_ = nullptr;
+    QuantFlashAttnTilingInfo& tilingInfo_;
 
     // NPU信息
     NpuArch npuArch_ = NpuArch::DAV_3510;

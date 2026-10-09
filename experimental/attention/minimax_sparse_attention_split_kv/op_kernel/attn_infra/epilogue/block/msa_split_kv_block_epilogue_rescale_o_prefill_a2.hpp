@@ -61,7 +61,7 @@ public:
     //   accumOutBuf[2]  [splitsPerBuf * groupSize * headDimAlignFp32] TwsO each
     // Total (worst case, fp32, splitsPerBuf=1): about 122KB -> fits 192KB
     // ---------------------------------------------------------------------------
-    __aicore__ inline void InitFDBuffers(AscendC::LocalTensor<T> &ubBase, uint32_t D, uint32_t groupSize, uint32_t topK,
+    __aicore__ inline void InitFDBuffers(AscendC::LocalTensor<T>& ubBase, uint32_t D, uint32_t groupSize, uint32_t topK,
                                          uint32_t kvHeads)
     {
         D_ = D;
@@ -130,11 +130,11 @@ public:
     // FlashDecodeCompute: Phase2 main entry (same as A5)
     // ---------------------------------------------------------------------------
     __aicore__ inline void FlashDecodeCompute(uint32_t tmpBlockIdx, uint32_t totalTaskNumP2,
-                                              AscendC::GlobalTensor<ElementO> &gmO,
-                                              AscendC::GlobalTensor<T> &gmSoftmaxLse,
-                                              AscendC::GlobalTensor<TwsO> &gmAccumOut,
-                                              AscendC::GlobalTensor<T> &gmSoftmaxMax,
-                                              AscendC::GlobalTensor<T> &gmSoftmaxSum, uint32_t numHeads,
+                                              AscendC::GlobalTensor<ElementO>& gmO,
+                                              AscendC::GlobalTensor<T>& gmSoftmaxLse,
+                                              AscendC::GlobalTensor<TwsO>& gmAccumOut,
+                                              AscendC::GlobalTensor<T>& gmSoftmaxMax,
+                                              AscendC::GlobalTensor<T>& gmSoftmaxSum, uint32_t numHeads,
                                               uint32_t kvHeads, bool softmaxLseFlag)
     {
         if (tmpBlockIdx >= totalTaskNumP2) {
@@ -280,8 +280,8 @@ private:
     // CopyLseIn: same as A5 (standard DataCopyPad + Broadcast + Reciprocal)
     // ---------------------------------------------------------------------------
     __aicore__ inline void CopyLseIn(uint32_t qToken, uint32_t kvHeadIdx, uint32_t dealRowCount, uint32_t rowOffset,
-                                     AscendC::GlobalTensor<T> &gmSoftmaxMax, AscendC::GlobalTensor<T> &gmSoftmaxSum,
-                                     AscendC::LocalTensor<T> &lseMaxLocal, AscendC::LocalTensor<T> &lseSumLocal)
+                                     AscendC::GlobalTensor<T>& gmSoftmaxMax, AscendC::GlobalTensor<T>& gmSoftmaxSum,
+                                     AscendC::LocalTensor<T>& lseMaxLocal, AscendC::LocalTensor<T>& lseSumLocal)
     {
         uint32_t ubRowStride = dealRowCount * FP32_ONE_BLOCK_SIZE;
         auto lseCount = dealRowCount * topK_, alignedLseCount = RoundUp(lseCount, FP32_ONE_BLOCK_SIZE);
@@ -416,9 +416,9 @@ private:
     //           Accumulate total = Σ lseSumLocal[k]
     //   Step 3: lseSumLocal[k] /= total
     // ---------------------------------------------------------------------------
-    __aicore__ inline void ComputeScaleValue(AscendC::LocalTensor<T> &lseMaxLocal, AscendC::LocalTensor<T> &lseSumLocal,
+    __aicore__ inline void ComputeScaleValue(AscendC::LocalTensor<T>& lseMaxLocal, AscendC::LocalTensor<T>& lseSumLocal,
                                              uint32_t dealRowCount, bool dumpState,
-                                             AscendC::GlobalTensor<T> &gmSoftmaxLse, uint64_t softmaxLseOffset,
+                                             AscendC::GlobalTensor<T>& gmSoftmaxLse, uint64_t softmaxLseOffset,
                                              bool softmaxLseFlag)
     {
         uint32_t dealCount = dealRowCount * FP32_ONE_BLOCK_SIZE;
@@ -566,8 +566,8 @@ private:
     // ---------------------------------------------------------------------------
     __aicore__ inline void CopyAccumOutIn(uint32_t qToken, uint32_t kvHeadIdx, uint32_t jStart, uint32_t nSplits,
                                           uint32_t dealRowCount, uint32_t rowOffset,
-                                          AscendC::GlobalTensor<TwsO> &gmAccumOut,
-                                          AscendC::LocalTensor<TwsO> &accumOutLocal)
+                                          AscendC::GlobalTensor<TwsO>& gmAccumOut,
+                                          AscendC::LocalTensor<TwsO>& accumOutLocal)
     {
         constexpr uint32_t blockElems = BYTE_BLOCK / sizeof(TwsO);
         AscendC::DataCopyPadExtParams<TwsO> copyInPadParams;
@@ -620,9 +620,9 @@ private:
     //   accumOut is cast to fp32 before Mul, dst stays fp32 across splits,
     //   Cast fp32→output happens in CopyFinalResOut.
     // ---------------------------------------------------------------------------
-    __aicore__ inline void ReduceFinalRes(uint32_t qToken, uint32_t kvHeadIdx, AscendC::LocalTensor<T> &dst,
-                                          AscendC::LocalTensor<T> &scaleLocal, uint32_t dealRowCount,
-                                          uint32_t rowOffset, AscendC::GlobalTensor<TwsO> &gmAccumOut)
+    __aicore__ inline void ReduceFinalRes(uint32_t qToken, uint32_t kvHeadIdx, AscendC::LocalTensor<T>& dst,
+                                          AscendC::LocalTensor<T>& scaleLocal, uint32_t dealRowCount,
+                                          uint32_t rowOffset, AscendC::GlobalTensor<TwsO>& gmAccumOut)
     {
         uint32_t lseCount = dealRowCount * topK_;
         uint32_t alignedLseCount = RoundUp(lseCount, FP32_ONE_BLOCK_SIZE);
@@ -742,8 +742,8 @@ private:
     // ---------------------------------------------------------------------------
     // CopyFinalResOut: write final result from UB to GM (same as A5, simplified)
     // ---------------------------------------------------------------------------
-    __aicore__ inline void CopyFinalResOut(uint64_t attenOutOffset, AscendC::GlobalTensor<ElementO> &gmO,
-                                           AscendC::LocalTensor<T> &accumOutLocal, uint32_t dealRowCount)
+    __aicore__ inline void CopyFinalResOut(uint64_t attenOutOffset, AscendC::GlobalTensor<ElementO>& gmO,
+                                           AscendC::LocalTensor<T>& accumOutLocal, uint32_t dealRowCount)
     {
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::LocalTensor<ElementO> castBuf = broadCastTmpBuf_.template ReinterpretCast<ElementO>();
@@ -774,9 +774,9 @@ private:
     // ---------------------------------------------------------------------------
     __aicore__ inline void CombineSplitKVRes(
         uint64_t attenOutOffset, uint32_t qToken, uint32_t kvHeadIdx, uint32_t rowOffset, uint32_t dealRowCount,
-        AscendC::GlobalTensor<ElementO> &gmO, AscendC::GlobalTensor<T> &gmSoftmaxLse,
-        AscendC::GlobalTensor<TwsO> &gmAccumOut, AscendC::GlobalTensor<T> &gmSoftmaxMax,
-        AscendC::GlobalTensor<T> &gmSoftmaxSum, uint64_t softmaxLseOffset, bool softmaxLseFlag)
+        AscendC::GlobalTensor<ElementO>& gmO, AscendC::GlobalTensor<T>& gmSoftmaxLse,
+        AscendC::GlobalTensor<TwsO>& gmAccumOut, AscendC::GlobalTensor<T>& gmSoftmaxMax,
+        AscendC::GlobalTensor<T>& gmSoftmaxSum, uint64_t softmaxLseOffset, bool softmaxLseFlag)
     {
         // EVENT_ID0 is primed by the kernel for the first task and set by
         // CopyFinalResOut for every subsequent task.  Wait before touching

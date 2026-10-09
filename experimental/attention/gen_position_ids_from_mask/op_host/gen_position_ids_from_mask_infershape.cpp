@@ -24,13 +24,13 @@ constexpr size_t DIMS_LIMIT = 2;
 constexpr size_t DIM_B = 0;
 constexpr size_t DIM_S = 1;
 
-ge::graphStatus InferShapeGenPositionIdsFromMask(gert::InferShapeContext *context)
+ge::graphStatus InferShapeGenPositionIdsFromMask(gert::InferShapeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("GenPositionIdsFromMask", "InferShapeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape *maskShape = context->GetInputShape(MASK_INPUT_INDEX);
+    const gert::Shape* maskShape = context->GetInputShape(MASK_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, maskShape);
-    gert::Shape *posShape = context->GetOutputShape(POSITION_IDS_OUTPUT_INDEX);
+    gert::Shape* posShape = context->GetOutputShape(POSITION_IDS_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, posShape);
 
     const size_t dimNum = maskShape->GetDimNum();
@@ -43,7 +43,7 @@ ge::graphStatus InferShapeGenPositionIdsFromMask(gert::InferShapeContext *contex
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferDataTypeGenPositionIdsFromMask(gert::InferDataTypeContext *context)
+ge::graphStatus InferDataTypeGenPositionIdsFromMask(gert::InferDataTypeContext* context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("GenPositionIdsFromMask", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);

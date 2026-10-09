@@ -29,21 +29,21 @@ extern "C" {
 
 // 第一段接口：计算workspace大小
 aclnnStatus aclnnFlashAttnGetWorkspaceSize(
-    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *relHOptional,
-    const aclTensor *relWOptional, const aclTensor *blockTableOptional, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-    const aclTensor *sinksOptional, const aclTensor *attnMaskOptional, const aclTensor *metadataOptional,
+    const aclTensor* q, const aclTensor* k, const aclTensor* v, const aclTensor* relHOptional,
+    const aclTensor* relWOptional, const aclTensor* blockTableOptional, const aclTensor* cuSeqlensQOptional,
+    const aclTensor* cuSeqlensKvOptional, const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional,
+    const aclTensor* sinksOptional, const aclTensor* attnMaskOptional, const aclTensor* metadataOptional,
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight, int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut, int64_t returnSoftmaxLse,
-    const aclTensor *attnOut, const aclTensor *softmaxLseOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char* layoutQ, const char* layoutKv, const char* layoutOut, int64_t returnSoftmaxLse,
+    const aclTensor* attnOut, const aclTensor* softmaxLseOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("start aclnnFlashAttnGetWorkspaceSize");
 
     // sinks shape为{0}时置nullptr
     FlashAttnProcessSinks(sinksOptional);
 
-    const aclTensor *placeHolder = nullptr;
-    const aclTensor *tempTensor = nullptr;
+    const aclTensor* placeHolder = nullptr;
+    const aclTensor* tempTensor = nullptr;
 
     FlashAttnProcessSoftmaxLse(returnSoftmaxLse, softmaxLseOptional, tempTensor, placeHolder);
 
@@ -62,7 +62,7 @@ aclnnStatus aclnnFlashAttnGetWorkspaceSize(
 }
 
 // 第二段接口：执行计算
-aclnnStatus aclnnFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, const aclrtStream stream)
+aclnnStatus aclnnFlashAttn(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     return aclnnInnerFlashAttn(workspace, workspaceSize, executor, stream);
 }

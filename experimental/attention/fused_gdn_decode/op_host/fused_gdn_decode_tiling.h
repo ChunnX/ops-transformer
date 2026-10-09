@@ -23,8 +23,8 @@ struct FusedGdnDecodeCompileInfo {
     uint64_t ubSize = 0;
 };
 
-ge::graphStatus FusedGdnDecodeTilingFunc(gert::TilingContext *context);
-ge::graphStatus TilingPrepareForFusedGdnDecode(gert::TilingParseContext *context);
+ge::graphStatus FusedGdnDecodeTilingFunc(gert::TilingContext* context);
+ge::graphStatus TilingPrepareForFusedGdnDecode(gert::TilingParseContext* context);
 
 } // namespace optiling
 

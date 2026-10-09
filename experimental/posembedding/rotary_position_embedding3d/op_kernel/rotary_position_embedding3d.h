@@ -25,7 +25,7 @@ class RotaryPositionEmbedding3d {
 public:
     __aicore__ inline RotaryPositionEmbedding3d() {}
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR cos, GM_ADDR z, GM_ADDR,
-                                const RotaryPositionEmbedding3dTilingData *td);
+                                const RotaryPositionEmbedding3dTilingData* td);
     __aicore__ inline void Process();
 
 private:
@@ -47,7 +47,7 @@ private:
 
 template <typename T>
 __aicore__ inline void RotaryPositionEmbedding3d<T>::Init(GM_ADDR x, GM_ADDR cos, GM_ADDR z, GM_ADDR,
-                                                          const RotaryPositionEmbedding3dTilingData *td)
+                                                          const RotaryPositionEmbedding3dTilingData* td)
 {
     headDim_ = td->headDim;
     halfD_ = static_cast<int32_t>(headDim_ / 2);
@@ -57,9 +57,9 @@ __aicore__ inline void RotaryPositionEmbedding3d<T>::Init(GM_ADDR x, GM_ADDR cos
     tileLength_ = static_cast<uint32_t>(td->tileLength);
 
     int64_t blockOffset = blockLength_ * GetBlockIdx();
-    xGm_.SetGlobalBuffer((__gm__ T *)x + blockOffset, blockLength_);
-    cosGm_.SetGlobalBuffer((__gm__ T *)cos + blockOffset, blockLength_);
-    zGm_.SetGlobalBuffer((__gm__ T *)z + blockOffset, blockLength_);
+    xGm_.SetGlobalBuffer((__gm__ T*)x + blockOffset, blockLength_);
+    cosGm_.SetGlobalBuffer((__gm__ T*)cos + blockOffset, blockLength_);
+    zGm_.SetGlobalBuffer((__gm__ T*)z + blockOffset, blockLength_);
 
     pipe_.InitBuffer(inQueue_, 1, tileLength_ * sizeof(T) * 2);
     pipe_.InitBuffer(outQueue_, 1, tileLength_ * sizeof(T));

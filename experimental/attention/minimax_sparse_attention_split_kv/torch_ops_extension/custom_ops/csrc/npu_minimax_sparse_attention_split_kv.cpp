@@ -24,17 +24,17 @@ using namespace at_npu::native;
 constexpr int64_t DIM_THREE = 3;
 constexpr int64_t DIM_FOUR = 4;
 
-void CheckInt32Tensor(const at::Tensor &tensor, const char *name)
+void CheckInt32Tensor(const at::Tensor& tensor, const char* name)
 {
     TORCH_CHECK(tensor.scalar_type() == at::kInt, name, " dtype must be int32, got ", tensor.scalar_type());
 }
 
-static void CheckInputs(const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
-                        const c10::optional<at::Tensor> &blockTable, const at::Tensor &k2qRowPtr,
-                        const at::Tensor &k2qQIndices, const at::Tensor &k2qSlotIndices,
-                        const at::Tensor &actualSeqLengths, const at::Tensor &actualSeqLengthsKv,
+static void CheckInputs(const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+                        const c10::optional<at::Tensor>& blockTable, const at::Tensor& k2qRowPtr,
+                        const at::Tensor& k2qQIndices, const at::Tensor& k2qSlotIndices,
+                        const at::Tensor& actualSeqLengths, const at::Tensor& actualSeqLengthsKv,
                         int64_t numKeyValueHeads, int64_t blockSize, int64_t topK, int64_t innerPrecise,
-                        const std::string &inputLayout)
+                        const std::string& inputLayout)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.numel() > 0, "Tensor key is empty.");
@@ -61,7 +61,7 @@ static void CheckInputs(const at::Tensor &query, const at::Tensor &key, const at
     }
 }
 
-static c10::TensorOptions AttentionOutOptions(const at::Tensor &query)
+static c10::TensorOptions AttentionOutOptions(const at::Tensor& query)
 {
     auto outOpts = query.options();
     // FP8 Q/K/V still writes BF16 attentionOut (see infershape / aclnn).
@@ -71,8 +71,8 @@ static c10::TensorOptions AttentionOutOptions(const at::Tensor &query)
     return outOpts;
 }
 
-static std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor &query, bool softmaxLseFlag,
-                                                           const std::string &inputLayout)
+static std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor& query, bool softmaxLseFlag,
+                                                           const std::string& inputLayout)
 {
     at::Tensor attentionOut = at::empty(query.sizes(), AttentionOutOptions(query));
     at::Tensor softmaxLse;
@@ -89,9 +89,9 @@ static std::tuple<at::Tensor, at::Tensor> ConstructOutputs(const at::Tensor &que
 }
 
 std::tuple<at::Tensor, at::Tensor> npu_minimax_sparse_attention_split_kv_npu(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
-    const c10::optional<at::Tensor> &blockTable, const at::Tensor &k2qRowPtr, const at::Tensor &k2qQIndices,
-    const at::Tensor &k2qSlotIndices, const at::Tensor &actualSeqLengths, const at::Tensor &actualSeqLengthsKv,
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    const c10::optional<at::Tensor>& blockTable, const at::Tensor& k2qRowPtr, const at::Tensor& k2qQIndices,
+    const at::Tensor& k2qSlotIndices, const at::Tensor& actualSeqLengths, const at::Tensor& actualSeqLengthsKv,
     int64_t numKeyValueHeads, double scaleValue, int64_t blockSize, int64_t topK, int64_t innerPrecise,
     bool softmaxLseFlag, c10::string_view inputLayout)
 {
@@ -117,7 +117,7 @@ std::tuple<at::Tensor, at::Tensor> npu_minimax_sparse_attention_split_kv_npu(
         }
     }
 
-    char *layoutPtr = const_cast<char *>(inputLayoutStr.c_str());
+    char* layoutPtr = const_cast<char*>(inputLayoutStr.c_str());
     EXEC_NPU_CMD_V1(aclnnMinimaxSparseAttentionSplitKv, query, key, value, blockTable, k2qRowPtr, k2qQIndices,
                     k2qSlotIndices, actualSeqLengths, actualSeqLengthsKv, numKeyValueHeads, scaleValue, blockSize, topK,
                     innerPrecise, softmaxLseFlag, layoutPtr, attentionOut, softmaxLse);
@@ -125,9 +125,9 @@ std::tuple<at::Tensor, at::Tensor> npu_minimax_sparse_attention_split_kv_npu(
 }
 
 std::tuple<at::Tensor, at::Tensor> npu_minimax_sparse_attention_split_kv_meta(
-    const at::Tensor &query, const at::Tensor &key, const at::Tensor &value,
-    const c10::optional<at::Tensor> &blockTable, const at::Tensor &k2qRowPtr, const at::Tensor &k2qQIndices,
-    const at::Tensor &k2qSlotIndices, const at::Tensor &actualSeqLengths, const at::Tensor &actualSeqLengthsKv,
+    const at::Tensor& query, const at::Tensor& key, const at::Tensor& value,
+    const c10::optional<at::Tensor>& blockTable, const at::Tensor& k2qRowPtr, const at::Tensor& k2qQIndices,
+    const at::Tensor& k2qSlotIndices, const at::Tensor& actualSeqLengths, const at::Tensor& actualSeqLengthsKv,
     int64_t numKeyValueHeads, double, int64_t blockSize, int64_t topK, int64_t innerPrecise, bool softmaxLseFlag,
     c10::string_view inputLayout)
 {

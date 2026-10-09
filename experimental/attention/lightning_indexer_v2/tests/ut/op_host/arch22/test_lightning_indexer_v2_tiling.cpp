@@ -465,7 +465,7 @@ TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_tiling_unsupported_arch_fail
 // Tiling data classes are registered for the op
 TEST_F(LightningIndexerV2Tiling, LightningIndexerV2_tiling_data_class_registered)
 {
-    auto &factory = optiling::CTilingDataClassFactory::GetInstance();
+    auto& factory = optiling::CTilingDataClassFactory::GetInstance();
     EXPECT_NE(factory.CreateTilingDataInstance("LightningIndexerV2"), nullptr);
 }
 
@@ -512,9 +512,9 @@ struct LIV2RejectFixture {
               {"return_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
           }
     {}
-    void SetAttr(const std::string &name, Ops::Transformer::AnyValue v)
+    void SetAttr(const std::string& name, Ops::Transformer::AnyValue v)
     {
-        for (auto &a : attrs) {
+        for (auto& a : attrs) {
             if (a.attrName_ == name) {
                 a.attr_ = v;
                 return;

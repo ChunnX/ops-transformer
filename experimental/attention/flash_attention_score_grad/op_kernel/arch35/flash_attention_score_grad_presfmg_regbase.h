@@ -37,26 +37,26 @@ public:
     __aicore__ inline FlashAttentionScoreGradPresfmgRegbase(){};
     __aicore__ inline void Init(GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dx, GM_ADDR y, GM_ADDR deqScaleDy,
                                 GM_ADDR actual_seq_qlen, GM_ADDR workspace, FagTilingType ordTilingData,
-                                TPipe *pipe_in);
+                                TPipe* pipe_in);
     __aicore__ inline void Process();
     __aicore__ inline void SyncALLCores();
 
     __aicore__ inline void CalTempDimAlign();
-    __aicore__ inline void InitIndex(uint64_t startIdx, uint64_t &curS);
-    __aicore__ inline void CopyInSfmg(uint64_t leftNburst, uint64_t &curS);
+    __aicore__ inline void InitIndex(uint64_t startIdx, uint64_t& curS);
+    __aicore__ inline void CopyInSfmg(uint64_t leftNburst, uint64_t& curS);
     __aicore__ inline void DoCopyIn(uint64_t curS, uint64_t curNBurst, uint64_t dstOffset);
     __aicore__ inline void CalculateSoftmaxGrad(uint64_t taskId, uint64_t sfmgOutputOffset, uint64_t curNBurst,
                                                 uint64_t deqScaleIdx = 0);
     __aicore__ inline void DoSoftmaxGrad();
     __aicore__ inline void DoSoftmaxGradFp8();
     template <uint8_t GM_IDX>
-    __aicore__ inline void CopyDqkvToGm(const uint64_t &loopIdx);
+    __aicore__ inline void CopyDqkvToGm(const uint64_t& loopIdx);
 
     constexpr static uint32_t HEAD_DIM_ALIGN = static_cast<uint32_t>(dTemplateType);
     constexpr static uint64_t BLOCK_BYTE_SIZE = 32;
     constexpr static uint64_t QUANT_BLOCK_SIZE = 512;
 
-    TPipe *pipe;
+    TPipe* pipe;
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm, deqScaleDyGm, sfmgWorkspaceGm;
     GlobalTensor<T1> dxGm;
     GlobalTensor<OUTDTYPE> dqGm, dkGm, dvGm, yGm;
@@ -132,7 +132,7 @@ public:
 PRE_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::Init(
     GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dx, GM_ADDR y, GM_ADDR deqScaleDy, GM_ADDR actual_seq_qlen,
-    GM_ADDR workspace, FagTilingType orgTilingData, TPipe *pipe_in)
+    GM_ADDR workspace, FagTilingType orgTilingData, TPipe* pipe_in)
 {
     if (g_coreType == AIV) {
         vBlockIdx = GetBlockIdx();
@@ -173,20 +173,20 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
         dAlignToBlockB16 = AlignTo(d, blockNumsB16);
         actual_seq_qlen_addr = actual_seq_qlen;
 
-        dxGm.SetGlobalBuffer((__gm__ T1 *)dx);
-        dqGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dq);
-        dkGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dk);
-        dvGm.SetGlobalBuffer((__gm__ OUTDTYPE *)dv);
-        yGm.SetGlobalBuffer((__gm__ OUTDTYPE *)y);
-        deqScaleDyGm.SetGlobalBuffer((__gm__ float *)deqScaleDy);
+        dxGm.SetGlobalBuffer((__gm__ T1*)dx);
+        dqGm.SetGlobalBuffer((__gm__ OUTDTYPE*)dq);
+        dkGm.SetGlobalBuffer((__gm__ OUTDTYPE*)dk);
+        dvGm.SetGlobalBuffer((__gm__ OUTDTYPE*)dv);
+        yGm.SetGlobalBuffer((__gm__ OUTDTYPE*)y);
+        deqScaleDyGm.SetGlobalBuffer((__gm__ float*)deqScaleDy);
 
-        dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+        dqWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                       tilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
-        dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+        dkWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                       tilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
-        dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+        dvWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                       tilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
-        sfmgWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+        sfmgWorkspaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                         tilingData->postTilingData.sfmgWorkSpaceOffset / sizeof(T2));
 
         initdqSize = vBlockIdx == qPreBlockTotal - 1 ? qPreBlockTail : qPreBlockFactor;
@@ -279,17 +279,17 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
 
 PRE_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::InitIndex(uint64_t startIdx,
-                                                                                                    uint64_t &curS)
+                                                                                                    uint64_t& curS)
 {
     if constexpr (IS_TND) {
         uint64_t totalLen = 0;
         for (uint64_t bDimIdx = bIdx; bDimIdx < b; bDimIdx++) {
-            totalLen = n1 * ((__gm__ int64_t *)actual_seq_qlen_addr)[bDimIdx] * d;
+            totalLen = n1 * ((__gm__ int64_t*)actual_seq_qlen_addr)[bDimIdx] * d;
             if (totalLen > startIdx) {
                 bIdx = bDimIdx;
-                curS = (bIdx == 0) ? ((__gm__ int64_t *)actual_seq_qlen_addr)[bIdx] :
-                                     (((__gm__ int64_t *)actual_seq_qlen_addr)[bIdx] -
-                                      ((__gm__ int64_t *)actual_seq_qlen_addr)[bIdx - 1]);
+                curS = (bIdx == 0) ? ((__gm__ int64_t*)actual_seq_qlen_addr)[bIdx] :
+                                     (((__gm__ int64_t*)actual_seq_qlen_addr)[bIdx] -
+                                      ((__gm__ int64_t*)actual_seq_qlen_addr)[bIdx - 1]);
                 uint64_t bTail = startIdx - (totalLen - n1 * curS * d);
                 nIdx = bTail / (curS * d);
                 uint64_t nTail = bTail % (curS * d);
@@ -321,7 +321,7 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
     uint64_t transposeStride = 0;
     uint64_t transposeStrideB16 = 0;
     if constexpr (IS_TND) {
-        uint64_t bOffset = bIdx == 0 ? 0 : n1 * ((__gm__ int64_t *)actual_seq_qlen_addr)[bIdx - 1] * d;
+        uint64_t bOffset = bIdx == 0 ? 0 : n1 * ((__gm__ int64_t*)actual_seq_qlen_addr)[bIdx - 1] * d;
         srcOffset = bOffset + (sIdx * n1 + nIdx) * d;
         transposeStride = (nd - d) * sizeof(T1);
         transposeStrideB16 = (nd - d) * sizeof(OUTDTYPE);
@@ -355,7 +355,7 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
 
 PRE_FUNCTION_TEMPLATE
 __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::CopyInSfmg(
-    uint64_t leftNburst, uint64_t &curS)
+    uint64_t leftNburst, uint64_t& curS)
 {
     uint64_t dstOffset = 0;
     while (leftNburst > 0) {
@@ -372,8 +372,8 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
                 if (bIdx < b - 1) { // 需要借B
                     bIdx += 1;
                     if constexpr (IS_TND) {
-                        curS = ((__gm__ int64_t *)actual_seq_qlen_addr)[bIdx] -
-                               ((__gm__ int64_t *)actual_seq_qlen_addr)[bIdx - 1];
+                        curS = ((__gm__ int64_t*)actual_seq_qlen_addr)[bIdx] -
+                               ((__gm__ int64_t*)actual_seq_qlen_addr)[bIdx - 1];
                     } else {
                         curS = s1;
                     }
@@ -437,7 +437,7 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
 PRE_FUNCTION_TEMPLATE
 template <uint8_t GM_IDX>
 __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_TEMPLATE>::CopyDqkvToGm(
-    const uint64_t &loopIdx)
+    const uint64_t& loopIdx)
 {
     if constexpr (IsSameType<T1, float>::value) {
         if constexpr (GM_IDX == DQ_IDX) {
@@ -635,8 +635,8 @@ __aicore__ inline void FlashAttentionScoreGradPresfmgRegbase<PRE_FUNCTION_ARGS_T
             uint64_t deqDyScaleIdx = bIdx * ns1o + nIdx * s1o + soIdx;
             CalculateSoftmaxGrad(taskId, sfmgOutputOffset, curNBurst, deqDyScaleIdx);
             if constexpr (IS_D_NO_EQUAL) {
-                Duplicate<uint8_t>(reinterpret_cast<LocalTensor<uint8_t> &>(input1Buf), 0, nBurst * tempDimAlign);
-                Duplicate<uint8_t>(reinterpret_cast<LocalTensor<uint8_t> &>(input2Buf), 0, nBurst * tempDimAlign);
+                Duplicate<uint8_t>(reinterpret_cast<LocalTensor<uint8_t>&>(input1Buf), 0, nBurst * tempDimAlign);
+                Duplicate<uint8_t>(reinterpret_cast<LocalTensor<uint8_t>&>(input2Buf), 0, nBurst * tempDimAlign);
             }
             input1Que[taskId & 1].FreeTensor(input1Buf);
             input2Que[taskId & 1].FreeTensor(input2Buf);

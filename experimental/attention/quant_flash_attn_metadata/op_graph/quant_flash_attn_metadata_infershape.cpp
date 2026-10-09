@@ -21,18 +21,18 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeQuantFlashAttnMetadata(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeQuantFlashAttnMetadata(gert::InferShapeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "InferShapeQuantFlashAttnMetadata");
 
-    gert::Shape *oShape = context->GetOutputShape(0);
+    gert::Shape* oShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, oShape);
     oShape->SetDimNum(1);
     oShape->SetDim(0, optiling::FA_META_SIZE);
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDtypeQuantFlashAttnMetadata(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDtypeQuantFlashAttnMetadata(gert::InferDataTypeContext* context)
 {
     OP_LOGD(context->GetNodeName(), "InferDtypeQuantFlashAttnMetadata");
 

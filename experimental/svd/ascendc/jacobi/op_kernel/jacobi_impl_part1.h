@@ -15,13 +15,13 @@
 
 #ifndef JACOBI_IMPL_PART1_H
 #define JACOBI_IMPL_PART1_H
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::JacobiBase(TPipe* pipe)
 {
     pipe_ = pipe;
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::Process()
 {
     if (g_coreType == AIC) {
@@ -30,7 +30,7 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     ProcessImpl();
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::Init(
     __gm__ uint8_t* a, __gm__ uint8_t* s, __gm__ uint8_t* u, __gm__ uint8_t* v, __gm__ uint8_t* workspace,
     const JMTilingData* tilingData)
@@ -83,15 +83,19 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     ubMemory = ubBuf.Get<uint8_t>();
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::AllocMem()
 {
-#define ALLOC_TMP_BLOCKS1_16 GTB(1) GTB(2) GTB(3) GTB(4) GTB(5) GTB(6) GTB(7) GTB(8) GTB(9) GTB(10) \
-                            GTB(11) GTB(12) GTB(13)  GTB(14) GTB(15) GTB(16)
-#define ALLOC_TMP_BLOCKS17_32 GTB(17) GTB(18) GTB(19) GTB(20) GTB(21) GTB(22) GTB(23) GTB(24) GTB(25) GTB(26) \
-                            GTB(27) GTB(28) GTB(29)  GTB(30) GTB(31) GTB(32)
-#define GTB(ID) tmpBlock##ID = ubBuf.GetWithOffset<float>(32 * MIN_BLOCK_ELEMENTS_NUM, offsetPtr); \
-                        offsetPtr += MIN_BLOCK_SIZE;
+#define ALLOC_TMP_BLOCKS1_16 \
+    GTB(1) \
+    GTB(2) GTB(3) GTB(4) GTB(5) GTB(6) GTB(7) GTB(8) GTB(9) GTB(10) GTB(11) GTB(12) GTB(13) GTB(14) GTB(15) GTB(16)
+#define ALLOC_TMP_BLOCKS17_32 \
+    GTB(17) \
+    GTB(18) \
+    GTB(19) GTB(20) GTB(21) GTB(22) GTB(23) GTB(24) GTB(25) GTB(26) GTB(27) GTB(28) GTB(29) GTB(30) GTB(31) GTB(32)
+#define GTB(ID) \
+    tmpBlock##ID = ubBuf.GetWithOffset<float>(32 * MIN_BLOCK_ELEMENTS_NUM, offsetPtr); \
+    offsetPtr += MIN_BLOCK_SIZE;
 
     uint32_t offsetPtr = 0;
 
@@ -123,7 +127,7 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     offsetPtr += tmpMaskElementsNum * sizeof(float);
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::ProcessImpl()
 {
     AllocMem();
@@ -135,23 +139,23 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     JacobiProcess();
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::JacobiProcess()
 {
     for (uint16_t iter = 0; iter < numIterations; ++iter) {
-        bool isFinalIteration=(iter==numIterations-1);
-        bool isZeroIter=(iter==0);
+        bool isFinalIteration = (iter == numIterations - 1);
+        bool isZeroIter = (iter == 0);
         for (uint32_t stageID = 0; stageID < numStages; ++stageID) {
-            bool isFinalStage = (stageID==numStages-1);
-            bool isZeroStage=(stageID==0);
+            bool isFinalStage = (stageID == numStages - 1);
+            bool isZeroStage = (stageID == 0);
             numPhases = 1 << stageID;
             for (uint32_t phaseID = 0; phaseID < numPhases; ++phaseID) {
-                bool isFinalPhaseID = (phaseID==numPhases-1);
+                bool isFinalPhaseID = (phaseID == numPhases - 1);
                 uint16_t leftGlobalSetId = 0;
                 uint16_t rightGlobalSetId = 0;
-                bool isSaveUV=isFinalIteration&&isFinalStage&&isFinalPhaseID;
+                bool isSaveUV = isFinalIteration && isFinalStage && isFinalPhaseID;
                 GetLeftRightGlobalSetIds(leftGlobalSetId, rightGlobalSetId, phaseID, numPhases, coreIdx,
-                        numAvailableVectorCores);
+                                         numAvailableVectorCores);
                 LocalPhaseProcess(leftGlobalSetId, rightGlobalSetId, isSaveUV, isZeroStage, isZeroIter);
                 CrossCoreSetFlag<0x0, PIPE_MTE3>(INTERNAL_SYNC_ALL);
                 CrossCoreWaitFlag(INTERNAL_SYNC_ALL);
@@ -160,30 +164,31 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     }
 }
 
-
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::LocalPhaseProcess(
-        const uint16_t leftGlobalSetId, const uint16_t rightGlobalSetId, const bool isSaveUV, const bool isZeroStage,
-        const bool isZeroIter)
+    const uint16_t leftGlobalSetId, const uint16_t rightGlobalSetId, const bool isSaveUV, const bool isZeroStage,
+    const bool isZeroIter)
 {
     if (leftGlobalSetId >= numGlobalSets || rightGlobalSetId >= numGlobalSets) {
         return;
     }
     bool leftSetHasMaxSize = (leftGlobalSetId < numGlobalSetsWithMaxSize);
     bool rightSetHasMaxSize = (rightGlobalSetId < numGlobalSetsWithMaxSize);
-    uint32_t leftBegin = (leftSetHasMaxSize) ? leftGlobalSetId * globSetMaxSize :
-        globSetMinOffset + (leftGlobalSetId - numGlobalSetsWithMaxSize) * globSetMinSize;
+    uint32_t leftBegin = (leftSetHasMaxSize) ?
+                             leftGlobalSetId * globSetMaxSize :
+                             globSetMinOffset + (leftGlobalSetId - numGlobalSetsWithMaxSize) * globSetMinSize;
     uint32_t leftEnd = (leftSetHasMaxSize) ? leftBegin + globSetMaxSize : leftBegin + globSetMinSize;
-    uint32_t rightBegin = (rightSetHasMaxSize) ? rightGlobalSetId * globSetMaxSize :
-        globSetMinOffset + (rightGlobalSetId - numGlobalSetsWithMaxSize) * globSetMinSize;
+    uint32_t rightBegin = (rightSetHasMaxSize) ?
+                              rightGlobalSetId * globSetMaxSize :
+                              globSetMinOffset + (rightGlobalSetId - numGlobalSetsWithMaxSize) * globSetMinSize;
     uint32_t rightEnd = (rightSetHasMaxSize) ? rightBegin + globSetMaxSize : rightBegin + globSetMinSize;
-    
-    for (uint32_t batchIdx = 0;batchIdx < batchSize; ++batchIdx) {
-        batchOffsetI = batchIdx*mSize*nSize;
-        batchOffsetU = batchIdx*uMSize*uNSize;
-        batchOffsetV = batchIdx*vMSize*vNSize;
-        batchOffsetS = batchIdx*sMNSize;
-        batchOffsetTmp = batchIdx*sMNSize*recordSizeAligned;
+
+    for (uint32_t batchIdx = 0; batchIdx < batchSize; ++batchIdx) {
+        batchOffsetI = batchIdx * mSize * nSize;
+        batchOffsetU = batchIdx * uMSize * uNSize;
+        batchOffsetV = batchIdx * vMSize * vNSize;
+        batchOffsetS = batchIdx * sMNSize;
+        batchOffsetTmp = batchIdx * sMNSize * recordSizeAligned;
         if (!isZeroStage) {
             ApplyGlobalSet(leftBegin, leftEnd, rightBegin, rightEnd, isSaveUV);
         } else {
@@ -194,14 +199,14 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     }
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::GetLeftRightGlobalSetIds(
-        uint16_t& dstLeftGlobalSetId, uint16_t& dstRightGlobalSetId, const uint32_t phaseID, const uint32_t numPhases,
-        const uint32_t coreID, const uint32_t numCores)
+    uint16_t& dstLeftGlobalSetId, uint16_t& dstRightGlobalSetId, const uint32_t phaseID, const uint32_t numPhases,
+    const uint32_t coreID, const uint32_t numCores)
 {
     uint32_t groupSize = numPhases * 2;
     uint32_t coresInGroup = groupSize / 2;
-    uint32_t numPhases_ = (numPhases!=0)?numPhases:1;
+    uint32_t numPhases_ = (numPhases != 0) ? numPhases : 1;
     if (coresInGroup > numCores) {
         // usually on last stage when number of coresInGroup is not equal real number of cores,
         // we try to reassing tasks from imaginary cores to real cores
@@ -210,10 +215,9 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
             uint32_t groupID = virtualCoreIdx / coresInGroup;
             uint32_t offsetInGroup = virtualCoreIdx % coresInGroup;
             uint16_t leftGlobalSetIdForVirtualCore = groupID * groupSize + offsetInGroup;
-            uint32_t rightGlobalSetIdForVirtualCore = groupID * groupSize + coresInGroup +
-                    (offsetInGroup + phaseID) % numPhases;
-            if (leftGlobalSetIdForVirtualCore >= numGlobalSets ||
-                rightGlobalSetIdForVirtualCore >= numGlobalSets) {
+            uint32_t rightGlobalSetIdForVirtualCore =
+                groupID * groupSize + coresInGroup + (offsetInGroup + phaseID) % numPhases;
+            if (leftGlobalSetIdForVirtualCore >= numGlobalSets || rightGlobalSetIdForVirtualCore >= numGlobalSets) {
                 continue;
             }
             if (realCoreIdx == coreID) {
@@ -234,10 +238,9 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     }
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::ApplyGlobalSet(
-        const uint16_t lBegin, const uint16_t lEnd, const uint16_t rBegin, const uint16_t rEnd,
-        const bool isFinalIteration)
+    const uint16_t lBegin, const uint16_t lEnd, const uint16_t rBegin, const uint16_t rEnd, const bool isFinalIteration)
 {
     if (coreIdx >= numAvailableVectorCores) {
         return;
@@ -264,9 +267,9 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
             LoadBucket(rightBucketSpace, rightNorms, rightBucketBegin, rightBucketEnd, false);
             FAST_SET_WAIT_FLAG(evtMte2ToV, MTE2_V);
             ApplyBucket(leftBucketSpace, leftNorms, rightBucketSpace, rightNorms, leftBucketEnd - leftBucketBegin,
-                rightBucketEnd - rightBucketBegin, false);
+                        rightBucketEnd - rightBucketBegin, false);
             FAST_SET_WAIT_FLAG(evtVToMte3, V_MTE3);
-            if (!isFinalIteration || (isFinalIteration && (leftBucketId != (numBucketsInLeftSet-1)))) {
+            if (!isFinalIteration || (isFinalIteration && (leftBucketId != (numBucketsInLeftSet - 1)))) {
                 SaveBucket(rightBucketSpace, rightNorms, rightBucketBegin, rightBucketEnd);
             } else {
                 PipeBarrier<PIPE_V>();
@@ -286,9 +289,9 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     }
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::ApplyGlobalSet(
-        const uint16_t sBegin, const uint16_t sEnd, const bool isFirstLoadData)
+    const uint16_t sBegin, const uint16_t sEnd, const bool isFirstLoadData)
 {
     if (coreIdx >= numAvailableVectorCores) {
         return;
@@ -310,8 +313,7 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
 
         LoadBucket(leftBucketSpace, leftNorms, leftBucketBegin, leftBucketEnd, isFirstLoadDataLocal);
         FAST_SET_WAIT_FLAG(evtMte2ToV, MTE2_V);
-        if (isFirstLoadDataLocal)
-        {
+        if (isFirstLoadDataLocal) {
             InitV(leftBucketSpace, leftBucketBegin, leftBucketEnd);
             CleanTailThrash(leftBucketSpace, leftBucketBegin, leftBucketEnd);
         }
@@ -325,17 +327,15 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
             uint32_t rightBucketEnd = MIN(rightBucketBegin + maxBucketSize, sEnd);
             LoadBucket(rightBucketSpace, rightNorms, rightBucketBegin, rightBucketEnd, isFirstLoadDataLocal);
             FAST_SET_WAIT_FLAG(evtMte2ToV, MTE2_V);
-            if (isFirstLoadDataLocal)
-            {
+            if (isFirstLoadDataLocal) {
                 InitV(rightBucketSpace, rightBucketBegin, rightBucketEnd);
                 CleanTailThrash(rightBucketSpace, rightBucketBegin, rightBucketEnd);
             }
             ApplyBucket(leftBucketSpace, leftNorms, rightBucketSpace, rightNorms, leftBucketEnd - leftBucketBegin,
-                    rightBucketEnd - rightBucketBegin, isFirstLoadDataLocal);
+                        rightBucketEnd - rightBucketBegin, isFirstLoadDataLocal);
             FAST_SET_WAIT_FLAG(evtVToMte3, V_MTE3);
             SaveBucket(rightBucketSpace, rightNorms, rightBucketBegin, rightBucketEnd);
-            if (rightBucketId != numBucketsInSet - 1)
-            {
+            if (rightBucketId != numBucketsInSet - 1) {
                 FAST_SET_WAIT_FLAG(evtMte3ToMte2, MTE3_MTE2);
             }
         }
@@ -345,13 +345,13 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     }
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::ApplyBucket(
-        const LocalTensor<float>& leftBucketSpace, const LocalTensor<float>& leftNorms,
-        const LocalTensor<float>& rightBucketSpace, const LocalTensor<float>& rightNorms,
-        const uint32_t leftBucketSize, const uint32_t rightBucketSize, const bool calculateRightNorms)
+    const LocalTensor<float>& leftBucketSpace, const LocalTensor<float>& leftNorms,
+    const LocalTensor<float>& rightBucketSpace, const LocalTensor<float>& rightNorms, const uint32_t leftBucketSize,
+    const uint32_t rightBucketSize, const bool calculateRightNorms)
 {
-    if (leftBucketSize==0&&rightBucketSize==0) {
+    if (leftBucketSize == 0 && rightBucketSize == 0) {
         return;
     }
     bool leftIsLess = (leftBucketSize <= rightBucketSize);
@@ -376,10 +376,10 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
             }
             if (!calculateRightNorm) {
                 RotateBucket<true, false>(leftBucketSpace, rightBucketSpace, leftNorms, rightNorms, leftBucketSize,
-                        rightBucketSize, maskInfo);
+                                          rightBucketSize, maskInfo);
             } else {
                 RotateBucket<true, true>(leftBucketSpace, rightBucketSpace, leftNorms, rightNorms, leftBucketSize,
-                        rightBucketSize, maskInfo);
+                                         rightBucketSize, maskInfo);
             }
         } else {
             maskInfo.numPairs = rightBucketSize;
@@ -393,19 +393,19 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
             }
             if (!calculateRightNorm) {
                 RotateBucket<false, false>(leftBucketSpace, rightBucketSpace, leftNorms, rightNorms, leftBucketSize,
-                        rightBucketSize, maskInfo);
+                                           rightBucketSize, maskInfo);
             } else {
                 RotateBucket<false, true>(leftBucketSpace, rightBucketSpace, leftNorms, rightNorms, leftBucketSize,
-                        rightBucketSize, maskInfo);
+                                          rightBucketSize, maskInfo);
             }
         }
         calculateRightNorm = false;
     }
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
-template<typename T>
-__aicore__ inline T  JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::ScalarLog2(const T val)
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename T>
+__aicore__ inline T JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::ScalarLog2(const T val)
 {
     T tmp = val;
     T res = 0;
@@ -417,10 +417,10 @@ __aicore__ inline T  JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_
     return res - 1;
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
-template<typename T>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename T>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::ExtendBucketSize(
-        T& extendedBucketSize, T& aOffsetNumStages, const T bucketSize)
+    T& extendedBucketSize, T& aOffsetNumStages, const T bucketSize)
 {
     uint32_t lg2 = ScalarLog2(bucketSize);
     uint32_t possibleEtendedBucketSize = 1 << lg2;
@@ -433,10 +433,10 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
     }
 }
 
-template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
+template <typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
 __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SET_SIZE>::ApplyBucket(
-        const LocalTensor<float>& bucketSpace, const LocalTensor<float>& norms, const uint32_t bucketSize,
-        const bool calculateNorms)
+    const LocalTensor<float>& bucketSpace, const LocalTensor<float>& norms, const uint32_t bucketSize,
+    const bool calculateNorms)
 {
     if (bucketSize < 2) {
         if (calculateNorms) {
@@ -472,8 +472,8 @@ __aicore__ inline void JacobiBase<AType, SType, UType, VType, VEC_INSTRUCTION_SE
                 uint32_t offsetInGroup = pairID % pairsInGroup;
 
                 uint32_t leftRowIdx = groupID * groupSize + offsetInGroup;
-                uint32_t rightRowIdx = groupID * groupSize + pairsInGroup +
-                        (offsetInGroup + aOffsetPhase) % aOffsetNumPhases;
+                uint32_t rightRowIdx =
+                    groupID * groupSize + pairsInGroup + (offsetInGroup + aOffsetPhase) % aOffsetNumPhases;
                 if ((leftRowIdx < bucketSize) && (rightRowIdx < bucketSize)) {
                     maskInfo.numPairs++;
                     maskInfo.leftRowsIds[maskInfo.numPairs - 1] = static_cast<uint8_t>(leftRowIdx);

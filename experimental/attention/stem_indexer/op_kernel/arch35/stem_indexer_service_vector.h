@@ -31,11 +31,11 @@ public:
     using SCORE_T = typename SIT::scoreType;
 
     __aicore__ inline SIVector(){};
-    __aicore__ inline void ProcessVec1(const SICommon::RunInfo &info);
-    __aicore__ inline void ProcessTopK(const SICommon::RunInfo &info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop);
-    __aicore__ inline void ProcessDirectOutput(const SICommon::TempLoopInfo &tempLoopInfo, uint32_t gS1Idx);
-    __aicore__ inline void InitBuffers(TPipe *pipe, bool needCleanOutput);
-    __aicore__ inline void InitParams(const struct SICommon::ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec1(const SICommon::RunInfo& info);
+    __aicore__ inline void ProcessTopK(const SICommon::RunInfo& info, bool isFirstS2InnerLoop, bool isLastS2InnerLoop);
+    __aicore__ inline void ProcessDirectOutput(const SICommon::TempLoopInfo& tempLoopInfo, uint32_t gS1Idx);
+    __aicore__ inline void InitBuffers(TPipe* pipe, bool needCleanOutput);
+    __aicore__ inline void InitParams(const struct SICommon::ConstInfo& constInfo);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float> vbiasGm, GlobalTensor<int32_t> sparseIndicesGm,
                                               GlobalTensor<int32_t> sparseSeqLenGm);
     __aicore__ inline void InitSparseIndicesToNegOne(uint32_t gS1Idx, uint32_t actMBaseSize, uint32_t actS1Size,
@@ -65,17 +65,17 @@ protected:
 
 private:
     __aicore__ inline void CleanOutput();
-    __aicore__ inline void InitOutputSingleCore(GlobalTensor<int32_t> &outputGm, uint64_t totalSize, int32_t value);
+    __aicore__ inline void InitOutputSingleCore(GlobalTensor<int32_t>& outputGm, uint64_t totalSize, int32_t value);
     __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int64_t kbOffset, int32_t numPromptK);
     __aicore__ inline void WriteDirectIndices(uint32_t outputLen, int64_t baseLenOffset, int64_t baseOutOffset,
                                               uint32_t curAivGSize, int64_t curAivGS1ProcNum, uint32_t actS1Size,
-                                              uint32_t s1Idx, LocalTensor<uint32_t> &indicesOutLocal);
-    __aicore__ inline void CopyOutPackedResults(const SICommon::RunInfo &info, int64_t curAivGS1Idx,
+                                              uint32_t s1Idx, LocalTensor<uint32_t>& indicesOutLocal);
+    __aicore__ inline void CopyOutPackedResults(const SICommon::RunInfo& info, int64_t curAivGS1Idx,
                                                 int64_t curAivGS1ProcNum);
-    __aicore__ inline void RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2InnerLoop,
-                                            bool isLastS2InnerLoop, const SICommon::RowIdx4 &rowIdx4,
-                                            const SICommon::TopkNum4 &topkNum4,
-                                            const SICommon::S2ValidLen4 &s2ValidLen4, uint32_t batchRowNum,
+    __aicore__ inline void RunTopKBatchRows(const SICommon::RunInfo& info, bool isFirstS2InnerLoop,
+                                            bool isLastS2InnerLoop, const SICommon::RowIdx4& rowIdx4,
+                                            const SICommon::TopkNum4& topkNum4,
+                                            const SICommon::S2ValidLen4& s2ValidLen4, uint32_t batchRowNum,
                                             int64_t curAivGS1Idx);
     // ================================Local Buffer区====================================
     // tmp buff for vector
@@ -116,7 +116,7 @@ private:
 };
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOutput)
+__aicore__ inline void SIVector<SIT>::InitBuffers(TPipe* pipe, bool needCleanOutput)
 {
     needCleanOutput_ = needCleanOutput;
     // 三缓冲，每槽32KB；TopK histogram已拆为独立UB。
@@ -168,7 +168,7 @@ __aicore__ inline void SIVector<SIT>::CleanOutput()
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::InitOutputSingleCore(GlobalTensor<int32_t> &outputGm, uint64_t totalSize,
+__aicore__ inline void SIVector<SIT>::InitOutputSingleCore(GlobalTensor<int32_t>& outputGm, uint64_t totalSize,
                                                            int32_t value)
 {
     uint64_t aivCoreNum = static_cast<uint64_t>(GetBlockNum()) * GetTaskRation();
@@ -183,7 +183,7 @@ __aicore__ inline void SIVector<SIT>::InitOutputSingleCore(GlobalTensor<int32_t>
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInfo &constInfo)
+__aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInfo& constInfo)
 {
     this->constInfo_ = constInfo;
     s2BaseSize_ = constInfo.s2BaseSize; // 256
@@ -265,7 +265,7 @@ __aicore__ inline void SIVector<SIT>::InitSparseIndicesToNegOne(uint32_t gS1Idx,
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
+__aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo& info)
 {
     auto bufferIdx = info.loop % SICommon::MM1_RES_BUFFER_NUM;
     int64_t gS1BasePerVecSize_ = (constInfo_.mBaseSize + 1U) >> 1U; // 当前每个vec核上分到的mbase/2行
@@ -345,7 +345,7 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::WriteDirectIndices(uint32_t outputLen, int64_t baseLenOffset,
                                                          int64_t baseOutOffset, uint32_t curAivGSize,
                                                          int64_t curAivGS1ProcNum, uint32_t actS1Size, uint32_t s1Idx,
-                                                         LocalTensor<uint32_t> &indicesOutLocal)
+                                                         LocalTensor<uint32_t>& indicesOutLocal)
 {
     outputLen = Min(outputLen, MAX_TOPK_COUNT);
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -381,7 +381,7 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(uint32_t outputLen, int
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::CopyOutPackedResults(const SICommon::RunInfo &info, int64_t curAivGS1Idx,
+__aicore__ inline void SIVector<SIT>::CopyOutPackedResults(const SICommon::RunInfo& info, int64_t curAivGS1Idx,
                                                            int64_t curAivGS1ProcNum)
 {
     const uint32_t packedOutputLen = MAX_TOPK_COUNT + initialBlocks_ + windowSize_;
@@ -435,10 +435,10 @@ __aicore__ inline void SIVector<SIT>::CopyOutPackedResults(const SICommon::RunIn
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2InnerLoop,
-                                                       bool isLastS2InnerLoop, const SICommon::RowIdx4 &rowIdx4,
-                                                       const SICommon::TopkNum4 &topkNum4,
-                                                       const SICommon::S2ValidLen4 &s2ValidLen4, uint32_t batchRowNum,
+__aicore__ inline void SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo& info, bool isFirstS2InnerLoop,
+                                                       bool isLastS2InnerLoop, const SICommon::RowIdx4& rowIdx4,
+                                                       const SICommon::TopkNum4& topkNum4,
+                                                       const SICommon::S2ValidLen4& s2ValidLen4, uint32_t batchRowNum,
                                                        int64_t curAivGS1Idx)
 {
     // padding（各行按自身 s2BlockValidLen 补齐到 TRUNK_LEN_256，非零行结果一致）
@@ -489,7 +489,7 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info, bool isFirstS2InnerLoop,
+__aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo& info, bool isFirstS2InnerLoop,
                                                   bool isLastS2InnerLoop)
 {
     // 当前处理的GS1行起始索引（全局位置）
@@ -606,7 +606,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLoopInfo &tempLoopInfo, uint32_t gS1Idx)
+__aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLoopInfo& tempLoopInfo, uint32_t gS1Idx)
 {
     if ASCEND_IS_AIV {
         uint32_t actMBaseSize = tempLoopInfo.actMBaseSize;

@@ -33,18 +33,18 @@ extern "C" {
  *                alpha为缩放系数，用于调整输出范围
  * @domain aclnn_ops_infer
  */
-aclnnStatus aclnnMhcPreSinkhornPremixGetWorkspaceSize(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
-                                                      const aclTensor *bias, const aclTensor *premix, int64_t hcMult,
+aclnnStatus aclnnMhcPreSinkhornPremixGetWorkspaceSize(const aclTensor* x, const aclTensor* phi, const aclTensor* alpha,
+                                                      const aclTensor* bias, const aclTensor* premix, int64_t hcMult,
                                                       int64_t numIters, double hcEps, double normEps, bool needBackward,
-                                                      aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
-                                                      aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
-                                                      aclTensor *sumOut, aclTensor *normOut, uint64_t *workspaceSize,
-                                                      aclOpExecutor **executor);
+                                                      aclTensor* hin, aclTensor* hPost, aclTensor* hRes,
+                                                      aclTensor* hPre, aclTensor* hcBeforeNorm, aclTensor* invRms,
+                                                      aclTensor* sumOut, aclTensor* normOut, uint64_t* workspaceSize,
+                                                      aclOpExecutor** executor);
 
 /**
  * @brief aclnnMhcPreSinkhornPremix的第二段接口，用于执行计算。
  */
-aclnnStatus aclnnMhcPreSinkhornPremix(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+aclnnStatus aclnnMhcPreSinkhornPremix(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                       aclrtStream stream);
 
 #ifdef __cplusplus
