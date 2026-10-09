@@ -38,7 +38,7 @@ struct TilingOptionalParaInfo {
 };
 
 enum class DataLayout : uint32_t {
-    BSND = 0,
+    BSND = 0U,
     TND = 1,
     PA_BBND = 2
 };
@@ -189,7 +189,7 @@ public:
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
-    ge::graphStatus CheckRequiredParaExistence() const;
+    ge::graphStatus CheckLiv2RequiredParameters() const;
     ge::graphStatus GetActualSeqLenSize(int64_t &size, const gert::Tensor *tensor,
                                         const std::string &actualSeqLenName) const;
     ge::graphStatus GetOpName();
@@ -226,7 +226,7 @@ public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_ = nullptr;
     fe::PlatFormInfos *platformInfo_ = nullptr;
-    LiV2ParaInfo opParamInfo_;
+    LiV2ParaInfo liV2Params_;
 
     // BaseParams
     int64_t bSize_ = 0;

@@ -22,10 +22,10 @@
 namespace NonZero {
 using namespace Ops::Base;
 using namespace AscendC;
-using AscendC::MicroAPI::AddrReg;
-using AscendC::MicroAPI::MaskReg;
-using AscendC::MicroAPI::RegTensor;
-using AscendC::MicroAPI::UnPack;
+using AscendC::Reg::AddrReg;
+using AscendC::Reg::MaskReg;
+using AscendC::Reg::RegTensor;
+using AscendC::Reg::UnPack;
 
 const int32_t BUFFER_NUM = 2;
 const int32_t MULTIP_UB_SIZE = 32 * 3;
@@ -449,10 +449,10 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::VfReduceSum(LocalTensor<int32_t> 
     uint32_t oneMask = 1;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<int32_t> addReg;
-        AscendC::MicroAPI::RegTensor<int32_t> dstReg;
-        AscendC::MicroAPI::MaskReg addMask = AscendC::MicroAPI::UpdateMask<int32_t>(allMask);
-        AscendC::MicroAPI::MaskReg oneMaskReg = AscendC::MicroAPI::UpdateMask<int32_t>(oneMask);
+        AscendC::Reg::RegTensor<int32_t> addReg;
+        AscendC::Reg::RegTensor<int32_t> dstReg;
+        AscendC::Reg::MaskReg addMask = AscendC::Reg::UpdateMask<int32_t>(allMask);
+        AscendC::Reg::MaskReg oneMaskReg = AscendC::Reg::UpdateMask<int32_t>(oneMask);
         DataCopy(addReg, addUbPtr);
         ReduceSum(dstReg, addReg, addMask);
         DataCopy(addUbPtr, dstReg, oneMaskReg);
@@ -472,10 +472,10 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::VfReduceSumB64(LocalTensor<int64_
     uint32_t oneMask = 1;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<int64_t> addReg;
-        AscendC::MicroAPI::RegTensor<int64_t> dstReg;
-        AscendC::MicroAPI::MaskReg addMask = AscendC::MicroAPI::UpdateMask<int64_t>(allMask);
-        AscendC::MicroAPI::MaskReg oneMaskReg = AscendC::MicroAPI::UpdateMask<int64_t>(oneMask);
+        AscendC::Reg::RegTensor<int64_t> addReg;
+        AscendC::Reg::RegTensor<int64_t> dstReg;
+        AscendC::Reg::MaskReg addMask = AscendC::Reg::UpdateMask<int64_t>(allMask);
+        AscendC::Reg::MaskReg oneMaskReg = AscendC::Reg::UpdateMask<int64_t>(oneMask);
         DataCopy(addReg, addUbPtr);
         ReduceSum(dstReg, addReg, addMask);
         DataCopy(addUbPtr, dstReg, oneMaskReg);
@@ -498,29 +498,29 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::ClacAllNum(LocalTensor<int32_t> &
     uint32_t repeatElmB32 = repeatElmB32_;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<int32_t> idxReg;
-        AscendC::MicroAPI::RegTensor<int32_t> dstReg;
-        AscendC::MicroAPI::RegTensor<int32_t> offsetReg;
+        AscendC::Reg::RegTensor<int32_t> idxReg;
+        AscendC::Reg::RegTensor<int32_t> dstReg;
+        AscendC::Reg::RegTensor<int32_t> offsetReg;
         Duplicate(dstReg, 0);
         Duplicate(offsetReg, 0);
-        AscendC::MicroAPI::MaskReg coreMask;
-        AscendC::MicroAPI::MaskReg oneMaskReg;
-        AscendC::MicroAPI::MaskReg blockMask;
-        oneMaskReg = AscendC::MicroAPI::UpdateMask<int32_t>(oneMask);
-        AscendC::MicroAPI::Arange(idxReg, 0);
+        AscendC::Reg::MaskReg coreMask;
+        AscendC::Reg::MaskReg oneMaskReg;
+        AscendC::Reg::MaskReg blockMask;
+        oneMaskReg = AscendC::Reg::UpdateMask<int32_t>(oneMask);
+        AscendC::Reg::Arange(idxReg, 0);
         for (uint16_t i = 0; i < loopNum; i++) {
-            AscendC::MicroAPI::RegTensor<int32_t> addReg, idxRegTmp;
-            AscendC::MicroAPI::RegTensor<int32_t> dstRegTmp;
-            AscendC::MicroAPI::RegTensor<int32_t> offsetRegTmp;
-            coreMask = AscendC::MicroAPI::UpdateMask<int32_t>(realCoreNum);
-            blockMask = AscendC::MicroAPI::UpdateMask<int32_t>(blockNum);
+            AscendC::Reg::RegTensor<int32_t> addReg, idxRegTmp;
+            AscendC::Reg::RegTensor<int32_t> dstRegTmp;
+            AscendC::Reg::RegTensor<int32_t> offsetRegTmp;
+            coreMask = AscendC::Reg::UpdateMask<int32_t>(realCoreNum);
+            blockMask = AscendC::Reg::UpdateMask<int32_t>(blockNum);
             Muls(idxRegTmp, idxReg, OFFSET_NUM_32, coreMask);
-            DataCopyGather(addReg, addUbPtr, (AscendC::MicroAPI::RegTensor<uint32_t> &)idxRegTmp, coreMask);
+            DataCopyGather(addReg, addUbPtr, (AscendC::Reg::RegTensor<uint32_t> &)idxRegTmp, coreMask);
             ReduceSum(dstRegTmp, addReg, coreMask);
             ReduceSum(offsetRegTmp, addReg, blockMask);
             Add(dstReg, dstReg, dstRegTmp, oneMaskReg);
             Add(offsetReg, offsetReg, offsetRegTmp, oneMaskReg);
-            AscendC::MicroAPI::Adds(idxReg, idxReg, repeatElmB32, coreMask);
+            AscendC::Reg::Adds(idxReg, idxReg, repeatElmB32, coreMask);
         }
         DataCopy(addUbPtr, dstReg, oneMaskReg);
         DataCopy(addUbPtr + 8, offsetReg, oneMaskReg);
@@ -538,29 +538,29 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::ClacAllNumB64(LocalTensor<int64_t
     uint32_t repeatElmT1 = repeatElmT1_;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<int64_t> idxReg;
-        AscendC::MicroAPI::RegTensor<int64_t> dstReg;
-        AscendC::MicroAPI::RegTensor<int64_t> offsetReg;
+        AscendC::Reg::RegTensor<int64_t> idxReg;
+        AscendC::Reg::RegTensor<int64_t> dstReg;
+        AscendC::Reg::RegTensor<int64_t> offsetReg;
         Duplicate(dstReg, 0);
         Duplicate(offsetReg, 0);
-        AscendC::MicroAPI::MaskReg coreMask;
-        AscendC::MicroAPI::MaskReg oneMaskReg;
-        AscendC::MicroAPI::MaskReg blockMask;
-        oneMaskReg = AscendC::MicroAPI::UpdateMask<int64_t>(oneMask);
-        AscendC::MicroAPI::Arange(idxReg, 0);
+        AscendC::Reg::MaskReg coreMask;
+        AscendC::Reg::MaskReg oneMaskReg;
+        AscendC::Reg::MaskReg blockMask;
+        oneMaskReg = AscendC::Reg::UpdateMask<int64_t>(oneMask);
+        AscendC::Reg::Arange(idxReg, 0);
         for (uint16_t i = 0; i < loopNum; i++) {
-            AscendC::MicroAPI::RegTensor<int64_t> addReg, idxRegTmp;
-            AscendC::MicroAPI::RegTensor<int64_t> dstRegTmp;
-            AscendC::MicroAPI::RegTensor<int64_t> offsetRegTmp;
-            coreMask = AscendC::MicroAPI::UpdateMask<int64_t>(realCoreNum);
-            blockMask = AscendC::MicroAPI::UpdateMask<int64_t>(blockNum);
+            AscendC::Reg::RegTensor<int64_t> addReg, idxRegTmp;
+            AscendC::Reg::RegTensor<int64_t> dstRegTmp;
+            AscendC::Reg::RegTensor<int64_t> offsetRegTmp;
+            coreMask = AscendC::Reg::UpdateMask<int64_t>(realCoreNum);
+            blockMask = AscendC::Reg::UpdateMask<int64_t>(blockNum);
             Muls(idxRegTmp, idxReg, OFFSET_NUM_16, coreMask);
-            DataCopyGather(addReg, addUbPtr, (AscendC::MicroAPI::RegTensor<uint64_t> &)idxRegTmp, coreMask);
+            DataCopyGather(addReg, addUbPtr, (AscendC::Reg::RegTensor<uint64_t> &)idxRegTmp, coreMask);
             ReduceSum(dstRegTmp, addReg, coreMask);
             ReduceSum(offsetRegTmp, addReg, blockMask);
             Add(dstReg, dstReg, dstRegTmp, oneMaskReg);
             Add(offsetReg, offsetReg, offsetRegTmp, oneMaskReg);
-            AscendC::MicroAPI::Adds(idxReg, idxReg, repeatElmT1, coreMask);
+            AscendC::Reg::Adds(idxReg, idxReg, repeatElmT1, coreMask);
         }
         DataCopy(addUbPtr, dstReg, oneMaskReg);
         DataCopy(addUbPtr + 8, offsetReg, oneMaskReg);
@@ -646,10 +646,10 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::TransOutputDim2(__local_mem__ uin
     LocalTensor<uint32_t> multipDim = multipDimUb.Get<uint32_t>();
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::MaskReg preg, preg1, preg2;
-        AscendC::MicroAPI::RegTensor<uint32_t> srcReg, divReg, shapeReg, subReg, mulReg, mReg, divReg0;
-        AscendC::MicroAPI::RegTensor<uint32_t> trans1Reg, trans2Reg;
-        preg = AscendC::MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::Reg::MaskReg preg, preg1, preg2;
+        AscendC::Reg::RegTensor<uint32_t> srcReg, divReg, shapeReg, subReg, mulReg, mReg, divReg0;
+        AscendC::Reg::RegTensor<uint32_t> trans1Reg, trans2Reg;
+        preg = AscendC::Reg::CreateMask<uint32_t, AscendC::Reg::MaskPattern::ALL>();
         Duplicate(shapeReg, multipDim.GetValue(IDX_NUM_0));
         Duplicate(mReg, multipDim.GetValue(IDX_NUM_16));
         int16_t kValue = multipDim.GetValue(IDX_NUM_8);
@@ -666,8 +666,8 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::TransOutputDim2(__local_mem__ uin
             DataCopy(dstPtr + i * repeatElmB32_ * 2 + repeatElmB32_, trans2Reg, preg);
         }
         for (uint16_t i = 0; i < tailLoop; i++) {
-            preg1 = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
-            preg2 = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
+            preg1 = AscendC::Reg::UpdateMask<int32_t>(sreg);
+            preg2 = AscendC::Reg::UpdateMask<int32_t>(sreg);
             DataCopy(srcReg, srcPtr + repeatTimes * repeatElmB32_);
             Mull(divReg0, divReg, srcReg, mReg, preg);
             Add(divReg0, srcReg, divReg, preg);
@@ -694,17 +694,17 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::TransOutputDim4(__local_mem__ uin
     __VEC_SCOPE__
     {
         uint32_t repeatElm = repeatElmB32_;
-        AscendC::MicroAPI::MaskReg preg, preg1, preg2, preg3, preg4;
-        AscendC::MicroAPI::RegTensor<uint32_t> srcReg, divReg, shapeReg0, shapeReg1, shapeReg2, subReg, mulReg;
-        AscendC::MicroAPI::RegTensor<uint32_t> divReg1, divReg2, trans1Reg, trans2Reg, trans3Reg, trans4Reg;
-        AscendC::MicroAPI::RegTensor<uint32_t> mReg0, mReg1, mReg2, divReg0;
+        AscendC::Reg::MaskReg preg, preg1, preg2, preg3, preg4;
+        AscendC::Reg::RegTensor<uint32_t> srcReg, divReg, shapeReg0, shapeReg1, shapeReg2, subReg, mulReg;
+        AscendC::Reg::RegTensor<uint32_t> divReg1, divReg2, trans1Reg, trans2Reg, trans3Reg, trans4Reg;
+        AscendC::Reg::RegTensor<uint32_t> mReg0, mReg1, mReg2, divReg0;
         Duplicate(shapeReg0, multipDim.GetValue(IDX_NUM_0));
         Duplicate(shapeReg1, multipDim.GetValue(IDX_NUM_1));
         Duplicate(shapeReg2, multipDim.GetValue(IDX_NUM_2));
         Duplicate(mReg0, multipDim.GetValue(IDX_NUM_16));
         Duplicate(mReg1, multipDim.GetValue(IDX_NUM_16 + 1));
         Duplicate(mReg2, multipDim.GetValue(IDX_NUM_16 + 2));
-        preg = AscendC::MicroAPI::CreateMask<uint32_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        preg = AscendC::Reg::CreateMask<uint32_t, AscendC::Reg::MaskPattern::ALL>();
         int16_t kValue0 = multipDim.GetValue(IDX_NUM_8);
         int16_t kValue1 = multipDim.GetValue(IDX_NUM_8 + 1);
         int16_t kValue2 = multipDim.GetValue(IDX_NUM_8 + 2);
@@ -767,10 +767,10 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::TransOutputDim4(__local_mem__ uin
             Interleave(trans3Reg, trans4Reg, divReg1, subReg);
             Interleave(divReg, divReg1, trans1Reg, trans3Reg);
             Interleave(divReg2, subReg, trans2Reg, trans4Reg);
-            preg1 = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
-            preg2 = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
-            preg3 = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
-            preg4 = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
+            preg1 = AscendC::Reg::UpdateMask<int32_t>(sreg);
+            preg2 = AscendC::Reg::UpdateMask<int32_t>(sreg);
+            preg3 = AscendC::Reg::UpdateMask<int32_t>(sreg);
+            preg4 = AscendC::Reg::UpdateMask<int32_t>(sreg);
             DataCopy(dstPtr + repeatTimes * repeatElm * 4, divReg, preg1);
             DataCopy(dstPtr + repeatTimes * repeatElm * 4 + repeatElm, divReg1, preg2);
             DataCopy(dstPtr + repeatTimes * repeatElm * 4 + repeatElm * 2, divReg2, preg3);
@@ -790,16 +790,16 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::TransOutput(__local_mem__ uint32_
     LocalTensor<uint32_t> multipDim = multipDimUb.Get<uint32_t>();
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::MaskReg preg;
-        AscendC::MicroAPI::RegTensor<uint32_t> srcReg, divReg1, divReg, shape12Reg, shape2Reg, mReg, divReg0;
-        AscendC::MicroAPI::RegTensor<uint32_t> mulReg, mul2Reg, subReg, idxTransReg, addidxReg, mReg1;
-        AscendC::MicroAPI::RegTensor<int32_t> idxReg;
+        AscendC::Reg::MaskReg preg;
+        AscendC::Reg::RegTensor<uint32_t> srcReg, divReg1, divReg, shape12Reg, shape2Reg, mReg, divReg0;
+        AscendC::Reg::RegTensor<uint32_t> mulReg, mul2Reg, subReg, idxTransReg, addidxReg, mReg1;
+        AscendC::Reg::RegTensor<int32_t> idxReg;
         Duplicate(shape12Reg, multipDim.GetValue(IDX_NUM_0));
         Duplicate(mReg, multipDim.GetValue(IDX_NUM_16));
         int16_t kValue = (int16_t)(multipDim.GetValue(IDX_NUM_8));
-        AscendC::MicroAPI::Arange(idxReg, 0);
+        AscendC::Reg::Arange(idxReg, 0);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
+            preg = AscendC::Reg::UpdateMask<int32_t>(sreg);
             DataCopy(srcReg, srcPtr + i * repeatElmB32);
             // first output
             Mull(divReg0, divReg, srcReg, mReg, preg);
@@ -808,9 +808,9 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::TransOutput(__local_mem__ uint32_
 
             Mul(mulReg, divReg, shape12Reg, preg);
             Sub(subReg, srcReg, mulReg, preg);
-            Muls(idxTransReg, (AscendC::MicroAPI::RegTensor<uint32_t> &)idxReg, shapeDim_, preg);
+            Muls(idxTransReg, (AscendC::Reg::RegTensor<uint32_t> &)idxReg, shapeDim_, preg);
             DataCopyScatter(dstPtr, divReg, idxTransReg, preg);
-            AscendC::MicroAPI::Adds(idxReg, idxReg, repeatElmB32, preg);
+            AscendC::Reg::Adds(idxReg, idxReg, repeatElmB32, preg);
             // middle outputs
             for (uint16_t j = 0; j < loopShape; j++) {
                 Duplicate(shape2Reg, multipDim.GetValue(j + 1));
@@ -884,15 +884,15 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::ComputeOutput(LocalTensor<int32_t
 
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::MaskReg preg;
-        AscendC::MicroAPI::RegTensor<uint32_t> srcReg, subReg, divReg, divReg1, shapeReg0, shape2Reg;
-        AscendC::MicroAPI::RegTensor<uint32_t> mulReg, mReg0, mReg1, divReg0;
-        AscendC::MicroAPI::RegTensor<uint32_t> mul2Reg;
+        AscendC::Reg::MaskReg preg;
+        AscendC::Reg::RegTensor<uint32_t> srcReg, subReg, divReg, divReg1, shapeReg0, shape2Reg;
+        AscendC::Reg::RegTensor<uint32_t> mulReg, mReg0, mReg1, divReg0;
+        AscendC::Reg::RegTensor<uint32_t> mul2Reg;
         Duplicate(shapeReg0, multipDim.GetValue(IDX_NUM_0));
         Duplicate(mReg0, multipDim.GetValue(IDX_NUM_16));
         int16_t kValue = (int16_t)(multipDim.GetValue(IDX_NUM_8));
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
+            preg = AscendC::Reg::UpdateMask<int32_t>(sreg);
             DataCopy(srcReg, srcPtr + i * repeatElmB32_);
             // first output
             Mull(divReg0, divReg, srcReg, mReg0, preg);
@@ -975,18 +975,16 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::CastOutput(LocalTensor<int32_t> &
         uint16_t dstOffsetI = repeatElmB32_;
         __VEC_SCOPE__
         {
-            AscendC::MicroAPI::MaskReg pregTail, pregAll, preg;
-            AscendC::MicroAPI::RegTensor<int32_t> srcReg;
-            AscendC::MicroAPI::RegTensor<int64_t> dstReg;
+            AscendC::Reg::MaskReg pregTail, pregAll, preg;
+            AscendC::Reg::RegTensor<int32_t> srcReg;
+            AscendC::Reg::RegTensor<int64_t> dstReg;
             for (uint16_t j = 0; j < dims; j++) {
                 uint32_t sreg = num * 2;
                 for (uint16_t i = 0; i < repeatTimes; i++) {
-                    preg = AscendC::MicroAPI::UpdateMask<int32_t>(sreg);
-                    AscendC::MicroAPI::AddrReg srcAreg =
-                        AscendC::MicroAPI::CreateAddrReg<uint32_t>(j, srcOffsetJ, i, srcOffsetI);
-                    AscendC::MicroAPI::AddrReg dstAreg =
-                        AscendC::MicroAPI::CreateAddrReg<uint32_t>(j, dstOffsetJ, i, dstOffsetI);
-                    DataCopy<int32_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B32>(srcReg, srcPtr, srcAreg);
+                    preg = AscendC::Reg::UpdateMask<int32_t>(sreg);
+                    AscendC::Reg::AddrReg srcAreg = AscendC::Reg::CreateAddrReg<uint32_t>(j, srcOffsetJ, i, srcOffsetI);
+                    AscendC::Reg::AddrReg dstAreg = AscendC::Reg::CreateAddrReg<uint32_t>(j, dstOffsetJ, i, dstOffsetI);
+                    DataCopy<int32_t, AscendC::Reg::LoadDist::DIST_UNPACK_B32>(srcReg, srcPtr, srcAreg);
                     DataCopy(dstPtr, srcReg, dstAreg, preg);
                 }
             }
@@ -1006,52 +1004,48 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::SqzNonZeroNumB8(int32_t processNu
     int32_t offsetNum = offsetNumSub192 + repeatElmB8;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<T1> xSrcReg;
+        AscendC::Reg::RegTensor<T1> xSrcReg;
         uint32_t sreg = processNum;
-        AscendC::MicroAPI::ClearSpr<SpecialPurposeReg::AR>();
-        AscendC::MicroAPI::MaskReg preg, preg1, cmpReg, pregLower, pregHigher, maskReg1, maskReg2, maskReg3, maskReg4;
-        AscendC::MicroAPI::UnalignReg ureg0;
+        AscendC::Reg::ClearSpr<SpecialPurposeReg::AR>();
+        AscendC::Reg::MaskReg preg, preg1, cmpReg, pregLower, pregHigher, maskReg1, maskReg2, maskReg3, maskReg4;
+        AscendC::Reg::UnalignReg ureg0;
         RegTensor<int32_t> vsqzReg;
         RegTensor<int32_t> idsReg;
-        preg1 = AscendC::MicroAPI::CreateMask<int32_t, AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::Arange(idsReg, startIdx);
+        preg1 = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::Arange(idsReg, startIdx);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<T1>(sreg);
+            preg = AscendC::Reg::UpdateMask<T1>(sreg);
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB8);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
 
-            AscendC::MicroAPI::MaskUnPack<AscendC::MicroAPI::HighLowPart::LOWEST>(pregLower, cmpReg);
-            AscendC::MicroAPI::MaskUnPack<AscendC::MicroAPI::HighLowPart::LOWEST>(maskReg1, pregLower);
-            AscendC::MicroAPI::MaskUnPack<AscendC::MicroAPI::HighLowPart::HIGHEST>(maskReg2, pregLower);
+            AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::LOWEST>(pregLower, cmpReg);
+            AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::LOWEST>(maskReg1, pregLower);
+            AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(maskReg2, pregLower);
 
-            AscendC::MicroAPI::MaskUnPack<AscendC::MicroAPI::HighLowPart::HIGHEST>(pregHigher, cmpReg);
-            AscendC::MicroAPI::MaskUnPack<AscendC::MicroAPI::HighLowPart::LOWEST>(maskReg3, pregHigher);
-            AscendC::MicroAPI::MaskUnPack<AscendC::MicroAPI::HighLowPart::HIGHEST>(maskReg4, pregHigher);
+            AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(pregHigher, cmpReg);
+            AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::LOWEST>(maskReg3, pregHigher);
+            AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(maskReg4, pregHigher);
 
-            AscendC::MicroAPI::GatherMask<int32_t, MicroAPI::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg1);
-            AscendC::MicroAPI::DataCopyUnAlign<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg1);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
-            AscendC::MicroAPI::Adds(idsReg, idsReg, offsetNum64, preg1);
-            AscendC::MicroAPI::GatherMask<int32_t, MicroAPI::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg2);
-            AscendC::MicroAPI::DataCopyUnAlign<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::Adds(idsReg, idsReg, offsetNum64, preg1);
+            AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg2);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
-            AscendC::MicroAPI::Adds(idsReg, idsReg, offsetNum64, preg1);
-            AscendC::MicroAPI::GatherMask<int32_t, MicroAPI::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg3);
-            AscendC::MicroAPI::DataCopyUnAlign<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::Adds(idsReg, idsReg, offsetNum64, preg1);
+            AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg3);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
-            AscendC::MicroAPI::Adds(idsReg, idsReg, offsetNum64, preg1);
-            AscendC::MicroAPI::GatherMask<int32_t, MicroAPI::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg4);
-            AscendC::MicroAPI::DataCopyUnAlign<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::Adds(idsReg, idsReg, offsetNum64, preg1);
+            AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskReg4);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
-            AscendC::MicroAPI::Adds(idsReg, idsReg, offsetNum, preg1);
+            AscendC::Reg::Adds(idsReg, idsReg, offsetNum, preg1);
         }
-        AscendC::MicroAPI::DataCopyUnAlignPost(yUbPtr, ureg0);
+        AscendC::Reg::DataCopyUnAlignPost(yUbPtr, ureg0);
     }
-    arNum_ = (AscendC::MicroAPI::GetSpr<SpecialPurposeReg::AR>()) / 4;
+    arNum_ = (AscendC::Reg::GetSpr<SpecialPurposeReg::AR>()) / 4;
 }
 
 template <typename T1, typename T2>
@@ -1065,37 +1059,35 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::SqzNonZeroNumB16(int32_t processN
     int32_t offsetNum = repeatElmB16_ - OFFSET_NUM_64;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<T1> xSrcReg;
+        AscendC::Reg::RegTensor<T1> xSrcReg;
         uint32_t sreg = processNum;
-        AscendC::MicroAPI::ClearSpr<SpecialPurposeReg::AR>();
-        AscendC::MicroAPI::MaskReg preg, preg1, cmpReg, pregLower, pregHigher;
-        MicroAPI::UnalignReg ureg0;
+        AscendC::Reg::ClearSpr<SpecialPurposeReg::AR>();
+        AscendC::Reg::MaskReg preg, preg1, cmpReg, pregLower, pregHigher;
+        Reg::UnalignReg ureg0;
         RegTensor<int32_t> vsqzReg;
         RegTensor<int32_t> idsReg;
-        preg1 = AscendC::MicroAPI::CreateMask<int32_t, AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::Arange(idsReg, startIdx);
+        preg1 = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::Arange(idsReg, startIdx);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<T1>(sreg);
+            preg = AscendC::Reg::UpdateMask<T1>(sreg);
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB16_);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
 
-            AscendC::MicroAPI::MaskUnPack<AscendC::MicroAPI::HighLowPart::LOWEST>(pregLower, cmpReg);
-            AscendC::MicroAPI::MaskUnPack<AscendC::MicroAPI::HighLowPart::HIGHEST>(pregHigher, cmpReg);
+            AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::LOWEST>(pregLower, cmpReg);
+            AscendC::Reg::MaskUnPack<AscendC::Reg::HighLowPart::HIGHEST>(pregHigher, cmpReg);
 
-            AscendC::MicroAPI::GatherMask<int32_t, MicroAPI::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, pregLower);
-            AscendC::MicroAPI::DataCopyUnAlign<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, pregLower);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
-            AscendC::MicroAPI::Adds(idsReg, idsReg, offsetNum64, preg1);
-            AscendC::MicroAPI::GatherMask<int32_t, MicroAPI::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, pregHigher);
-            AscendC::MicroAPI::DataCopyUnAlign<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::Adds(idsReg, idsReg, offsetNum64, preg1);
+            AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, pregHigher);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
-            AscendC::MicroAPI::Adds(idsReg, idsReg, offsetNum, preg1);
+            AscendC::Reg::Adds(idsReg, idsReg, offsetNum, preg1);
         }
-        AscendC::MicroAPI::DataCopyUnAlignPost(yUbPtr, ureg0);
+        AscendC::Reg::DataCopyUnAlignPost(yUbPtr, ureg0);
     }
-    arNum_ = (AscendC::MicroAPI::GetSpr<SpecialPurposeReg::AR>()) / 4;
+    arNum_ = (AscendC::Reg::GetSpr<SpecialPurposeReg::AR>()) / 4;
 }
 
 template <typename T1, typename T2>
@@ -1107,27 +1099,26 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::SqzNonZeroNumB32(int32_t processN
     int32_t repeatElmB32 = repeatElmB32_;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<T1> xSrcReg;
+        AscendC::Reg::RegTensor<T1> xSrcReg;
         uint32_t sreg = processNum;
-        AscendC::MicroAPI::ClearSpr<SpecialPurposeReg::AR>();
-        AscendC::MicroAPI::MaskReg preg, preg1, cmpReg;
-        MicroAPI::UnalignReg ureg0;
+        AscendC::Reg::ClearSpr<SpecialPurposeReg::AR>();
+        AscendC::Reg::MaskReg preg, preg1, cmpReg;
+        Reg::UnalignReg ureg0;
         RegTensor<int32_t> vsqzReg;
         RegTensor<int32_t> idsReg;
-        preg1 = AscendC::MicroAPI::CreateMask<int32_t, AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::Arange(idsReg, startIdx);
+        preg1 = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::Arange(idsReg, startIdx);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<T1>(sreg);
+            preg = AscendC::Reg::UpdateMask<T1>(sreg);
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB32);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
-            AscendC::MicroAPI::GatherMask<int32_t, MicroAPI::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, cmpReg);
-            AscendC::MicroAPI::DataCopyUnAlign<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
-            AscendC::MicroAPI::Adds(idsReg, idsReg, repeatElmB32, preg1);
+            AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, cmpReg);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
+            AscendC::Reg::Adds(idsReg, idsReg, repeatElmB32, preg1);
         }
-        AscendC::MicroAPI::DataCopyUnAlignPost(yUbPtr, ureg0);
+        AscendC::Reg::DataCopyUnAlignPost(yUbPtr, ureg0);
     }
-    arNum_ = (AscendC::MicroAPI::GetSpr<SpecialPurposeReg::AR>()) / 4;
+    arNum_ = (AscendC::Reg::GetSpr<SpecialPurposeReg::AR>()) / 4;
 }
 
 template <typename T1, typename T2>
@@ -1139,30 +1130,29 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::SqzNonZeroNumB64(int32_t processN
     int32_t repeatElmB64 = repeatElmB64_;
     __VEC_SCOPE__
     {
-        AscendC::MicroAPI::RegTensor<T1> xSrcReg;
+        AscendC::Reg::RegTensor<T1> xSrcReg;
         uint32_t sreg = processNum;
-        AscendC::MicroAPI::ClearSpr<SpecialPurposeReg::AR>();
-        AscendC::MicroAPI::MaskReg preg, preg1, cmpReg;
-        MicroAPI::UnalignReg ureg0;
+        AscendC::Reg::ClearSpr<SpecialPurposeReg::AR>();
+        AscendC::Reg::MaskReg preg, preg1, cmpReg;
+        Reg::UnalignReg ureg0;
         RegTensor<int32_t> vsqzReg;
         RegTensor<int32_t> idsReg;
-        preg1 = AscendC::MicroAPI::CreateMask<int32_t, AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::Arange(idsReg, startIdx);
+        preg1 = AscendC::Reg::CreateMask<int32_t, AscendC::Reg::MaskPattern::ALL>();
+        AscendC::Reg::Arange(idsReg, startIdx);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<T1>(sreg);
+            preg = AscendC::Reg::UpdateMask<T1>(sreg);
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB64);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
-            AscendC::MicroAPI::MaskReg maskHalf;
-            AscendC::MicroAPI::MaskPack<MicroAPI::HighLowPart::LOWEST>(maskHalf, cmpReg);
-            AscendC::MicroAPI::GatherMask<int32_t, MicroAPI::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskHalf);
-            AscendC::MicroAPI::DataCopyUnAlign<int32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg,
-                                                                                                 ureg0);
+            AscendC::Reg::MaskReg maskHalf;
+            AscendC::Reg::MaskPack<Reg::HighLowPart::LOWEST>(maskHalf, cmpReg);
+            AscendC::Reg::GatherMask<int32_t, Reg::GatherMaskMode::STORE_REG>(vsqzReg, idsReg, maskHalf);
+            AscendC::Reg::DataCopyUnAlign<int32_t, Reg::PostLiteral::POST_MODE_UPDATE>(yUbPtr, vsqzReg, ureg0);
 
-            AscendC::MicroAPI::Adds(idsReg, idsReg, repeatElmB64, preg1);
+            AscendC::Reg::Adds(idsReg, idsReg, repeatElmB64, preg1);
         }
-        AscendC::MicroAPI::DataCopyUnAlignPost(yUbPtr, ureg0);
+        AscendC::Reg::DataCopyUnAlignPost(yUbPtr, ureg0);
     }
-    arNum_ = (AscendC::MicroAPI::GetSpr<SpecialPurposeReg::AR>()) / 4;
+    arNum_ = (AscendC::Reg::GetSpr<SpecialPurposeReg::AR>()) / 4;
 }
 
 template <typename T1, typename T2>
@@ -1175,30 +1165,30 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::GetNonZeroNumB8(int32_t processNu
     __VEC_SCOPE__
     {
         uint32_t sreg = processNum;
-        AscendC::MicroAPI::MaskReg preg, cmpReg, addComReg;
-        AscendC::MicroAPI::RegTensor<T1> xSrcReg;
-        AscendC::MicroAPI::RegTensor<int8_t> src1Reg, src0Reg, selectReg;
-        AscendC::MicroAPI::RegTensor<int16_t> uint16Reg0, uint16Reg1;
-        AscendC::MicroAPI::RegTensor<int32_t> dstReg, addReg, uint32Reg0, uint32Reg1, uint32Reg2, uint32Reg3;
-        AscendC::MicroAPI::UnalignReg u0;
+        AscendC::Reg::MaskReg preg, cmpReg, addComReg;
+        AscendC::Reg::RegTensor<T1> xSrcReg;
+        AscendC::Reg::RegTensor<int8_t> src1Reg, src0Reg, selectReg;
+        AscendC::Reg::RegTensor<int16_t> uint16Reg0, uint16Reg1;
+        AscendC::Reg::RegTensor<int32_t> dstReg, addReg, uint32Reg0, uint32Reg1, uint32Reg2, uint32Reg3;
+        AscendC::Reg::UnalignReg u0;
         Duplicate(src1Reg, (uint8_t)1);
         Duplicate(src0Reg, (uint8_t)0);
         Duplicate(addReg, (int32_t)0);
-        addComReg = AscendC::MicroAPI::UpdateMask<int32_t>(addMask);
+        addComReg = AscendC::Reg::UpdateMask<int32_t>(addMask);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<T1>(sreg);
+            preg = AscendC::Reg::UpdateMask<T1>(sreg);
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB8_);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
             Select(selectReg, src1Reg, src0Reg, cmpReg);
 
-            UnPack<int16_t, int8_t, AscendC::MicroAPI::HighLowPart::LOWEST>(uint16Reg0, selectReg);
-            UnPack<int32_t, int16_t, AscendC::MicroAPI::HighLowPart::LOWEST>(uint32Reg0, uint16Reg0);
-            UnPack<int32_t, int16_t, AscendC::MicroAPI::HighLowPart::HIGHEST>(uint32Reg1, uint16Reg0);
+            UnPack<int16_t, int8_t, AscendC::Reg::HighLowPart::LOWEST>(uint16Reg0, selectReg);
+            UnPack<int32_t, int16_t, AscendC::Reg::HighLowPart::LOWEST>(uint32Reg0, uint16Reg0);
+            UnPack<int32_t, int16_t, AscendC::Reg::HighLowPart::HIGHEST>(uint32Reg1, uint16Reg0);
             Add(uint32Reg0, uint32Reg0, uint32Reg1, addComReg);
 
-            UnPack<int16_t, int8_t, AscendC::MicroAPI::HighLowPart::HIGHEST>(uint16Reg1, selectReg);
-            UnPack<int32_t, int16_t, AscendC::MicroAPI::HighLowPart::LOWEST>(uint32Reg2, uint16Reg1);
-            UnPack<int32_t, int16_t, AscendC::MicroAPI::HighLowPart::HIGHEST>(uint32Reg3, uint16Reg1);
+            UnPack<int16_t, int8_t, AscendC::Reg::HighLowPart::HIGHEST>(uint16Reg1, selectReg);
+            UnPack<int32_t, int16_t, AscendC::Reg::HighLowPart::LOWEST>(uint32Reg2, uint16Reg1);
+            UnPack<int32_t, int16_t, AscendC::Reg::HighLowPart::HIGHEST>(uint32Reg3, uint16Reg1);
             Add(uint32Reg2, uint32Reg2, uint32Reg3, addComReg);
 
             Add(addReg, addReg, uint32Reg0, addComReg);
@@ -1206,7 +1196,7 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::GetNonZeroNumB8(int32_t processNu
         }
         ReduceSum(dstReg, addReg, addComReg);
         DataCopyUnAlign(dstUbPtr, dstReg, u0, 1);
-        AscendC::MicroAPI::DataCopyUnAlignPost(dstUbPtr, u0, 0);
+        AscendC::Reg::DataCopyUnAlignPost(dstUbPtr, u0, 0);
     }
 }
 
@@ -1220,29 +1210,29 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::GetNonZeroNumB16(int32_t processN
     __VEC_SCOPE__
     {
         uint32_t sreg = processNum;
-        AscendC::MicroAPI::MaskReg preg, cmpReg, addComReg;
-        AscendC::MicroAPI::RegTensor<T1> xSrcReg;
-        AscendC::MicroAPI::RegTensor<int16_t> src1Reg, src0Reg, selectReg;
-        AscendC::MicroAPI::RegTensor<int32_t> dstReg, addReg, uint32Reg0, uint32Reg1;
-        AscendC::MicroAPI::UnalignReg u0;
+        AscendC::Reg::MaskReg preg, cmpReg, addComReg;
+        AscendC::Reg::RegTensor<T1> xSrcReg;
+        AscendC::Reg::RegTensor<int16_t> src1Reg, src0Reg, selectReg;
+        AscendC::Reg::RegTensor<int32_t> dstReg, addReg, uint32Reg0, uint32Reg1;
+        AscendC::Reg::UnalignReg u0;
         Duplicate(src1Reg, (uint16_t)1);
         Duplicate(src0Reg, (uint16_t)0);
         Duplicate(addReg, (int32_t)0);
-        addComReg = AscendC::MicroAPI::UpdateMask<int32_t>(addMask);
+        addComReg = AscendC::Reg::UpdateMask<int32_t>(addMask);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<T1>(sreg);
+            preg = AscendC::Reg::UpdateMask<T1>(sreg);
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB16_);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
             Select(selectReg, src1Reg, src0Reg, cmpReg);
 
-            UnPack<int32_t, int16_t, AscendC::MicroAPI::HighLowPart::LOWEST>(uint32Reg0, selectReg);
+            UnPack<int32_t, int16_t, AscendC::Reg::HighLowPart::LOWEST>(uint32Reg0, selectReg);
             Add(addReg, addReg, uint32Reg0, addComReg);
-            UnPack<int32_t, int16_t, AscendC::MicroAPI::HighLowPart::HIGHEST>(uint32Reg1, selectReg);
+            UnPack<int32_t, int16_t, AscendC::Reg::HighLowPart::HIGHEST>(uint32Reg1, selectReg);
             Add(addReg, addReg, uint32Reg1, addComReg);
         }
         ReduceSum(dstReg, addReg, addComReg);
         DataCopyUnAlign(dstUbPtr, dstReg, u0, 1);
-        AscendC::MicroAPI::DataCopyUnAlignPost(dstUbPtr, u0, 0);
+        AscendC::Reg::DataCopyUnAlignPost(dstUbPtr, u0, 0);
     }
 }
 
@@ -1255,16 +1245,16 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::GetNonZeroNumB32(int32_t processN
     __VEC_SCOPE__
     {
         uint32_t sreg = processNum;
-        AscendC::MicroAPI::MaskReg preg, cmpReg, addComReg;
-        AscendC::MicroAPI::RegTensor<T1> xSrcReg;
-        AscendC::MicroAPI::RegTensor<int32_t> src0Reg, src1Reg, selectReg, dstReg, addReg;
-        AscendC::MicroAPI::UnalignReg u0;
+        AscendC::Reg::MaskReg preg, cmpReg, addComReg;
+        AscendC::Reg::RegTensor<T1> xSrcReg;
+        AscendC::Reg::RegTensor<int32_t> src0Reg, src1Reg, selectReg, dstReg, addReg;
+        AscendC::Reg::UnalignReg u0;
         Duplicate(src1Reg, (int32_t)1);
         Duplicate(src0Reg, (int32_t)0);
         Duplicate(addReg, (int32_t)0);
-        addComReg = AscendC::MicroAPI::UpdateMask<int32_t>(addMask);
+        addComReg = AscendC::Reg::UpdateMask<int32_t>(addMask);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<T1>(sreg);
+            preg = AscendC::Reg::UpdateMask<T1>(sreg);
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB32_);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
             Select(selectReg, src1Reg, src0Reg, cmpReg);
@@ -1272,7 +1262,7 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::GetNonZeroNumB32(int32_t processN
         }
         ReduceSum(dstReg, addReg, addComReg);
         DataCopyUnAlign(dstUbPtr, dstReg, u0, 1);
-        AscendC::MicroAPI::DataCopyUnAlignPost(dstUbPtr, u0, 0);
+        AscendC::Reg::DataCopyUnAlignPost(dstUbPtr, u0, 0);
     }
 }
 
@@ -1285,16 +1275,16 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::GetNonZeroNumB64(int32_t processN
     __VEC_SCOPE__
     {
         uint32_t sreg = processNum;
-        AscendC::MicroAPI::MaskReg preg, cmpReg, addComReg;
-        AscendC::MicroAPI::RegTensor<T1> xSrcReg;
-        AscendC::MicroAPI::RegTensor<int64_t> src0Reg, src1Reg, selectReg, dstReg, addReg;
-        AscendC::MicroAPI::UnalignReg u0;
+        AscendC::Reg::MaskReg preg, cmpReg, addComReg;
+        AscendC::Reg::RegTensor<T1> xSrcReg;
+        AscendC::Reg::RegTensor<int64_t> src0Reg, src1Reg, selectReg, dstReg, addReg;
+        AscendC::Reg::UnalignReg u0;
         Duplicate(src1Reg, (int64_t)1);
         Duplicate(src0Reg, (int64_t)0);
         Duplicate(addReg, (int64_t)0);
-        addComReg = AscendC::MicroAPI::UpdateMask<int64_t>(addMask);
+        addComReg = AscendC::Reg::UpdateMask<int64_t>(addMask);
         for (uint16_t i = 0; i < repeatTimes; i++) {
-            preg = AscendC::MicroAPI::UpdateMask<T1>(sreg);
+            preg = AscendC::Reg::UpdateMask<T1>(sreg);
             DataCopy(xSrcReg, xUbPtr + i * repeatElmB64_);
             CompareScalar<T1, CMPMODE::NE>(cmpReg, xSrcReg, (T1)0, preg);
             Select(selectReg, src1Reg, src0Reg, cmpReg);
@@ -1302,7 +1292,7 @@ __aicore__ inline void NonZeroBigMask<T1, T2>::GetNonZeroNumB64(int32_t processN
         }
         ReduceSum(dstReg, addReg, addComReg);
         DataCopyUnAlign(dstUbPtr, dstReg, u0, 1);
-        AscendC::MicroAPI::DataCopyUnAlignPost(dstUbPtr, u0, 0);
+        AscendC::Reg::DataCopyUnAlignPost(dstUbPtr, u0, 0);
     }
 }
 

@@ -16,9 +16,40 @@
 #define UTIL_REGBASE_MX_H
 
 #include <cstdint>
-#include "../../quant_block_sparse_attn_common.h"
+#include "../../quant_block_sparse_attn_const.h"
 
 namespace regbasemx {
+// Metadata partitions sparse table capacity, which may exceed the physical Q
+// sequence. Always clip a partition end before reading rows or computing tails.
+__aicore__ inline constexpr uint32_t MxS1LoopEnd(uint32_t actualS1Size, uint32_t blockSize, uint32_t metadataEnd)
+{
+    const uint32_t rows = actualS1Size / blockSize + (actualS1Size % blockSize != 0U);
+    return metadataEnd != 0U && metadataEnd < rows ? metadataEnd : rows;
+}
+
+// tokenBase is cu_seqlens_q[b] for TND, b * physical Sq for padded layouts.
+// Return the token/head slot; multiply by D, Dv or scale width at the call site.
+template <QBSALayout layout>
+__aicore__ inline constexpr uint64_t MxQuerySlot(uint64_t tokenBase, uint32_t s, uint32_t n, uint32_t heads,
+                                                 uint32_t sq)
+{
+    if constexpr (layout == QBSALayout::BNSD) {
+        return tokenBase * heads + static_cast<uint64_t>(n) * sq + s;
+    } else {
+        return (tokenBase + s) * heads + n;
+    }
+}
+
+template <QBSALayout layout>
+__aicore__ inline constexpr uint64_t MxLseSlot(uint64_t tokenBase, uint32_t s, uint32_t n, uint32_t heads, uint32_t sq)
+{
+    if constexpr (layout == QBSALayout::BSND || layout == QBSALayout::BNSD) {
+        return tokenBase * heads + static_cast<uint64_t>(n) * sq + s;
+    } else {
+        return (tokenBase + s) * heads + n;
+    }
+}
+
 constexpr uint32_t QBSA_MX_SCALE_LAST_DIM = 2U;
 constexpr uint32_t QBSA_MX_S2_BASE_SIZE = 512U;
 constexpr uint32_t QBSA_MX_MIN_KV_BLOCK_SIZE = 64U;
@@ -80,6 +111,9 @@ struct MxBaseConstInfo {
     uint32_t coreNum = 0U;
     uint32_t aicIdx = 0U;
     uint8_t subBlockIdx = 0U;
+    uint32_t qSeqSize = 0U;
+    uint32_t queryRowStride = 0U;
+    uint32_t queryScaleRowStride = 0U;
     uint32_t n2GD = 0U;
     uint32_t qScaleN1D = 0U;
     // PA BNBD scale 中单个 kv head 的 stride。

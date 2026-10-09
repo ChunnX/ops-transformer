@@ -1216,7 +1216,7 @@ TEST_F(MoeDistributeDispatchArch22TilingTest, A5GlobalBsNonZero)
          {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"global_bs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
          {"expert_token_nums_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}},
-        &compileInfo, "Ascend950", coreNum, ubSize);
+        &compileInfo, "3510", coreNum, ubSize);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, kSkipTilingKeyCheck);
 }

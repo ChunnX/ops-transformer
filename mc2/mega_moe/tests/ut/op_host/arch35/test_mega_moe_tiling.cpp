@@ -598,6 +598,29 @@ static void RunA8W4FormatCase(ge::Format weightOneFormat, ge::Format weightTwoFo
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedStatus, expectedTilingKey);
+    if (expectedStatus != ge::GRAPH_SUCCESS) {
+        return;
+    }
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+    TilingInfo tilingInfo;
+    const bool tilingSucceeded = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+    ASSERT_TRUE(tilingSucceeded);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
+    MegaMoeTilingData tilingData{};
+    std::memcpy(&tilingData, tilingInfo.tilingData.get(), sizeof(tilingData));
+    const auto &layout = tilingData.a8w4L1Layout;
+    EXPECT_EQ(layout.aBufferNum, 3U);
+    EXPECT_EQ(layout.bBufferNum, 4U);
+    EXPECT_EQ(layout.tileK, 256U);
+    EXPECT_EQ(layout.scaleK, 2048U);
+    const uint64_t expectedBOffsets[] = {192U * 1024, 320U * 1024, 256U * 1024, 384U * 1024};
+    for (uint64_t slot = 0; slot < 4U; ++slot) {
+        EXPECT_EQ(layout.bOffsets[slot], expectedBOffsets[slot]);
+    }
+    EXPECT_EQ(layout.aOffsets[2] + layout.aSlotBytes, layout.bOffsets[0]);
+    EXPECT_EQ(layout.scaleAOffsets[0], 448U * 1024);
+    EXPECT_EQ(layout.scaleBOffsets[1] + layout.scaleBSlotBytes, 512U * 1024);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_A8W4_URMA)

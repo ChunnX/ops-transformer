@@ -82,14 +82,14 @@ fi
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 REPO_NAME=$(basename "$REPO_ROOT")
 OAT_REPORT_DIR="${TMPDIR:-/tmp}/oat_reports_$$"
-OAT_RESULT_DIR="$REPO_ROOT/oat_reports"
+OAT_RESULT_DIR="$REPO_ROOT/pre-commit_reports"
 
 # ---------------------------------------------------------------------------
 # 2a. PR-range deduplication (pure git, no CI env vars required)
 #
 #  Strategy:
 #   1. Find the merge-base between HEAD and the upstream branch (origin/master
-#      or similar). If found, this is a feature-branch context ??collect ALL
+#      or similar). If found, this is a feature-branch context →collect ALL
 #      files changed since the branch diverged (full PR diff).
 #   2. Key a done-marker on the HEAD SHA. The first invocation runs the scan;
 #      every subsequent invocation for the same HEAD exits 0 immediately.
@@ -134,7 +134,8 @@ if [ -n "$_HEAD_SHA" ]; then
     if [ -n "$_PR_MERGE_BASE" ] && [ "$_PR_MERGE_BASE" != "$(git rev-parse HEAD 2>/dev/null)" ]; then
         mkdir -p "$OAT_RESULT_DIR"
         _DONE_MARKER="$OAT_RESULT_DIR/.done_${_HEAD_SHA}"
-        if [ -f "$_DONE_MARKER" ]; then
+        # 显式文件清单调用永不跳过（args 模式扫的是 staged 子集，与全量 marker 无关）
+        if [ $# -eq 0 ] && [ -f "$_DONE_MARKER" ]; then
             echo "[OAT] [SKIP] Already scanned HEAD=${_HEAD_SHA}. Skipping duplicate invocation."
             exit 0
         fi
@@ -157,7 +158,8 @@ if command -v flock >/dev/null 2>&1; then
         flock -w 120 9
         # Re-check done marker: if the scanning instance completed normally, skip.
         # If it exited abnormally (no marker), fall through and run the scan ourselves.
-        if [ -n "$_DONE_MARKER" ] && [ -f "$_DONE_MARKER" ]; then
+        # 显式文件清单调用不参与并行去重
+        if [ $# -eq 0 ] && [ -n "$_DONE_MARKER" ] && [ -f "$_DONE_MARKER" ]; then
             echo "[OAT] Scan already completed by another instance. Skipping."
             exit 0
         fi
@@ -167,12 +169,12 @@ if command -v flock >/dev/null 2>&1; then
     # This instance now owns the lock and will run the scan.
 fi
 
-echo "[OAT] Running OAT scan (Python Edition) ??INCREMENTAL MODE"
+echo "[OAT] Running OAT scan (Python Edition) →INCREMENTAL MODE"
 echo "[OAT] Project: $REPO_NAME"
 if [ -n "$_PR_MERGE_BASE" ]; then
-    echo "[OAT] Mode: PR range ??scanning all files changed since merge-base"
+    echo "[OAT] Mode: PR range →scanning all files changed since merge-base"
 else
-    echo "[OAT] Mode: staged files ??scanning only currently staged files"
+    echo "[OAT] Mode: staged files →scanning only currently staged files"
 fi
 
 # ---------------------------------------------------------------------------
@@ -255,33 +257,134 @@ mkdir -p "$OAT_REPORT_DIR"
 mkdir -p "$OAT_RESULT_DIR"
 
 # ---------------------------------------------------------------------------
-# 5. Build oat command ??use OAT.xml if present in repo root
+# 5. Build oat command →use OAT.xml if present in repo root
 # ---------------------------------------------------------------------------
-_OAT_CMD="$_PYTHON -m oat -mode s -s $REPO_ROOT -r $OAT_REPORT_DIR -n $REPO_NAME -w 1 -f $FILE_LIST"
+_OAT_ARGS=(-mode s -s "$REPO_ROOT" -r "$OAT_REPORT_DIR" -n "$REPO_NAME" -w 1)
 
 _OAT_XML="$REPO_ROOT/OAT.xml"
 if [ -f "$_OAT_XML" ]; then
-    _OAT_CMD="$_OAT_CMD -oatconfig $_OAT_XML"
+    _OAT_ARGS+=(-oatconfig "$_OAT_XML")
 fi
 
 # ---------------------------------------------------------------------------
 # 6. Run oat scan
 # ---------------------------------------------------------------------------
-echo ""
-echo "[OAT] Running compliance scan..."
+_MAX_F_LEN=120000
+_SCAN_FAILED=0
+_BATCH_ISSUES=0
+_BATCH_COUNT=0
 
-set +e
-eval "$_OAT_CMD" >/dev/null 2>&1
-_OAT_RC=$?
-set -e
+_run_oat_batch() {
+    echo "[OAT] Running compliance scan..."
+    set +e
+    "$_PYTHON" -m oat "${_OAT_ARGS[@]}" -f "$1" >/dev/null 2>&1
+    _OAT_RC=$?
+    set -e
+    if [ "$_OAT_RC" -ne 0 ] && [ "$_OAT_RC" -ne 1 ]; then
+        echo "[OAT] [ERROR] oat exited with unexpected code $_OAT_RC."
+        _SCAN_FAILED=1
+        return
+    fi
+    if [ "$_OAT_RC" -eq 1 ]; then
+        _BATCH_REPORT="$OAT_REPORT_DIR/PlainReport_${REPO_NAME}.txt"
+        if [ -f "$_BATCH_REPORT" ]; then
+            _BT=$(grep "^Invalid File Type Total Count:" "$_BATCH_REPORT" | grep -oE '[0-9]+' | head -1 || true)
+            _BL=$(grep "^License Header Invalid Total Count:" "$_BATCH_REPORT" | grep -oE '[0-9]+' | head -1 || true)
+            _BATCH_ISSUES=$((_BATCH_ISSUES + ${_BT:-0} + ${_BL:-0}))
+            grep "^Name:" "$_BATCH_REPORT" >> "$OAT_RESULT_DIR/batch_details.txt" 2>/dev/null || true
+        fi
+    fi
+}
 
-if [ "$_OAT_RC" -ne 0 ] && [ "$_OAT_RC" -ne 1 ]; then
+if [ "${#FILE_LIST}" -le "$_MAX_F_LEN" ]; then
     echo ""
-    echo "[OAT] [WARNING] oat exited with unexpected code $_OAT_RC."
-    echo "[OAT] Try re-running manually:"
-    echo "  $_OAT_CMD"
-    echo "[OAT] Skipping OAT check, continuing commit..."
-    exit 0
+    _run_oat_batch "$FILE_LIST"
+else
+    echo ""
+    echo "[OAT] File list exceeds ${_MAX_F_LEN} bytes, scanning in batches..."
+    rm -f "$OAT_RESULT_DIR/batch_details.txt" 2>/dev/null || true
+    _BATCH=""
+    _IFS_BAK="$IFS"
+    IFS=","
+    for _f in $FILE_LIST; do
+        if [ -n "$_BATCH" ]; then
+            _BATCH="$_BATCH,$_f"
+        else
+            _BATCH="$_f"
+        fi
+        if [ "${#_BATCH}" -ge "$_MAX_F_LEN" ]; then
+            _BATCH_COUNT=$((_BATCH_COUNT + 1))
+            echo "[OAT] Batch $_BATCH_COUNT..."
+            _run_oat_batch "$_BATCH"
+            _BATCH=""
+        fi
+    done
+    if [ -n "$_BATCH" ]; then
+        _BATCH_COUNT=$((_BATCH_COUNT + 1))
+        echo "[OAT] Batch $_BATCH_COUNT..."
+        _run_oat_batch "$_BATCH"
+    fi
+    IFS="$_IFS_BAK"
+    echo "[OAT] Scanned in $_BATCH_COUNT batch(es), total issues found: $_BATCH_ISSUES"
+    _OAT_RC=0
+    if [ "$_SCAN_FAILED" -eq 0 ] && [ "$_BATCH_ISSUES" -gt 0 ]; then
+        _OAT_RC=1
+    fi
+fi
+
+if [ "$_SCAN_FAILED" -ne 0 ]; then
+    echo "[OAT] [ERROR] OAT scan execution failed. Blocking commit to prevent silent bypass."
+    echo "[OAT] Try re-running manually with fewer files:"
+    echo "  find <dir> -type f | xargs -n 500 bash scripts/oat_check.sh"
+    rm -rf "$OAT_REPORT_DIR"
+    exit 1
+fi
+
+# Batch mode: use accumulated issue count to decide
+if [ "$_BATCH_COUNT" -gt 1 ] 2>/dev/null; then
+    if [ "$_BATCH_ISSUES" -gt 0 ]; then
+        echo ""
+        echo "===================================================================="
+        echo "  OAT: Compliance issues found (batched scan). Commit blocked."
+        echo "===================================================================="
+        echo ""
+        {
+            echo "==================================="
+            echo "OAT Scan Result Summary"
+            echo "==================================="
+            printf "Scan Time: %s\n" "$(date '+%Y-%m-%d %H:%M:%S')"
+            echo "Project: $REPO_NAME"
+            echo "Files Checked: $FILE_COUNT (in $_BATCH_COUNT batches)"
+            echo ""
+            echo "-----------------------------------"
+            echo "Total Issues Found: $_BATCH_ISSUES"
+            echo "-----------------------------------"
+            if [ -f "$OAT_RESULT_DIR/batch_details.txt" ]; then
+                cat "$OAT_RESULT_DIR/batch_details.txt"
+            fi
+            echo "==================================="
+        } > "$OAT_RESULT_DIR/oat_result.txt"
+        echo "[OAT] Found $_BATCH_ISSUES compliance issue(s) across $_BATCH_COUNT batches."
+        echo "[OAT] Details (also saved to: $OAT_RESULT_DIR/batch_details.txt):"
+        echo "---"
+        cat "$OAT_RESULT_DIR/oat_result.txt"
+        echo "---"
+        echo ""
+        echo "Fix the issues and recommit, or skip with:"
+        echo "  git commit --no-verify"
+        echo ""
+        rm -rf "$OAT_REPORT_DIR"
+        exit 1
+    else
+        echo ""
+        echo "[OAT] [OK] All checks passed ($FILE_COUNT file(s) in $_BATCH_COUNT batches)."
+        if [ $# -eq 0 ] && [ -n "$_DONE_MARKER" ]; then
+            touch "$_DONE_MARKER" 2>/dev/null || true
+            echo "[OAT] Done-marker created: $_DONE_MARKER"
+        fi
+        rm -rf "$OAT_REPORT_DIR"
+        exit 0
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -289,7 +392,7 @@ fi
 #    Only: Invalid File Type + License Header Invalid (no copyright)
 # ---------------------------------------------------------------------------
 REPORT_FILE="$OAT_REPORT_DIR/PlainReport_${REPO_NAME}.txt"
-RESULT_FILE="$OAT_RESULT_DIR/result.txt"
+RESULT_FILE="$OAT_RESULT_DIR/oat_result.txt"
 
 # Section headers used as stop-boundaries when extracting sections
 _ALL_HEADERS="Invalid File Type Total Count:|License Not Compatible Total Count:|License Header Invalid Total Count:|Copyright Header Invalid Total Count:|No License File Total Count:|No Readme.OpenSource Total Count:|No Readme Total Count:|Import Invalid Total Count:|Redundant License File Total Count:|Third Party Software Info Total Count:"
@@ -322,7 +425,9 @@ if [ ! -f "$REPORT_FILE" ]; then
     if [ "$_OAT_RC" -eq 0 ]; then
         # oat exited cleanly with no report: all staged files were filtered out
         echo "[OAT] [OK] All checks passed ($FILE_COUNT file(s) checked)."
-        [ -n "$_DONE_MARKER" ] && touch "$_DONE_MARKER" 2>/dev/null || true
+        if [ $# -eq 0 ] && [ -n "$_DONE_MARKER" ]; then
+            touch "$_DONE_MARKER" 2>/dev/null || true
+        fi
         rm -rf "$OAT_REPORT_DIR"
         exit 0
     else
@@ -332,7 +437,7 @@ if [ ! -f "$REPORT_FILE" ]; then
         echo "[OAT] [ERROR] oat exited with code $_OAT_RC but no report was generated."
         echo "[OAT] This may indicate a disk error or an oat internal bug."
         echo "[OAT] To investigate, run manually:"
-        echo "  $_OAT_CMD"
+        echo "  python3 -m oat -mode s -s <repo> -f <files>"
         echo "[OAT] Blocking commit to prevent silent compliance bypass."
         echo ""
         rm -rf "$OAT_REPORT_DIR"
@@ -340,7 +445,7 @@ if [ ! -f "$REPORT_FILE" ]; then
     fi
 fi
 
-# Parse counts ??use || true to prevent set -e from triggering if grep finds no match
+# Parse counts →use || true to prevent set -e from triggering if grep finds no match
 _INVALID_TYPE=$(grep "^Invalid File Type Total Count:" "$REPORT_FILE" | grep -oE '[0-9]+' | head -1 || true)
 _LICENSE_INVALID=$(grep "^License Header Invalid Total Count:" "$REPORT_FILE" | grep -oE '[0-9]+' | head -1 || true)
 _INVALID_TYPE=${_INVALID_TYPE:-0}
@@ -403,7 +508,8 @@ echo "[OAT] [OK] All checks passed ($FILE_COUNT file(s) checked)."
 echo "[OAT] Summary: cat $RESULT_FILE"
 echo ""
 # Mark scan as done for CI range mode (prevents redundant re-runs on same PR head)
-if [ -n "$_DONE_MARKER" ]; then
+# 仅无参 PR-range 全量扫描才落 marker；args 模式（staged 子集）不得冒充全量覆盖
+if [ $# -eq 0 ] && [ -n "$_DONE_MARKER" ]; then
     touch "$_DONE_MARKER" 2>/dev/null || true
     echo "[OAT] Done-marker created: $_DONE_MARKER"
 fi

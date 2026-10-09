@@ -26,6 +26,7 @@
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
+namespace {
 
 ge::graphStatus QuantCompressorTiling::ConvertRequiredParams(gert::TilingContext &context,
                                                              QuantCompressorContext &quantCompressorContext)
@@ -1111,7 +1112,9 @@ ge::graphStatus QuantCompressorTiling::CheckMultiParaConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
+} // namespace
+
+CMP_EXTERN_C ge::graphStatus TilingQuantCompressorArch35(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantCompressor", "context", "is nullptr"),
@@ -1142,13 +1145,4 @@ CMP_EXTERN_C ge::graphStatus TilingQuantCompressor(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForQuantCompressor(gert::TilingParseContext *const context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(QuantCompressor)
-    .Tiling(TilingQuantCompressor)
-    .TilingParse<QuantCompressorCompileInfo>(TilingPrepareForQuantCompressor);
 } // namespace optiling

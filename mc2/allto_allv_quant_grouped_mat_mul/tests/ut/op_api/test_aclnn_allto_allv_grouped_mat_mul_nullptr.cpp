@@ -557,7 +557,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
               ut_mm_trans_not_contiguous.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
-// Non-contiguous gmmWeight on ASCEND950 (arch35/DAV_3510) → triggers TransGmmWeightTensor +
+// Non-contiguous gmmWeight on A5 (arch35/DAV_3510) → triggers TransGmmWeightTensor +
 // TransGmmWeightScaleTensor(pertensor early return)
 TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMatMulNonContiguousGmmWeightArch35)
 {
@@ -601,7 +601,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ret);
 }
 
-// Non-contiguous mmWeight on ASCEND950 (arch35/DAV_3510) → triggers TransMmWeightOptionalTensor
+// Non-contiguous mmWeight on A5 (arch35/DAV_3510) → triggers TransMmWeightOptionalTensor
 TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMatMulNonContiguousMmWeightArch35)
 {
     TensorDesc gmmX = {{8192, 7168}, ACL_HIFLOAT8, ACL_FORMAT_ND};
@@ -644,7 +644,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ret);
 }
 
-// MX quant with non-contiguous gmmWeight + gmmWeightScale (4D) on ASCEND950 → triggers TransGmmWeightScaleTensor MX
+// MX quant with non-contiguous gmmWeight + gmmWeightScale (4D) on A5 → triggers TransGmmWeightScaleTensor MX
 // path
 TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMatMulMxQuantNonContiguousArch35)
 {
@@ -689,7 +689,7 @@ TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMa
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ret);
 }
 
-// MX quant mm: non-contiguous mmWeight + 3D non-contiguous mmWeightScale on ASCEND950 → triggers
+// MX quant mm: non-contiguous mmWeight + 3D non-contiguous mmWeightScale on A5 → triggers
 // TransMmWeightScaleTensor
 TEST_F(AclnnAlltoAllvQuantGroupedMatMulNullptrTest, aclnnAlltoAllvQuantGroupedMatMulMxQuantMmNonContiguousArch35)
 {

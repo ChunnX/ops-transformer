@@ -30,6 +30,7 @@ class SparseFlashMlaGrad {
     static constexpr bool IS_BSND = SMLAGT::is_bsnd;
     static constexpr uint32_t MODE = SMLAGT::mode;
     static constexpr bool HAS_SEQUSED = SMLAGT::has_seqused;
+    static constexpr bool IS_DETER = SMLAGT::is_deter;
 
 public:
     __aicore__ inline SparseFlashMlaGrad(){};
@@ -53,6 +54,8 @@ private:
     __aicore__ inline void GetTndSeqLen(const int64_t t1Idx, int64_t &bIdx, int32_t &s1Loop);
     __aicore__ inline void GetActualSelCount(const int64_t t1Idx, const int64_t n2Idx, int32_t &curS2Loop);
     __aicore__ inline void ChangeBatchUpdate();
+    __aicore__ inline void DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp);
+    __aicore__ inline int64_t EstimateCoreTaskNum(int64_t coreIdx);
     __aicore__ inline void UpdateUsedSeqLen(int64_t batchIdx);
 
     uint32_t cubeBlockIdx;
@@ -60,6 +63,10 @@ private:
     uint32_t formerCoreNum;
     uint32_t processBS1ByCore;
     uint32_t usedCoreNum;
+    uint32_t formerProcessNNum{0};
+    uint32_t remainProcessNNum{0};
+    int32_t deterAccSeq{0};
+    int32_t maxDeterAccWaves{0};
 
     // shape info
     int64_t dimB;
@@ -140,6 +147,7 @@ private:
     constexpr static uint32_t VEC_WAIT_CUBE_PING = 2;
     constexpr static uint32_t VEC_WAIT_CUBE_PONG = 3;
     constexpr static uint32_t POST_WAIT_CUBE = 4;
+    constexpr static uint32_t DETER_KV_SYNC_FLAG = 5;
 
     // GM_ADDR
     const GM_ADDR cu_seqlens_q;
@@ -154,6 +162,8 @@ private:
     bool hasUsedSeqCmpKV{false};
 
     RunInfo runInfo[2];
+    RunInfo deterAccRunInfo;
+    bool needDeterAcc{false};
 };
 
 template <typename SMLAGT>
@@ -192,10 +202,12 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
 
     formerCoreNum = tilingData->opInfo.formerCoreNum;
     usedCoreNum = tilingData->opInfo.usedCoreNum;
+    formerProcessNNum = tilingData->opInfo.formerCoreProcessNNum;
+    remainProcessNNum = tilingData->opInfo.remainCoreProcessNNum;
     if (cubeBlockIdx < formerCoreNum) {
-        processBS1ByCore = tilingData->opInfo.formerCoreProcessNNum;
+        processBS1ByCore = formerProcessNNum;
     } else {
-        processBS1ByCore = tilingData->opInfo.remainCoreProcessNNum;
+        processBS1ByCore = remainProcessNNum;
     }
 
     selectedCountOffset = tilingData->splitCoreParams.singleN;
@@ -221,6 +233,19 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
         if constexpr (IS_BSND) {
             residual = ((__gm__ int32_t *)this->cmp_residual_kv)[0];
         }
+    }
+
+    if constexpr (IS_DETER) {
+        // 全核 SyncAll 次数对齐：取各 usedCore 的 task 数上界。
+        // Acc-previous：有 pending 才 Acc，不再额外加「首轮空 barrier」（原 maxT+1）。
+        maxDeterAccWaves = 0;
+        for (int64_t coreIdx = 0; coreIdx < static_cast<int64_t>(usedCoreNum); coreIdx++) {
+            int64_t n = EstimateCoreTaskNum(coreIdx);
+            if (n > maxDeterAccWaves) {
+                maxDeterAccWaves = n;
+            }
+        }
+        deterAccSeq = 0;
     }
 }
 
@@ -275,6 +300,9 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
             int64_t taskMod = runInfo[1 - mmPingPongIdx].task & 1;
             CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
             cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+            if constexpr (IS_DETER) {
+                CrossCoreSetFlag<2, PIPE_FIX>(DETER_KV_SYNC_FLAG);
+            }
             CrossCoreSetFlag<2, PIPE_FIX>(POST_WAIT_CUBE);
         }
         FreeEventID();
@@ -285,7 +313,8 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         TPipe pipeVec;
         VecOp<SMLAGT> vecOp;
         vecOp.Init(ori_kv, cmp_kv, attention_out, attention_out_grad, lse, topk_indices, sinks, dsinks, cu_seqlens_q,
-                   cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_softmax_l1_norm, workspace, tilingData, &pipeVec);
+                   cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, cmp_softmax_l1_norm, workspace, tilingData,
+                   &pipeVec);
         SyncAll();
         int64_t task = 0;
         for (int32_t i = 0; i < processBS1ByCore; i++) {
@@ -319,13 +348,25 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
         if (cubeBlockIdx < usedCoreNum && task > 0) {
             CrossCoreWaitFlag<2, PIPE_MTE2>(POST_WAIT_CUBE);
         }
+        if constexpr (IS_DETER) {
+            // 冲刷最后一笔 pending（若有）；无 task 核仅靠下方 pad 对齐到 maxDeterAccWaves
+            if (needDeterAcc) {
+                CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+                DeterAccumulateAfterLocalSync(vecOp);
+            }
+            // former/remain/空核对齐 SyncAll 轮次
+            while (deterAccSeq < maxDeterAccWaves) {
+                needDeterAcc = false;
+                DeterAccumulateAfterLocalSync(vecOp);
+            }
+        }
         vecOp.CopyOutDsinks();
         SyncAll();
         pipeVec.Destroy();
 
         TPipe pipeCast;
         SparseFlashMlaGradPost<T1, TILING_CLASS, true, IS_BSND ? 2 : 3, 0, MODE> opCast;
-        opCast.Init(dq, d_ori_kv, d_cmp_kv, workspace, tilingData, &pipeCast);
+        opCast.Init(dq, d_ori_kv, d_cmp_kv, dsinks, workspace, tilingData, &pipeCast);
         opCast.Process();
     }
 }
@@ -344,6 +385,9 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::CubeCompute(CubeOp<SMLAGT> &c
     CrossCoreSetFlag<2, PIPE_FIX>(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
     CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod == 0 ? CUBE_WAIT_VEC_PONG : CUBE_WAIT_VEC_PING);
     cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+    if constexpr (IS_DETER) {
+        CrossCoreSetFlag<2, PIPE_FIX>(DETER_KV_SYNC_FLAG);
+    }
     SaveLastInfo();
 }
 
@@ -354,6 +398,17 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::VecCompute(VecOp<SMLAGT> &vec
     CrossCoreWaitFlag(taskMod == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
     vecOp.Process(runInfo[mmPingPongIdx]);
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
+
+    if constexpr (IS_DETER) {
+        if (needDeterAcc) {
+            CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+            DeterAccumulateAfterLocalSync(vecOp);
+        }
+        // 调度对本轮 task 的保序累加：cube345 在下一轮 CubeCompute 完成后再执行
+        deterAccRunInfo = runInfo[mmPingPongIdx];
+        deterAccRunInfo.scatterTaskId = deterAccRunInfo.task;
+        needDeterAcc = true;
+    }
     mmPingPongIdx = 1 - mmPingPongIdx;
 }
 
@@ -416,6 +471,7 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::UpdateGmOffset(int64_t task, 
     runInfo[mmPingPongIdx].oriWinEnd = oriWinEnd;
     runInfo[mmPingPongIdx].selectedKGmOffset = selectedKGmOffset;
     runInfo[mmPingPongIdx].selectedVGmOffset = selectedKGmOffset;
+    runInfo[mmPingPongIdx].scatterTaskId = task;
     runInfo[mmPingPongIdx].curS1g = curLoopS1Basic * dimG; // 尾块S1处理
     runInfo[mmPingPongIdx].curS1Basic = curLoopS1Basic;
     runInfo[mmPingPongIdx].oriWinDiagOffset = oriWinDiagOffset;
@@ -525,6 +581,95 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::GetTndSeqLen(const int64_t t1
         }
         s1Loop++;
     }
+}
+
+template <typename SMLAGT>
+__aicore__ inline void SparseFlashMlaGrad<SMLAGT>::DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp)
+{
+    vecOp.PublishDeterAccMeta(needDeterAcc, deterAccRunInfo);
+    CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    vecOp.AccumulateKvDeter();
+    CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    needDeterAcc = false;
+    deterAccSeq++;
+}
+
+template <typename SMLAGT>
+__aicore__ inline int64_t SparseFlashMlaGrad<SMLAGT>::EstimateCoreTaskNum(int64_t coreIdx)
+{
+    int64_t processN = (coreIdx < static_cast<int64_t>(formerCoreNum)) ? formerProcessNNum : remainProcessNNum;
+    if (coreIdx >= static_cast<int64_t>(usedCoreNum) || processN <= 0) {
+        return 0;
+    }
+
+    int64_t tasks = 0;
+    // GetTndSeqLen / GetActualSelCount / ChangeBatchUpdate 会改写下列成员，必须全部 restore
+    int64_t saveB = bIndex;
+    int64_t saveS1 = s1Index;
+    int64_t saveT1 = t1Offset;
+    int64_t saveT2 = t2Offset;
+    int64_t saveT3 = t3Offset;
+    int64_t saveCurS1 = curS1;
+    int64_t saveCurS2 = curS2;
+    int64_t saveCurS3 = curS3;
+    int64_t saveResidual = residual;
+    int64_t saveCurS1Basic = curS1Basic;
+    int64_t saveCurLoopS1Basic = curLoopS1Basic;
+    int64_t saveOriWinStart = oriWinStart;
+    int64_t saveOriWinEnd = oriWinEnd;
+    int64_t saveOriWinDiagOffset = oriWinDiagOffset;
+    int64_t saveCmpDiagOffset = cmpDiagOffset;
+    int64_t saveCurMaxS3 = curMaxS3;
+    int32_t saveOriSelectedCount = oriSelectedCount;
+    int32_t saveCmpSelectedCount = cmpSelectedCount;
+    int32_t saveOriS2Loop = oriS2Loop;
+    int32_t saveCmpS2Loop = cmpS2Loop;
+
+    for (int32_t i = 0; i < processN; i++) {
+        int64_t t1Index = (coreIdx + static_cast<int64_t>(usedCoreNum) * i) * s1BasicSize;
+        int64_t bIdxLocal = 0;
+        int32_t s1LoopLocal = 0;
+        GetTndSeqLen(t1Index, bIdxLocal, s1LoopLocal);
+        bIndex = bIdxLocal;
+        int32_t s1BasicAccum = 0;
+        for (int32_t j = 0; j < s1LoopLocal; j++) {
+            bool changeB = s1Index + (curS1Basic - s1BasicAccum) > curS1;
+            curLoopS1Basic = changeB ? curS1 - s1Index : (curS1Basic - s1BasicAccum);
+            for (int64_t n2 = 0; n2 < dimN2; n2++) {
+                int32_t s2LoopLocal = 0;
+                GetActualSelCount(t1Index, n2, s2LoopLocal);
+                tasks += s2LoopLocal;
+            }
+            s1BasicAccum += curLoopS1Basic;
+            if (changeB) {
+                ChangeBatchUpdate();
+            }
+        }
+    }
+
+    bIndex = saveB;
+    s1Index = saveS1;
+    t1Offset = saveT1;
+    t2Offset = saveT2;
+    t3Offset = saveT3;
+    curS1 = saveCurS1;
+    curS2 = saveCurS2;
+    curS3 = saveCurS3;
+    residual = saveResidual;
+    curS1Basic = saveCurS1Basic;
+    curLoopS1Basic = saveCurLoopS1Basic;
+    oriWinStart = saveOriWinStart;
+    oriWinEnd = saveOriWinEnd;
+    oriWinDiagOffset = saveOriWinDiagOffset;
+    cmpDiagOffset = saveCmpDiagOffset;
+    curMaxS3 = saveCurMaxS3;
+    oriSelectedCount = saveOriSelectedCount;
+    cmpSelectedCount = saveCmpSelectedCount;
+    oriS2Loop = saveOriS2Loop;
+    cmpS2Loop = saveCmpS2Loop;
+    return tasks;
 }
 
 template <typename SMLAGT>

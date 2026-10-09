@@ -41,7 +41,7 @@ constexpr uint32_t COMM_PAIRWISE = (COMM_MESH << 3U);
 constexpr uint32_t COMM_UNDEFINED = 0xFFFFFFFFU;
 constexpr uint8_t COMM_ALG_FULL_MESH_HOST = 6;
 constexpr uint64_t CHECK_VALUE_ODD = 2;
-constexpr uint32_t AIC_NUM_950 = 32;
+constexpr uint32_t AIC_NUM_A5 = 32;
 constexpr uint64_t MC2_TILINGKEY_OFFSET = uint64_t(1000000000000000000UL); // 10^18
 constexpr size_t RES_LEN = 64;
 constexpr size_t MAX_MSG_NUM = 16;
@@ -275,13 +275,13 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
     return ge::GRAPH_SUCCESS;
 }
 
-// 临时判断是否为标卡4p形态(4卡，950)
+// 临时判断是否为标卡4p形态(4卡，A5)
 inline bool IsStandardCard4P(const uint32_t rankDim, const NpuArch npuArch)
 {
     return ((rankDim == STANDARD_CARD_4P) && (npuArch == Ops::Base::DAV_3510));
 }
 
-// 判断是否为8P形态(8卡，950)
+// 判断是否为8P形态(8卡，A5)
 inline bool Is8P(const uint32_t rankDim, const NpuArch npuArch)
 {
     return ((rankDim == EIGHT_P_8P) && (npuArch == Ops::Base::DAV_3510));
