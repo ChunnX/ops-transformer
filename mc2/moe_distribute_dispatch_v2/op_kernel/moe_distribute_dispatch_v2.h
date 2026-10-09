@@ -48,6 +48,8 @@ using namespace Mc2Aclnn;
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
 constexpr CumSumConfig SET_EXPERT_TOKEN_NUMS_CUMSUM_CONFIG{true, false, false,
                                                            CumSumAlgorithm::CUMSUM_ALGORITHM_LINEBYLINE};
+constexpr uint32_t UB_ALIGN_INT32_NUM = UB_ALIGN / sizeof(int32_t);
+constexpr uint32_t SET_TOKEN_NUMS_BLOCK_COUNT_LIMIT = 4095U;
 #endif
 template <TemplateDispatchV2TypeClass>
 class MoeDistributeDispatchV2 {
@@ -1614,13 +1616,19 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1U : moeExpertNumPerRank_;
     uint32_t localStatusSectionNum = localExpertNum * epWorldSize_;
     expertCountTensor_ = gatherMaskOutBuf_.Get<float>();
-    DataCopyPadExtParams<float> countCopyPadParams{false, 0U, 0U, 0.0f};
-    DataCopyExtParams countCopyParams{static_cast<uint16_t>(localStatusSectionNum), sizeof(float),
-                                      STATE_OFFSET - sizeof(float), 0U, 0U};
-    DataCopyPad<float, PaddingMode::Compact>(expertCountTensor_,
-                                             windowInstatusFp32Tensor_[STATUS_BLOCK_COUNT_FIELD_OFFSET],
-                                             countCopyParams, countCopyPadParams);
+    LocalTensor<float> allStatusTensorFp32 = statusBuf_.Get<float>();
+    uint32_t copiedBlockNum = 0U;
+    while (copiedBlockNum < localStatusSectionNum) {
+        uint32_t chunkBlockNum = localStatusSectionNum - copiedBlockNum;
+        chunkBlockNum = chunkBlockNum > SET_TOKEN_NUMS_BLOCK_COUNT_LIMIT ? SET_TOKEN_NUMS_BLOCK_COUNT_LIMIT
+                                                                         : chunkBlockNum;
+        DataCopyParams allBlockCopyParams{static_cast<uint16_t>(chunkBlockNum), 1, 0, 0};
+        DataCopy(allStatusTensorFp32[copiedBlockNum * UB_ALIGN_INT32_NUM],
+                 windowInstatusFp32Tensor_[copiedBlockNum * UB_ALIGN_INT32_NUM], allBlockCopyParams);
+        copiedBlockNum += chunkBlockNum;
+    }
     SyncFunc<AscendC::HardEvent::MTE2_V>();
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
 
     expertTokenNumTensor_ = statusBuf_.Get<float>();
     uint32_t statusBufSize = statusBuf_.Get<uint8_t>().GetSize();
@@ -1628,16 +1636,22 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::SetE
     if (useCumSum) {
         expertTokenNumTensor_ = tokenNumBuf_.Get<float>();
     }
-    uint32_t expertCountShape[] = {localExpertNum, epWorldSize_};
-    ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(expertTokenNumTensor_, expertCountTensor_, expertCountShape,
-                                                         false);
+    LocalTensor<int32_t> statusBlocksTensor = allStatusTensorFp32.ReinterpretCast<int32_t>();
+    LocalTensor<int32_t> expertTokenNumInt32Tensor = expertTokenNumTensor_.ReinterpretCast<int32_t>();
+    for (uint32_t localExpertIdx = 0; localExpertIdx < localExpertNum; ++localExpertIdx) {
+        int32_t expertTokenNum = 0;
+        for (uint32_t rankIdx = 0; rankIdx < epWorldSize_; ++rankIdx) {
+            expertTokenNum += statusBlocksTensor.GetValue(
+                (localExpertIdx * epWorldSize_ + rankIdx) * UB_ALIGN_INT32_NUM + STATUS_BLOCK_COUNT_FIELD_OFFSET);
+        }
+        expertTokenNumInt32Tensor.SetValue(localExpertIdx, expertTokenNum);
+    }
+    SyncFunc<AscendC::HardEvent::S_V>();
 
     expertTokenNumsLocalTensor_ = tokenNumBuf_.Get<int64_t>();
     DataCopyExtParams expertTokenNumsCopyParams{1U, static_cast<uint32_t>(localExpertNum * sizeof(int64_t)), 0U, 0U,
                                                 0U};
-    LocalTensor<int32_t> expertTokenNumInt32Tensor = expertTokenNumTensor_.ReinterpretCast<int32_t>();
     if (expertTokenNumsType_ != 0) {
-        PipeBarrier<PIPE_V>();
         Cast(expertTokenNumsLocalTensor_, expertTokenNumInt32Tensor, RoundMode::CAST_NONE, localExpertNum);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         DataCopyPad(expertTokenNumsOutGMTensor_, expertTokenNumsLocalTensor_, expertTokenNumsCopyParams);
