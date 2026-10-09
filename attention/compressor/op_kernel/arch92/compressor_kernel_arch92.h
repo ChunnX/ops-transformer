@@ -31,7 +31,8 @@ namespace Compressor {
 template <typename COMP, bool IS_FULL_LOAD = false>
 class CompressorKernel {
 public:
-    __aicore__ inline CompressorKernel(TPipe* pipe, const optiling::CompressorTilingData* __restrict tilingData)
+    __aicore__ inline CompressorKernel(TPipe* pipe,
+                                       __tiling_data_ptr__ optiling::CompressorTilingData* __restrict tilingData)
         : pipe_(pipe),
           tilingData_(tilingData)
     {}
@@ -93,7 +94,7 @@ private:
 
     // ==============================TilingData&TPipe==============================
     TPipe* pipe_;
-    const optiling::CompressorTilingData* __restrict tilingData_;
+    __tiling_data_ptr__ optiling::CompressorTilingData* __restrict tilingData_;
     // ===========================Workspace Global Tensor===========================
     GlobalTensor<MM1_OUT_T> mm1KvResGm;
     GlobalTensor<MM1_OUT_T> mm1ScoreResGm;
@@ -164,7 +165,7 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::Init(
         loopTimes = GetLoopTimes();
     } else {
         // 2. FULL_LOAD整块加载, 主循环只跑一次
-        loopTimes = constInfo.mLoopNum;
+        loopTimes = 1;
     }
     // 4. 初始化workspace
     InitWorkspace(workspace);
@@ -233,24 +234,32 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::SplitK()
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
     if (constInfo.dBasicBlockNum * mBaseNum < constInfo.usedCoreNum &&
         constInfo.batchConsistency != BATCH_CONSISTENCY) {
-        constInfo.kBaseNum = constInfo.usedCoreNum / constInfo.dBasicBlockNum;
+        constInfo.kBaseNum = constInfo.coreGroupNum / mBaseNum;
         uint32_t kAlignSize = CeilDivT(
             Align(constInfo.hSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T))), constInfo.kBaseNum);
         constInfo.kBaseSize = Trunc(kAlignSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T)));
-        // 当切m轴无法满足开满核时，不切m轴(切m处理有点复杂)
-        constInfo.mGroupNum = 1;    // 在m轴处理上所有核当一个组
+        constInfo.mGroupNum = mBaseNum;
+        constInfo.mCurGroupIdx = constInfo.curGroupIdx / constInfo.kBaseNum;
+    } else if (mBaseNum > constInfo.coreGroupNum) {
+        constInfo.kBaseNum = constInfo.coreGroupNum;
+        uint32_t kAlignSize = CeilDivT(
+            Align(constInfo.hSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T))), constInfo.kBaseNum);
+        constInfo.kBaseSize = Trunc(kAlignSize, static_cast<uint32_t>(BUFFER_SIZE_BYTE_32B / sizeof(X_T)));
+        constInfo.mGroupNum = 1;
         constInfo.mCurGroupIdx = 0; // 只有一个组
     }
     // 每轮固定不变，预计算后主循环直接复用
     if (constInfo.kBaseNum > 1) {
-        kStartIdx_ = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
-        if (constInfo.curGroupIdx + 1 < constInfo.coreGroupNum) {
+        kStartIdx_ = constInfo.curGroupIdx % constInfo.kBaseNum;
+        if (kStartIdx_ + 1 < constInfo.kBaseNum) {
             dealKSize_ = constInfo.kBaseSize;
-            hStart_ = kStartIdx_ * dealKSize_;
         } else {
-            dealKSize_ = kStartIdx_ < constInfo.coreGroupNum ? constInfo.hSize - kStartIdx_ * constInfo.kBaseSize : 0;
-            hStart_ = kStartIdx_ * constInfo.kBaseSize;
+            dealKSize_ = constInfo.hSize - kStartIdx_ * constInfo.kBaseSize;
         }
+        if (constInfo.curGroupIdx >= constInfo.coreGroupNum) {
+            dealKSize_ = 0;
+        }
+        hStart_ = kStartIdx_ * constInfo.kBaseSize;
     } else {
         kStartIdx_ = 0;
         dealKSize_ = constInfo.hSize;
@@ -321,7 +330,6 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP, IS_FULL_LOAD>::SkipOneLo
     isFirstUpdateCurGroup = true;
     uint32_t curGroupQuota = constInfo.mBaseSize * constInfo.mCurGroupIdx;
     uint32_t quota = constInfo.mGroupNum * constInfo.mBaseSize;
-
     for (; batchInfo.bIdx < constInfo.batchSize;) {
         uint32_t curDealSeq = 0;
         uint32_t curDealTcNum = 0;
@@ -406,38 +414,44 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::CalcSplitCoreInfo()
     constInfo.dIdx = constInfo.aiCoreIdx % constInfo.dBasicBlockNum;
     // 当前组id
     constInfo.curGroupIdx = constInfo.aiCoreIdx / constInfo.dBasicBlockNum;
-    constInfo.mGroupNum = constInfo.coreGroupNum;
-    constInfo.mCurGroupIdx = constInfo.curGroupIdx;
+    if constexpr (IS_FULL_LOAD) {
+        constInfo.mGroupNum = tilingData_->baseParams.mGroupNum;
+        constInfo.mCurGroupIdx = constInfo.curGroupIdx / constInfo.kBaseNum;
+    } else {
+        constInfo.mGroupNum = constInfo.coreGroupNum;
+        constInfo.mCurGroupIdx = constInfo.curGroupIdx;
+    }
 
     constInfo.mm1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.coreGroupNum;
-
-    uint32_t coff = (uint32_t)COMP::coff;
-    constInfo.mm1KvResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
-    constInfo.mm1ScoreResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * coff;
     constInfo.vec1ResSize = (uint64_t)constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
-
-    constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mm1KvResSize;
 }
 
 template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::InitWorkspace(__gm__ uint8_t* workspace)
 {
+    uint32_t coff = (uint32_t)COMP::coff;
+    constInfo.mm1KvResSize = (uint64_t)constInfo.mGroupNum * constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.mm1ScoreResSize = (uint64_t)constInfo.mGroupNum * constInfo.mBaseSize * constInfo.headDim * coff;
+    constInfo.dbSize = (uint64_t)constInfo.coreGroupNum * constInfo.mBaseSize * constInfo.headDim * coff;
+    if constexpr (IS_FULL_LOAD) {
+        constInfo.mRowBase = constInfo.mStart;
+    } else {
+        constInfo.mRowBase = constInfo.mCurGroupIdx * constInfo.mBaseSize;
+    }
+
     uint64_t offset = 0;
     uint64_t mm1KvResStartOffset = offset;
+    uint32_t kIdx = constInfo.curGroupIdx % constInfo.kBaseNum;
     // mm1KvResGm
     mm1KvResGm.SetGlobalBuffer(
-        (__gm__ MM1_OUT_T*)(workspace + offset +
-                            (uint64_t)constInfo.curGroupIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
-    offset +=
-        (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1KvResSize * sizeof(MM1_OUT_T);
+        (__gm__ MM1_OUT_T*)(workspace + offset + (uint64_t)kIdx * constInfo.mm1KvResSize * sizeof(MM1_OUT_T)));
+    offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.dbSize * sizeof(MM1_OUT_T);
 
     uint64_t mm1ScoreResStartOffset = offset;
     // mm1ScoreResGm
     mm1ScoreResGm.SetGlobalBuffer(
-        (__gm__ MM1_OUT_T*)(workspace + offset +
-                            (uint64_t)constInfo.curGroupIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
-    offset +=
-        (uint64_t)constInfo.dbWorkspaceRatio * constInfo.coreGroupNum * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T);
+        (__gm__ MM1_OUT_T*)(workspace + offset + (uint64_t)kIdx * constInfo.mm1ScoreResSize * sizeof(MM1_OUT_T)));
+    offset += (uint64_t)constInfo.dbWorkspaceRatio * constInfo.dbSize * sizeof(MM1_OUT_T);
 
     Vec1InputKvGm.SetGlobalBuffer((__gm__ MM1_OUT_T*)(workspace + mm1KvResStartOffset));
 
@@ -455,7 +469,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ComputeMm1(const Ru
 {
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_FIX>(SYNC_V1_C1_FLAG + info.cubeDbIdx);
     if (isNeedExcute) {
-        blockCube_.UpdateMRange(constInfo.mStart, constInfo.mEnd);
         blockCube_.ComputeMm1(info);
     }
     CrossCoreSetFlag<SYNC_MODE0, PIPE_FIX>(SYNC_C1_FLAG);
@@ -469,7 +482,6 @@ __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ComputeVec1(const V
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG + info.c1v1DbIdx);
     CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG2 + info.c1v1DbIdx);
     if constexpr (IS_FULL_LOAD) {
-        blockVec_.UpdateMRange(constInfo.mStart, constInfo.mEnd);
         blockVec_.ComputeVec1(info.c1v1DbIdx);
     } else {
         blockVec_.ComputeVec1(info);
@@ -567,18 +579,13 @@ template <typename COMP, bool IS_FULL_LOAD>
 __aicore__ inline void CompressorKernel<COMP, IS_FULL_LOAD>::ProcessFullLoadLoop()
 {
     RunInfo extraInfo[1];
-    uint32_t mStartBase = constInfo.mStart;
-    uint32_t mEndBase = constInfo.mEnd;
-    for (uint32_t i = 0; i < loopTimes; ++i) {
-        RunInfo& extraInfo0 = extraInfo[0];
-        constInfo.mStart = mStartBase + i * constInfo.mBaseSize;
-        constInfo.mEnd = min(constInfo.mStart + constInfo.mBaseSize, mEndBase);
-        if ASCEND_IS_AIC {
-            CalcCubeParams(extraInfo0);
-            ComputeMm1(extraInfo0);
-        } else {
-            ComputeVec1(Vec1RunInfo{});
-        }
+    RunInfo& extraInfo0 = extraInfo[0];
+    if ASCEND_IS_AIC {
+        CalcCubeParams(extraInfo0);
+        ComputeMm1(extraInfo0);
+    } else {
+        blockVec_.Warmup();
+        ComputeVec1(Vec1RunInfo{});
     }
 }
 

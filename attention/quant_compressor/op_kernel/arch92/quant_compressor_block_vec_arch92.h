@@ -185,10 +185,8 @@ protected:
     // in queue
     TQue<QuePosition::VECIN, 1> inputQue1;
     TQue<QuePosition::VECIN, 1> inputQue2;
-    TQue<QuePosition::VECIN, 1> inputQue3;
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
-    TQue<QuePosition::VECOUT, 1> outputQue2;
 };
 
 // =================================Init=================================
@@ -304,14 +302,14 @@ __aicore__ inline LoopInfo QuantCompressorBlockVector<COMP>::GetLoopInfo(const V
 template <typename COMP>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::LoadDescale()
 {
-    LocalTensor<T> wDescale = this->inputQue3.template AllocTensor<T>();
+    LocalTensor<T> wDescale = this->inputQue2.template AllocTensor<T>();
     DataCopy(wDescale, this->wKvDescaleGm_, this->coff_ * this->constInfo_.headDim);
     DataCopy(wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], this->wGateDescaleGm_, this->coff_ * this->constInfo_.headDim);
-    this->inputQue3.template EnQue(wDescale);
-    this->inputQue3.template DeQue<T>();
+    this->inputQue2.template EnQue(wDescale);
+    this->inputQue2.template DeQue<T>();
     DataCopy(this->xWKvDescaleUb, wDescale, this->coff_ * this->constInfo_.headDim);
     DataCopy(this->xWGateDescaleUb, wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], this->coff_ * this->constInfo_.headDim);
-    this->inputQue3.template FreeTensor(wDescale);
+    this->inputQue2.template FreeTensor(wDescale);
     MulsVF(this->xWKvDescaleUb, this->xWKvDescaleUb, this->xDescale_, this->coff_, this->constInfo_.headDim);
     MulsVF(this->xWGateDescaleUb, this->xWGateDescaleUb, this->xDescale_, this->coff_, this->constInfo_.headDim);
 }
@@ -402,7 +400,7 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::DataCopyWithInputQue(
     if (copyRowCount == 0) {
         return;
     }
-    uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_32K / (copyColCount * sizeof(O));
+    uint32_t singleCopyRowCount = BUFFER_SIZE_BYTE_64K / (copyColCount * sizeof(O));
     for (uint32_t rowCount = 0; rowCount < copyRowCount; rowCount += singleCopyRowCount) {
         LocalTensor<O> inputUb = inputQue2.AllocTensor<O>();
 
@@ -429,11 +427,11 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::AddMultiDataToUb(
     uint32_t srcSingleRowCount, uint32_t dstSingleRowCount, uint32_t repeatTimes, uint64_t offset)
 {
     uint32_t cnt = dealRowCount * dstSingleRowCount;
-    uint32_t groupSize = BUFFER_SIZE_BYTE_32K / (cnt * sizeof(O));
+    uint32_t groupSize = BUFFER_SIZE_BYTE_64K / (cnt * sizeof(O));
     uint32_t loopTimes = CeilDivT(repeatTimes, groupSize);
     uint64_t srcGmOffset = 0;
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
-        auto& inputQue = idx % 2 == 0 ? inputQue2 : inputQue3;
+        auto& inputQue = inputQue2;
         uint32_t curGroupSize = min(groupSize, (repeatTimes - groupSize * idx));
         LocalTensor<O> splitLocal = inputQue.AllocTensor<O>();
         if (srcSingleRowCount == dstSingleRowCount && dstSingleRowCount == dealRowCount) {
@@ -864,7 +862,7 @@ template <typename COMP>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::CalcTilingStrategy(Vec1SplitInfo& splitInfo)
 {
     // 计算headDim和Tc方向切分大小
-    uint32_t maxDealColNum = BUFFER_SIZE_BYTE_32K / (cmpRatio_ * coff_ * sizeof(T));
+    uint32_t maxDealColNum = BUFFER_SIZE_BYTE_64K / (cmpRatio_ * coff_ * sizeof(T));
 
     // 切块逻辑
     if (maxDealColNum < splitInfo.dBaseSize) {
