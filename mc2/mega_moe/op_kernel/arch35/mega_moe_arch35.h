@@ -260,7 +260,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::InitEpilogueAndCommonCo
                      .tokenNum = tilingData->bs,
                      .topK = tilingData->topK,
                      .tokenHiddenDim = k_,
-                     .gmm1OutputDim = tilingData->hiddenDim};
+                     .gmm1OutputCols = tilingData->hiddenDim,
+                     .activationOutputCols = tilingData->hiddenDim / GetActivationOutputDivisor(tilingData->actMode)};
 }
 
 // 初始化各阶段配置及同步标志槽数。
@@ -705,7 +706,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
 
     ProblemShape problemShape;
     Get<M_VALUE>(problemShape) = commonConfig_.tokenNum;
-    Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputDim;
+    Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputCols;
     Get<K_VALUE>(problemShape) = commonConfig_.tokenHiddenDim;
     GMMAddrInfo gmmAddrInfo{};
     GmmExecutionConfig sharedGmmConfig = gmmExecutionConfig_;
@@ -738,12 +739,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunSharedExpertGmm2(con
         RunGmm2A8W4<SharedActivationOutType, SharedWeightType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
                     GMM1_TILE_M, false, true, false, true, false>(
             sharedBlockContext_, problemShape, gmmAddrInfo, startBlockIdx_, gmmExecutionConfig_.blockJob,
-            static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U);
+            static_cast<uint32_t>(Get<M_VALUE>(problemShape)), 0U, nullptr, params_.tilingData->actMode);
     } else {
         RunGmm2Generic<COMBINE_NO_QUANT, typename SharedQuantConfig::QuantOutType,
                        typename SharedQuantConfig::QuantOutType, bfloat16_t, SharedQuantScaleType, SharedQuantScaleType,
                        SharedWeight2Format != FORMAT_ND, false, GMM1_TILE_M, false, true, true>(
-            problemShape, gmmAddrInfo, startBlockIdx_, gmmExecutionConfig_.blockJob, nullptr, true);
+            problemShape, gmmAddrInfo, startBlockIdx_, gmmExecutionConfig_.blockJob, nullptr, true, 0U, nullptr,
+            params_.tilingData->actMode);
     }
 }
 
@@ -764,7 +766,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
 {
     ProblemShape problemShape;
     Get<M_VALUE>(problemShape) = commonConfig_.tokenNum;
-    Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputDim;
+    Get<N_VALUE>(problemShape) = commonConfig_.gmm1OutputCols;
     Get<K_VALUE>(problemShape) = commonConfig_.tokenHiddenDim;
     GMMAddrInfo gmmAddrInfo{};
     if constexpr (SharedQuantConfig::AXW_MODE == AxWMode::A8W4 || SharedQuantConfig::AXW_MODE == AxWMode::A4W4) {
@@ -795,13 +797,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::RunGmm2CombineForExpert
     if (!HandleWaveProblemWithoutWork(problemTileCount, gmmExecutionConfig_.blockJob, startBlockIdx)) {
         UpdateMoeExpertGmm2GlobalBuffer<MoeWeightType, ActivationQuantOutType, QuantScaleOutType>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmmAddrInfo,
-            state, tokenStartIndexInExpert);
+            state, commonConfig_.activationOutputCols, tokenStartIndexInExpert);
         ProblemShape sliceProblemShape = state.problemShape;
         Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
         RunGmm2A8W4<ActivationQuantOutType, MoeWeightType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                     GMM1_TILE_M, TopkWeightsPrefetch, false, false, true, CombineQuantMode == COMBINE_NO_QUANT>(
             pipeline, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, expertTokenCount,
-            tokenStartIndexInExpert, &params_);
+            tokenStartIndexInExpert, &params_, params_.tilingData->actMode);
     }
 
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {

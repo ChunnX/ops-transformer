@@ -43,6 +43,18 @@ enum class MegaMoeActMode : uint8_t {
     GELU = 4U,
 };
 
+constexpr uint32_t GATED_ACTIVATION_WIDTH_DIVISOR = 2U;
+constexpr uint32_t GMM1_WEIGHT_CONCAT_PARTS = 2U;
+
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+__aicore__ inline uint32_t GetActivationOutputDivisor(uint8_t actMode)
+#else
+inline uint32_t GetActivationOutputDivisor(uint8_t actMode)
+#endif
+{
+    return actMode == static_cast<uint8_t>(MegaMoeActMode::GELU) ? 1U : GATED_ACTIVATION_WIDTH_DIVISOR;
+}
+
 enum class MegaMoeActSubMode : uint8_t {
     DEFAULT = 0U,
     LINEAR = 1U,
@@ -118,7 +130,8 @@ constexpr uint32_t L1_TILE_M_256 = 256U;
 constexpr uint32_t L1_TILE_M_128 = 128U;
 constexpr uint32_t L1_TILE_N = 256U;
 constexpr uint32_t L0_TILE_K = 128U;
-constexpr uint32_t ACTIVATION_N_HALF = 2U;
+// 现有门控 epilogue 与 URMA 路径使用的别名；W1 物理拼接使用 GMM1_WEIGHT_CONCAT_PARTS。
+constexpr uint32_t ACTIVATION_N_HALF = GATED_ACTIVATION_WIDTH_DIVISOR;
 
 // ============ MTE 通信去重 ============
 // 开关的唯一真源是 tilingData->dedupMode（0=全关 1=仅combine开 2=仅dispatch开 3=双开），

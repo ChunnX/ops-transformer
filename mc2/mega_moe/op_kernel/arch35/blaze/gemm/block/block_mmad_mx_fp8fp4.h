@@ -21,6 +21,7 @@
 #include "tensor_api/tensor.h"
 #include "../utils/common_utils_mega_moe.h"
 #include "../../../mega_moe_tiling.h"
+#include "../../../common/mega_moe_constants.h"
 
 namespace Blaze {
 namespace Gemm {
@@ -478,7 +479,7 @@ template <bool ResetBufferIndices>
 __aicore__ inline void BLOCK_MMAD_MX_FP8FP4_SPECIALIZATION::Init(const ProblemShape &problemShape,
                                                                  const BlockShape &l0TileShape, bool interleave)
 {
-    concatHalfN_ = interleave ? asc::te::get<IDX_N_IDX>(problemShape) / MegaMoeImpl::ACTIVATION_N_HALF : 0U;
+    concatHalfN_ = interleave ? asc::te::get<IDX_N_IDX>(problemShape) / MegaMoeImpl::GMM1_WEIGHT_CONCAT_PARTS : 0U;
     k_ = asc::te::get<IDX_K_IDX>(problemShape);
     baseK_ = asc::te::get<IDX_K_IDX>(l0TileShape);
 

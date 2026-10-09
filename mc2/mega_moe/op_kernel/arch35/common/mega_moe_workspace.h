@@ -44,11 +44,6 @@ HOST_DEVICE bool IsA4W4GmmMode(uint8_t gmmMode)
     return gmmMode == GMM_MODE_A4W4_ND || gmmMode == GMM_MODE_A4W4_NZ;
 }
 
-HOST_DEVICE uint32_t GetActivationOutputDivisor(uint8_t actMode)
-{
-    return actMode == static_cast<uint8_t>(MegaMoeActMode::GELU) ? 1U : ACTIVATION_N_HALF;
-}
-
 HOST_DEVICE int64_t GetActivationOutputWidth(const MegaMoeTilingData *tilingData)
 {
     return static_cast<int64_t>(tilingData->hiddenDim) / GetActivationOutputDivisor(tilingData->actMode);

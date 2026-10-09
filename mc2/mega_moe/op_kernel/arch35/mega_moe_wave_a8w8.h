@@ -283,7 +283,8 @@ __aicore__ inline ExpertTokenPosition MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTyp
                                         PackedElementTraits<QuantOutType>::ELEMENTS_PER_BYTE, false,
                                         TopkWeightsPrefetch>(
             gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
-            gmm1AddrInfo, gmm1ExpertState, gmm1Position.tokenIndexInExpert, gmm1TilesPerMGroup_);
+            gmm1AddrInfo, gmm1ExpertState, commonConfig_.activationOutputCols,
+            gmm1Position.tokenIndexInExpert, gmm1TilesPerMGroup_);
         /*
          * 只有该 problem 从第 0 行覆盖到专家尾，后续 Wave 才不会再次读取同一份 GMM1 权重。
          * 热点专家的任一 Wave problem 都为 false，即使本次不足 256 行也保留正常 L2 cache。
@@ -330,7 +331,7 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
     Get<M_VALUE>(gmm2WaveProblemShape) = waveEndTokenIndexInExpert - gmm2Position.tokenIndexInExpert;
     UpdateMoeExpertGmm2GlobalBuffer<MoeWeightType, ActivationType, QuantScaleOutType>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, gmm2AddrInfo,
-        gmm2ExpertState, gmm2Position.tokenIndexInExpert);
+        gmm2ExpertState, commonConfig_.activationOutputCols, gmm2Position.tokenIndexInExpert);
     // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
     bool isWholeExpert =
         gmm2Position.tokenIndexInExpert == 0U && static_cast<uint64_t>(waveEndTokenIndexInExpert) == expertRowCount;
@@ -339,13 +340,14 @@ __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::Process
         RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                        MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true, false>(
             gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx, gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-            gmm2Position.tokenIndexInExpert, &params_);
+            gmm2Position.tokenIndexInExpert, &params_, params_.tilingData->actMode);
     } else {
         RunGmm2Generic<COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType,
                        MoeWeight2Format != FORMAT_ND, false, GMM1_TILE_M, TopkWeightsPrefetch, false, true,
                        CombineQuantMode == COMBINE_NO_QUANT>(gmm2WaveProblemShape, gmm2AddrInfo, startBlockIdx,
                                                              gmmExecutionConfig_.blockJob, nullptr, isWholeExpert,
-                                                             gmm2Position.tokenIndexInExpert, &params_);
+                                                             gmm2Position.tokenIndexInExpert, &params_,
+                                                             params_.tilingData->actMode);
     }
 }
 
@@ -630,8 +632,7 @@ template <TemplateMegaMoeA8W8WaveTypeClass>
 __aicore__ inline void MegaMoeA8W8Wave<TemplateMegaMoeA8W8WaveTypeFunc>::ProcessMoeExpertStages(
     Gmm1ActivationSync& gmm1ActivationSync, Gmm2CombineSync& gmm2CombineSync)
 {
-    const uint32_t gmm1SchedulerWidth = commonConfig_.gmm1OutputDim;
-    gmm1TilesPerMGroup_ = Ops::Base::CeilDiv(gmm1SchedulerWidth, static_cast<uint32_t>(L1_TILE_N));
+    gmm1TilesPerMGroup_ = Ops::Base::CeilDiv(commonConfig_.gmm1OutputCols, static_cast<uint32_t>(L1_TILE_N));
     gmm2TilesPerMGroup_ = Ops::Base::CeilDiv(commonConfig_.tokenHiddenDim, static_cast<uint32_t>(L1_TILE_N));
 
     // GMM1/GMM2 交错流水只记录一次阶段入口，各 Wave 完成轮次由独立计数记录。

@@ -111,7 +111,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::RunGmm1
         typename MoeQuantConfig::QuantStorageType, MoeWeightType, typename MoeQuantConfig::ActivationQuantOutType,
         typename MoeQuantConfig::QuantScaleType, MoeQuantConfig::A_ELEMS_PER_BYTE, false, TopkWeightsPrefetch>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
-        gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
+        gmmAddrInfo, state, commonConfig_.activationOutputCols, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
     RunGmm1Generic<typename MoeQuantConfig::QuantOutType, typename MoeQuantConfig::ActivationQuantOutType,
@@ -346,7 +346,7 @@ __aicore__ inline void MegaMoeA4W4Wave<TemplateMegaMoeA4W4WaveTypeFunc>::Process
     GmmRuntimeState gmm1RuntimeState{startBlockIdx_, vecSetSyncCom, gmm1PingPongIdx};
 
     const uint32_t gmm1TilesPerMGroup =
-        Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim, static_cast<uint32_t>(L1_TILE_N));
+        Ops::Base::CeilDiv(commonConfig_.gmm1OutputCols, static_cast<uint32_t>(L1_TILE_N));
 
     ExpertTokenPosition dispatchPosition = DispatchFirstWave();
     EnterSteadyDispatch();
