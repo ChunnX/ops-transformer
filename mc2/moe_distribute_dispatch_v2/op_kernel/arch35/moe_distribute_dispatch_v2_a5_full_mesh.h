@@ -814,9 +814,6 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     if (activeMaskBsCnt_ > 0) {
         AllToAllDispatchA5(inQueue, outBuf);
     }
-    if (useSerialMode_) {
-        CalAndSendCntSerial();
-    }
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -1045,9 +1042,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(windowInstatusFp32Tensor_[startStatusIndex_ * STATE_OFFSET / sizeof(float)],
              cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
-    if (!useSerialMode_) {
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
-    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
 template <TemplateMC2A5FullMeshTypeClass>
@@ -2209,6 +2204,8 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     if ASCEND_IS_AIV { // 全aiv处理
         if (useSerialMode_) {
             AllToAllDispatch();
+            SyncAll<true>();
+            CalAndSendCntSerial();
             WaitDispatch();
             LocalWindowCopySerial();
         } else {
