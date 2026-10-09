@@ -49,7 +49,6 @@ constexpr char ACLNN_CCU_PEER_ONLY_MODE[] = "ccu_peer_only";
 constexpr uint32_t X1SCALE_INDEX = 3;
 constexpr uint32_t X2SCALE_INDEX = 4;
 constexpr uint32_t COMMMODE_INDEX = 10;
-constexpr uint32_t ALG_CONFIG_RANK_SIZE = 16U;
 // 新功能从这里开始
 bool MatmulReduceScatterV2Tiling::IsCapable()
 {
@@ -62,7 +61,7 @@ bool MatmulReduceScatterV2Tiling::IsCapable()
     return false;
 }
 
-void PrintMMV3TilingData(const std::string &opName, Mc2MatMulV3TilingData &tiling)
+void PrintMMV3TilingData(const std::string& opName, Mc2MatMulV3TilingData& tiling)
 {
     PrintTCubeTilingData(opName, tiling.tCubeTiling);
     OP_LOGD(opName, "tiling.isHf32 %d", tiling.isHf32);
@@ -120,11 +119,6 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     if (commMode_ == TPL_AICPU_COMM_MODE) {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_AICPU_TS_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to AiCPU for matmul_reduce_scatter_v2_tiling.");
-        // 16p跨机场景，根据通信api benchmark，使用InsReduceScatterParallelMesh1DNHR算法速度更快
-        if (args_.rankDim == ALG_CONFIG_RANK_SIZE) {
-            mc2CcTilingConfig.SetAlgConfig("InsReduceScatterParallelMesh1DNHR");
-            OP_LOGD(opName_, "[SetAlgConfig] Set AlgConfig to InsReduceScatterParallelMesh1DNHR.");
-        }
     } else {
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for matmul_reduce_scatter_v2_tiling.");
@@ -136,16 +130,17 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     if (isPeerOnly_) {
         mc2CcTilingConfig.SetAlgConfig(PEER_ONLY_ALGORITHM);
     } else {
-        uint64_t commDataBytes = args_.orgMValue * args_.orgNValue * args_.outputDtypeSize;
+        // 通信算法统一由算法表管理(组网/卡数/数据量/优先级)：UBX机型命中具体表项用组网算法，
+        // 16p非UBX命中benchmark优选表项，其余命中通路对应的fullmesh兜底表项；无匹配回退rsConfig
+        uint64_t commDataBytes =
+            Mc2Hcom::CalcCommDataBytes(opName_, args_.orgMValue, args_.orgNValue, args_.outputDtypeSize);
         uint32_t algoCount = 0;
         uint8_t commEngine =
             (commMode_ == TPL_CCU_COMM_MODE) ? mc2tiling::A5_CCU_ENGINE : mc2tiling::A5_AICPU_TS_ENGINE;
-        const Mc2Hcom::CommAlgoEntry *algoEntries = GetReduceScatterCommAlgoTable(algoCount);
-        std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(
-            opName_, group, commEngine, commDataBytes, static_cast<uint32_t>(args_.rankDim), algoEntries, algoCount,
-            REDUCE_SCATTER_DEFAULT_ALGO_NAME);
-        // 当前版本暂不生效，仍旧使用原算法
-        algoName = rsConfig;
+        const Mc2Hcom::CommAlgoEntry* algoEntries = GetReduceScatterCommAlgoTable(algoCount);
+        std::string algoName = Mc2Hcom::Mc2CommAlgoSelector::SelectAlgoName(opName_, group, commEngine, commDataBytes,
+                                                                            static_cast<uint32_t>(args_.rankDim),
+                                                                            algoEntries, algoCount, rsConfig);
         OP_LOGI(opName_, "[SetMc2Hcomm] selected algoName=%s, group=%s", algoName.c_str(), group);
         mc2CcTilingConfig.SetAlgConfig(algoName);
     }
@@ -158,9 +153,9 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulReduceScatterV2Tiling::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg &tilingCfg,
-                                                              Mc2MMRegisterCfg &registerCfg,
-                                                              Mc2MatMulV3TilingData &tilingData)
+ge::graphStatus MatmulReduceScatterV2Tiling::DoMatmulV3Tiling(Mc2MatmulHelper::Mc2MatmulTilingCfg& tilingCfg,
+                                                              Mc2MMRegisterCfg& registerCfg,
+                                                              Mc2MatMulV3TilingData& tilingData)
 {
     tilingCfg.SetRankDim(args_.rankDim);
     OP_LOGD(opName_, "execute DoMatmulV3Tiling!");
@@ -191,14 +186,14 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoAllMatmulTiling()
     // 获取tileTiling
     mmV3Args_.mValue = tileMValue_ * args_.rankDim;
     OP_LOGD(opName_, "Do Mc2MatMulV3 tile tiling!");
-    Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(static_cast<const void *>(&compileInfo_),
-                                                      static_cast<const void *>(&mmV3Args_), tileMValue_);
+    Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(static_cast<const void*>(&compileInfo_),
+                                                      static_cast<const void*>(&mmV3Args_), tileMValue_);
     MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TileTilingData()));
     if (tailMValue_ != 0UL) {
         mmV3Args_.mValue = tailMValue_ * args_.rankDim;
         OP_LOGD(opName_, "Do Mc2MatMulV3 tail tiling!");
-        Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(static_cast<const void *>(&compileInfo_),
-                                                          static_cast<const void *>(&mmV3Args_), tailMValue_);
+        Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(static_cast<const void*>(&compileInfo_),
+                                                          static_cast<const void*>(&mmV3Args_), tailMValue_);
         MC2_CHECK_LOG_RET(opName_, DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
     }
     return ge::GRAPH_SUCCESS;
