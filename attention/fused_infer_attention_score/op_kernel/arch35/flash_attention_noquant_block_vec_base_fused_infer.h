@@ -651,7 +651,6 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Dn(
 
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
     LocalTensor<uint8_t> dropMaskUb;
-    GetDerived()->GenerateDropoutMaskDn(runInfo, constInfo, dropMaskUb);
 
     LocalTensor<uint8_t> indexesUb;
     float slopes = 0.0f;
