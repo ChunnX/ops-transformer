@@ -188,7 +188,6 @@ protected:
     TQue<QuePosition::VECIN, 1> inputQue3;
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
-    TQue<QuePosition::VECOUT, 1> outputQue2;
 };
 
 // =================================Init=================================
@@ -864,7 +863,7 @@ template <typename COMP>
 __aicore__ inline void QuantCompressorBlockVector<COMP>::CalcTilingStrategy(Vec1SplitInfo& splitInfo)
 {
     // 计算headDim和Tc方向切分大小
-    uint32_t maxDealColNum = BUFFER_SIZE_BYTE_32K / (cmpRatio_ * coff_ * sizeof(T));
+    uint32_t maxDealColNum = BUFFER_SIZE_BYTE_64K / (cmpRatio_ * coff_ * sizeof(T));
 
     // 切块逻辑
     if (maxDealColNum < splitInfo.dBaseSize) {
