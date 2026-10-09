@@ -13,6 +13,7 @@
  * \brief A3 (arch22) kernel entry for MoeDistributeCombineV3.
  *        Reuses combine_v2's A3 combine implementation.
  */
+// mc2 operator kernel entry
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else

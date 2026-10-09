@@ -12,6 +12,7 @@
  * \file all_gather_matmul_v2_apt.cpp
  * \brief
  */
+// mc2 operator kernel entry
 
 #include "lib/matmul_intf.h"
 #include "../agm_v2_common.h"

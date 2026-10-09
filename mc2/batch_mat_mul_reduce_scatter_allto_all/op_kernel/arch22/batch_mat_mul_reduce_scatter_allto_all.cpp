@@ -12,6 +12,7 @@
  * \file batch_mat_mul_reduce_scatter_allto_all.cpp
  * \brief
  */
+// mc2 operator kernel entry
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"

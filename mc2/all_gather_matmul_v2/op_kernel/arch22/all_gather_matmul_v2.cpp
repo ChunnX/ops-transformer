@@ -12,6 +12,7 @@
  * \file all_gather_matmul_v2.cpp
  * \brief
  */
+// mc2 operator kernel entry
 
 #include "../all_gather_matmul_v2_tiling_key.h"
 #include "lib/matmul_intf.h"
