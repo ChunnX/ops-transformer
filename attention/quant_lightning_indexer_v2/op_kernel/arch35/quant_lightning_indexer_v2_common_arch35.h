@@ -20,23 +20,6 @@
     #define CVRATIO 2
 #endif
 
-// HiFloat4 stage dump switch. Override the selected tile with compiler -D options.
-#ifndef QLIV2_HIF4_DEBUG_DUMP
-#define QLIV2_HIF4_DEBUG_DUMP 1
-#endif
-#ifndef QLIV2_HIF4_DEBUG_BATCH
-#define QLIV2_HIF4_DEBUG_BATCH 0
-#endif
-#ifndef QLIV2_HIF4_DEBUG_KV_HEAD
-#define QLIV2_HIF4_DEBUG_KV_HEAD 0
-#endif
-#ifndef QLIV2_HIF4_DEBUG_S1_BLOCK
-#define QLIV2_HIF4_DEBUG_S1_BLOCK 0
-#endif
-#ifndef QLIV2_HIF4_DEBUG_S2_BLOCK
-#define QLIV2_HIF4_DEBUG_S2_BLOCK 0
-#endif
-
 using namespace AscendC;
 namespace QLIV2Common {
 using FP8E4M3 = fp8_e4m3fn_t;
