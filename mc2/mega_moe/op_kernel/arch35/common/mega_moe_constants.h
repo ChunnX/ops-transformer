@@ -40,6 +40,7 @@ enum class MegaMoeActMode : uint8_t {
     SITU = 1U,
     SWIGLU_STEP = 2U,
     SWIGLU_OAI = 3U,
+    GELU = 4U,
 };
 
 enum class MegaMoeActSubMode : uint8_t {
@@ -118,6 +119,15 @@ constexpr uint32_t L1_TILE_M_128 = 128U;
 constexpr uint32_t L1_TILE_N = 256U;
 constexpr uint32_t L0_TILE_K = 128U;
 constexpr uint32_t ACTIVATION_N_HALF = 2U;
+
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+__aicore__ inline uint32_t GetActivationOutputDivisor(uint8_t actMode)
+#else
+inline uint32_t GetActivationOutputDivisor(uint8_t actMode)
+#endif
+{
+    return actMode == static_cast<uint8_t>(MegaMoeActMode::GELU) ? 1U : ACTIVATION_N_HALF;
+}
 
 // ============ MTE 通信去重 ============
 // 开关的唯一真源是 tilingData->dedupMode（0=全关 1=仅combine开 2=仅dispatch开 3=双开），

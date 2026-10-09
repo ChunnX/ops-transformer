@@ -25,6 +25,7 @@ _ALLOWED_ACTIVATION_KEYS = {
     "swiglustep": frozenset(),
     "swigluoai": frozenset({"alpha", "beta"}),
     "situglu": frozenset({"beta", "linear_beta"}),
+    "gelu": frozenset(),
 }
 
 
@@ -77,6 +78,11 @@ def _normalize_activation_params(
 
     # aclnn cannot register a zero-length ListFloat because its data pointer is null. Materialize
     # every default here while the named Torch arguments can still be encoded without ambiguity.
+    if activation == "gelu":
+        if activation_clamp is not None:
+            raise ValueError("activation_clamp is not supported for gelu.")
+        return [_CLAMP_DEFAULT]  # Non-empty ListFloat placeholder; GELU does not use it.
+
     if activation in ("swiglu", "swiglustep"):
         clamp = _CLAMP_DEFAULT if activation_clamp is None else float(activation_clamp)
         return [clamp]

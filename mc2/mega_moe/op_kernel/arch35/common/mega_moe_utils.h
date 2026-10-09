@@ -328,7 +328,7 @@ __aicore__ constexpr inline decltype(auto) Get(T&& value)
 __aicore__ inline ExpertLoopState CreateExpertLoopState(const MoeStageCommonConfig& context)
 {
     ExpertLoopState state;
-    Get<N_VALUE>(state.problemShape) = context.gmm1OutputDim;
+    Get<N_VALUE>(state.problemShape) = context.gmm1OutputCols;
     Get<K_VALUE>(state.problemShape) = context.tokenHiddenDim;
     return state;
 }

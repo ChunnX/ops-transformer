@@ -110,7 +110,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
         typename MoeQuantConfig::QuantStorageType, MoeWeightType, typename MoeQuantConfig::ActivationQuantOutType,
         typename MoeQuantConfig::QuantScaleType, MoeQuantConfig::A_ELEMS_PER_BYTE, true, TopkWeightsPrefetch>(
         gmmExecutionConfig_, syncWorkspaceLayout_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
-        gmmAddrInfo, state, tokenStartIndexInExpert, gmm1TilesPerMGroup);
+        gmmAddrInfo, state, commonConfig_.activationOutputCols, tokenStartIndexInExpert, gmm1TilesPerMGroup);
     ProblemShape sliceProblemShape = state.problemShape;
     Get<M_VALUE>(sliceProblemShape) = sliceTokenCount;
     RunGmm1A8W4<typename MoeQuantConfig::QuantOutType, MoeWeightType, bfloat16_t,
@@ -118,7 +118,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunGmm1
                 EPILOGUE_TILE_M, TopkWeightsPrefetch, false, true>(
         pipeline, epilogueOp_, params_, sliceProblemShape, gmmAddrInfo, startBlockIdx, gmmTileSequence_,
         gmmExecutionConfig_.blockJob, static_cast<uint32_t>(state.globalTokenStartIndex) + tokenStartIndexInExpert,
-        state.expertIdx);
+        state.expertIdx, commonConfig_.activationOutputDivisor);
 }
 
 template <TemplateMegaMoeA8W4WaveTypeClass>
@@ -336,7 +336,7 @@ __aicore__ inline void MegaMoeA8W4Wave<TemplateMegaMoeA8W4WaveTypeFunc>::RunMoeE
     ExpertLoopState gmm1State = CreateExpertLoopState(commonConfig_);
     ExpertLoopState gmm2State = CreateExpertLoopState(commonConfig_);
     const uint32_t gmm1TilesPerMGroup =
-        Ops::Base::CeilDiv(commonConfig_.gmm1OutputDim, static_cast<uint32_t>(L1_TILE_N));
+        Ops::Base::CeilDiv(commonConfig_.gmm1OutputCols, static_cast<uint32_t>(L1_TILE_N));
     // GMM2 滞后一拍门控：与 A8W8 的 GMM2_LAG_MIN_TOKEN_NUM(4096) 同门槛；
     // 关闭态与现役"当前 Wave 完成后立即消费"逐字等价。
     const bool gmm2LagActive = commonConfig_.tokenNum >= 4096U;
