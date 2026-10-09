@@ -418,5 +418,5 @@ AllToAllFpMatmulTilingBase::AllToAllFpMatmulTilingBase(gert::TilingContext *cont
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllFpMatmulTilingBase,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 0);
+                                   std::vector<int32_t>({static_cast<int32_t>(Ops::Base::DAV_3510), static_cast<int32_t>(Ops::Base::DAV_9201)}), 0);
 } // namespace MC2Tiling

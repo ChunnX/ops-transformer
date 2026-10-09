@@ -59,9 +59,12 @@ static bool CheckDtypeValid(const aclTensor *x1, const aclTensor *x2, const aclT
     const std::initializer_list<op::DataType> dtypeSupportListBiasA5 = {DataType::DT_FLOAT16, DataType::DT_BF16};
 
     const auto x2DtypeSupportList =
-        (npuArch == Ops::Base::DAV_3510) ? dtypeSupportListQuantA5 : DTYPE_SUPPORT_LIST_QUANT;
+        (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_9201) ? dtypeSupportListQuantA5
+                                                                           : DTYPE_SUPPORT_LIST_QUANT; // A6复用A5 dtype列表
 
-    const auto biasDtypeSupportList = (npuArch == Ops::Base::DAV_3510) ? dtypeSupportListBiasA5 : dtypeSupportList;
+    const auto biasDtypeSupportList = (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_9201) ?
+                                          dtypeSupportListBiasA5 :
+                                          dtypeSupportList; // A6复用A5 dtype列表
     // 检查x1、x2、bias、scale、offset、x3、output的数据类型是否在算子的支持列表内
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, dtypeSupportList, return false);
     // 对于量化来说，x2只为INT8/INT4
@@ -293,7 +296,8 @@ static bool CheckContiguous(const aclTensor *x2, const aclTensor *scale, const a
 {
     // check x2(weight) is transposed, scale and offset should also be transposed
     const bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
-    const bool isNpuArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510);
+    const bool isNpuArch3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+                                 op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201); // A6同A5做一致性校验
     const bool isASCEND910B = (op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND910B);
     if ((!isNpuArch3510) && (!isASCEND910B)) {
         return true;
@@ -433,7 +437,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(void *workspace, uint64_t workspaceS
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510) {
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+            op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201) { // A6通信引擎固定AICPU
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_AICPU);
         }
     }

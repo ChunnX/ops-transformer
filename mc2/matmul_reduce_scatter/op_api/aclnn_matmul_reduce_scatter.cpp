@@ -53,7 +53,9 @@ extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &d
 
 static inline bool IsAscend910A5(void)
 {
-    return op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510;
+    // A6(ascend960)复用A5路径：aclnn层转发到已适配的MatmulReduceScatterV2接口(commMode固定ai_cpu)
+    return op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_3510 ||
+           op::GetCurrentPlatformInfo().GetCurNpuArch() == Ops::Base::DAV_9201;
 }
 
 static uint8_t GetDebugMode()

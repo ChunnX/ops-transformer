@@ -174,7 +174,8 @@ ge::graphStatus AlltoAllvQuantGmmTilingBase::CheckEpWorldSizeValue()
     std::string epWorldSizeValueStr = "";
     auto platformInfo = context_->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510 || ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) {
+        // A6(ascend960)复用A5 epWorldSize取值集合
         epWorldSizeValueList = {2,  4,  8,   16,
                                 32, 64, 128, 256}; // epWorldSize value only support 2, 4, 8, 16, 32, 64, 128, 256
     } else {

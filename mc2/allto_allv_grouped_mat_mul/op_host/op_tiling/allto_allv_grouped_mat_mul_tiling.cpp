@@ -100,7 +100,8 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext* co
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     std::vector<int64_t> validEpWorldSizeValues;
-    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510 || ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) {
+        // A6(ascend960)复用A5 epWorldSize取值集合
         validEpWorldSizeValues = {2, 4, 8, 16, 32, 64, 128, 256};
     } else {
         validEpWorldSizeValues = {8, 16, 32, 64, 128};
@@ -652,10 +653,16 @@ ge::graphStatus AlltoAllvGmmTiling::GetAndConvertCommMode(gert::TilingContext* c
     const size_t maxLength = 7UL;
     auto platformInfo = context->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510) {
+    if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_3510 ||
+        ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commMode = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
+            if (ascendcPlatform.GetCurNpuArch() == Ops::Base::DAV_9201) {
+                // A6(ascend960)无CCU引擎，显式ccu直接报错(默认ai_cpu不受影响)
+                OP_LOGE(context->GetNodeName(), "A6 has no CCU engine, commMode 'ccu' is not supported.");
+                return ge::GRAPH_FAILED;
+            }
             commMode = Mc2Comm::COMM_MODE_CCU;
         } else {
             OP_LOGD(context->GetNodeName(), "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.",

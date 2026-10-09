@@ -305,41 +305,56 @@ bool Mc2AdaptiveSlidingWindowTiling::AnalyseSlidingWinInfo()
 
 bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
 {
+    uint32_t maxBaseM = BASIC_BLOCK_SIZE_256;
+    uint32_t maxBaseN = BASIC_BLOCK_SIZE_256;
+    uint32_t maxBaseK = BASIC_BLOCK_SIZE_128;
     if (inputParams_.isPerBlock) {
         // when m or n is not divisible by 128, baseM or baseN is 128,
         // to prevent the division of tail blocks into two vector cores from generating a non-factor of 128.
         // when m <= 128, baseM is 128.
         // only one of baseM and baseN can be 256, with baseM taking priority.
-        if (inputParams_.mSize <= PER_BLOCK_SIZE || inputParams_.mSize % PER_BLOCK_SIZE != 0UL) {
+        bool isDav9201 = (platform_ascendc::PlatformAscendC(context_->GetPlatformInfo()).GetCurNpuArch() == Ops::Base::DAV_9201);
+        if (isDav9201) {
             adaptiveWin_.baseM = PER_BLOCK_SIZE;
-            if (inputParams_.nSize % PER_BLOCK_SIZE == 0UL) {
-                adaptiveWin_.baseN = PER_BLOCK_BASE_SIZE_256;
+            adaptiveWin_.baseN = PER_BLOCK_SIZE;
+            adaptiveWin_.baseK = PER_BLOCK_SIZE;
+        } else {
+            if (inputParams_.mSize <= PER_BLOCK_SIZE || inputParams_.mSize % PER_BLOCK_SIZE != 0UL) {
+                adaptiveWin_.baseM = PER_BLOCK_SIZE;
+                if (inputParams_.nSize % PER_BLOCK_SIZE == 0UL) {
+                    adaptiveWin_.baseN = PER_BLOCK_BASE_SIZE_256;
+                } else {
+                    adaptiveWin_.baseN = PER_BLOCK_SIZE;
+                }
             } else {
+                adaptiveWin_.baseM = PER_BLOCK_BASE_SIZE_256;
                 adaptiveWin_.baseN = PER_BLOCK_SIZE;
             }
-        } else {
-            adaptiveWin_.baseM = PER_BLOCK_BASE_SIZE_256;
-            adaptiveWin_.baseN = PER_BLOCK_SIZE;
+            adaptiveWin_.baseK = PER_BLOCK_SIZE;
         }
-        adaptiveWin_.baseK = PER_BLOCK_SIZE;
     } else {
-        adaptiveWin_.baseM = std::min(inputParams_.mSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_256));
+        if (compileInfo_.socVersion == platform_ascendc::SocVersion::ASCEND960DT) {
+            maxBaseM = BASIC_BLOCK_SIZE_128;
+            maxBaseN = BASIC_BLOCK_SIZE_128;
+            maxBaseK = BASIC_BLOCK_SIZE_256;
+        }
+        adaptiveWin_.baseM = std::min(inputParams_.mSize, static_cast<uint64_t>(maxBaseM));
         adaptiveWin_.baseM =
             !inputParams_.transA ?
                 ops::CeilAlign(adaptiveWin_.baseM, CUBE_BLOCK) :
                 ops::CeilAlign(adaptiveWin_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.aDtype));
-        adaptiveWin_.baseN = std::min(inputParams_.nSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_256));
+        adaptiveWin_.baseN = std::min(inputParams_.nSize, static_cast<uint64_t>(maxBaseN));
         adaptiveWin_.baseN =
             inputParams_.transB ?
                 ops::CeilAlign(adaptiveWin_.baseN, CUBE_BLOCK) :
                 ops::CeilAlign(adaptiveWin_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
         uint64_t baseKDefaultSize =
-            static_cast<uint64_t>(GetShapeWithDataType(BASIC_BLOCK_SIZE_128, inputParams_.aDtype));
+            static_cast<uint64_t>(GetShapeWithDataType(maxBaseK, inputParams_.aDtype));
 
         adaptiveWin_.baseK =
             ops::CeilAlign(std::min(baseKDefaultSize, inputParams_.kSize),
-                           inputParams_.isMxPerGroup ? MXFP_DIVISOR_SIZE :
-                                                       GetShapeWithDataType(CUBE_REDUCE_BLOCK, inputParams_.aDtype));
+                        inputParams_.isMxPerGroup ? MXFP_DIVISOR_SIZE :
+                                                    GetShapeWithDataType(CUBE_REDUCE_BLOCK, inputParams_.aDtype));
     }
     bool isSmallBlock =
         ops::CeilDiv(inputParams_.mSize, adaptiveWin_.baseM) * ops::CeilDiv(inputParams_.nSize, adaptiveWin_.baseN) <

@@ -295,6 +295,11 @@ void MatmulAllReduceTilingBase::SetMCutSocVersion(SocVersion_2201 &socVersion_22
         return;
     }
     // end __NPU_ARCH__ == 3510
+    if (npuArch_ == Ops::Base::DAV_9201) {
+        // A6(ascend960)公式化tiling保留SOC 960身份传递，性能参数在模型层复用950，支持后续A6专属调优
+        OP_LOGD(opName_, "TileCnt enter 9201 branch.");
+        return;
+    }
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     uint64_t socMemSize = L2_CACHE_SIZE_910_B4;
@@ -494,8 +499,8 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
     uint64_t gmcFloat = 0;
 
     // __NPU_ARCH__ == 3510
-    // A5需要自己申请一块workSpace存放mm的输出
-    if (npuArch_ == Ops::Base::DAV_3510) {
+    // A5 & A6需要自己申请一块workSpace存放mm的输出
+    if (npuArch_ == Ops::Base::DAV_3510 || npuArch_ == Ops::Base::DAV_3510) {
         gmcFloat = static_cast<uint64_t>(MutableRCSTilingData().rankM) *
                    static_cast<uint64_t>(MutableRCSTilingData().rankN) * static_cast<uint64_t>(args_.outputDtypeSize);
     }
@@ -782,7 +787,8 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckA8W8()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "antiquantScale/antiquantOffset", "not null",
                                               "antiquantScale and antiquantOffset must be nullptr in A8W8 mode"),
         return ge::GRAPH_FAILED);
-    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) || (npuArch_ == Ops::Base::DAV_3510)) {
+    if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B) || (npuArch_ == Ops::Base::DAV_3510) ||
+        (npuArch_ == Ops::Base::DAV_9201)) { // A6与950一致，校验commQuantScale
         OP_TILING_CHECK(!CheckCommQuantScaleShape(nValue),
                         OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "commQuantScale"), return ge::GRAPH_FAILED);
     } else if (npuArch_ == Ops::Base::DAV_2002) {
@@ -1516,7 +1522,8 @@ void MatmulAllReduceTilingBase::CalcUbTiling()
     if (commQuantModePtr != nullptr) {
         isPertile = (*commQuantModePtr == 1);
     }
-    uint32_t addX3UbBufFac = ((args_.geCType == ge::DT_BF16) && (npuArch_ != Ops::Base::DAV_3510)) || isPertile ?
+    uint32_t addX3UbBufFac = ((args_.geCType == ge::DT_BF16) && (npuArch_ != Ops::Base::DAV_3510) &&
+                              (npuArch_ != Ops::Base::DAV_9201)) || isPertile ? // A6与950一致走FP16因子
                                  ADD_X3_BF16_UB_BUF_FACTOR :
                                  ADD_X3_FP16_UB_BUF_FACTOR;
     addX3UbBufFac *= isPertile ? sizeof(float) : D_MTYPE_SIZE_MAP.at(args_.cType);
@@ -1589,6 +1596,11 @@ ge::graphStatus MatmulAllReduceTilingBase::GetAndConvertCommMode(uint8_t &commMo
         commMode = Mc2Comm::COMM_MODE_AICPU;
         OP_LOGI(opName_, "The input attr comm_mode is ai_cpu, commMode will be set to AICPU.");
     } else if (std::strcmp(commModeStr, "ccu") == 0) {
+        if (npuArch_ == Ops::Base::DAV_9201) {
+            // A6(ascend960)无CCU引擎，显式ccu直接报错(默认ai_cpu不受影响)
+            OP_LOGE_WITH_INVALID_ATTR(opName_, "comm_mode", commModeStr, "'ai_cpu'");
+            return ge::GRAPH_FAILED;
+        }
         commMode = Mc2Comm::COMM_MODE_CCU;
         OP_LOGI(opName_, "The input attr comm_mode is ccu, commMode will be set to CCU.");
     } else {
@@ -1608,6 +1620,11 @@ uint8_t MatmulAllReduceTilingBase::GetCommMode() const
         return Mc2Comm::COMM_MODE_AICPU;
     }
     if (std::strcmp(commModeStr, "ccu") == 0) {
+        if (npuArch_ == Ops::Base::DAV_9201) {
+            // A6(ascend960)无CCU引擎；ccu应已被GetAndConvertCommMode拒绝，此处防御性返回AICPU
+            OP_LOGE(opName_, "A6 has no CCU engine, commMode 'ccu' should be rejected before tiling key.");
+            return Mc2Comm::COMM_MODE_AICPU;
+        }
         OP_LOGI(opName_, "TilingKey Do CCU");
         return Mc2Comm::COMM_MODE_CCU;
     }

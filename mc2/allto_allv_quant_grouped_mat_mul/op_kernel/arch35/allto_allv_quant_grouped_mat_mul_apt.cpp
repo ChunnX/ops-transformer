@@ -45,7 +45,12 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(
     if (userWorkspace == nullptr) {
         return;
     }
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201)
+    // A6(ascend960) AIC:AIV为1:1
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
+#else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#endif
     TPipe pipe;
     REGISTER_TILING_DEFAULT(QuantAlltoAllvGroupedMatmulTilingData);
     using ComputeOpType =
