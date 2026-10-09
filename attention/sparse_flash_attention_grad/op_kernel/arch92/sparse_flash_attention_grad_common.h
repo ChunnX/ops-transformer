@@ -49,9 +49,9 @@ constexpr uint8_t DV_IDX = 2;
 #define IS_DKV_RESIDENT_L0C(BASE_M, BASE_N, HEAD_DIM_ALIGN) \
     (((BASE_M) * (HEAD_DIM_ALIGN) * sizeof(float)) + ((BASE_N) * (HEAD_DIM_ALIGN) * sizeof(float)) + \
      ((BASE_N) > (HEAD_DIM_ALIGN) ? (BASE_M) * (BASE_N) * sizeof(float) : \
-                                        (BASE_M) * (HEAD_DIM_ALIGN) * sizeof(float))) <= L0C_MAX_SIZE
+                                    (BASE_M) * (HEAD_DIM_ALIGN) * sizeof(float))) <= L0C_MAX_SIZE
 
-#define SFagTilingType const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92 *__restrict
+#define SFagTilingType const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92* __restrict
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(INPUT_TYPE) \

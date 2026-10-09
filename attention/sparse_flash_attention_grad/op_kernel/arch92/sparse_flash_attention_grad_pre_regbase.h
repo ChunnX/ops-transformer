@@ -29,11 +29,11 @@ template <typename T1, typename T2, const uint32_t IS_TND = 0, bool IS_SINKS = f
 class FlashAttentionGradPreRegbase {
 public:
     __aicore__ inline FlashAttentionGradPreRegbase(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dSinks,
-                                __gm__ uint8_t *dy, __gm__ uint8_t *y, __gm__ uint8_t *actual_seq_kvlen,
-                                __gm__ uint8_t *workspace,
-                                const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92 *ordTilingData,
-                                TPipe *pipe_in);
+    __aicore__ inline void Init(__gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* dSinks,
+                                __gm__ uint8_t* dy, __gm__ uint8_t* y, __gm__ uint8_t* actual_seq_kvlen,
+                                __gm__ uint8_t* workspace,
+                                const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92* ordTilingData,
+                                TPipe* pipe_in);
     __aicore__ inline void Process();
     __aicore__ inline void SyncALLCores();
 
@@ -41,18 +41,18 @@ public:
     __aicore__ inline void CalculateSoftmaxGrad(uint64_t taskId, uint64_t sfmgOutputOffset, uint64_t curNBurst);
     __aicore__ inline void DoSoftmaxGrad();
     template <uint8_t GM_IDX>
-    __aicore__ inline void CopyDqkvToGm(const uint64_t &loopIdx);
+    __aicore__ inline void CopyDqkvToGm(const uint64_t& loopIdx);
     __aicore__ inline uint64_t Ceil(uint64_t a, uint64_t b);
     __aicore__ inline uint64_t Min(uint64_t a, uint64_t b);
 
-    TPipe *pipe;
+    TPipe* pipe;
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm;
     GlobalTensor<T1> dqGm, dkGm, dvGm;
     GlobalTensor<float> dSinksGm, dSinkWorkSpaceGm;
     GlobalTensor<T1> dyGm, yGm;
     GlobalTensor<float> softmaxGradWorkSpaceGm;
 
-    const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92 *TilingData;
+    const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92* TilingData;
 
     uint32_t vBlockIdx;
     uint32_t usedCoreNum;
@@ -114,9 +114,9 @@ __aicore__ inline uint64_t FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS
 
 template <typename T1, typename T2, const uint32_t IS_TND, bool IS_SINKS, bool IS_DETER, bool KV_MERGE>
 __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS, IS_DETER, KV_MERGE>::Init(
-    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dSinks, __gm__ uint8_t *dy,
-    __gm__ uint8_t *y, __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *workspace,
-    const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92 *orgTilingData, TPipe *pipe_in)
+    __gm__ uint8_t* dq, __gm__ uint8_t* dk, __gm__ uint8_t* dv, __gm__ uint8_t* dSinks, __gm__ uint8_t* dy,
+    __gm__ uint8_t* y, __gm__ uint8_t* actual_seq_kvlen, __gm__ uint8_t* workspace,
+    const optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92* orgTilingData, TPipe* pipe_in)
 {
     if (g_coreType == AIV) {
         vBlockIdx = GetBlockIdx();
@@ -134,26 +134,26 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS, IS
         vPreBlockTail = TilingData->preTilingData.vPreBlockTail;
         usedCoreNum = TilingData->preTilingData.sfmgUsedCoreNum;
 
-        dqGm.SetGlobalBuffer((__gm__ T1 *)dq);
-        dkGm.SetGlobalBuffer((__gm__ T1 *)dk);
+        dqGm.SetGlobalBuffer((__gm__ T1*)dq);
+        dkGm.SetGlobalBuffer((__gm__ T1*)dk);
         if constexpr (!KV_MERGE) {
-            dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
+            dvGm.SetGlobalBuffer((__gm__ T1*)dv);
         }
 
-        dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+        dqWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                       TilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
-        dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+        dkWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                       TilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
-        dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+        dvWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                       TilingData->postTilingData.dvWorkSpaceOffset / sizeof(T2));
-        softmaxGradWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+        softmaxGradWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                                TilingData->baseParams.softmaxGradWorkSpaceOffset / sizeof(T2));
-        dyGm.SetGlobalBuffer((__gm__ T1 *)dy);
-        yGm.SetGlobalBuffer((__gm__ T1 *)y);
+        dyGm.SetGlobalBuffer((__gm__ T1*)dy);
+        yGm.SetGlobalBuffer((__gm__ T1*)y);
 
         if constexpr (IS_SINKS) {
-            dSinksGm.SetGlobalBuffer((__gm__ float *)dSinks);
-            dSinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+            dSinksGm.SetGlobalBuffer((__gm__ float*)dSinks);
+            dSinkWorkSpaceGm.SetGlobalBuffer((__gm__ float*)workspace +
                                              TilingData->postTilingData.dSinkWorkSpaceOffset / sizeof(T2));
         }
 
@@ -224,8 +224,7 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS, IS
             if (vBlockIdx == 0) {
                 InitOutput<float>(dSinksGm, TilingData->baseParams.g, 0);
                 if constexpr (IS_DETER) {
-                    InitOutput<float>(dSinkWorkSpaceGm,
-                                      TilingData->baseParams.usedCoreNum * optiling::sfag::MAX_N1, 0);
+                    InitOutput<float>(dSinkWorkSpaceGm, TilingData->baseParams.usedCoreNum * optiling::sfag::MAX_N1, 0);
                 }
             }
         }
@@ -245,8 +244,7 @@ __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS, IS
 }
 
 template <typename T1, typename T2, const uint32_t IS_TND, bool IS_SINKS, bool IS_DETER, bool KV_MERGE>
-__aicore__ inline void
-FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS, IS_DETER, KV_MERGE>::CalculateSoftmaxGrad(
+__aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS, IS_DETER, KV_MERGE>::CalculateSoftmaxGrad(
     uint64_t taskId, uint64_t sfmgOutputOffset, uint64_t curNBurst)
 {
     LocalTensor<T1> yInTensor = input1Que[taskId & 1].DeQue<T1>();
@@ -264,7 +262,7 @@ FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS, IS_DETER, KV_MERGE>::Calc
 template <typename T1, typename T2, const uint32_t IS_TND, bool IS_SINKS, bool IS_DETER, bool KV_MERGE>
 template <uint8_t GM_IDX>
 __aicore__ inline void FlashAttentionGradPreRegbase<T1, T2, IS_TND, IS_SINKS, IS_DETER, KV_MERGE>::CopyDqkvToGm(
-    const uint64_t &loopIdx)
+    const uint64_t& loopIdx)
 {
     if constexpr (GM_IDX == DQ_IDX) {
         if (loopIdx == dqLoopNum - 1) {

@@ -54,7 +54,7 @@ else()
                 -Werror
     )
     add_modules_sources(
-        OPTYPE sparse_flash_attention_grad 
+        OPTYPE sparse_flash_attention_grad
         ACLNNTYPE aclnn_inner
     )
 endif()

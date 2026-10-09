@@ -31,35 +31,35 @@ public:
     ARGS_TRAITS;
     using BaseClass = FlashAttentionScoreGradKernelBase<FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>,
                                                         CubeBlockType, VecBlockType>;
-    __aicore__ inline void SetUniqueRunInfo(FagRunInfo &runInfo);
-    __aicore__ inline void SetUniqueConstInfo(FagConstInfo &constInfo);
+    __aicore__ inline void SetUniqueRunInfo(FagRunInfo& runInfo);
+    __aicore__ inline void SetUniqueConstInfo(FagConstInfo& constInfo);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessDeter();
     __aicore__ inline void ProcessUnDeter();
 
 private:
-    __aicore__ inline void ProcessGather(FagRunInfo &runInfo, bool fusion = false);
-    __aicore__ inline void ProcessMm12(FagRunInfo &runInfo);
-    __aicore__ inline void ProcessSoftmax(FagRunInfo &runInfo);
-    __aicore__ inline void ProcessMm345(FagRunInfo &runInfo);
-    __aicore__ inline void ProcessScatter(FagRunInfo &runInfo);
+    __aicore__ inline void ProcessGather(FagRunInfo& runInfo, bool fusion = false);
+    __aicore__ inline void ProcessMm12(FagRunInfo& runInfo);
+    __aicore__ inline void ProcessSoftmax(FagRunInfo& runInfo);
+    __aicore__ inline void ProcessMm345(FagRunInfo& runInfo);
+    __aicore__ inline void ProcessScatter(FagRunInfo& runInfo);
     __aicore__ inline void DrainUnDeter(FagRunInfo runInfos[3], int64_t taskId, int64_t pipeStart);
-    __aicore__ inline void FlushPendingDeter(FagRunInfo &runInfo);
+    __aicore__ inline void FlushPendingDeter(FagRunInfo& runInfo);
     __aicore__ inline void InitFirstDeterEpoch();
-    __aicore__ inline void LaunchDeterScatter(FagRunInfo &scatterRunInfo);
+    __aicore__ inline void LaunchDeterScatter(FagRunInfo& scatterRunInfo);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueRunInfo(FagRunInfo& runInfo)
 {}
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::SetUniqueConstInfo(
-    FagConstInfo &constInfo)
+    FagConstInfo& constInfo)
 {}
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo &runInfo,
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessGather(FagRunInfo& runInfo,
                                                                                                  bool fusion)
 {
     if ASCEND_IS_AIV {
@@ -85,7 +85,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessMm12(FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessMm12(FagRunInfo& runInfo)
 {
     if ASCEND_IS_AIC {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE2>(SYNC_V0_TO_C1_FLAG[runInfo.commonRunInfo.taskIdMod2]);
@@ -109,7 +109,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessSoftmax(FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessSoftmax(FagRunInfo& runInfo)
 {
     if (runInfo.taskStep != TASK_C1C2) {
         return;
@@ -134,7 +134,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessMm345(FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessMm345(FagRunInfo& runInfo)
 {
     if (runInfo.taskStep != TASK_C1C2) {
         return;
@@ -142,8 +142,8 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
     if ASCEND_IS_AIC {
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V3_TO_C3_FLAG);
 
-        this->template IterateMmDsK<CALC_TYPE>(
-            this->dqWorkSpaceGm, this->selectedKWorkSpaceGm, this->dSL1Buf, this->constInfo, runInfo);
+        this->template IterateMmDsK<CALC_TYPE>(this->dqWorkSpaceGm, this->selectedKWorkSpaceGm, this->dSL1Buf,
+                                               this->constInfo, runInfo);
 
         // N>64 / deter: mm3 still reads selectedK GM; release only after mm3.
         if (IS_DETER || !this->constInfo.isHeadNLe64) {
@@ -154,13 +154,11 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_V5_TO_C4_FLAG[runInfo.commonRunInfo.taskIdMod2]);
         }
 
-        this->template IterateMmDsQ<CALC_TYPE>(this->mm4ResWorkSpaceGm, this->dSL1Buf,
-                                                                          this->constInfo, runInfo);
+        this->template IterateMmDsQ<CALC_TYPE>(this->mm4ResWorkSpaceGm, this->dSL1Buf, this->constInfo, runInfo);
 
         CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V4_TO_C5_FLAG);
 
-        this->template IterateMmPDy<CALC_TYPE>(this->mm5ResWorkSpaceGm, this->pL1Buf,
-                                                                          this->constInfo, runInfo);
+        this->template IterateMmPDy<CALC_TYPE>(this->mm5ResWorkSpaceGm, this->pL1Buf, this->constInfo, runInfo);
 
         if constexpr (!IS_DETER) {
             CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C5_TO_V5_FLAG[runInfo.commonRunInfo.taskIdMod2]);
@@ -170,7 +168,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessScatter(FagRunInfo &runInfo)
+__aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::ProcessScatter(FagRunInfo& runInfo)
 {
     if constexpr (!IS_DETER) {
         if (runInfo.taskStep != TASK_C3C4C5) {
@@ -216,7 +214,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::FlushPendingDeter(
-    FagRunInfo &runInfo)
+    FagRunInfo& runInfo)
 {
     // 幂等：ProcessSoftmax / ProcessMm345 内部已按 TASK_C1C2 短路。
     ProcessSoftmax(runInfo);
@@ -236,7 +234,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType>::LaunchDeterScatter(
-    FagRunInfo &scatterRunInfo)
+    FagRunInfo& scatterRunInfo)
 {
     // 正常/flush/补偿共用：先收上一 epoch 的 flag14，再开 flag11/13。
     // Wait 在 launch scatter 前，不在 compute 入口，compute(N+1) 仍可与 scatter(N) overlap。
@@ -387,7 +385,7 @@ __aicore__ inline void FlashAttentionScoreGradKernel<CubeBlockType, VecBlockType
             this->GetActualSelCount(this->t1Index, this->n2Index, this->actualSelectedBlockCount);
             for (this->blkCntOffset = 0; this->blkCntOffset < this->actualSelectedBlockCount;
                  this->blkCntOffset += this->constInfo.selectedCountOffset) {
-                FagRunInfo &cur = runInfos[taskId % 3];
+                FagRunInfo& cur = runInfos[taskId % 3];
                 this->SetRunInfo(cur, taskId, i, 0);
                 if (this->constInfo.isHeadNLe64) {
                     // NLe64: keep 3-stage within the same S1. When S1 changes, drain

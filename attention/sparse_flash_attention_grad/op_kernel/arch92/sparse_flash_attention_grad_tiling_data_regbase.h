@@ -234,8 +234,8 @@ public:
     int64_t vPreBlockTail;
     // softmaxGrad(D_i) 分核，字段对齐 FAG presfmg PreParamsRegbase
     int64_t sfmgRowsTotal;
-    int64_t sfmgRowsPerCore;   // 非尾核行数，等同 FAG normalCoreNBurstNums
-    int64_t sfmgUbRows;        // 兼容旧字段，等于 singleLoopNBurstNum
+    int64_t sfmgRowsPerCore; // 非尾核行数，等同 FAG normalCoreNBurstNums
+    int64_t sfmgUbRows;      // 兼容旧字段，等于 singleLoopNBurstNum
     int64_t sfmgUsedCoreNum;
     int64_t sfmgDyBufferLen;
     int64_t sfmgYBufferLen;
