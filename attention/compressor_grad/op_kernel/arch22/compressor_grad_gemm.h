@@ -43,9 +43,11 @@
  *     M=C, N=H, K=T_pad:  A = dn_kv^T via transposed L0A load of natural
  *     (T,C) dn tiles;  B = x blocked-NZ tiles (R6). d_wgate likewise.
  *
- * fp16 inputs (ioT = half): dn_kv/dn_sc are HiLo dual planes (dn = hi + lo);
- * every dn-side k-tile accumulates two Mmad steps (hi then lo) into the same
- * L0C accumulator, giving ~fp32-level operand precision on the fp16 cube.
+ * fp16 and bf16 inputs (any ioT): dn_kv/dn_sc are HiLo dual planes (dn = hi
+ * + lo, both fp16); every dn-side k-tile accumulates two Mmad steps (hi then
+ * lo) into the same L0C accumulator, giving ~fp32-level operand precision on
+ * the fp16 cube. (R9: bf16 switched from single plane to the same dual-plane
+ * scheme — the ATK wide-range accuracy bar needs the dn residual term.)
  * dn is consumed in its natural (T_pad, C) layout (srcDValue = C <= 65535
  * always), so the R2 dnT panel mechanism is gone together with the dn
  * transpose kernels.
@@ -57,13 +59,13 @@
  *   long tail (e.g. dw nHm=56 over 12 cores -> 5 vs 1 m-tiles, ~80% idle).
  * - dx unit = n-pair {(m0,n0), (m0,n0+G_BN)}: the dn_kv/dn_sc A tiles load
  *   to L1 once per k-step and feed BOTH tiles' Mmads (one L0A load feeds
- *   two Mmads too); w B tiles stream per tile. L1 loads per k-step drop
- *   8->6 tiles (bf16) / 12->8 (fp16 HiLo, where each w L0B tile also feeds
- *   the hi and lo Mmad of its output tile).
+ *   two Mmads too); w B tiles stream per tile. L1 loads per k-step are 8
+ *   with HiLo (each w L0B tile also feeds the hi and lo Mmad of its output
+ *   tile) — both dtypes run HiLo since R9.
  * - dw unit = {(m0,n0)} x {dWkv, dWgate}: symmetric flip of the above — the
  *   x B tile (blocked-NZ 32KB burst, R6) is shared by the cW and cG Mmads of
  *   each k-step; dn A tiles (transposed L0A load) stream. L1 loads per k-step
- *   stay 3 (bf16) / 5 (fp16).
+ *   are 5 with HiLo (both dtypes since R9).
  * - L1 queues are depth 4 (A1 128KB + B1 128KB of 512KB) so one k-step's
  *   full tile set is in flight while the previous step drains.
  *
@@ -199,9 +201,9 @@ public:
         cSize_ = static_cast<uint32_t>(tilingData->totalHeadDim);
         tPad_ = static_cast<uint32_t>(tilingData->tPad);
         gDx_ = static_cast<uint32_t>(tilingData->gemmDxCores);
-        // fp16 path stores dn as HiLo dual planes (dn = hi + lo, plane stride
-        // T_pad*C); bf16 stays single-plane.
-        hilo_ = std::is_same_v<ioT, half>;
+        // dn is stored as HiLo dual planes (dn = hi + lo, plane stride
+        // T_pad*C) for both fp16 and bf16 inputs (R9: always on).
+        hilo_ = true;
         dnPlaneElems_ = static_cast<uint64_t>(tPad_) * cSize_;
         pipe->InitBuffer(queA1_, CG_L1_A_DEPTH, CG_GEMM_BM * CG_GEMM_BK * sizeof(half));
         pipe->InitBuffer(queB1_, CG_L1_B_DEPTH, CG_GEMM_BK * CG_GEMM_BN * sizeof(half));

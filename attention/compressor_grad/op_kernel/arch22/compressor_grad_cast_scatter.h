@@ -16,10 +16,11 @@
  *        Phase1 CompressorGradScatterKernel: per-block softmax backward +
  *               gradient routing + d_ape accumulate.
  *
- * fp16 inputs use HiLo dual-plane dn workspaces: scatter writes hi = fp16(dn)
- * to plane 0 and lo = fp16(dn - fp32(hi)) to plane 1 (plane stride T_pad*C);
- * the gemm kernel accumulates dot(hi, w) + dot(lo, w) so the dn operand keeps
- * ~fp32-level precision through the fp16 cube path. bf16 keeps single plane.
+ * fp16 and bf16 inputs both use HiLo dual-plane dn workspaces (R9: the bf16
+ * single-plane path missed the ATK wide-range accuracy bar): scatter writes
+ * hi = fp16(dn) to plane 0 and lo = fp16(dn - fp32(hi)) to plane 1 (plane
+ * stride T_pad*C); the gemm kernel accumulates dot(hi, w) + dot(lo, w) so
+ * the dn operand keeps ~fp32-level precision through the fp16 cube path.
  *
  * Kernel logic is ported verbatim from the verified standalone A3 AscendC
  * implementation; only the entry form changed (Init reads the tiling struct,
@@ -190,9 +191,9 @@ private:
 
     __aicore__ inline void ZeroDn(uint32_t cid)
     {
-        // fp16 inputs use HiLo dual-plane dn workspaces (dn = hi + lo); both
-        // planes must start zeroed. bf16 keeps the single-plane layout.
-        constexpr uint32_t planes = std::is_same_v<ioT, half> ? 2U : 1U;
+        // dn workspaces are HiLo dual-plane for both fp16 and bf16 inputs
+        // (dn = hi + lo); both planes must start zeroed.
+        constexpr uint32_t planes = 2U;
         // plane element count (tPad * cSize) can exceed 2^32 on extreme
         // shapes: all tile arithmetic stays in 64-bit
         const uint64_t planeElems = static_cast<uint64_t>(tPad_) * cSize_;
@@ -282,13 +283,13 @@ public:
         scatterCoreNum_ = static_cast<uint32_t>(tilingData->scatterCoreNum);
         dnPlaneElems_ = static_cast<uint64_t>(tilingData->tPad) * static_cast<uint64_t>(cSize_);
         uint32_t seg = segLen_;
-        // fp16: HiLo dual-plane dn staging; bf16: hi plane only.
-        constexpr uint32_t planes = std::is_same_v<ioT, half> ? 2U : 1U;
+        // HiLo dual-plane dn staging for both fp16 and bf16 inputs (R9: always on).
+        constexpr uint32_t planes = 2U;
         // prev slot tile only exists for coff==2.
         const uint32_t slots = (coff_ == 2) ? 2U : 1U;
         // dn rows are staged per (cur/prev) slot x plane as (cr, seg) fp16 tiles
         // and flushed with one 2D DataCopyPad per tile instead of per-row copies.
-        // fp32 region: ape 2*cr + sm/kv/dkv 3*N + colAcc 4 + dC32 1 [+ hBTile cr for fp16]
+        // fp32 region: ape 2*cr + sm/kv/dkv 3*N + colAcc 4 + dC32 1 + hBTile cr
         uint32_t f32Elems = (2U * crSize_ + 3U * nRows_ + 5U) * seg + (planes - 1U) * crSize_ * seg;
         uint32_t bufBytes =
             f32Elems * sizeof(float) + seg * sizeof(ioT) + slots * planes * crSize_ * seg * sizeof(half);
@@ -303,10 +304,8 @@ public:
         colAcc_ = buf_.Get<float>()[off]; // 4 x seg multi-accumulator
         dC32_ = buf_.Get<float>()[off + 4 * seg];
         off += 5 * seg;
-        if constexpr (std::is_same_v<ioT, half>) {
-            hBTile_ = buf_.Get<float>()[off];
-            off += crSize_ * seg;
-        }
+        hBTile_ = buf_.Get<float>()[off];
+        off += crSize_ * seg;
         uint32_t byteOff = off * sizeof(float);
         dCIn_ = buf_.Get<uint8_t>().ReinterpretCast<ioT>()[byteOff / sizeof(ioT)];
         uint32_t halfOff = (byteOff + seg * sizeof(ioT)) / sizeof(half);
@@ -439,7 +438,7 @@ private:
     // stage all rows of a row-major fp32 block (N, seg) into the cur/prev dn
     // slot tiles; coff==1: rows map 1:1 onto the cur tile (contiguous cast);
     // coff==2: odd rows -> cur tile, even rows -> prev tile (strided casts).
-    // fp16 additionally produces the lo tile: lo = fp16(row - fp32(hi)).
+    // Every dtype additionally produces the lo tile: lo = fp16(row - fp32(hi)).
     __aicore__ inline void StageTiles(const LocalTensor<float>& blk)
     {
         const uint32_t seg = segLen_;
@@ -447,24 +446,20 @@ private:
         const uint8_t rowBlkH = static_cast<uint8_t>(seg / 16);
         if (coff_ == 1) {
             Cast(stageHiCur_, blk, RoundMode::CAST_NONE, crSize_ * seg);
-            if constexpr (std::is_same_v<ioT, half>) {
-                Cast(hBTile_, stageHiCur_, RoundMode::CAST_NONE, crSize_ * seg);
-                Sub(hBTile_, blk, hBTile_, static_cast<int32_t>(crSize_ * seg));
-                Cast(stageLoCur_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
-            }
+            Cast(hBTile_, stageHiCur_, RoundMode::CAST_NONE, crSize_ * seg);
+            Sub(hBTile_, blk, hBTile_, static_cast<int32_t>(crSize_ * seg));
+            Cast(stageLoCur_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
         } else {
             UnaryRepeatParams castPrm{1, 1, rowBlkH, static_cast<uint8_t>(2 * rowBlk)};
             Cast(stageHiCur_, blk[seg], RoundMode::CAST_NONE, seg, crSize_, castPrm); // odd rows
             Cast(stageHiPrev_, blk, RoundMode::CAST_NONE, seg, crSize_, castPrm);     // even rows
-            if constexpr (std::is_same_v<ioT, half>) {
-                BinaryRepeatParams subPrm{1, 1, 1, rowBlk, static_cast<uint8_t>(2 * rowBlk), rowBlk};
-                Cast(hBTile_, stageHiCur_, RoundMode::CAST_NONE, crSize_ * seg);
-                Sub(hBTile_, blk[seg], hBTile_, seg, crSize_, subPrm);
-                Cast(stageLoCur_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
-                Cast(hBTile_, stageHiPrev_, RoundMode::CAST_NONE, crSize_ * seg);
-                Sub(hBTile_, blk, hBTile_, seg, crSize_, subPrm);
-                Cast(stageLoPrev_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
-            }
+            BinaryRepeatParams subPrm{1, 1, 1, rowBlk, static_cast<uint8_t>(2 * rowBlk), rowBlk};
+            Cast(hBTile_, stageHiCur_, RoundMode::CAST_NONE, crSize_ * seg);
+            Sub(hBTile_, blk[seg], hBTile_, seg, crSize_, subPrm);
+            Cast(stageLoCur_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
+            Cast(hBTile_, stageHiPrev_, RoundMode::CAST_NONE, crSize_ * seg);
+            Sub(hBTile_, blk, hBTile_, seg, crSize_, subPrm);
+            Cast(stageLoPrev_, hBTile_, RoundMode::CAST_NONE, crSize_ * seg);
         }
     }
 
@@ -479,15 +474,11 @@ private:
         uint64_t curOff = (static_cast<uint64_t>(b) * sSize_ + j * crSize_) * cSize_ + (coff_ - 1) * dSize_ + d0;
         SetWaitFlag<HardEvent::V_MTE3>();
         DataCopyPad(dn[curOff], stageHiCur_, cp);
-        if constexpr (std::is_same_v<ioT, half>) {
-            DataCopyPad(dn[curOff + dnPlaneElems_], stageLoCur_, cp);
-        }
+        DataCopyPad(dn[curOff + dnPlaneElems_], stageLoCur_, cp);
         if (coff_ == 2 && j >= 1) {
             uint64_t prevOff = (static_cast<uint64_t>(b) * sSize_ + (j - 1) * crSize_) * cSize_ + d0;
             DataCopyPad(dn[prevOff], stageHiPrev_, cp);
-            if constexpr (std::is_same_v<ioT, half>) {
-                DataCopyPad(dn[prevOff + dnPlaneElems_], stageLoPrev_, cp);
-            }
+            DataCopyPad(dn[prevOff + dnPlaneElems_], stageLoPrev_, cp);
         }
     }
 

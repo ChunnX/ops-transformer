@@ -325,7 +325,8 @@ ge::graphStatus CompressorGradTilingA3::SetBaseInfo()
     tPad_ = (static_cast<int64_t>(baseParams_.tokenSize) + CG_A3_NZ_TILE - 1) / CG_A3_NZ_TILE * CG_A3_NZ_TILE;
     nblk_ = baseParams_.seqSize / baseParams_.cmpRatio; // complete blocks only
     nblkIn_ = context_->dCmpKv.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_1);
-    dnPlanes_ = (context_->dtype == ge::DT_FLOAT16) ? 2 : 1;
+    // R9: HiLo dual-plane dn workspaces are on for both fp16 and bf16.
+    dnPlanes_ = 2;
 
     OP_LOGI(context_->opName, "[TILING][arch22] bSize:%u sSize:%u tSize:%u cmpRatio:%u coff:%u", baseParams_.batchSize,
             baseParams_.seqSize, baseParams_.tokenSize, baseParams_.cmpRatio, coff_);
@@ -378,7 +379,8 @@ ge::graphStatus CompressorGradTilingA3::CalcSchedule()
     // the per-k-tile dx cost ~33%; what remains per dx unit is a fixed
     // overhead (accumulator rotation, FixOut drain, stream prologue)
     // that does not scale with C. Model: dx unit = 4 per k-tile (C/128)
-    // + 2 fixed per unit; fp16 HiLo scales x4/3 (dual A planes). dw
+    // + 2 fixed per unit; HiLo scales x4/3 (dual A planes) — R9 makes
+    // both dtypes HiLo, so the model is dtype-independent now. dw
     // unchanged: dw tile ~0.62 when the x workspace stays L2-resident,
     // ~1.16 when it is HBM-streamed. Shift cores dx-ward when dx
     // dominates (>=1.15x, lowered from 1.25 as dx got cheaper), clamp to
@@ -390,9 +392,8 @@ ge::graphStatus CompressorGradTilingA3::CalcSchedule()
         const int64_t nH = hSize / CG_A3_NZ_TILE;  // H % 128 == 0 (checked)
         const int64_t nCn = cSize / CG_A3_NZ_TILE; // C % 128 == 0
         const int64_t nPairRow = (nH + 1) / 2;
-        const bool fp16 = (context_->dtype == ge::DT_FLOAT16);
-        const double dxCost = static_cast<double>(nM * nPairRow) * (4.0 * nCn + 2.0) * (fp16 ? 4.0 / 3.0 : 1.0);
-        const double dwTiles = static_cast<double>(nCn * nH * (tPad_ / CG_A3_NZ_TILE)) * (fp16 ? 5 : 3);
+        const double dxCost = static_cast<double>(nM * nPairRow) * (4.0 * nCn + 2.0) * (4.0 / 3.0);
+        const double dwTiles = static_cast<double>(nCn * nH * (tPad_ / CG_A3_NZ_TILE)) * 5;
         const bool xResident = (tPad_ * hSize * 2) <= static_cast<int64_t>(128) * 1024 * 1024;
         const double dwCost = dwTiles * (xResident ? 0.62 : 1.16);
         if (dxCost >= 1.15 * dwCost) {
@@ -412,8 +413,8 @@ ge::graphStatus CompressorGradTilingA3::CalcSchedule()
 
 ge::graphStatus CompressorGradTilingA3::CalcWorkSpace()
 {
-    // fp16 path: dn workspaces carry HiLo dual planes (dn = hi + lo, plane
-    // stride T_pad*C); bf16 stays single-plane.
+    // dn workspaces carry HiLo dual planes (dn = hi + lo, plane stride
+    // T_pad*C) for both fp16 and bf16 inputs (R9: always on).
     // One flat fp16 workspace, five sub-blocks (same layout as the verified
     // standalone A3 host): xF16 | wkvF16 | wgateF16 | dnKv | dnSc.
     // T_pad/H/C are all 128-aligned, so every block keeps 32KB alignment.
