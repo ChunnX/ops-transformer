@@ -10,15 +10,20 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-把 redline.xlsx 的 dts sheet 参数转换为
+把 xlsx 的 dts sheet 参数转换为
 quant_flash_attn_paramset_debug.py 需要的 TEST_PARAMS 格式。
 
-环境：无 openpyxl/pandas，xlsx 解析走 _xlsx_minireader（zipfile + minidom）。
+环境：无 openpyxl/pandas，xlsx 解析用本文件内置的极简读取器
+（zipfile + minidom，自 tests/assets/_xlsx_minireader.py 提取所需函数，
+避免目录间路径/import 依赖）。
+
+输入 xlsx 路径必填（--xlsx，不做默认/不写死文件名）；
+默认输出本脚本同目录下的 quant_flash_attn_paramset_debug.py。
 
 用法：
-  python3 xlsx_to_paramset_debug.py                 # 读 dts sheet, 写 debug paramset 文件
-  python3 xlsx_to_paramset_debug.py --sheet mxfp8d=72
-  python3 xlsx_to_paramset_debug.py --dry-run        # 只打印生成结果, 不改文件
+  python3 excel_to_pytest_paramset.py --xlsx redline.xlsx   # 读 dts sheet, 写 debug paramset 文件
+  python3 excel_to_pytest_paramset.py --xlsx xx.xlsx --sheet mxfp8d=72
+  python3 excel_to_pytest_paramset.py --xlsx xx.xlsx --dry-run   # 只打印生成结果, 不改文件
 
 字段映射（Excel colon -> debug paramset key）：
   B                 -> B
@@ -47,23 +52,155 @@ quant_flash_attn_paramset_debug.py 需要的 TEST_PARAMS 格式。
 
 import argparse
 import os
-import sys
+import re
+import zipfile
+import xml.dom.minidom as minidom
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-if _HERE not in sys.path:
-    sys.path.insert(0, _HERE)
-
-from _xlsx_minireader import load_sheet, list_sheet_names  # noqa: E402
-
-_XLSX = os.path.join(_HERE, "redline.xlsx")
 _DEFAULT_SHEET = "dts"
-_DEFAULT_OUT = os.path.join(
-    _HERE,
-    "..",
-    "pytest",
-    "qfa_mxfp8_test",
-    "quant_flash_attn_paramset_debug.py",
-)
+_DEFAULT_OUT = os.path.join(_HERE, "quant_flash_attn_paramset_debug.py")
+
+
+# ---------------------------------------------------------------------------
+# 内置极简 xlsx 读取器 (自 tests/assets/_xlsx_minireader.py 提取所需函数),
+# 避免与 assets 目录之间产生路径/import 依赖。zipfile + minidom, 无 openpyxl。
+# ---------------------------------------------------------------------------
+_CELL_RE = re.compile(r"^([A-Z]+)(\d+)$")
+
+
+def col_to_idx(col):
+    """列字母 → 0-based 列索引（A=0 ... Z=25, AA=26, AB=27 ...）"""
+    n = 0
+    for ch in col:
+        n = n * 26 + (ord(ch.upper()) - ord("A") + 1)
+    return n - 1
+
+
+def _parse_ref(ref):
+    """把 Excel 单元格引用（如 "AB12"）拆成 (col_idx, row_idx)。"""
+    m = _CELL_RE.match(ref)
+    if not m:
+        raise ValueError(f"bad cell ref: {ref!r}")
+    return col_to_idx(m.group(1)), int(m.group(2)) - 1
+
+
+def _cell_text(cell, shared_strings):
+    """取一个 <c> 元素的文本值。返回 None 表示空单元格。"""
+    t = cell.getAttribute("t")
+    v_els = cell.getElementsByTagName("v")
+    if t == "s" and v_els:
+        idx = int(v_els[0].firstChild.data)
+        return shared_strings[idx]
+    if t == "b" and v_els:
+        return "True" if v_els[0].firstChild.data == "1" else "False"
+    if t == "inlineStr":
+        is_els = cell.getElementsByTagName("is")
+        if not is_els:
+            return None
+        ts = is_els[0].getElementsByTagName("t")
+        return "".join(tt.firstChild.data if tt.firstChild else "" for tt in ts)
+    if v_els:
+        return v_els[0].firstChild.data
+    return None
+
+
+def _resolve_sheet_xml(z, sheet):
+    """把 sheet 标识 (int 序号或 str 名) 解析为 xl/worksheets/sheetN.xml 路径。"""
+    if isinstance(sheet, int):
+        return f"xl/worksheets/sheet{sheet}.xml"
+
+    wb_xml = z.read("xl/workbook.xml").decode("utf-8")
+    wb_doc = minidom.parseString(wb_xml)
+    rid = None
+    for s in wb_doc.getElementsByTagName("sheet"):
+        if s.getAttribute("name") == sheet:
+            rid = s.getAttribute("r:id") or s.getAttribute(
+                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+            )
+            break
+    if rid is None:
+        names = [s.getAttribute("name") for s in wb_doc.getElementsByTagName("sheet")]
+        raise ValueError(
+            f"sheet name {sheet!r} not found in workbook. available: {names}"
+        )
+
+    rels_xml = z.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+    rels_doc = minidom.parseString(rels_xml)
+    for rel in rels_doc.getElementsByTagName("Relationship"):
+        if rel.getAttribute("Id") == rid:
+            target = rel.getAttribute("Target")
+            return target.lstrip("/") if target.startswith("/") else "xl/" + target
+    raise ValueError(f"r:id {rid!r} (sheet {sheet!r}) not found in workbook.xml.rels")
+
+
+def _parse_sheet_xml(sheet_xml, shared_strings):
+    """解析单个 sheet xml 为 list[dict[col_idx]→text]"""
+    sh = minidom.parseString(sheet_xml)
+    rows = sh.getElementsByTagName("row")
+    rows = sorted(rows, key=lambda r: int(r.getAttribute("r")))
+    parsed_rows = []
+    for row in rows:
+        cells = {}
+        for c in row.getElementsByTagName("c"):
+            col_idx, _row_idx = _parse_ref(c.getAttribute("r"))
+            cells[col_idx] = _cell_text(c, shared_strings)
+        parsed_rows.append(cells)
+    return parsed_rows
+
+
+def _load_sheet_openpyxl(xlsx_path, sheet=1):
+    """openpyxl 回退路径, 支持 sheet 序号或名"""
+    import openpyxl
+
+    wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+    if isinstance(sheet, int):
+        ws = wb.worksheets[sheet - 1] if 1 <= sheet <= len(wb.worksheets) else wb.active
+    else:
+        ws = wb[sheet]
+    parsed_rows = []
+    for row in ws.iter_rows():
+        cells = {}
+        for cell in row:
+            v = cell.value
+            if v is None:
+                continue
+            cells[cell.col_idx - 1] = str(v) if not isinstance(v, str) else v
+        parsed_rows.append(cells)
+    return parsed_rows
+
+
+def load_sheet(xlsx_path, sheet=1):
+    """读取指定 sheet。sheet 可为序号 (int, 1-based) 或 sheet 名 (str)。"""
+    try:
+        with zipfile.ZipFile(xlsx_path) as z:
+            ss_xml = z.read("xl/sharedStrings.xml").decode("utf-8")
+            sheet_path = _resolve_sheet_xml(z, sheet)
+            sheet_xml = z.read(sheet_path).decode("utf-8")
+    except (KeyError, FileNotFoundError):
+        return _load_sheet_openpyxl(xlsx_path, sheet)
+
+    ss_doc = minidom.parseString(ss_xml)
+    shared_strings = []
+    for si in ss_doc.getElementsByTagName("si"):
+        ts = si.getElementsByTagName("t")
+        shared_strings.append(
+            "".join(t.firstChild.data if t.firstChild else "" for t in ts)
+        )
+    return _parse_sheet_xml(sheet_xml, shared_strings)
+
+
+def list_sheet_names(xlsx_path):
+    """返回 xlsx 中所有 sheet 名 (供用户查看可选 sheet)"""
+    try:
+        with zipfile.ZipFile(xlsx_path) as z:
+            wb_xml = z.read("xl/workbook.xml").decode("utf-8")
+    except (KeyError, FileNotFoundError):
+        import openpyxl
+
+        wb = openpyxl.load_workbook(xlsx_path, read_only=True)
+        return wb.sheetnames
+    wb_doc = minidom.parseString(wb_xml)
+    return [s.getAttribute("name") for s in wb_doc.getElementsByTagName("sheet")]
 
 _FILE_HEADER = """\
 #!/usr/bin/python3
@@ -250,12 +387,12 @@ def render_file(test_params):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="redline.xlsx dts sheet -> quant_flash_attn_paramset_debug.py 格式"
+        description="xlsx dts sheet -> quant_flash_attn_paramset_debug.py 格式"
     )
     parser.add_argument(
         "--xlsx",
-        default=_XLSX,
-        help=f"输入 xlsx 路径 (默认 {_XLSX})",
+        required=True,
+        help="输入 xlsx 路径 (必填)",
     )
     parser.add_argument(
         "--sheet",
@@ -275,7 +412,7 @@ def main():
     parser.add_argument(
         "--list-sheets",
         action="store_true",
-        help="列出 redline.xlsx 中所有 sheet 名后退出",
+        help="列出 --xlsx 中所有 sheet 名后退出",
     )
     args = parser.parse_args()
 
@@ -284,7 +421,7 @@ def main():
             print(f"  [{i}] {nm}")
         return
 
-    print(f"[xlsx_to_paramset_debug] reading sheet={args.sheet!r} from {args.xlsx}")
+    print(f"[excel_to_pytest_paramset] reading sheet={args.sheet!r} from {args.xlsx}")
     rows = load_sheet(args.xlsx, args.sheet)
     if not rows:
         raise RuntimeError(f"xlsx sheet {args.sheet!r} has no rows")
