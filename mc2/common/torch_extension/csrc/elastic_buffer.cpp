@@ -2018,6 +2018,11 @@ void ElasticBuffer::EngramWrite(const at::Tensor& storage, const c10::optional<a
 {
     TORCH_CHECK(!destroyed_, "engram_write cannot be called after destroy, "
                              "please create a new ElasticBuffer instance");
+    // Zero-copy inference may be backed by a padded mmap.  Register the full
+    // storage when the tensor starts at offset 0 so the driver sees a 2 MiB
+    // aligned length; otherwise preserve the tensor's logical byte count.
+    const int64_t registrationBytes = storage.storage_offset() == 0 ? static_cast<int64_t>(storage.storage().nbytes()) :
+                                                                      static_cast<int64_t>(storage.nbytes());
     void* externalHostPtr = nullptr;
     int64_t externalBytes = 0;
     void* sfHostPtr = nullptr;
@@ -2051,17 +2056,16 @@ void ElasticBuffer::EngramWrite(const at::Tensor& storage, const c10::optional<a
         // 失败)时, 上下文构建会回退自建窗口并经下方 memcpy 拷入。
         if (engramContextInitialized_) {
             if (engramStorageExternal_) {
-                TORCH_CHECK(engramHostBufPtr_ == storage.data_ptr() &&
-                                engramExternalBytes_ == static_cast<int64_t>(storage.nbytes()),
+                TORCH_CHECK(engramHostBufPtr_ == storage.data_ptr() && engramExternalBytes_ == registrationBytes,
                             "engram_write: inference-mode storage was already zero-copy registered from ptr=",
                             engramHostBufPtr_, " (", engramExternalBytes_, " bytes), got ptr=", storage.data_ptr(),
-                            " (", storage.nbytes(),
+                            " (", registrationBytes,
                             " bytes); the registered host memory must stay alive and keep its address and size");
             }
             // 回退窗口实例: 经下方 memcpy 回填, 允许换源张量。
         } else {
             externalHostPtr = storage.data_ptr();
-            externalBytes = static_cast<int64_t>(storage.nbytes());
+            externalBytes = registrationBytes;
         }
     }
     EnsureEngramContext(externalHostPtr, externalBytes, sfHostPtr, sfBytes);
