@@ -14,7 +14,8 @@
 #include "mhc_norm_post_preonly_common.h"
 #include "mhc_norm_post_preonly_kernel_regbase.h"
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false>
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING = false,
+          bool ACCUMULATE_IN_UB = false>
 class KernelMhcNormPostPreonly {
 public:
     __aicore__ inline KernelMhcNormPostPreonly() = default;
@@ -159,8 +160,8 @@ private:
 
 };
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::AccumulateHalfPartials(uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
                                                   float (&dotHalf)[2][N], uint32_t halfBegin,
                                                   uint32_t halfEnd, bool firstPhiPrefetched)
 {
@@ -175,11 +176,13 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
         // 累积槽独立于ReduceSum的输出TBuf，避免归约接口复用输出缓冲时覆盖累积值。
         // 仅大D启用；D<=5120保留原有标量取值和UB分配路径。
-        if (D_ > 5120U && tOff == 0U) {
-            LocalTensor<float> accumulator = bufPartialAccum_.Get<float>();
-            for (uint32_t half = halfBegin; half < halfEnd; ++half) {
-                Duplicate(accumulator[half * MhcNormRegBase::VL_FP32], 0.0f,
-                          MhcNormRegBase::VL_FP32);
+        if constexpr (ACCUMULATE_IN_UB) {
+            if (tOff == 0U) {
+                LocalTensor<float> accumulator = bufPartialAccum_.Get<float>();
+                for (uint32_t half = halfBegin; half < halfEnd; ++half) {
+                    Duplicate(accumulator[half * MhcNormRegBase::VL_FP32], 0.0f,
+                              MhcNormRegBase::VL_FP32);
+                }
             }
         }
 
@@ -216,7 +219,14 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
                 uint32_t reduceShape[2] = {N + 1U, tD};
                 ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
                 PipeBarrier<PIPE_V>();
-                CollectHalfPartials(scBuf, half, tOff, tD, sumSqHalf, dotHalf);
+                if constexpr (ACCUMULATE_IN_UB) {
+                    CollectHalfPartials(scBuf, half, tOff, tD, sumSqHalf, dotHalf);
+                } else {
+                    sumSqHalf[half] += scBuf.GetValue(0);
+                    for (uint32_t o = 0; o < N; ++o) {
+                        dotHalf[half][o] += scBuf.GetValue(o + 1U);
+                    }
+                }
             }
             return;
         }
@@ -304,7 +314,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             // 五行输入在归约后不再使用，允许接口复用源缓冲，避免额外申请UB。
             ReduceSum<float, AscendC::Pattern::Reduce::AR, true>(scBuf, reduceRows, reduceShape, true);
             PipeBarrier<PIPE_V>();
-            if (D_ <= 5120U || deferReduce) {
+            if constexpr (!ACCUMULATE_IN_UB) {
                 sumSqHalf[half] += scBuf.GetValue(0);
                 for (uint32_t o = 0; o < N; ++o) {
                     dotHalf[half][o] += scBuf.GetValue(o + 1U);
@@ -315,8 +325,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CollectHalfPartials(
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::CollectHalfPartials(
     LocalTensor<float> scBuf, uint32_t half, uint32_t tOff, uint32_t tD, float (&sumSqHalf)[2],
     float (&dotHalf)[2][N])
 {
@@ -332,14 +342,14 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::CastToIO(LocalTensor<T> dst, LocalTensor<float> src, uint32_t count)
 {
         MhcNormRegBase::VFCastFp32ToB16(dst, src, count);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeAndCopyOutHInPrimeTile(LocalTensor<T> srcDst, LocalTensor<float> gamma, float scale,
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ComputeAndCopyOutHInPrimeTile(LocalTensor<T> srcDst, LocalTensor<float> gamma, float scale,
                                                          uint64_t gmOffset, uint32_t count)
 {
         MhcNormRegBase::VFCastB16ScaleAndMulGammaToB16(srcDst, srcDst, gamma, scale, count);
@@ -351,8 +361,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         FenceMte3ToV();
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N])
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ComputeGateValues(float totalSumSqPre, float (&xHatVals)[N])
 {
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
         float invRmsPre = 1.0f / sqrt(totalSumSqPre * invK_ + mhcPreNormEps_);
@@ -368,8 +378,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         PipeBarrier<PIPE_V>();
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ComputeHInCacheAndReduceSumSq(uint32_t tOff, uint32_t tD, LocalTensor<T> x2Cache,
                                                           LocalTensor<float> gateBuf)
 {
         LocalTensor<T> hInCache = bufActivationLowp_.Get<T>()[tOff];
@@ -379,14 +389,14 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
         return ReduceSumPrecise(sqBuf, tD);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline __attribute__((always_inline)) float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeInvRms(float sumSq, float invCount)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline __attribute__((always_inline)) float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ComputeInvRms(float sumSq, float invCount)
 {
         return 1.0f / sqrt(sumSq * invCount + normEps_);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2AllHeadsBatched(const float (&postVals)[N], uint64_t gmBaseOffset,
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ComputeX2AllHeadsBatched(const float (&postVals)[N], uint64_t gmBaseOffset,
                                                     uint32_t tOff, uint32_t tD)
 {
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
@@ -408,8 +418,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         queResidualLowp_.FreeTensor(residual);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ComputeX2PostTile(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                              const float (&postVals)[N])
 {
         LocalTensor<float> hOut = bufResFp32_.Get<float>()[N * dTile_];
@@ -421,8 +431,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         ComputeX2AllHeadsBatched(postVals, (uint64_t)token * N_ * D_ + tOff, tOff, tD);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ComputeX2PostTileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ComputeX2PostTileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD, float invRms0,
                                                            const float (&postVals)[N])
 {
         LocalTensor<float> hOut = bufResFp32_.Get<float>()[N * dTile_];
@@ -451,8 +461,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         queResidualLowp_.FreeTensor(residual);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyInGamma0()
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::CopyInGamma0()
 {
         LocalTensor<float> gamma0 = bufGammaFp32_.Get<float>();
         DataCopyExtParams params = {1, 0, 0, 0, 0};
@@ -461,8 +471,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         DataCopyPad(gamma0, gamma0Gm_, params, pad);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyInGammaTile(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::CopyInGammaTile(LocalTensor<float> dst, GlobalTensor<float> &src, uint32_t tOff, uint32_t tD)
 {
         DataCopyExtParams gP = {1, 0, 0, 0, 0};
         gP.blockLen = tD * sizeof(float);
@@ -470,15 +480,15 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         DataCopyPad(dst, src[tOff], gP, gPad);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyInHOut(uint64_t gmOffset)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::CopyInHOut(uint64_t gmOffset)
 {
         LocalTensor<T> hOutCache = bufActivationLowp_.Get<T>();
         DataCopy(hOutCache, hOutGm_[gmOffset], D_);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyInTokenWeights(uint32_t token, float (&postVals)[N], uint32_t nStart,
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::CopyInTokenWeights(uint32_t token, float (&postVals)[N], uint32_t nStart,
                                               uint32_t nEnd)
 {
         // Host已固定校验N为4，使用编译期常量便于展开标量循环。
@@ -502,8 +512,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
             postVals[i] = hPostUb.GetValue(i);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyOutHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::CopyOutHInPrimeTile(LocalTensor<float> src, uint64_t gmOffset, uint32_t count)
 {
         CopyOutLowPrecisionTile(hInPrimeGm_, gmOffset, src, count);
         if constexpr (RETURN_H_IN_F32) {
@@ -514,8 +524,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::CopyOutLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::CopyOutLowPrecisionTile(GlobalTensor<T> &dst, uint64_t gmOffset, LocalTensor<float> src,
                                                     uint32_t count)
 {
         LocalTensor<T> tmp = bufHInPrimeBf16_.Get<T>();
@@ -526,22 +536,22 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         FenceMte3ToV();
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::FenceMte3ToV()
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::FenceMte3ToV()
 {
         SetFlag<HardEvent::MTE3_V>(evtMte3toV_);
         WaitFlag<HardEvent::MTE3_V>(evtMte3toV_);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::FenceVToMte2()
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::FenceVToMte2()
 {
         SetFlag<HardEvent::V_MTE2>(evtVtoMte2_);
         WaitFlag<HardEvent::V_MTE2>(evtVtoMte2_);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::FinalizeHInPrime(
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::FinalizeHInPrime(
     uint32_t token, float sumSq1)
 {
     const float invRms1 = ComputeInvRms(sumSq1, invD_);
@@ -563,8 +573,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline uint32_t KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::GetTileD(uint32_t tile) const
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline uint32_t KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::GetTileD(uint32_t tile) const
 {
         if (lastDTile_ != 0 && tile == dLoop_ - 1) {
             return lastDTile_;
@@ -572,8 +582,8 @@ __aicore__ inline uint32_t KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_
         return dTile_;
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Init(GM_ADDR h_out_gm, GM_ADDR residual_gm, GM_ADDR h_post_gm, GM_ADDR h_res_gm,
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::Init(GM_ADDR h_out_gm, GM_ADDR residual_gm, GM_ADDR h_post_gm, GM_ADDR h_res_gm,
                                 GM_ADDR phi_gm, GM_ADDR alpha_gm, GM_ADDR bias_gm, GM_ADDR pre_mix_gm,
                                 GM_ADDR gamma_0_gm, GM_ADDR gamma_1_gm, GM_ADDR gamma_2_gm, GM_ADDR h_in_prime_gm,
                                 GM_ADDR x_2_out_gm, GM_ADDR h_in_f32_gm, GM_ADDR h_pre_gm, GM_ADDR workspace,
@@ -655,9 +665,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         pipe_.InitBuffer(bufPostComb_, POST_COMB_SIZE * sizeof(float));
         pipe_.InitBuffer(bufPhiFp32_, 2, 2U * dTile_ * sizeof(float));
         pipe_.InitBuffer(bufHInPrimeBf16_, dTile_ * sizeof(T));
-        const bool usePartialAccumulator = D_ > 5120U;
         pipe_.InitBuffer(bufScalar_, SCALAR_BUF_SIZE);
-        if (usePartialAccumulator) {
+        if constexpr (ACCUMULATE_IN_UB) {
             pipe_.InitBuffer(bufPartialAccum_, PARTIAL_ACCUM_BUF_SIZE);
         }
         const uint32_t gamma1CacheElems = (DUAL_SIBLING && USE_RMS_MID) || D_ <= GAMMA1_CACHE_MAX_D ? D_ : dTile_;
@@ -673,8 +682,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process()
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::Process()
 {
         if (tStart_ >= tEnd_) {
             return;
@@ -703,7 +712,7 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
 
         // 为initcheck建立一次性的MTE2初始化；后续Vector结果会覆盖这些槽位。
         DataCopy(bufScalar_.Get<float>(), gamma0Gm_, PARTIAL_SLOT_ELEMS);
-        if (D_ > 5120U) {
+        if constexpr (ACCUMULATE_IN_UB) {
             LocalTensor<float> accumulator = bufPartialAccum_.Get<float>();
             if constexpr (DUAL_SIBLING) {
                 DataCopy(accumulator[siblingAivIdx_ * MhcNormRegBase::VL_FP32], gamma0Gm_, PARTIAL_SLOT_ELEMS);
@@ -743,8 +752,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessToken(
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ProcessToken(
     uint32_t token)
 {
     if constexpr (USE_RMS_MID) {
@@ -762,8 +771,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
     }
 }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ReduceSumPrecise(LocalTensor<float> src, uint32_t tD)
 {
         LocalTensor<float> scBuf = bufScalar_.Get<float>();
         constexpr uint32_t REDUCE_ALIGN = 16; // ReduceSum要求16个元素对齐
@@ -774,8 +783,8 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
         return scBuf.GetValue(0);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumSq(LocalTensor<float> src, uint32_t tD)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ReduceSumSq(LocalTensor<float> src, uint32_t tD)
 {
         // gamma2缓存与平方归约不同时存活，复用同一块UB作为平方临时区。
         LocalTensor<float> sqBuf = bufScratchFp32_.Get<float>();
@@ -784,8 +793,8 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
         return ReduceSumPrecise(sqBuf, tD);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ReduceSumSqFromCache(uint32_t tOff, uint32_t tD)
 {
         LocalTensor<T> hOutCache = bufActivationLowp_.Get<T>()[tOff];
         LocalTensor<float> sqBuf = bufScratchFp32_.Get<float>();
@@ -794,8 +803,8 @@ __aicore__ inline float KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32
         return ReduceSumPrecise(sqBuf, tD);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::RestoreAndCopyOutX2Tile(uint32_t token, uint32_t tOff, uint32_t tD)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::RestoreAndCopyOutX2Tile(uint32_t token, uint32_t tOff, uint32_t tD)
 {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
@@ -814,8 +823,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::RestoreAndCopyOutX2TileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD)
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::RestoreAndCopyOutX2TileForSiblingAiv(uint32_t token, uint32_t tOff, uint32_t tD)
 {
         LocalTensor<float> x2 = bufX2Fp32_.Get<float>();
         LocalTensor<T> x2Cache = bufActivationLowp_.Get<T>();
@@ -833,8 +842,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         }
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::StartCopyInGamma1()
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::StartCopyInGamma1()
 {
         LocalTensor<float> gamma1 = bufGammaFp32_.Get<float>();
         DataCopyExtParams params = {1, 0, 0, 0, 0};
@@ -844,8 +853,8 @@ __aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32,
         SetFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::WaitCopyInGamma1()
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::WaitCopyInGamma1()
 {
         WaitFlag<HardEvent::MTE2_V>(evtMte2toV_);
     }

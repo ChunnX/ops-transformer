@@ -11,9 +11,9 @@
 #ifndef MHC_NORM_POST_PREONLY_HAS_MID_H_
 #define MHC_NORM_POST_PREONLY_HAS_MID_H_
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
 __aicore__ inline void
-KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenDualHasMid(uint32_t token)
+KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ProcessTokenDualHasMid(uint32_t token)
 {
     float postVals[N];
     float sumSqHalf[2] = {0.0f, 0.0f};
@@ -222,8 +222,8 @@ KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::Process
     FinalizeHInPrime(token, sumSq1);
 }
 
-template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING>
-__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING>::ProcessTokenSingleHasMid(
+template <typename T, bool USE_RMS_MID, bool RETURN_H_IN_F32, bool DUAL_SIBLING, bool ACCUMULATE_IN_UB>
+__aicore__ inline void KernelMhcNormPostPreonly<T, USE_RMS_MID, RETURN_H_IN_F32, DUAL_SIBLING, ACCUMULATE_IN_UB>::ProcessTokenSingleHasMid(
     uint32_t token)
 {
     float postVals[N];

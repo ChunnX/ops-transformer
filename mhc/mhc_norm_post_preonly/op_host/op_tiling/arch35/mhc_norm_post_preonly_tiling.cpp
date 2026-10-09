@@ -42,8 +42,9 @@ constexpr size_t H_IN_F32_OUTPUT_INDEX = 2U;
 constexpr uint64_t TILING_KEY_BIT_USE_RMS_MID = 1ULL << 0;
 constexpr uint64_t TILING_KEY_BIT_RETURN_H_IN_F32 = 1ULL << 1;
 constexpr uint64_t TILING_KEY_BIT_DUAL_SIBLING_AIV = 1ULL << 2;
+constexpr uint64_t TILING_KEY_BIT_LARGE_D_ACCUM = 1ULL << 3;
 
-// TilingKey三位编码：[dualSibling, returnHInF32, useRmsMid]。
+// TilingKey低三位编码：[dualSibling, returnHInF32, useRmsMid]；第4位供大D专用累积路径。
 // 000=单AIV/4op/不返回FP32，001=单AIV/5op/不返回FP32；
 // 010=单AIV/4op/返回FP32，  011=单AIV/5op/返回FP32；
 // 100=双sibling/4op/不返回FP32，101=双sibling/5op/不返回FP32；
@@ -356,7 +357,8 @@ ge::graphStatus MhcNormPostPreonlyTiling::DoOpTiling()
 uint64_t MhcNormPostPreonlyTiling::GetTilingKey() const
 {
     return (useRmsMid_ ? TILING_KEY_BIT_USE_RMS_MID : 0ULL) | (returnHInF32_ ? TILING_KEY_BIT_RETURN_H_IN_F32 : 0ULL) |
-           (enableDualSibling_ ? TILING_KEY_BIT_DUAL_SIBLING_AIV : 0ULL);
+           (enableDualSibling_ ? TILING_KEY_BIT_DUAL_SIBLING_AIV : 0ULL) |
+           (D_ > 5120U ? TILING_KEY_BIT_LARGE_D_ACCUM : 0ULL);
 }
 
 ge::graphStatus MhcNormPostPreonlyTiling::GetWorkspaceSize()
