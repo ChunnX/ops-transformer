@@ -43,6 +43,7 @@ constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
 constexpr uint32_t SPLIT_BLOCK_DATA_COUNT = 120U; // 120 = SPLIT_BLOCK_DATA_SIZE / sizeof(float)
 constexpr uint32_t SIZE_ALIGN_256 = 256U;
 constexpr uint32_t CUMSUM_MAX_CORE_NUM = 8U;
+constexpr uint32_t ALL_TO_ALL_MAX_CORE_NUM = 40U;
 // 按32核上限预留前缀和数据区（32*32*32=32KB）
 constexpr uint64_t CUMSUM_WS_FLAG_OFFSET = 32UL * 1024UL;
 constexpr uint32_t RUNPOS_CALCUMSUM = 2U;
@@ -274,6 +275,8 @@ private:
     uint32_t recStatusNumPerCore_{0};
     uint32_t aivUsedCumSum_{0};
     uint32_t aivUsedAllToAll_{0};
+    uint32_t aivAllToAllDispatch_{0};
+    uint32_t aivTokenCnt_{0};
     uint32_t maxSize_{0};
     uint32_t expertIdsSize_{0};
     uint32_t globalBS_{0};
@@ -388,7 +391,14 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
     aivUsedCumSum_ = (aivUsedCumSum_ >= CUMSUM_MAX_CORE_NUM) ? CUMSUM_MAX_CORE_NUM : aivUsedCumSum_;
     // 确保每个核至少处理一个状态
     aivUsedCumSum_ = (aivUsedCumSum_ >= rscvStatusNum_) ? rscvStatusNum_ : aivUsedCumSum_;
-    aivUsedAllToAll_ = aivNum_ - aivUsedCumSum_;
+    if (aivNum_ - aivUsedCumSum_ >= ALL_TO_ALL_MAX_CORE_NUM) {
+        aivAllToAllDispatch_ = ALL_TO_ALL_MAX_CORE_NUM;
+        aivTokenCnt_ = aivNum_ - aivAllToAllDispatch_;
+    } else {
+        aivAllToAllDispatch_ = aivNum_ - aivUsedCumSum_;
+        aivTokenCnt_ = aivUsedCumSum_;
+    }
+    aivUsedAllToAll_ = aivAllToAllDispatch_;
     if (sharedExpertRankNum_ != 0U) {
         sharedUsedAivNum_ = (aivUsedAllToAll_ * sharedExpertNum_) / (axisK_ + sharedExpertNum_);
         if (sharedUsedAivNum_ == 0) {
@@ -830,7 +840,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 {
     uint32_t startExpertId, endExpertId, sendExpertNum;
     uint32_t maskCnt = isTokenMaskFlag_ ? (activeMaskBsCnt_ * axisK_) : expertIdsCnt_;
-    SplitToCore(totalExpertNum_, aivUsedCumSum_, startExpertId, endExpertId, sendExpertNum, false);
+    SplitToCore(totalExpertNum_, aivTokenCnt_, startExpertId, endExpertId, sendExpertNum, false);
     if (startExpertId >= totalExpertNum_) {
         return;
     }
@@ -903,7 +913,7 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
 {
     uint32_t startExpertId, endExpertId, sendExpertNum;
     // 将(rank, localExpert)展平为expertId后分核，使同一rank可由多个核并行处理。
-    SplitToCore(totalExpertNum_, aivUsedCumSum_, startExpertId, endExpertId, sendExpertNum, false);
+    SplitToCore(totalExpertNum_, aivTokenCnt_, startExpertId, endExpertId, sendExpertNum, false);
     if (sendExpertNum == 0) {
         return;
     }
@@ -1214,6 +1224,9 @@ __aicore__ inline void MoeDistributeDispatchV2A5FullMesh<TemplateMC2A5FullMeshTy
         CalAndSendCntByExp();
     } else {
         CalAndSendCntByRankAndExpert();
+    }
+    if (aivId_ - aivUsedAllToAll_ >= aivUsedCumSum_) {
+        return;
     }
     SplitToCore(rscvStatusNum_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
     BufferInit();
