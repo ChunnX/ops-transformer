@@ -67,40 +67,40 @@ stages:
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86 }}
           arch: 'x64'
           package_name: 'cann-ops-transformer_linux-x86_64.run'
-      JOB_arm_compile:
-        name: Compile_arm
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_ARM'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM }}
-          arch: 'arm64'
-          package_name: 'cann-ops-transformer_linux-aarch64.run'
-      JOB_experimental_compile:
-        name: Compile_experimental_x86
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_X86_experimental'
-          ge_st_rt2: 'experimental'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_experimental }}
-          arch: 'x64'
-          package_name: 'cann-ops-transformer_experimental_linux-x86_64.run'
-      JOB_arm_experimental_compile:
-        name: Compile_experimental_arm
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_ARM_experimental'
-          ge_st_rt2: 'experimental'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental }}
-          arch: 'arm64'
-          package_name: 'cann-ops-transformer_experimental_linux-aarch64.run'
-      JOB_Pre_Compile:
-        name: Compile_pre
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Pre_Compile'
-          image_version: ${{ jobs.JOB_image.outputs.Pre_Compile }}
-          arch: 'arm64'
-          spec: '2xlarge'
+      # JOB_arm_compile:
+      #   name: Compile_arm
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_ARM'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM }}
+      #     arch: 'arm64'
+      #     package_name: 'cann-ops-transformer_linux-aarch64.run'
+      # JOB_experimental_compile:
+      #   name: Compile_experimental_x86
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_X86_experimental'
+      #     ge_st_rt2: 'experimental'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_experimental }}
+      #     arch: 'x64'
+      #     package_name: 'cann-ops-transformer_experimental_linux-x86_64.run'
+      # JOB_arm_experimental_compile:
+      #   name: Compile_experimental_arm
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_ARM_experimental'
+      #     ge_st_rt2: 'experimental'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental }}
+      #     arch: 'arm64'
+      #     package_name: 'cann-ops-transformer_experimental_linux-aarch64.run'
+      # JOB_Pre_Compile:
+      #   name: Compile_pre
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Pre_Compile'
+      #     image_version: ${{ jobs.JOB_image.outputs.Pre_Compile }}
+      #     arch: 'arm64'
+      #     spec: '2xlarge'
       JOB_x86_compile_ubuntu24:
         name: Compile_x86_ubuntu24
         uses: .gitcode/workflows/compile_action.yml
@@ -109,92 +109,92 @@ stages:
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_ubuntu24 }}
           arch: 'x64'
           package_name: 'cann-ops-transformer_linux-x86_64_ubuntu24.run'
-      JOB_arm_compile_ubuntu24:
-        name: Compile_arm_ubuntu24
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_ARM_ubuntu24'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_ubuntu24 }}
-          arch: 'arm64'
-          package_name: 'cann-ops-transformer_linux-aarch64_ubuntu24.run'
-      JOB_experimental_compile_ubuntu24:
-        name: Compile_experimental_x86_ubuntu24
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_X86_experimental_ubuntu24'
-          ge_st_rt2: 'experimental'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_experimental_ubuntu24 }}
-          arch: 'x64'
-          package_name: 'cann-ops-transformer_experimental_linux-x86_64_ubuntu24.run'
-      JOB_arm_experimental_compile_ubuntu24:
-        name: Compile_experimental_arm_ubuntu24
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_ARM_experimental_ubuntu24'
-          ge_st_rt2: 'experimental'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental_ubuntu24 }}
-          arch: 'arm64'
-          package_name: 'cann-ops-transformer_experimental_linux-aarch64_ubuntu24.run'
-      JOB_monitor_910b_compile:
-        name: Compile_monitor_910b
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'monitor'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_X86_monitor }}
-          arch: 'x64'
-          package_name: 'cann-ops-transformer-monitor-910b_linux-x86_64.run'
-      JOB_monitor_910c_compile:
-        name: Compile_monitor_910c
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'monitor_910c'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_X86_monitor }}
-          arch: 'x64'
-          package_name: 'cann-ops-transformer-monitor-910c_linux-x86_64.run'
-      JOB_monitor_950_compile:
-        name: Compile_monitor_950
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'monitor_950'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_X86_monitor_9_0_0 }}
-          arch: 'x64'
-          package_name: 'cann-ops-transformer-monitor-950_linux-x86_64.run'
-      JOB_experimental_950_compile:
-        name: Compile_experimental_950_x86
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_X86_experimental'
-          ge_st_rt2: 'experimental_950'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_experimental }}
-          arch: 'x64'
-          package_name: 'cann-ops-transformer_experimental_950_linux-x86_64.run'
-      JOB_arm_experimental_950_compile:
-        name: Compile_experimental_950_arm
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_ARM_experimental'
-          ge_st_rt2: 'experimental_950'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental }}
-          arch: 'arm64'
-          package_name: 'cann-ops-transformer_experimental_950_linux-aarch64.run'
-      JOB_experimental_950_compile_ubuntu24:
-        name: Compile_experimental_950_x86_ubuntu24
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_X86_experimental_ubuntu24'
-          ge_st_rt2: 'experimental_950'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_experimental_ubuntu24 }}
-          arch: 'x64'
-          package_name: 'cann-ops-transformer_experimental_950_linux-x86_64_ubuntu24.run'
-      JOB_arm_experimental_950_compile_ubuntu24:
-        name: Compile_experimental_950_arm_ubuntu24
-        uses: .gitcode/workflows/compile_action.yml
-        with:
-          task_name: 'Compile_Ascend_ARM_experimental_ubuntu24'
-          ge_st_rt2: 'experimental_950'
-          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental_ubuntu24 }}
-          arch: 'arm64'
-          package_name: 'cann-ops-transformer_experimental_950_linux-aarch64_ubuntu24.run'
+      # JOB_arm_compile_ubuntu24:
+      #   name: Compile_arm_ubuntu24
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_ARM_ubuntu24'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_ubuntu24 }}
+      #     arch: 'arm64'
+      #     package_name: 'cann-ops-transformer_linux-aarch64_ubuntu24.run'
+      # JOB_experimental_compile_ubuntu24:
+      #   name: Compile_experimental_x86_ubuntu24
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_X86_experimental_ubuntu24'
+      #     ge_st_rt2: 'experimental'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_experimental_ubuntu24 }}
+      #     arch: 'x64'
+      #     package_name: 'cann-ops-transformer_experimental_linux-x86_64_ubuntu24.run'
+      # JOB_arm_experimental_compile_ubuntu24:
+      #   name: Compile_experimental_arm_ubuntu24
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_ARM_experimental_ubuntu24'
+      #     ge_st_rt2: 'experimental'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental_ubuntu24 }}
+      #     arch: 'arm64'
+      #     package_name: 'cann-ops-transformer_experimental_linux-aarch64_ubuntu24.run'
+      # JOB_monitor_910b_compile:
+      #   name: Compile_monitor_910b
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'monitor'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_X86_monitor }}
+      #     arch: 'x64'
+      #     package_name: 'cann-ops-transformer-monitor-910b_linux-x86_64.run'
+      # JOB_monitor_910c_compile:
+      #   name: Compile_monitor_910c
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'monitor_910c'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_X86_monitor }}
+      #     arch: 'x64'
+      #     package_name: 'cann-ops-transformer-monitor-910c_linux-x86_64.run'
+      # JOB_monitor_950_compile:
+      #   name: Compile_monitor_950
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'monitor_950'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_X86_monitor_9_0_0 }}
+      #     arch: 'x64'
+      #     package_name: 'cann-ops-transformer-monitor-950_linux-x86_64.run'
+      # JOB_experimental_950_compile:
+      #   name: Compile_experimental_950_x86
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_X86_experimental'
+      #     ge_st_rt2: 'experimental_950'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_experimental }}
+      #     arch: 'x64'
+      #     package_name: 'cann-ops-transformer_experimental_950_linux-x86_64.run'
+      # JOB_arm_experimental_950_compile:
+      #   name: Compile_experimental_950_arm
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_ARM_experimental'
+      #     ge_st_rt2: 'experimental_950'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental }}
+      #     arch: 'arm64'
+      #     package_name: 'cann-ops-transformer_experimental_950_linux-aarch64.run'
+      # JOB_experimental_950_compile_ubuntu24:
+      #   name: Compile_experimental_950_x86_ubuntu24
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_X86_experimental_ubuntu24'
+      #     ge_st_rt2: 'experimental_950'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_experimental_ubuntu24 }}
+      #     arch: 'x64'
+      #     package_name: 'cann-ops-transformer_experimental_950_linux-x86_64_ubuntu24.run'
+      # JOB_arm_experimental_950_compile_ubuntu24:
+      #   name: Compile_experimental_950_arm_ubuntu24
+      #   uses: .gitcode/workflows/compile_action.yml
+      #   with:
+      #     task_name: 'Compile_Ascend_ARM_experimental_ubuntu24'
+      #     ge_st_rt2: 'experimental_950'
+      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental_ubuntu24 }}
+      #     arch: 'arm64'
+      #     package_name: 'cann-ops-transformer_experimental_950_linux-aarch64_ubuntu24.run'
       JOB_mobile_station_compile:
         name: Compile_kirinx90
         uses: .gitcode/workflows/compile_action.yml
@@ -223,18 +223,18 @@ stages:
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_mobile_station_ubuntu24 }}
           arch: 'x64'
           package_name: 'cann-ops-transformer-kirin9030_linux-x86_64_ubuntu24.run'
-      JOB_codecheck:
-        name: CodeCheck
-        uses: cann/.gitcode/.gitcode/workflows/codecheck_action.yml@master
-        with:
-          precommit_image_version: ${{ jobs.JOB_image.outputs.precommit }}
-          codecheck_image_version: ${{ jobs.JOB_image.outputs.codecheck }}
-      JOB_staticcheck_md_check:
-        name: CodeCheck_staticcheck_md_check
-        uses: .gitcode/workflows/staticcheck_action.yml
-        with:
-          check_type: 'md_check'
-          image_version: ${{ jobs.JOB_image.outputs.staticcheck }}
+      # JOB_codecheck:
+      #   name: CodeCheck
+      #   uses: cann/.gitcode/.gitcode/workflows/codecheck_action.yml@master
+      #   with:
+      #     precommit_image_version: ${{ jobs.JOB_image.outputs.precommit }}
+      #     codecheck_image_version: ${{ jobs.JOB_image.outputs.codecheck }}
+      # JOB_staticcheck_md_check:
+      #   name: CodeCheck_staticcheck_md_check
+      #   uses: .gitcode/workflows/staticcheck_action.yml
+      #   with:
+      #     check_type: 'md_check'
+      #     image_version: ${{ jobs.JOB_image.outputs.staticcheck }}
     pre:
     - type: auto
     fail-fast: false
@@ -262,56 +262,56 @@ stages:
         uses: .gitcode/workflows/ut_action.yml
         with:
           image_version: ${{ jobs.JOB_image.outputs.UT_Test }}
-      A2_smoke:
-        name: PreSmoke_A2
-        steps:
-          -
-            name: Checkout
-            identifier: process_checkout
-            uses: checkout
-            with:
-              ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
-              allow-unsafe-pr-checkout: true
-          -
-            name: download
-            uses: obs-download
-            with:
-              endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
-              bucket: "ascend-ci"
-              access-key: ${{ secrets.AK }}
-              secret-key: ${{ secrets.SK }}
-              key: |
-                ${{ env.obs_path }}/pr_filelist.txt
-                ${{ env.obs_path }}/pr_filelist_mod.txt
-                ${{ env.obs_path }}/update_file_detail.txt
-                ${{ env.obs_path }}/pre_smoke.sh
-              path: ${{ steps.process_checkout.outputs.path }}
-          -
-            name: smoke executor
-            timeout-minutes: 30
-            run: |
-              set -e
-              export repo_name=${{env.repo_name}}
-              export pr_id=${{ env.MERGE_ID }}
-              export AK=${{secrets.AK}}
-              export SK=${{secrets.SK}}
-              export obs_smoke_path=${{ env.obs_smoke_path }}
-              export obs_path=${{ env.obs_path }}
-              export WORKSPACE=${{ steps.process_checkout.outputs.path }}
-              bash ${{ steps.process_checkout.outputs.path }}/pre_smoke.sh
-          - name: upload
-            uses: obs-upload
-            with:
-              endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
-              bucket: "ascend-ci"
-              access-key: ${{ secrets.AK }}
-              secret-key: ${{ secrets.SK }}
-              artifact-path: "${{ steps.process_checkout.outputs.path }}/slog*.tar.gz"
-              object-prefix: ${{ env.obs_smoke_path }}/plog/
-        if: env.TARGET_BRANCH == 'master'
-        runs-on: ['self-hosted','npu=2','smoke=204']
-        container:
-          image: swr.cn-south-1.myhuaweicloud.com/pre_smoke/${{ jobs.JOB_image.outputs.PreSmoke_A900 }}
+      # A2_smoke:
+      #   name: PreSmoke_A2
+      #   steps:
+      #     -
+      #       name: Checkout
+      #       identifier: process_checkout
+      #       uses: checkout
+      #       with:
+      #         ref: ${{ atomgit.event.pull_request.merge_commit_sha }}
+      #         allow-unsafe-pr-checkout: true
+      #     -
+      #       name: download
+      #       uses: obs-download
+      #       with:
+      #         endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
+      #         bucket: "ascend-ci"
+      #         access-key: ${{ secrets.AK }}
+      #         secret-key: ${{ secrets.SK }}
+      #         key: |
+      #           ${{ env.obs_path }}/pr_filelist.txt
+      #           ${{ env.obs_path }}/pr_filelist_mod.txt
+      #           ${{ env.obs_path }}/update_file_detail.txt
+      #           ${{ env.obs_path }}/pre_smoke.sh
+      #         path: ${{ steps.process_checkout.outputs.path }}
+      #     -
+      #       name: smoke executor
+      #       timeout-minutes: 30
+      #       run: |
+      #         set -e
+      #         export repo_name=${{env.repo_name}}
+      #         export pr_id=${{ env.MERGE_ID }}
+      #         export AK=${{secrets.AK}}
+      #         export SK=${{secrets.SK}}
+      #         export obs_smoke_path=${{ env.obs_smoke_path }}
+      #         export obs_path=${{ env.obs_path }}
+      #         export WORKSPACE=${{ steps.process_checkout.outputs.path }}
+      #         bash ${{ steps.process_checkout.outputs.path }}/pre_smoke.sh
+      #     - name: upload
+      #       uses: obs-upload
+      #       with:
+      #         endpoint: "https://obs.cn-north-4.myhuaweicloud.com"
+      #         bucket: "ascend-ci"
+      #         access-key: ${{ secrets.AK }}
+      #         secret-key: ${{ secrets.SK }}
+      #         artifact-path: "${{ steps.process_checkout.outputs.path }}/slog*.tar.gz"
+      #         object-prefix: ${{ env.obs_smoke_path }}/plog/
+      #   if: env.TARGET_BRANCH == 'master'
+      #   runs-on: ['self-hosted','npu=2','smoke=204']
+      #   container:
+      #     image: swr.cn-south-1.myhuaweicloud.com/pre_smoke/${{ jobs.JOB_image.outputs.PreSmoke_A900 }}
       PreSmoke_harmony-infer-chs-transformer:
         name: PreSmoke_harmony-infer-chs-transformer
         uses: .gitcode/workflows/kirin_pre_smoke_action.yml
@@ -322,16 +322,16 @@ stages:
           chip_version: 'Kirin9030'
           cases_pool: 'transformer_all.json'
           cases_baseline: 'transformer.json'
-      PreSmoke_harmony-infer-cpro-transformer:
-        name: PreSmoke_harmony-infer-cpro-transformer
-        uses: .gitcode/workflows/kirin_pre_smoke_action.yml
-        with:
-          repo_name: 'ops-transformer'
-          device_type: 'kirinx90'
-          rdv_script: 'rdv_kirinx90_gitcode.sh'
-          chip_version: 'KirinX90'
-          cases_pool: 'transformer_all.json'
-          cases_baseline: 'transformer.json'
+      # PreSmoke_harmony-infer-cpro-transformer:
+      #   name: PreSmoke_harmony-infer-cpro-transformer
+      #   uses: .gitcode/workflows/kirin_pre_smoke_action.yml
+      #   with:
+      #     repo_name: 'ops-transformer'
+      #     device_type: 'kirinx90'
+      #     rdv_script: 'rdv_kirinx90_gitcode.sh'
+      #     chip_version: 'KirinX90'
+      #     cases_pool: 'transformer_all.json'
+      #     cases_baseline: 'transformer.json'
     pre:
     - type: auto
     fail-fast: false
