@@ -766,7 +766,7 @@ int main()
   aclOpExecutor *executor = nullptr;
 
   aclnnStatus aclnn_ret = aclnnMhcPreSinkhornPremixGetWorkspaceSize(
-      tensors.x, tensors.phi, tensors.alpha, tensors.bias,
+      tensors.x, tensors.phi, tensors.alpha, tensors.bias, nullptr,
       hc_mult, num_iters, hc_eps, norm_eps, need_backward,
       tensors.hin, tensors.h_post, tensors.h_res,
       tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,

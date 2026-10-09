@@ -274,11 +274,14 @@ aclnnStatus aclnnMhcPreSinkhornPremixBackwardGetWorkspaceSize(
     const aclTensor  *invRms,
     const aclTensor  *sumOut,
     const aclTensor  *normOut,
+    const aclTensor  *preMix,
+    const aclTensor  *gradPre,
     double            hcEps,
     const aclTensor  *gradX,
     const aclTensor  *gradPhi,
     const aclTensor  *gradAlpha,
     const aclTensor  *gradBias,
+    const aclTensor  *gradPreMix,
     uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
@@ -292,6 +295,8 @@ aclnnStatus aclnnMhcPreSinkhornPremixBackward(
 ```
 
 ## aclnnMhcPreSinkhornPremixBackwardGetWorkspaceSize
+
+可选输入 `preMix` 和 `gradPre` 均为 FLOAT、ND 格式，shape 为 `[B, S, N]`（对应4维 `x`）或 `[T, N]`（对应3维 `x`），必须同时传入或同时为 `nullptr`。传入时输出 `gradPreMix`（同样为 FLOAT、ND、与 `preMix` 相同shape）须有效；省略时 `gradPreMix` 须为 `nullptr`。下文示例不使用 premix，三个参数均显式传 `nullptr`。
 
 - **参数说明：**
 
@@ -969,8 +974,9 @@ int main()
         tensors.x, tensors.phi, tensors.alpha, tensors.bias,
         tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
         tensors.sum_out, tensors.norm_out,
+        nullptr, nullptr,
         hc_eps,
-        tensors.grad_x, tensors.grad_phi, tensors.grad_alpha, tensors.grad_bias,
+        tensors.grad_x, tensors.grad_phi, tensors.grad_alpha, tensors.grad_bias, nullptr,
         &workspace_size, &executor);
     CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornPremixBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret);
               return -1);
