@@ -291,10 +291,10 @@ static ge::graphStatus GetAttrsValue(T context, GMMAttrs &gmmAttrs)
     gmmAttrs.outputDtype = *dtypePtr;
     OP_LOGI(context->GetNodeName(), "Attr dtype = %ld", gmmAttrs.outputDtype);
 
-    const auto tuningConfigPtr =
-        attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_TUNING_CONFIG);
-    gmmAttrs.tuningConfig =
-        (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ? tuningConfigPtr->GetData()[0] : 0;
+    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(GMM_INDEX_ATTR_TUNING_CONFIG);
+    gmmAttrs.tuningConfig = (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) ?
+                                (reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData()))[0] :
+                                0;
     OP_LOGI(context->GetNodeName(), "Attr tuningConfig = %ld", gmmAttrs.tuningConfig);
 
     const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_TYPE);
@@ -437,12 +437,6 @@ static bool IsS8S4PseudoQuant(const gert::InferShapeContext *context)
 
 static bool IsS8S4SpecialWeightFormat(const gert::InferShapeContext *context)
 {
-    fe::PlatformInfo platformInfo;
-    fe::OptionalInfo optionalInfo;
-    const auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
-    if (ret != GRAPH_SUCCESS || GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) == 0) {
-        return false;
-    }
     if (!IsS8S4PseudoQuant(context)) {
         return false;
     }
@@ -450,12 +444,11 @@ static bool IsS8S4SpecialWeightFormat(const gert::InferShapeContext *context)
     if (attrs == nullptr) {
         return false;
     }
-    const auto tuningConfigPtr =
-        attrs->GetAttrPointer<gert::TypedContinuousVector<int64_t>>(GMM_INDEX_ATTR_TUNING_CONFIG);
+    const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(GMM_INDEX_ATTR_TUNING_CONFIG);
     if (tuningConfigPtr == nullptr || tuningConfigPtr->GetSize() <= 1) {
         return false;
     }
-    const auto tuningConfig = tuningConfigPtr->GetData();
+    const auto tuningConfig = reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData());
     return tuningConfig[1] == 1;
 }
 
@@ -509,11 +502,37 @@ static ge::graphStatus CheckNonQuant(gert::InferShapeContext *context)
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetGroupSize(const gert::InferShapeContext *context, GMMParamsInfo &paramsInfo)
+static size_t GetMaxGroupNum(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
+                             const GMMParamsInfo &paramsInfo, const std::string &socVersion)
+{
+    if (paramsInfo.numX != 1UL || paramsInfo.numWeight != 1UL || paramsInfo.numY != 1UL ||
+        gmmAttrs.groupType != GMM_SPLIT_M) {
+        return GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    }
+    auto x0Desc = context->GetDynamicInputDesc(GMM_INDEX_IN_X, 0);
+    auto w0Desc = context->GetDynamicInputDesc(GMM_INDEX_IN_WEIGHT, 0);
+    auto w0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    if (x0Desc == nullptr || w0Desc == nullptr || w0Shape == nullptr || attrs == nullptr ||
+        w0Shape->GetDimNum() != GMM_SPLIT_M_SINGLE_WEIGHT_DIM) {
+        return GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    }
+    const int64_t *groupListType = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
+    if (groupListType == nullptr || (*groupListType != 0L && *groupListType != 1L)) {
+        return GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    }
+    const DataType xDtype = x0Desc->GetDataType();
+    const DataType weightDtype = w0Desc->GetDataType();
+    const bool isNonQuant = xDtype == weightDtype && (xDtype == DataType::DT_BF16 || xDtype == DataType::DT_FLOAT16);
+    const bool isSupportedSoc = socVersion == "Ascend910B" || socVersion == "Ascend910_93";
+    return isNonQuant && isSupportedSoc ? GMM_MAX_GROUP_LIST_SIZE_TENSOR_LARGE : GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+}
+
+static ge::graphStatus GetGroupSize(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
+                                    GMMParamsInfo &paramsInfo, const std::string &socVersion)
 {
     size_t groupNum = 1;
-    // all case allows 1024 in infershape, specific check in tiling
-    size_t maxGroupNum = GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    const size_t maxGroupNum = GetMaxGroupNum(context, gmmAttrs, paramsInfo, socVersion);
     if (paramsInfo.numX > 1UL) {
         groupNum = paramsInfo.numX;
     } else if (paramsInfo.numWeight > 1UL) {
@@ -1345,7 +1364,8 @@ static ge::graphStatus CheckShapeDiffLengthTensorList(gert::InferShapeContext *c
 }
 
 static ge::graphStatus CheckGroupListCommonTensor(const gert::InferShapeContext *context,
-                                                  const bool isRequiredGroupList, const int64_t groupNum)
+                                                  const bool isRequiredGroupList, const int64_t groupNum,
+                                                  const int64_t maxGroupListSize = GMM_MAX_GROUP_LIST_SIZE_TENSOR)
 {
     auto groupTensorOptionalShape = context->GetOptionalInputShape(GMM_INDEX_IN_GROUP_LIST);
     bool isNull = groupTensorOptionalShape == nullptr;
@@ -1355,13 +1375,13 @@ static ge::graphStatus CheckGroupListCommonTensor(const gert::InferShapeContext 
         return GRAPH_SUCCESS;
     }
     int64_t groupListSize = groupTensorOptionalShape->GetDim(0);
-    OP_CHECK_IF(groupListSize > GMM_MAX_GROUP_LIST_SIZE_TENSOR,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    context->GetNodeName(), "groupList length", std::to_string(groupListSize),
-                    Ops::Transformer::Gmm::FormatString("groupList length must be less than or equal to %ld",
-                                                        GMM_MAX_GROUP_LIST_SIZE_TENSOR)
-                        .c_str()),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        groupListSize > maxGroupListSize,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context->GetNodeName(), "groupList length", std::to_string(groupListSize),
+            Ops::Transformer::Gmm::FormatString("groupList length must be less than or equal to %ld", maxGroupListSize)
+                .c_str()),
+        return GRAPH_FAILED);
     OP_CHECK_IF(!((groupListSize == groupNum && groupNum > 1) || groupNum == 1),
                 OP_LOGE_FOR_INVALID_LISTSIZE(context->GetNodeName(), "groupList", std::to_string(groupListSize),
                                              std::to_string(groupNum)),
@@ -1402,9 +1422,7 @@ static ge::graphStatus SplitMSingleXSingleWeightSingleY(gert::InferShapeContext 
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "weight",
                                                          "k dim value of x and weight is not matched"),
                 return GRAPH_FAILED);
-    innerAxisDimId = specialWeightFormat ?
-                         static_cast<int64_t>(weightAxis.n) :
-                         (!transposeWeight ? 2 : -1); // 非转置时 weight 内轴 N 位于第 3 维（索引 2），转置时置 -1 跳过
+    innerAxisDimId = specialWeightFormat ? static_cast<int64_t>(weightAxis.n) : (!transposeWeight ? 2 : -1);
     OP_CHECK_IF(
         CheckInnerAxisOfTensorList(context, GMM_INDEX_IN_WEIGHT, innerAxisDimId, paramsInfo.numWeight, "weight") !=
             GRAPH_SUCCESS,
@@ -1419,10 +1437,14 @@ static ge::graphStatus SplitMSingleXSingleWeightSingleY(gert::InferShapeContext 
                                                          "weight's N axis size should be even when it is int4 dtype"),
                 return GRAPH_FAILED);
     // check groupList
-    OP_CHECK_IF(CheckGroupListCommonTensor(
-                    context, true, context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDim(0)) != GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupList", "Invalid groupList"),
-                return GRAPH_FAILED);
+    const int64_t maxGroupListSize = paramsInfo.groupNum > static_cast<size_t>(GMM_MAX_GROUP_LIST_SIZE_TENSOR) ?
+                                         GMM_MAX_GROUP_LIST_SIZE_TENSOR_LARGE :
+                                         GMM_MAX_GROUP_LIST_SIZE_TENSOR;
+    OP_CHECK_IF(
+        CheckGroupListCommonTensor(context, true, context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0)->GetDim(0),
+                                   maxGroupListSize) != GRAPH_SUCCESS,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupList", "Invalid groupList"),
+        return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -1874,69 +1896,60 @@ static graphStatus IsDavidQuantGMMByShape(T context)
     return (GetSizeByDataType(xDtype) == 1 && GetSizeByDataType(weightDtype) == 1) ? GRAPH_SUCCESS : GRAPH_FAILED;
 }
 
-static ge::graphStatus TryDavidInferShape(gert::InferShapeContext *context, bool &isDavidCase)
+static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext *context)
 {
-    isDavidCase = false;
+    OP_CHECK_NULL_WITH_CONTEXT(context, context);
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
-    if (ret != GRAPH_SUCCESS || GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) == 0 ||
-        IsS8S4PseudoQuant(context)) {
-        return GRAPH_FAILED; // not handled by David path
+    if (ret == GRAPH_SUCCESS && GmmDavidSupportSoc.count(platformInfo.str_info.short_soc_version) > 0 &&
+        !IsS8S4PseudoQuant(context)) {
+        if (IsDavidQuantGMMByShape(context) == GRAPH_SUCCESS) {
+            OP_CHECK_IF(InferShape4DavidQuantGMM(context) != GRAPH_SUCCESS,
+                        OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
+            return GRAPH_SUCCESS;
+        } else if (IsDavidWeightQuantGMMByShape(context) == GRAPH_SUCCESS) {
+            OP_CHECK_IF(InferShape4DavidWeightQuantGMM(context) != GRAPH_SUCCESS,
+                        OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
+            return GRAPH_SUCCESS;
+        }
     }
-    if (IsDavidQuantGMMByShape(context) == GRAPH_SUCCESS) {
-        isDavidCase = true;
-        OP_CHECK_IF(InferShape4DavidQuantGMM(context) != GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
-        return GRAPH_SUCCESS;
-    } else if (IsDavidWeightQuantGMMByShape(context) == GRAPH_SUCCESS) {
-        isDavidCase = true;
-        OP_CHECK_IF(InferShape4DavidWeightQuantGMM(context) != GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(), "Check params failed"), return GRAPH_FAILED);
-        return GRAPH_SUCCESS;
-    }
-    return GRAPH_FAILED; // not a David quant case
-}
+    GMMAttrs gmmAttrs{GMM_X_Y_SEPARATED, 0, GMM_NO_SPLIT, false, false, 0, 0};
+    OP_CHECK_IF(GetAttrsValue(context, gmmAttrs) != GRAPH_SUCCESS || CheckAttrs(context, gmmAttrs) != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "Failed to get attrs"),
+                return GRAPH_FAILED);
 
-static ge::graphStatus ParseAttrsAndCountInputs(gert::InferShapeContext *context, GMMAttrs &gmmAttrs, size_t &numX,
-                                                size_t &numWeight, int64_t &lenGroupList)
-{
-    numX = 0;
-    numWeight = 0;
-    lenGroupList = 0;
-    if (GetNumOfInputs(context, numX, numWeight, lenGroupList) != GRAPH_SUCCESS) {
-        OP_CHECK_IF(CheckDimNum(context, numX, GMM_MIN_FM_DIM, "x") != GRAPH_SUCCESS,
+    size_t numX = 0;          // init numX
+    size_t numWeight = 0;     // init numWeight
+    int64_t lenGroupList = 0; // init lenGroupList
+    size_t numY = context->GetComputeNodeOutputNum();
+    if (GetNumOfInputs(context, numX, numWeight, lenGroupList) == GRAPH_SUCCESS) { // check input shape value inside
+        GMMParamsInfo paramsInfo{numX, numWeight, numY, lenGroupList, 0, 0, 0, 0, 0, PlatformID::UNKNOWN};
+        const std::string &socVersion = platformInfo.str_info.short_soc_version;
+        OP_CHECK_IF(GetGroupSize(context, gmmAttrs, paramsInfo, socVersion) != GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "check groupNum failed"),
+                    return GRAPH_FAILED);
+        OP_CHECK_IF(CheckFunctionParamsForShape(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input",
+                                                             "CheckFunctionParamsForShape failed"),
+                    return GRAPH_FAILED);
+        OP_CHECK_IF(CheckParamDifferentGroupType(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupType",
+                                                             "CheckParamDifferentGroupType failed"),
+                    return GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(CheckDimNum(context, numX, GMM_MIN_FM_DIM, "x") != GRAPH_SUCCESS, // check dim number of tensors
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "x",
                                                              "Dim num of tensor in tensorList x is invalid"),
                     return GRAPH_FAILED);
-        return GRAPH_SUCCESS;
     }
-    size_t numY = context->GetComputeNodeOutputNum();
-    GMMParamsInfo paramsInfo{numX, numWeight, numY, lenGroupList, 0, 0, 0, 0, 0, PlatformID::UNKNOWN};
-    OP_CHECK_IF(GetGroupSize(context, paramsInfo) != GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "check groupNum failed"),
-                return GRAPH_FAILED);
-    OP_CHECK_IF(
-        CheckFunctionParamsForShape(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "CheckFunctionParamsForShape failed"),
-        return GRAPH_FAILED);
-    OP_CHECK_IF(CheckParamDifferentGroupType(context, gmmAttrs, paramsInfo) != GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "groupType",
-                                                         "CheckParamDifferentGroupType failed"),
-                return GRAPH_FAILED);
-    return GRAPH_SUCCESS;
-}
 
-static ge::graphStatus ComputeAndSetOutputShape(gert::InferShapeContext *context, GMMAttrs &gmmAttrs, size_t numX,
-                                                size_t numWeight, int64_t lenGroupList)
-{
     const gert::Shape *x0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, x0Shape);
     size_t xDimNum = x0Shape->GetDimNum();
     const gert::Shape *w0Shape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, w0Shape);
     size_t weightDimNum = w0Shape->GetDimNum();
-    size_t numY = context->GetComputeNodeOutputNum();
     bool isSingleX = (numX == 1UL) && (gmmAttrs.groupType != GMM_NO_SPLIT);
     bool isSingleY = (numY == 1UL) && (gmmAttrs.groupType != GMM_NO_SPLIT);
     size_t xDimM = gmmAttrs.transposeX ? xDimNum - 1UL : xDimNum - 2UL;
@@ -1953,29 +1966,8 @@ static ge::graphStatus ComputeAndSetOutputShape(gert::InferShapeContext *context
     OP_CHECK_IF(GMMSetOutputShape(context, gmmAttrs, outputParams, x0Shape, w0Shape) != GRAPH_SUCCESS,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "GMMSetOutputShape failed"),
                 return GRAPH_FAILED);
-    return GRAPH_SUCCESS;
-}
 
-static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext *context)
-{
-    OP_CHECK_NULL_WITH_CONTEXT(context, context);
-    bool isDavidCase = false;
-    ge::graphStatus davidRet = TryDavidInferShape(context, isDavidCase);
-    if (isDavidCase) {
-        return davidRet;
-    }
-    GMMAttrs gmmAttrs{GMM_X_Y_SEPARATED, 0, GMM_NO_SPLIT, false, false, 0, 0};
-    OP_CHECK_IF(GetAttrsValue(context, gmmAttrs) != GRAPH_SUCCESS || CheckAttrs(context, gmmAttrs) != GRAPH_SUCCESS,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "Failed to get attrs"),
-                return GRAPH_FAILED);
-    size_t numX = 0;
-    size_t numWeight = 0;
-    int64_t lenGroupList = 0;
-    OP_CHECK_IF(
-        ParseAttrsAndCountInputs(context, gmmAttrs, numX, numWeight, lenGroupList) != GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "input", "ParseAttrsAndCountInputs failed"),
-        return GRAPH_FAILED);
-    return ComputeAndSetOutputShape(context, gmmAttrs, numX, numWeight, lenGroupList);
+    return GRAPH_SUCCESS;
 }
 
 // =========================================================================================
@@ -2045,16 +2037,14 @@ static graphStatus CheckNonQuantMatmulParams(fe::PlatformInfo &platformInfo, ger
                         return GRAPH_FAILED);
         }
     }
-    OP_CHECK_IF(
-        CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-            context->GetNodeName(), "x, weight, bias",
-            Ops::Transformer::Gmm::FormatString("%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
-                                                TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
-                                                TypeUtils::DataTypeToAscendString(biasDtype).GetString())
-                .c_str(),
-            "x, weight, or bias has an unsupported dtype"),
-        return GRAPH_FAILED);
+    OP_CHECK_IF(CheckMatmulDataType(context, xDtype, weightDtype, biasDtype) != GRAPH_SUCCESS,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    context->GetNodeName(), "x, weight, bias",
+                    Ops::Transformer::Gmm::FormatString("%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
+                                                        TypeUtils::DataTypeToAscendString(weightDtype).GetString(), TypeUtils::DataTypeToAscendString(biasDtype).GetString())
+                        .c_str(),
+                    "x, weight, or bias has an unsupported dtype"),
+                return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -2177,8 +2167,7 @@ static graphStatus CheckFunctionParamsForDtype(gert::InferDataTypeContext *conte
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
                 context->GetNodeName(), "x, weight, bias",
                 Ops::Transformer::Gmm::FormatString("%s, %s, %s", TypeUtils::DataTypeToAscendString(xDtype).GetString(),
-                                                    TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
-                                                    TypeUtils::DataTypeToAscendString(biasDtype).GetString())
+                                                    TypeUtils::DataTypeToAscendString(weightDtype).GetString(), TypeUtils::DataTypeToAscendString(biasDtype).GetString())
                     .c_str(),
                 "x, weight, or bias has an unsupported dtype"),
             return GRAPH_FAILED);
