@@ -11,6 +11,11 @@
 #   bash run.sh all                    # 运行 CSV 全部行
 #   bash run.sh --csv <file> 1 3       # 指定 csv 文件 + 行号
 #   bash run.sh --cli m k n r [lm] [h] [mode] [dtype] [testMode]  # 命令行模式(绕过 csv)
+#   cases.csv 列格式（第7~15列可选，空=默认值）:
+#     m,k,n,rank_num,head_m_size,localmatmul,[testmode],[dtype],[seed],
+#     [a_min],[a_max],[b_min],[b_max],[bias_min],[bias_max]
+#     testmode 默认 0；dtype 默认沿用 --dtype (fp16)；seed 默认 678；
+#     A/B/bias 默认 [-5,5]/[-10,10]/[-3,3]
 #   bash run.sh --skip-build ...       # 跳过编译
 #   bash run.sh --gen-only ...         # 仅生成 CPU golden
 #   bash run.sh --verify-only ...      # 仅精度比对
@@ -99,18 +104,29 @@ print_perf_hint() {
 # ---- 单 case 执行函数 ----
 run_single() {
     local M=$1 K=$2 N=$3 RANK_NUM=$4 HEAD_M_SIZE=$5 LOCAL_MATMUL=$6 TEST_MODE=${7:-$TEST_MODE}
+    # 第8~15位可选（CSV 第7~14列 + 预留）：dtype seed a_min a_max b_min b_max bias_min bias_max
+    local CASE_DTYPE=${8:-$DTYPE}
+    local SEED=${9:-678}
+    local A_MIN=${10:--5.0}
+    local A_MAX=${11:-5.0}
+    local B_MIN=${12:--10.0}
+    local B_MAX=${13:-10.0}
+    local BIAS_MIN=${14:--3.0}
+    local BIAS_MAX=${15:-3.0}
     echo ""
     echo "=========================================="
     echo "apace AllToAllMatmul (non-quantized) ST"
     echo "  M=$M K=$K N=$N rankNum=$RANK_NUM headMSize=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL testMode=$TEST_MODE"
+    echo "  dtype=$CASE_DTYPE seed=$SEED A=[$A_MIN,$A_MAX] B=[$B_MIN,$B_MAX] bias=[$BIAS_MIN,$BIAS_MAX]"
     echo "=========================================="
 
     cd "$SCRIPT_DIR"
     rm -rf input output
 
     # ---- 1. 生成数据 ----
-    echo "[1/4] Generate CPU golden + input data (dtype=$DTYPE lm=$LOCAL_MATMUL)..."
-    python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM" "$DTYPE" "$LOCAL_MATMUL"
+    echo "[1/4] Generate CPU golden + input data (dtype=$CASE_DTYPE lm=$LOCAL_MATMUL seed=$SEED)..."
+    python3 scripts/gen_data.py "$M" "$K" "$N" "$RANK_NUM" "$CASE_DTYPE" "$LOCAL_MATMUL" \
+        "$SEED" "$A_MIN" "$A_MAX" "$B_MIN" "$B_MAX" "$BIAS_MIN" "$BIAS_MAX"
 
     if [ "$GEN_ONLY" -eq 1 ]; then return 0; fi
 
@@ -158,18 +174,18 @@ run_single() {
                 local before_dirs after_dirs new_dirs
                 before_dirs=$(get_prof_dirs)
 
-                echo "  [msprof] Running $EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE ..."
+                echo "  [msprof] Running $EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $CASE_DTYPE $TEST_MODE ..."
                 if command -v timeout >/dev/null 2>&1; then
                     set +e
                     timeout ${KERNEL_TIMEOUT}s msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE" \
+                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $CASE_DTYPE $TEST_MODE" \
                         --task-time=on --ai-core=on 2>&1
                     local MSPROF_RC=$?
                     set -e
                 else
                     set +e
                     msprof --output="$PROF_DIR" \
-                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $DTYPE $TEST_MODE" \
+                        --application="$EXE_PATH $M $K $N $RANK_NUM $LOCAL_MATMUL $HEAD_M_SIZE $MODE $CASE_DTYPE $TEST_MODE" \
                         --task-time=on --ai-core=on 2>&1
                     local MSPROF_RC=$?
                     set -e
@@ -197,7 +213,7 @@ run_single() {
                 fi
 
                 for d in $new_dirs; do
-                    echo "M=$M K=$K N=$N headM=$HEAD_M_SIZE lm=$LOCAL_MATMUL dtype=$DTYPE testMode=$TEST_MODE" > "$PROF_DIR/$d/case_info.txt"
+                    echo "M=$M K=$K N=$N headM=$HEAD_M_SIZE lm=$LOCAL_MATMUL dtype=$CASE_DTYPE testMode=$TEST_MODE" > "$PROF_DIR/$d/case_info.txt"
                 done
 
                 # ---- 校验 PROF 数据有效性（op_summary CSV 是否能解析出 latency）----
@@ -228,7 +244,7 @@ run_single() {
                     precision="FAIL"
                     if [ -d "$SCRIPT_DIR/output" ]; then
                         set +e
-                        python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "$SCRIPT_DIR/output" --dtype "$DTYPE" >/dev/null 2>&1
+                        python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "$SCRIPT_DIR/output" --dtype "$CASE_DTYPE" >/dev/null 2>&1
                         local verify_rc=$?
                         set -e
                         if [ $verify_rc -eq 0 ]; then precision="PASS"; fi
@@ -253,7 +269,7 @@ run_single() {
                 # ---- precision 模式: 直接调 exe ----
                 set +e
                 KERNEL_OUT=$(timeout ${KERNEL_TIMEOUT}s "$EXE_PATH" $M $K $N $RANK_NUM \
-                    "$LOCAL_MATMUL" "$HEAD_M_SIZE" "$MODE" "$DTYPE" "$TEST_MODE" 2>&1)
+                    "$LOCAL_MATMUL" "$HEAD_M_SIZE" "$MODE" "$CASE_DTYPE" "$TEST_MODE" 2>&1)
                 KERNEL_RC=$?
                 set -e
                 echo "${KERNEL_OUT}"
@@ -300,7 +316,7 @@ run_single() {
         # testMode=1(COMM_ONLY)：无 matmul 输出，只验通信；testMode=2(MM_ONLY)：只验 matmul
         if [ "$TEST_MODE" -ne 1 ]; then
             echo "[4/4] Verify matmul..."
-            python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" --dtype "$DTYPE" || return 1
+            python3 scripts/verify_result.py "$M" "$N" "$RANK_NUM" "./output" --dtype "$CASE_DTYPE" || return 1
         fi
         if [ "$TEST_MODE" -ne 2 ]; then
             echo "[4/4] Verify comm window..."
@@ -361,11 +377,11 @@ TOTAL_LINES=$(echo "$DATA_LINES" | grep -c .)
 # 无参数: 列出全部 case 并全部运行
 if [ ${#ARGS[@]} -eq 0 ]; then
     echo "==== cases.csv ($TOTAL_LINES cases) ===="
-    echo "Row  M      K     N     rank  headMSize  localMatmul"
+    echo "Row  M      K     N     rank  headMSize  localMatmul  testMode  dtype  seed  A[..]        B[..]        bias[..]"
     local_idx=0
     while IFS= read -r line; do
         local_idx=$((local_idx + 1))
-        printf "%-5s %s\n" "$local_idx" "$(echo "$line" | awk -F, '{printf "%-6s %-5s %-5s %-5s %-10s %s", $1,$2,$3,$4,$5,$6}')"
+        printf "%-5s %s\n" "$local_idx" "$(echo "$line" | awk -F, '{printf "%-6s %-5s %-5s %-5s %-10s %-12s %-9s %-6s %-6s [%s,%s] [%s,%s] [%s,%s]", $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15}')"
     done <<< "$DATA_LINES"
     echo ""
     echo "Running all $TOTAL_LINES cases..."
@@ -396,17 +412,26 @@ for row in "${SELECTED_ROWS[@]}"; do
     HEAD_M_SIZE=$(echo "$SELECTED" | awk -F, '{print $5}')
     LOCAL_MATMUL=$(echo "$SELECTED" | awk -F, '{print $6}')
     CSV_TEST_MODE=$(echo "$SELECTED" | awk -F, '{print $7}')   # 第7列可选：testMode
+    CSV_DTYPE=$(echo "$SELECTED" | awk -F, '{print $8}')       # 第8列可选：dtype（空=沿用 --dtype）
+    CSV_SEED=$(echo "$SELECTED" | awk -F, '{print $9}')        # 第9列可选：seed
+    CSV_A_MIN=$(echo "$SELECTED" | awk -F, '{print $10}')      # 第10列：A 下限
+    CSV_A_MAX=$(echo "$SELECTED" | awk -F, '{print $11}')      # 第11列：A 上限
+    CSV_B_MIN=$(echo "$SELECTED" | awk -F, '{print $12}')      # 第12列：B 下限
+    CSV_B_MAX=$(echo "$SELECTED" | awk -F, '{print $13}')      # 第13列：B 上限
+    CSV_BIAS_MIN=$(echo "$SELECTED" | awk -F, '{print $14}')   # 第14列：bias 下限
+    CSV_BIAS_MAX=$(echo "$SELECTED" | awk -F, '{print $15}')   # 第15列：bias 上限
     [ -n "$CSV_TEST_MODE" ] && TEST_MODE="$CSV_TEST_MODE"
 
     echo ""
     echo "########## CSV row ${row}/${TOTAL_LINES} ##########"
 
-    if run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_MATMUL" "$TEST_MODE"; then
+    if run_single "$M" "$K" "$N" "$RANK_NUM" "$HEAD_M_SIZE" "$LOCAL_MATMUL" "$TEST_MODE" \
+        "$CSV_DTYPE" "$CSV_SEED" "$CSV_A_MIN" "$CSV_A_MAX" "$CSV_B_MIN" "$CSV_B_MAX" "$CSV_BIAS_MIN" "$CSV_BIAS_MAX"; then
         PASS_CNT=$((PASS_CNT + 1))
-        RESULTS+=("PASS  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL testMode=$TEST_MODE")
+        RESULTS+=("PASS  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL testMode=$TEST_MODE dtype=$CSV_DTYPE seed=$CSV_SEED")
     else
         FAIL_CNT=$((FAIL_CNT + 1))
-        RESULTS+=("FAIL  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL testMode=$TEST_MODE")
+        RESULTS+=("FAIL  row$row  M=$M K=$K N=$N rank=$RANK_NUM headM=$HEAD_M_SIZE localMatmul=$LOCAL_MATMUL testMode=$TEST_MODE dtype=$CSV_DTYPE seed=$CSV_SEED")
     fi
     # 首次编译后，后续 case 跳过编译
     SKIP_BUILD=1

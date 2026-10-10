@@ -55,7 +55,9 @@ def write_artifacts(base_dir, rank_id, a_segment, b_ori, bias, out, a_after):
     write_tensor(a_after, os.path.join(input_dir, "comm_window.bin"))
 
 
-def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
+def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0, seed=678,
+                                      a_range=(-5.0, 5.0), b_range=(-10.0, 10.0),
+                                      bias_range=(-3.0, 3.0)):
     M_total = m * rank_num
     K = k
     N = n
@@ -65,16 +67,15 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
     if K % rank_num != 0:
         raise ValueError(f"K={K} must be divisible by rank_num={rank_num}")
 
-    #np.random.seed(42)
-    np.random.seed(678)
+    np.random.seed(seed)
 
-    # fp16/bf16 输入取 [0.5, 1)，避免 K 较大时中间累加溢出
+    # A/B/bias 取值范围可配（各为 [min, max]），避免 K 较大时中间累加溢出
     a_local_f32 = [
-        np.random.uniform(-5.0, 5.0, (M_total, Ka)).astype(np.float32)
+        np.random.uniform(a_range[0], a_range[1], (M_total, Ka)).astype(np.float32)
         for _ in range(rank_num)
     ]
-    b_ori_f32 = np.random.uniform(-10.0, 10.0, (N, K)).astype(np.float32)
-    bias_f32 = np.random.uniform(-3.0, 3.0, (N,)).astype(np.float32)
+    b_ori_f32 = np.random.uniform(b_range[0], b_range[1], (N, K)).astype(np.float32)
+    bias_f32 = np.random.uniform(bias_range[0], bias_range[1], (N,)).astype(np.float32)
 
     # 量化到目标 dtype（kernel 输入与 golden 必须用同一份量化值）
     a_local_list = [torch.from_numpy(x).to(target) for x in a_local_f32]
@@ -154,14 +155,18 @@ def gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype="fp16", lm=0):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (5, 6, 7):
-        print("Usage: python3 gen_data.py m k n rank_num [dtype] [lm]")
+    if len(sys.argv) not in range(5, 15):
+        print("Usage: python3 gen_data.py m k n rank_num [dtype] [lm] [seed] [a_min] [a_max] [b_min] [b_max] [bias_min] [bias_max]")
         print("  m: matrix M dimension (per-rank output rows)")
         print("  k: matrix K dimension (total, must be divisible by rank_num)")
         print("  n: matrix N dimension")
         print("  rank_num: number of ranks")
         print("  dtype: optional, fp16 (default) | bf16")
-        print("  lm: optional, localMatmul mode (0 default | 2: golden 模拟 GM 累加取整)")
+        print("  lm: optional, localMatmul mode (0 default | 1 DEFERRED_SYNC | 2 GM累加)")
+        print("  seed: optional, random seed (default 678)")
+        print("  a_min/a_max: optional, A 取值下限/上限 (default -5/5)")
+        print("  b_min/b_max: optional, B 取值下限/上限 (default -10/10)")
+        print("  bias_min/bias_max: optional, bias 取值下限/上限 (default -3/3)")
         sys.exit(1)
 
     m = int(sys.argv[1])
@@ -172,9 +177,20 @@ if __name__ == "__main__":
     if dtype not in ("fp16", "bf16"):
         print(f"ERROR: dtype must be 'fp16' or 'bf16', got {dtype}")
         sys.exit(1)
-    lm = int(sys.argv[6]) if len(sys.argv) == 7 else 0
+    lm = int(sys.argv[6]) if len(sys.argv) >= 7 else 0
     if lm not in (0, 1, 2):
         print(f"ERROR: lm must be 0/1/2, got {lm}")
         sys.exit(1)
+    seed = int(sys.argv[7]) if len(sys.argv) >= 8 else 678
+    a_min = float(sys.argv[8]) if len(sys.argv) >= 9 else -5.0
+    a_max = float(sys.argv[9]) if len(sys.argv) >= 10 else 5.0
+    b_min = float(sys.argv[10]) if len(sys.argv) >= 11 else -10.0
+    b_max = float(sys.argv[11]) if len(sys.argv) >= 12 else 10.0
+    bias_min = float(sys.argv[12]) if len(sys.argv) >= 13 else -3.0
+    bias_max = float(sys.argv[13]) if len(sys.argv) >= 14 else 3.0
+    if a_min >= a_max or b_min >= b_max or bias_min >= bias_max:
+        print(f"ERROR: each range must satisfy min < max (a:[{a_min},{a_max}] b:[{b_min},{b_max}] bias:[{bias_min},{bias_max}])")
+        sys.exit(1)
 
-    gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype, lm)
+    gen_golden_data_all_to_all_matmul(m, k, n, rank_num, dtype, lm, seed,
+                                      (a_min, a_max), (b_min, b_max), (bias_min, bias_max))
