@@ -24,31 +24,31 @@ using namespace AscendC;
 namespace optiling {
 
 namespace {
-const gert::StorageShape *GetInputShapeChecked(gert::TilingContext *context, const char *opName, const char *tensorName,
+const gert::StorageShape* GetInputShapeChecked(gert::TilingContext* context, const char* opName, const char* tensorName,
                                                uint8_t idx)
 {
-    const gert::StorageShape *ptr = context->GetInputShape(idx);
+    const gert::StorageShape* ptr = context->GetInputShape(idx);
     OP_CHECK_IF(ptr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, %s shape is nullptr", tensorName),
                 return nullptr);
     return ptr;
 }
 
-const gert::StorageShape *GetOutputShapeChecked(gert::TilingContext *context, const char *opName,
-                                                const char *tensorName, uint8_t idx)
+const gert::StorageShape* GetOutputShapeChecked(gert::TilingContext* context, const char* opName,
+                                                const char* tensorName, uint8_t idx)
 {
-    const gert::StorageShape *ptr = context->GetOutputShape(idx);
+    const gert::StorageShape* ptr = context->GetOutputShape(idx);
     OP_CHECK_IF(ptr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, %s shape is nullptr", tensorName),
                 return nullptr);
     return ptr;
 }
 
-ge::graphStatus VerifyShape(const char *opName, const char *tensorName, const gert::StorageShape *shapePtr,
-                            const int64_t *batchDims, size_t batchDimCount, std::initializer_list<int64_t> suffixDims,
+ge::graphStatus VerifyShape(const char* opName, const char* tensorName, const gert::StorageShape* shapePtr,
+                            const int64_t* batchDims, size_t batchDimCount, std::initializer_list<int64_t> suffixDims,
                             size_t startDim = 0)
 {
-    const gert::Shape &shape = shapePtr->GetStorageShape();
+    const gert::Shape& shape = shapePtr->GetStorageShape();
     size_t expectedDimNum = startDim + batchDimCount + suffixDims.size();
     OP_CHECK_IF(shape.GetDimNum() != expectedDimNum,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, %s must be %luD, but got %lu dims", tensorName,
@@ -137,6 +137,11 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetPlatformInfo()
     OP_CHECK_IF((coreNumAic <= 0), OP_LOGE(opName, "ScatterNdUpdateTiling fails to get coreNumAic."),
                 return ge::GRAPH_FAILED);
     coreNumAic_ = coreNumAic;
+    // Ascend960DT 的 AIC:AIV 为 1:1（KERNEL_TYPE_MIX_AIC_1_1），AIV 核数按 AIC 核数对齐
+    auto socVersion = ascendcPlatform.GetSocVersion();
+    if (socVersion == platform_ascendc::SocVersion::ASCEND960DT) {
+        coreNumAiv_ = coreNumAic_;
+    }
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     ubSize_ = static_cast<int64_t>(ubSizePlatForm);
@@ -364,7 +369,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
 {
-    MhcPreSinkhornBackwardArch35TilingData *tilingData =
+    MhcPreSinkhornBackwardArch35TilingData* tilingData =
         context_->GetTilingData<MhcPreSinkhornBackwardArch35TilingData>();
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
@@ -461,7 +466,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
     size_t gradHat2Workspace = batchSize_ * seqLength_ * (n_ * n_ + 2 * n_ + n_ * c_) * sizeof(float);
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t usrWorkSpaceSize = gradHat2Workspace;
-    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
+    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(currentWorkspace == nullptr, OP_LOGE(opName, "fail to GetWorkspaceSizes"), return ge::GRAPH_FAILED);
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
 

@@ -46,6 +46,8 @@ LONG_SOC = {
     "ascend910_93": "Ascend910_9391",
     "ascend950": "Ascend950PR_9599",
     "ascend350": "Ascend350_355e",
+    "ascend960dt": "Ascend960DT_968B7",
+    "ascend960pr": "Ascend960PR_969A1",
     "kirinx90": "KirinX90",
     "kirin9030": "Kirin9030",
     "mc62": "",
