@@ -13,7 +13,7 @@
  * \brief
  */
 #include "register/op_def_registry.h"
-
+// 测试
 namespace ops {
 class MoeTokenUnpermute : public OpDef
 {
