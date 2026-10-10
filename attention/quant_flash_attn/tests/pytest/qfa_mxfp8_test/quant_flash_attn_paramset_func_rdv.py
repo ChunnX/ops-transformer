@@ -7300,7 +7300,534 @@ TEST_PARAMS = {
         "p_scale": [128.0],
         "enable_lse": [True],
     },
+    # ======================================================================
+    # GEN: input_layout 泛化边缘组（头型/变长/超长/PA 交叉）
+    # ======================================================================
+    # MQA 边缘: Nq=1/Nkv=1, BN2S1GD 的 N2/G 退化路径
+    "GEN_MQA_BNSD_B1_QS1_KVS999_Nq1_Nkv1_D128_SP3": {
+        "B": [1],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1]],
+        "seqused_kv": [[999]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [999],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BNSD"],
+        "input_layout": ["BNSD"],
+        "block_size": [512],
+        "mask_mode": [3],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [15.0],
+        "enable_lse": [True],
+    },
+    "GEN_MQA_BSND_B1_QS1_KVS999_Nq1_Nkv1_D128_SP3": {
+        "B": [1],
+        "N_q": [1],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1]],
+        "seqused_kv": [[999]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [999],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BSND"],
+        "input_layout": ["BSND"],
+        "block_size": [512],
+        "mask_mode": [3],
+        "q_scale_layout": ["BN2S1GD"],
+        "p_scale": [15.0],
+        "enable_lse": [True],
+    },
+    # MHA: Nq == Nkv (无 GQA 分组)
+    "GEN_MHA_BNSD_B1_QS200_KVS1000_Nq8_Nkv8_D128_SP3": {
+        "B": [1],
+        "N_q": [8],
+        "N_kv": [8],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[200]],
+        "seqused_kv": [[1000]],
+        "max_seqlen_q": [200],
+        "max_seqlen_kv": [1000],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BNSD"],
+        "input_layout": ["BNSD"],
+        "block_size": [512],
+        "mask_mode": [3],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [15.0],
+        "enable_lse": [False],
+    },
+    "GEN_MHA_BSND_B1_QS200_KVS1000_Nq8_Nkv8_D128_SP3": {
+        "B": [1],
+        "N_q": [8],
+        "N_kv": [8],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[200]],
+        "seqused_kv": [[1000]],
+        "max_seqlen_q": [200],
+        "max_seqlen_kv": [1000],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BSND"],
+        "input_layout": ["BSND"],
+        "block_size": [512],
+        "mask_mode": [3],
+        "q_scale_layout": ["BSND"],
+        "p_scale": [15.0],
+        "enable_lse": [False],
+    },
+    # 大 GQA: Nq=128/Nkv=16 (BN2S1GD 的 N2/S1/G 大规模路径)
+    "GEN_GQA128_BNSD_B2_QS1_KVS2048_Nq128_Nkv16_D128_SP0": {
+        "B": [2],
+        "N_q": [128],
+        "N_kv": [16],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1, 1]],
+        "seqused_kv": [[2048, 1985]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [2048],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BNSD"],
+        "input_layout": ["BNSD"],
+        "block_size": [512],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [128.0],
+        "enable_lse": [True],
+    },
+    "GEN_GQA128_BSND_B2_QS1_KVS2048_Nq128_Nkv16_D128_SP0": {
+        "B": [2],
+        "N_q": [128],
+        "N_kv": [16],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1, 1]],
+        "seqused_kv": [[2048, 1985]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [2048],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BSND"],
+        "input_layout": ["BSND"],
+        "block_size": [512],
+        "mask_mode": [0],
+        "q_scale_layout": ["BN2S1GD"],
+        "p_scale": [128.0],
+        "enable_lse": [True],
+    },
+    # 多 batch 变长 decode (B=8, KV 长短混合含 block 边界值)
+    "GEN_VARLEN_B8_BNSD_QS1_KVSMIX_Nq16_Nkv2_D128_SP3": {
+        "B": [8],
+        "N_q": [16],
+        "N_kv": [2],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1, 1, 1, 1, 1, 1, 1, 1]],
+        "seqused_kv": [[1024, 7, 513, 256, 999, 1, 64, 333]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [1024],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BNSD"],
+        "input_layout": ["BNSD"],
+        "block_size": [512],
+        "mask_mode": [3],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [15.0],
+        "enable_lse": [True],
+    },
+    "GEN_VARLEN_B8_BSND_QS1_KVSMIX_Nq16_Nkv2_D128_SP3": {
+        "B": [8],
+        "N_q": [16],
+        "N_kv": [2],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1, 1, 1, 1, 1, 1, 1, 1]],
+        "seqused_kv": [[1024, 7, 513, 256, 999, 1, 64, 333]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [1024],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BSND"],
+        "input_layout": ["BSND"],
+        "block_size": [512],
+        "mask_mode": [3],
+        "q_scale_layout": ["BN2S1GD"],
+        "p_scale": [15.0],
+        "enable_lse": [True],
+    },
+    # 超长序列 (跨多 block, block_size=1024)
+    "GEN_LONG_BNSD_B1_QS1_KVS8192_Nq8_Nkv1_D128_SP0": {
+        "B": [1],
+        "N_q": [8],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1]],
+        "seqused_kv": [[8192]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [8192],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BNSD"],
+        "input_layout": ["BNSD"],
+        "block_size": [1024],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [100.0],
+        "enable_lse": [False],
+    },
+    "GEN_LONG_BSND_B1_QS4096_KVS8192_Nq16_Nkv4_D128_SP3": {
+        "B": [1],
+        "N_q": [16],
+        "N_kv": [4],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[4096]],
+        "seqused_kv": [[8192]],
+        "max_seqlen_q": [4096],
+        "max_seqlen_kv": [8192],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BSND"],
+        "input_layout": ["BSND"],
+        "block_size": [1024],
+        "mask_mode": [3],
+        "q_scale_layout": ["BSND"],
+        "p_scale": [100.0],
+        "enable_lse": [True],
+    },
+    # p_scale=1.0 (P 不量化) + block 边界对齐值
+    "GEN_PSCALE1_BNSD_B1_QS256_KVS1024_Nq32_Nkv8_D128_SP3": {
+        "B": [1],
+        "N_q": [32],
+        "N_kv": [8],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[256]],
+        "seqused_kv": [[1024]],
+        "max_seqlen_q": [256],
+        "max_seqlen_kv": [1024],
+        "enable_pa": [False],
+        "kv_cache_layout": ["BNSD"],
+        "input_layout": ["BNSD"],
+        "block_size": [512],
+        "mask_mode": [3],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    # PA 布局 × input_layout 交叉 (PA 布局下 q_scale_layout 与 input_layout 绑定关系不变)
+    "GEN_PA_BNBD_BNSD_B1_QS1_KVS1024_Nq8_Nkv1_D128_SP0": {
+        "B": [1],
+        "N_q": [8],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1]],
+        "seqused_kv": [[1024]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [1024],
+        "enable_pa": [True],
+        "kv_cache_layout": ["BnNBsD"],
+        "input_layout": ["BNSD"],
+        "block_size": [512],
+        "mask_mode": [0],
+        "q_scale_layout": ["BNSD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    "GEN_PA_BBND_BSND_B1_QS1_KVS1024_Nq8_Nkv1_D128_SP0": {
+        "B": [1],
+        "N_q": [8],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1]],
+        "seqused_kv": [[1024]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [1024],
+        "enable_pa": [True],
+        "kv_cache_layout": ["BnBsND"],
+        "input_layout": ["BSND"],
+        "block_size": [512],
+        "mask_mode": [0],
+        "q_scale_layout": ["BN2S1GD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
+    "GEN_PA_NZ_BSND_B1_QS1_KVS1024_Nq8_Nkv1_D128_SP0": {
+        "B": [1],
+        "N_q": [8],
+        "N_kv": [1],
+        "D": [128],
+        "cu_seqlens_q": [None],
+        "cu_seqlens_kv": [None],
+        "seqused_q": [[1]],
+        "seqused_kv": [[1024]],
+        "max_seqlen_q": [1],
+        "max_seqlen_kv": [1024],
+        "enable_pa": [True],
+        "kv_cache_layout": ["PA_NZ"],
+        "input_layout": ["BSND"],
+        "block_size": [512],
+        "mask_mode": [0],
+        "q_scale_layout": ["BN2S1GD"],
+        "p_scale": [1.0],
+        "enable_lse": [False],
+    },
 }
+
+# ----------------------------------------------------------------------
+# GEN: input_layout 泛化基础组 (BNSD/BSND × prefill/decode)
+# BNSD 输入: q_scale_layout 统一 BNSD (prefill/decode 共用)
+# BSND 输入: prefill -> BSND, decode -> BN2S1GD
+# 正交轴: D(64/128) × mask_mode(0/3) × enable_lse(True/False) 全组合
+# 固定形状: B=2 变长, Nq=32/Nkv=8 (GQA 4:1), KVS 跨 block 边界且非对齐
+# ----------------------------------------------------------------------
+_GEN_BASE_SCENES = (
+    # (场景, input_layout, q_scale_layout, seqused_q, max_seqlen_q, 后缀)
+    ("BNSD_PREFILL", "BNSD", "BNSD", [128, 96], 128, ""),
+    ("BNSD_DECODE", "BNSD", "BNSD", [1, 1], 1, "_Decode"),
+    ("BSND_PREFILL", "BSND", "BSND", [128, 96], 128, ""),
+    ("BSND_DECODE", "BSND", "BN2S1GD", [1, 1], 1, "_Decode"),
+)
+for _scene, _layout, _q_scale, _sq, _msq, _suffix in _GEN_BASE_SCENES:
+    for _d in (64, 128):
+        for _mask in (0, 3):
+            for _lse in (False, True):
+                TEST_PARAMS[f"GEN_{_scene}_D{_d}_SP{_mask}_LSE{int(_lse)}{_suffix}"] = {
+                    "B": [2],
+                    "N_q": [32],
+                    "N_kv": [8],
+                    "D": [_d],
+                    "cu_seqlens_q": [None],
+                    "cu_seqlens_kv": [None],
+                    "seqused_q": [_sq],
+                    "seqused_kv": [[1025, 511]],
+                    "max_seqlen_q": [_msq],
+                    "max_seqlen_kv": [1025],
+                    "enable_pa": [False],
+                    "kv_cache_layout": [_layout],
+                    "input_layout": [_layout],
+                    "block_size": [512],
+                    "mask_mode": [_mask],
+                    "q_scale_layout": [_q_scale],
+                    "p_scale": [15.0],
+                    "enable_lse": [_lse],
+                }
+
+# ----------------------------------------------------------------------
+# GEN_L: 大 shape 泛化扩展组 (1000 条)
+# 轴: layout(BNSD/BSND) x D(64/128/256) x mask(0/3) x lse(F/T) = 24/配置
+# 族: PF=prefill 大 shape(600), DC=decode 大 shape/变长(288),
+#      PA=paged attention 布局交叉(96), SP=p_scale 极值(16)
+# 约束: q_scale_layout 绑定 input_layout (BNSD->BNSD; BSND prefill->BSND,
+#       BSND decode->BN2S1GD); D=256 已探针验证支持新布局, D=72 不支持故排除
+# ----------------------------------------------------------------------
+_GEN_L_AXIS_LAYOUTS = ("BNSD", "BSND")
+_GEN_L_AXIS_DS = (64, 128, 256)
+_GEN_L_AXIS_MASKS = (0, 3)
+_GEN_L_AXIS_LSES = (False, True)
+
+
+def _gen_l_qscale(layout, is_decode):
+    if layout == "BNSD":
+        return "BNSD"
+    return "BN2S1GD" if is_decode else "BSND"
+
+
+def _gen_l_add(
+    family,
+    layout,
+    is_decode,
+    b,
+    nq,
+    nkv,
+    sq,
+    skv,
+    blk,
+    ps,
+    enable_pa=False,
+    kv_layout=None,
+    ds=None,
+    masks=None,
+    lses=None,
+):
+    """按配置生成正交用例; ds/masks/lses 可收窄轴用于特殊族"""
+    max_sq = max(sq)
+    max_skv = max(skv)
+    extra = ""
+    if blk != 512:
+        extra += f"_BS{blk}"
+    if ps != 15.0:
+        extra += f"_PS{ps:g}"
+    for d in ds if ds is not None else _GEN_L_AXIS_DS:
+        for mask in masks if masks is not None else _GEN_L_AXIS_MASKS:
+            for lse in lses if lses is not None else _GEN_L_AXIS_LSES:
+                name = (
+                    f"GEN_L_{family}_{layout}_B{b}_Nq{nq}_Nkv{nkv}"
+                    f"_QS{max_sq}_KVS{max_skv}_D{d}_SP{mask}_LSE{int(lse)}{extra}"
+                )
+                TEST_PARAMS[name] = {
+                    "B": [b],
+                    "N_q": [nq],
+                    "N_kv": [nkv],
+                    "D": [d],
+                    "cu_seqlens_q": [None],
+                    "cu_seqlens_kv": [None],
+                    "seqused_q": [list(sq)],
+                    "seqused_kv": [list(skv)],
+                    "max_seqlen_q": [max_sq],
+                    "max_seqlen_kv": [max_skv],
+                    "enable_pa": [enable_pa],
+                    "kv_cache_layout": [kv_layout if kv_layout else layout],
+                    "input_layout": [layout],
+                    "block_size": [blk],
+                    "mask_mode": [mask],
+                    "q_scale_layout": [_gen_l_qscale(layout, is_decode)],
+                    "p_scale": [ps],
+                    "enable_lse": [lse],
+                }
+
+
+# PF: prefill 大 shape 配置 (b, nq, nkv, seqused_q, seqused_kv, block, p_scale)
+_GEN_L_PF_CFGS = (
+    (2, 64, 8, [1024, 768], [2048, 1536], 512, 15.0),  # GQA8 基准大 shape
+    (2, 64, 8, [1024, 768], [2048, 1536], 1024, 15.0),  # block=1024
+    (2, 64, 16, [1024, 768], [2048, 1536], 512, 15.0),  # GQA4
+    (2, 64, 64, [1024, 768], [2048, 1536], 512, 15.0),  # MHA
+    (2, 64, 1, [1024, 768], [2048, 1536], 512, 15.0),  # MQA
+    (2, 128, 16, [512, 384], [1024, 769], 512, 15.0),  # GQA8 大头数
+    (4, 64, 8, [512, 384, 256, 128], [1024, 768, 512, 257], 512, 15.0),  # B4 变长
+    (
+        4,
+        64,
+        8,
+        [512, 384, 256, 128],
+        [1024, 768, 512, 257],
+        1024,
+        15.0,
+    ),  # B4 变长 block=1024
+    (
+        8,
+        32,
+        8,
+        [256, 255, 254, 253, 128, 127, 64, 63],
+        [512, 511, 510, 509, 256, 255, 128, 127],
+        512,
+        15.0,
+    ),  # B8 全非对齐
+    (1, 64, 8, [4096], [4097], 1024, 100.0),  # 超长单 batch causal
+    (1, 64, 8, [2048], [2048], 1024, 1.0),  # p_scale=1.0 对齐
+    (2, 32, 4, [1536, 1025], [2048, 1024], 512, 128.0),  # p_scale=128
+    (2, 32, 32, [2048, 1024], [2048, 1536], 512, 15.0),  # MHA 32 头
+    (2, 128, 32, [256, 192], [512, 385], 512, 15.0),  # GQA4 大头数
+    (2, 128, 128, [256, 192], [512, 385], 512, 15.0),  # MHA 128 头
+    (4, 32, 4, [1024, 512, 256, 1], [2048, 1024, 512, 64], 512, 15.0),  # 含 qs=1 混合
+    (2, 64, 8, [1, 2048], [1024, 4096], 512, 15.0),  # decode+prefill 混批
+    (2, 64, 8, [1000, 777], [2048, 1533], 512, 15.0),  # 奇数长度
+    (2, 64, 8, [1023, 511], [1025, 513], 512, 15.0),  # block 边界 ±1
+    (2, 64, 8, [1024, 1024], [1024, 1024], 512, 15.0),  # 全对齐
+    (2, 64, 8, [2048, 512], [512, 2048], 512, 15.0),  # q/kv 长度反转
+    (4, 64, 16, [640, 384, 192, 96], [1280, 768, 384, 192], 512, 15.0),  # 比例缩放变长
+    (1, 64, 8, [3072], [1536], 512, 15.0),  # qs>kv (causal 全 mask 行)
+    (2, 16, 2, [4096, 2048], [4096, 2049], 1024, 15.0),  # 小头数超长
+    (
+        8,
+        16,
+        2,
+        [512, 512, 384, 384, 256, 256, 128, 128],
+        [1024, 1023, 768, 767, 512, 511, 256, 255],
+        512,
+        15.0,
+    ),  # B8 等长成对
+)
+
+# DC: decode 配置 (b, nq, nkv, seqused_kv, block, p_scale), seqused_q=[1]*b
+_GEN_L_DC_CFGS = (
+    (8, 64, 8, [4096, 2048, 1024, 512, 256, 128, 64, 1], 512, 15.0),  # 大 B 大跨度变长
+    (8, 64, 8, [4096, 2048, 1024, 512, 256, 128, 64, 1], 1024, 15.0),  # 同上 block=1024
+    (4, 128, 16, [2048, 1536, 1024, 1], 512, 15.0),  # 大头数变长
+    (4, 64, 1, [4096, 1024, 256, 64], 512, 15.0),  # MQA decode
+    (2, 32, 32, [8192, 4096], 1024, 15.0),  # MHA 超长 KV
+    (
+        16,
+        32,
+        8,
+        [1024, 512, 256, 128, 64, 32, 16, 8, 4096, 2048, 1, 2, 3, 5, 7, 9],
+        512,
+        15.0,
+    ),  # B16 极端变长
+    (8, 64, 16, [1025, 511, 1023, 513, 1, 2, 3, 4], 512, 15.0),  # 奇数/极小 KV
+    (4, 64, 8, [2048, 2048, 2048, 2048], 1024, 1.0),  # 等长 p_scale=1.0
+    (8, 128, 8, [1024] * 8, 512, 128.0),  # 大头数等长 p_scale=128
+    (2, 64, 4, [3072, 1533], 512, 100.0),  # p_scale=100 奇数
+    (8, 32, 2, [999, 998, 666, 333, 222, 111, 77, 7], 512, 15.0),  # 全奇数 KV
+    (4, 64, 64, [1024, 512, 256, 128], 512, 15.0),  # MHA decode
+)
+
+# PA: paged attention 交叉 (kv_layout_tag, kv_cache_layout, b, nq, nkv, seqused_kv, block, p_scale)
+_GEN_L_PA_CFGS = (
+    ("BNBD", "BnNBsD", 1, 64, 8, [1567], 512, 1.0),
+    ("PNZ", "PA_NZ", 1, 64, 8, [2079], 512, 1.0),
+    ("BBSND", "BnBsND", 2, 64, 8, [1075, 642], 512, 1.0),
+    ("BNBD", "BnNBsD", 2, 128, 16, [4096, 2048], 512, 15.0),
+)
+
+for _layout in _GEN_L_AXIS_LAYOUTS:
+    for _b, _nq, _nkv, _sq, _skv, _blk, _ps in _GEN_L_PF_CFGS:
+        _gen_l_add("PF", _layout, False, _b, _nq, _nkv, _sq, _skv, _blk, _ps)
+    for _b, _nq, _nkv, _skv, _blk, _ps in _GEN_L_DC_CFGS:
+        _gen_l_add("DC", _layout, True, _b, _nq, _nkv, [1] * _b, _skv, _blk, _ps)
+    for _kv_tag, _kv_layout, _b, _nq, _nkv, _skv, _blk, _ps in _GEN_L_PA_CFGS:
+        _gen_l_add(
+            f"PA_{_kv_tag}",
+            _layout,
+            True,
+            _b,
+            _nq,
+            _nkv,
+            [1] * _b,
+            _skv,
+            _blk,
+            _ps,
+            enable_pa=True,
+            kv_layout=_kv_layout,
+        )
+
+# SP: p_scale 极值 (收窄轴: D 64/128, mask 仅 0, lse 全组合) -> 2 配置 x 8 = 16
+for _layout in _GEN_L_AXIS_LAYOUTS:
+    for _ps in (448.0, 256.0):
+        _gen_l_add(
+            "SP",
+            _layout,
+            False,
+            2,
+            64,
+            8,
+            [512, 384],
+            [1024, 768],
+            512,
+            _ps,
+            ds=(64, 128),
+            masks=(0,),
+            lses=(False, True),
+        )
 
 SKIP_CASES = {
     "PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0",
