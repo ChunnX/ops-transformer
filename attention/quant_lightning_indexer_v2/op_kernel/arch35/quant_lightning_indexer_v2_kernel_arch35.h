@@ -346,7 +346,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
         // 此时只需要s2End往前退一格，bN2End和gS1End都不变
         qliV2SplitInfo.s2End = qliV2SplitInfo.s2End - 1;
     } else {
-        // splitCoreInfo.gS1End != 0 splitCoreInfo.s2End == 0 时，gS1End需要往前退一格, bN2End不变
+        // qliV2SplitInfo.gS1End != 0 qliV2SplitInfo.s2End == 0 时，gS1End需要往前退一格, bN2End不变
         if (qliV2SplitInfo.gS1End != 0) {
             // 此时需要使用bIdx获取实际Actal S2来计算出 s2End
             qliV2SplitInfo.gS1End = qliV2SplitInfo.gS1End - 1;
@@ -363,7 +363,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::SplitCoreByAICPU(uint32_t cubeCoreI
             }
             qliV2SplitInfo.s2End = qliV2S2BaseNum - 1;
         } else {
-            // splitCoreInfo.gS1End == 0 splitCoreInfo.s2End == 0 时，bN2End需要往前退一格
+            // qliV2SplitInfo.gS1End == 0 qliV2SplitInfo.s2End == 0 时，bN2End需要往前退一格
             // 此时需要使用bIdx获取实际Actal S1和S2来计算出 gS1End 和 s2End
             qliV2SplitInfo.bN2End = qliV2SplitInfo.bN2End - 1;
 
@@ -572,7 +572,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
         qkHeadDim = qliV2KernelConstInfo.headDim / FP4_PACK_NUM;
     }
     if constexpr (IS_HIFLOAT4) {
-        qkHeadDim = constInfo.headDim / HIFLOAT4_TWO;
+        qkHeadDim = qliV2KernelConstInfo.headDim / HIFLOAT4_TWO;
     }
     if (qliV2KernelRunInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
@@ -610,15 +610,19 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
         if constexpr (IS_MX) {
             // MX: qScale offset, shape [B, S1, N1, D/64, 2]
             uint64_t qScalePrefixSum =
-                actualSeqQPrefixSum * constInfo.qHeadNum * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
+                actualSeqQPrefixSum * qliV2KernelConstInfo.qHeadNum *
+                (qliV2KernelConstInfo.headDim / MX_SCALE_GROUP_SIZE);
             uint64_t qScaleS1Offset =
-                static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize * (constInfo.headDim / MX_SCALE_GROUP_SIZE);
+                static_cast<uint64_t>(qliV2KernelRunInfo.gS1Idx) * qliV2KernelConstInfo.mBaseSize *
+                (qliV2KernelConstInfo.headDim / MX_SCALE_GROUP_SIZE);
             qScaleCoreOffset = qScalePrefixSum + qScaleS1Offset;
         } else if constexpr (IS_HIFLOAT4) {
             uint64_t qScalePrefixSum =
-                actualSeqQPrefixSum * constInfo.qHeadNum * (constInfo.headDim / HIFLOAT4_BLOCK_SIZE);
+                actualSeqQPrefixSum * qliV2KernelConstInfo.qHeadNum *
+                (qliV2KernelConstInfo.headDim / HIFLOAT4_BLOCK_SIZE);
             uint64_t qScaleS1Offset =
-                static_cast<uint64_t>(runInfo.gS1Idx) * constInfo.mBaseSize * (constInfo.headDim / HIFLOAT4_BLOCK_SIZE);
+                static_cast<uint64_t>(qliV2KernelRunInfo.gS1Idx) * qliV2KernelConstInfo.mBaseSize *
+                (qliV2KernelConstInfo.headDim / HIFLOAT4_BLOCK_SIZE);
             qScaleCoreOffset = qScalePrefixSum + qScaleS1Offset;
         }
     }
