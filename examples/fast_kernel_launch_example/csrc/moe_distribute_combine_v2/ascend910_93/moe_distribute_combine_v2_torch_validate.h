@@ -95,12 +95,12 @@ struct MoeDistributeCombineV2ValidateParams {
  * @return 验证通过返回true，失败则抛出TorchCheckError异常
  */
 bool ValidateMoeDistributeCombineV2Input(
-    const at::Tensor &expand_x, const at::Tensor &expert_ids, const at::Tensor &assist_info_for_combine,
-    const at::Tensor &ep_send_counts, const at::Tensor &expert_scales, const c10::optional<at::Tensor> &x_active_mask,
-    const c10::optional<at::Tensor> &shared_expert_x, const c10::optional<at::Tensor> &ori_x,
-    const c10::optional<at::Tensor> &const_expert_alpha_1, const c10::optional<at::Tensor> &const_expert_alpha_2,
-    const c10::optional<at::Tensor> &const_expert_v, const c10::optional<at::Tensor> &performance_info,
-    MoeDistributeCombineV2ValidateParams &params);
+    const at::Tensor& expand_x, const at::Tensor& expert_ids, const at::Tensor& assist_info_for_combine,
+    const at::Tensor& ep_send_counts, const at::Tensor& expert_scales, const c10::optional<at::Tensor>& x_active_mask,
+    const c10::optional<at::Tensor>& shared_expert_x, const c10::optional<at::Tensor>& ori_x,
+    const c10::optional<at::Tensor>& const_expert_alpha_1, const c10::optional<at::Tensor>& const_expert_alpha_2,
+    const c10::optional<at::Tensor>& const_expert_v, const c10::optional<at::Tensor>& performance_info,
+    MoeDistributeCombineV2ValidateParams& params);
 
 } // namespace MoeDistributeCombineV2
 } // namespace ascend_ops

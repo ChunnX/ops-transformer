@@ -36,6 +36,7 @@ TEST_CASES = [
     (1, 4, 2, 384, 384, 128),
 ]
 
+
 @pytest.mark.parametrize("b, n1, n2, sq, skv, d", TEST_CASES)
 def test_fa_general(b, n1, n2, sq, skv, d):
     if torch.npu.device_count() == 0:
@@ -53,7 +54,8 @@ def test_fa_general(b, n1, n2, sq, skv, d):
     k_bnsd = k.transpose(1, 2)
     v_bnsd = v.transpose(1, 2)
     cpu_out = torch.nn.functional.scaled_dot_product_attention(
-        q_bnsd, k_bnsd, v_bnsd, scale=scale_value, enable_gqa=enable_gqa)
+        q_bnsd, k_bnsd, v_bnsd, scale=scale_value, enable_gqa=enable_gqa
+    )
     cpu_out = cpu_out.transpose(1, 2).contiguous()
 
     q_npu = q.to("npu")
@@ -67,12 +69,15 @@ def test_fa_general(b, n1, n2, sq, skv, d):
     assert npu_out_cpu.shape == cpu_out.shape
     assert npu_out_cpu.dtype == torch.bfloat16
 
-    compare_passed = compare(cpu_out.to(torch.float).numpy().flatten(),
-                             npu_out_cpu.to(torch.float).numpy().flatten())
+    compare_passed = compare(
+        cpu_out.to(torch.float).numpy().flatten(),
+        npu_out_cpu.to(torch.float).numpy().flatten(),
+    )
     if compare_passed:
         print(f"testcase b={b}, n1={n1}, n2={n2}, sq={sq}, skv={skv}, d={d} Pass")
     else:
         print(f"testcase b={b}, n1={n1}, n2={n2}, sq={sq}, skv={skv}, d={d} Failed")
+
 
 def test_fa_fixed():
     b, n1, n2, sq, skv, d = FIXED_TEST_CASE
@@ -92,7 +97,8 @@ def test_fa_fixed():
     k_bnsd = k.transpose(1, 2)
     v_bnsd = v.transpose(1, 2)
     cpu_out = torch.nn.functional.scaled_dot_product_attention(
-        q_bnsd, k_bnsd, v_bnsd, scale=scale_value, enable_gqa=enable_gqa)
+        q_bnsd, k_bnsd, v_bnsd, scale=scale_value, enable_gqa=enable_gqa
+    )
     cpu_out = cpu_out.transpose(1, 2).contiguous()
 
     q_npu = q.to("npu")
@@ -106,8 +112,10 @@ def test_fa_fixed():
     assert npu_out_cpu.shape == cpu_out.shape
     assert npu_out_cpu.dtype == torch.bfloat16
 
-    compare_passed = compare(cpu_out.to(torch.float).numpy().flatten(),
-                             npu_out_cpu.to(torch.float).numpy().flatten())
+    compare_passed = compare(
+        cpu_out.to(torch.float).numpy().flatten(),
+        npu_out_cpu.to(torch.float).numpy().flatten(),
+    )
     if compare_passed:
         print(f"testcase b={b}, n1={n1}, n2={n2}, sq={sq}, skv={skv}, d={d} Pass")
     else:
