@@ -102,8 +102,6 @@ private:
     __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline void GetRealCmpS2Idx(int64_t& token0Idx, int64_t& token1Idx, int64_t s2IdxInBase,
                                            const RunInfo& runInfo, ConstInfo& constInfo);
-    __aicore__ inline void CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb, int64_t v0Loop, int64_t dealRow,
-                                             int64_t s2StartIdx, const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t token0Idx,
                                               int64_t token1Idx, const RunInfo& runInfo, ConstInfo& constInfo);
     __aicore__ inline void CalSparseCalSize(const RunInfo& runInfo, ConstInfo& constInfo);

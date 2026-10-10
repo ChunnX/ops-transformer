@@ -320,18 +320,14 @@ private:
     ge::graphStatus GetPlatformInfo();
     void CalcVectorizeFlag();
     void GenTilingKey();
-    bool DealSameSeqEachBatch();
 
     void ZeroTensorProcess() const;
     void InitParams();
 
     void Split();
-    bool IsBalanceSplitCore();
 
     void SplitBalanced();
     void CalcInnerSize(uint32_t qsfaS2Size);
-
-    bool IsFlashDecode(uint32_t coreNum);
 
     void FillTilingBaseParamsMla();
     void FillTilingSplitKVMla();
@@ -418,11 +414,8 @@ private:
     ge::graphStatus CheckLayoutSupport(const QSFALayout& actualLayout, const std::string& name) const;
     ge::graphStatus CheckSingleParaQuery() const;
     ge::graphStatus CheckSingleParaKey() const;
-    ge::graphStatus CheckSingleParaValue() const;
-    ge::graphStatus CheckSingleParaAttenOut() const;
     ge::graphStatus CheckSingleParaNumHeads() const;
     ge::graphStatus CheckSingleParaKvHeadNums() const;
-    ge::graphStatus CheckSingleParaLayout() const;
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
     ge::graphStatus CheckSingleParaSparseIndices() const;
@@ -435,11 +428,9 @@ private:
     template <typename T>
     ge::graphStatus CheckAttrValueByMap(std::map<std::string, std::pair<const T*, T>>& attrMap) const;
     ge::graphStatus CheckParaExistenceMlaAntiquant() const;
-    ge::graphStatus CheckParaExistenceGqaAntiquant() const;
     ge::graphStatus CheckParaExistenceMla() const;
     ge::graphStatus CheckParaExistence();
     void SetQSFAShapeCompare();
-    ge::graphStatus CheckKVDType();
     ge::graphStatus CheckKVShapeForBatchContinuous();
     ge::graphStatus CheckKVShapeForPageAttention();
     ge::graphStatus CheckKVShape();
@@ -547,7 +538,6 @@ public:
     void GetOutputParaInfo();
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
-    ge::graphStatus GetKvCache();
 
     ge::graphStatus GetInOutDataType();
     ge::graphStatus GetQTSize();
@@ -566,7 +556,6 @@ public:
     ge::graphStatus GetS2Size();
     ge::graphStatus GetValueHeadDim();
     ge::graphStatus GetDSizeKV();
-    ge::graphStatus GetRopeHeadDim();
     ge::graphStatus GetQueryAndOutLayout();
     ge::graphStatus GetTopkLayout();
     ge::graphStatus GetN1Size();
