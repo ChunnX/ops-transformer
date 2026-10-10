@@ -12,6 +12,7 @@
  * \file moe_ep_combine.cpp
  * \brief
  */
+// mc2 operator kernel entry
 
 #if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
 #include "version/asc_devkit_version.h"

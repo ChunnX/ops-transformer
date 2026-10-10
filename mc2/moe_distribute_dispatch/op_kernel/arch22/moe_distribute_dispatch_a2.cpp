@@ -12,6 +12,7 @@
  * \file moe_distribute_dispatch_a2.cpp
  * \brief A2 (arch22) kernel entry for MoeDistributeDispatch.
  */
+// mc2 operator kernel entry
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
