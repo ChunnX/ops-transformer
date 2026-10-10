@@ -46,17 +46,17 @@
 
 #define FullQuantTiling 15
 extern "C" __global__ __aicore__ void fused_infer_attention_score(
-    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse_shift,
-    __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKV,
-    __gm__ uint8_t *deq_scale1, __gm__ uint8_t *quant_scale1, __gm__ uint8_t *deq_scale2, __gm__ uint8_t *quant_scale2,
-    __gm__ uint8_t *quant_offset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
-    __gm__ uint8_t *blocktable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-    __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
-    __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-    __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-    __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *learnableSink,
-    __gm__ uint8_t *qStartIdx, __gm__ uint8_t *kvStartIdx, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+    __gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value, __gm__ uint8_t* pse_shift,
+    __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKV,
+    __gm__ uint8_t* deq_scale1, __gm__ uint8_t* quant_scale1, __gm__ uint8_t* deq_scale2, __gm__ uint8_t* quant_scale2,
+    __gm__ uint8_t* quant_offset2, __gm__ uint8_t* antiquantScale, __gm__ uint8_t* antiquantOffset,
+    __gm__ uint8_t* blocktable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize,
+    __gm__ uint8_t* keyAntiquantScale, __gm__ uint8_t* keyAntiquantOffset, __gm__ uint8_t* valueAntiquantScale,
+    __gm__ uint8_t* valueAntiquantOffset, __gm__ uint8_t* keySharedPrefix, __gm__ uint8_t* valueSharedPrefix,
+    __gm__ uint8_t* actualSharedPrefixLen, __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
+    __gm__ uint8_t* keyRopeAntiquantScale, __gm__ uint8_t* dequantScaleQuery, __gm__ uint8_t* learnableSink,
+    __gm__ uint8_t* qStartIdx, __gm__ uint8_t* kvStartIdx, __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
+    __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
 #if (__NPU_ARCH__ == 5102)
     prompt_flash_attention_FIAS_regbase(
@@ -67,7 +67,7 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(
         softmaxLse, workspace, tiling);
 #else
     if (TILING_KEY_VAR >= FAI_FLAG_TILING) {
-        __gm__ uint8_t *user = GetUserWorkspace(workspace);
+        __gm__ uint8_t* user = GetUserWorkspace(workspace);
         KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
         FIA_COPY_TILING_DATA(FAInferTilingData, tiling);
         TILING_KEY_IS(QF16_KVF16_OUTF16_NOLSEOUT_TND_NOCACHE_CAUSALMASK_SPLITFUSE_TILING);

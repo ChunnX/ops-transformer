@@ -32,7 +32,7 @@ a. 将核心的数量用满，防止部分核闲置。
 
 b. 每一个核心被分配的计算量相对均匀，避免出现某些核计算的数据量过大，其余核空闲的情况。
 
-c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AIV出现长时间的空闲。 
+c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AIV出现长时间的空闲。
 
 MlaPrologV2算子有多个Matmul运算：
 
@@ -97,7 +97,7 @@ void Process() {
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMCKVKR_NORMROPE_FLG);   //cube与vector同步
 
             CrossCoreWaitFlag(SYNC_MMCQ_NORMCQ_FLG);                     // MatmulQcQr依赖RmsNormCq的输出，需要插入CV核间同步
-      
+
             MatmulQcQr(weightUqQrOffset, qcQrResOffset);
             CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_MMQCQR_ROPEQR_FLG);      //cube与vector同步
 
@@ -105,10 +105,10 @@ void Process() {
             // 需要等所有cube核上的MatmulQcQr执行完后才能启动MatmulQn
             CrossCoreSetFlag<0x0, PIPE_FIX>(SYNC_ALL_CUBE_FLG);
             CrossCoreWaitFlag(SYNC_ALL_CUBE_FLG);
-      
+
             MatmulQn(qcOffset, weightUkOffset, qnResOffset, mmQnLoopTime);  // MatmulQn的结果直接输出到queryOut, qnOffset需要按Batch轴偏移
         }
-    
+
         if ASCEND_IS_AIV {
             GetSinCos(tokenIndex);
 
@@ -166,7 +166,7 @@ $$
 对输入$x$乘以Query下采样矩阵$W^{DQ}$进行下采样操作得到压缩后的Query矩阵$c^Q$。
 $$
 c^Q = x \cdot W^{DQ} \tag{1}
-$$ 
+$$
 
 本章节（以及后续章节）涉及的矩阵乘法模块使用AscendC Kernel API中Matmul高阶API实现。相关API使用可以参考官网[算子实现->矩阵编程（高阶API）](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0041.html)开发指南。
 
@@ -253,7 +253,7 @@ f_{\{q,k\}}(x_m, m) = R_{\Theta,m}^{d}W_{\{q,k\}}x_m \tag{12}
 $$
 
 $$
-R_{\Theta,m}^{d} = 
+R_{\Theta,m}^{d} =
 \left(
 \begin{matrix}
 \cos m\theta_1 & -\sin m\theta_1 & 0 & 0 & \cdots & 0 & 0 \\
@@ -276,7 +276,7 @@ $$
 公式(12)展开变形后可以得到公式（14）的形式，其中$\otimes$为逐位对应相乘的叉乘。
 
 $$
-ROPE(x) = R_{\Theta,m}^{d} x = 
+ROPE(x) = R_{\Theta,m}^{d} x =
 \left(
 \begin{matrix}
 x_0 \\
@@ -330,7 +330,7 @@ $$
 为了节省$cos$/$sin$的存储空间并简化内部的实现逻辑，考虑$q^R*k^R$矩阵乘最终要进行Reduce操作：同时调整行和列中元素的位置，不影响最后的累加结果。最终内部$ROPE$实现的计算调整成公式（15）的形式，对输入$x$按奇偶位置拆分成两部分，对应的$cos$和$sin$部分的输入是连续的。
 
 $$
-ROPE(x) = R_{\Theta,m}^{d} x = 
+ROPE(x) = R_{\Theta,m}^{d} x =
 \left(
 \begin{matrix}
 x_0 \\

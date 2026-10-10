@@ -49,4 +49,3 @@ endif()
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_tiling_modules()
 endif()
-
