@@ -54,12 +54,10 @@ __global__ __aicore__ void sparse_flash_attention_grad(
     __gm__ uint8_t* tiling_data)
 {
     REGISTER_TILING_DEFAULT(optiling::sfag::SparseFlashAttentionGradTilingDataRegbase92);
-    (void)isSinks;
-    constexpr bool kNoSinks = false;
     RegbaseSFAG<inputDType, isTnd, gTemplateType, s2TemplateType, dTemplateType, isRope, deterministic, kvMerge,
-                kNoSinks>(query, key, value, sparse_indices, d_out, out, softmax_max, softmax_sum, actual_seq_qlen,
-                          actual_seq_kvlen, query_rope, key_rope, dq, dk, dv, dq_rope, dk_rope, sinks, d_sinks,
-                          workspace, tiling_data);
+                isSinks>(query, key, value, sparse_indices, d_out, out, softmax_max, softmax_sum, actual_seq_qlen,
+                         actual_seq_kvlen, query_rope, key_rope, dq, dk, dv, dq_rope, dk_rope, sinks, d_sinks,
+                         workspace, tiling_data);
 }
 
 #elif __CCE_AICORE__ == 310
