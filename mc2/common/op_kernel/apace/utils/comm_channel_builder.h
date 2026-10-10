@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -107,6 +108,7 @@ public:
         if (HcclGetHcclBuffer(comm_, &buf, &hcclBufSize) != ::HCCL_SUCCESS || buf == nullptr) {
             return false;
         }
+
         if (aclrtMemset(buf, hcclBufSize, 0, hcclBufSize) != ACL_SUCCESS) {
             return false;
         }

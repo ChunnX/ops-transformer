@@ -118,6 +118,8 @@ message(STATUS "ops-tensor root: ${OPS_TENSOR_ROOT}")
 #   tensor_api/tensor.h      -> ${OPS_TENSOR_INCLUDE_DIR}/tensor_api/include
 #   tensor_api/tensor/...    -> ${OPS_TENSOR_INCLUDE_DIR}/tensor_api/include
 #   include/tensor_api/...   -> ${OPS_TENSOR_INCLUDE_DIR}/tensor_api
+# splitKIdx 增强的基本 mmad 位于 apace/block/mmad/（apace 自有路径，经 KERNEL_INCLUDES
+# 的 op_kernel 根目录解析），不遮蔽 ops-tensor 的 blaze 路径。
 add_library(apace_blaze_api INTERFACE)
 target_include_directories(apace_blaze_api INTERFACE
     "${OPS_TENSOR_INCLUDE_DIR}"
@@ -126,6 +128,7 @@ target_include_directories(apace_blaze_api INTERFACE
 )
 
 # ---- ST 用例 ----
+add_subdirectory(all_to_all_matmul)
 add_subdirectory(all_to_all_quant_matmul)
 add_subdirectory(quant_matmul_all_to_all)
 add_subdirectory(all_gather_quant_matmul/urma)
