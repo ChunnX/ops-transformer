@@ -29,6 +29,7 @@ constexpr uint32_t SOUTER_128 = 128;
 constexpr uint32_t SINNER_128 = 128;
 constexpr uint32_t SINNER_256 = 256;
 constexpr uint32_t SINNER_512 = 512;
+constexpr uint32_t SINNER_1024 = 1024;
 constexpr uint32_t DSIZE_256 = 256;
 
 /**
@@ -47,7 +48,7 @@ constexpr uint32_t DSIZE_256 = 256;
  */
 inline void AdjustSinnerAndSouter(uint32_t vHeadDim, int64_t maxSeqQ, int64_t maxSeqKv, int32_t maskMode,
                                   int64_t winLeft, int64_t winRight, uint32_t qLayout, uint32_t quantMode,
-                                  uint32_t &sOuterFactor, uint32_t &sInnerFactor)
+                                  uint32_t& sOuterFactor, uint32_t& sInnerFactor)
 {
     if (maxSeqQ == -1) {
         maxSeqQ = MAX_SEQ_LEN_DEFAULT;
@@ -90,7 +91,7 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, int64_t maxSeqQ, int64_t ma
  */
 inline void AdjustSinnerAndSouterArch92(uint32_t vHeadDim, int64_t maxSeqQ, int64_t maxSeqKv, int32_t maskMode,
                                         int64_t winLeft, int64_t winRight, uint32_t qLayout, uint32_t quantMode,
-                                        bool isDecode, uint32_t &sOuterFactor, uint32_t &sInnerFactor)
+                                        bool isDecode, uint32_t& sOuterFactor, uint32_t& sInnerFactor)
 {
     if (maxSeqQ == -1) {
         maxSeqQ = MAX_SEQ_LEN_DEFAULT;
@@ -112,6 +113,9 @@ inline void AdjustSinnerAndSouterArch92(uint32_t vHeadDim, int64_t maxSeqQ, int6
         // prefill，dim=256：128x128
         sOuterFactor = SOUTER_128;
         sInnerFactor = SINNER_128;
+    } else if (quantMode == 10) {
+        sOuterFactor = SOUTER_128;
+        sInnerFactor = SINNER_1024;
     } else {
         // prefill，其余 dim：128x256
         sOuterFactor = SOUTER_128;

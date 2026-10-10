@@ -17,9 +17,10 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
+set(quant_flash_attn_depends attention/common CACHE INTERNAL "Dependencies for quant_flash_attn")
+
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(quant_flash_attn_depends attention/common CACHE INTERNAL "Dependencies for quant_flash_attn")
     add_ops_compile_options(
         OP_NAME QuantFlashAttn
         COMPUTE_UNIT Ascend950PR_9599
@@ -27,6 +28,7 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
     )
 elseif("${CONDITION_UNIT}" STREQUAL "ascend960dt")
     set(quant_flash_attn_depends attention/common CACHE INTERNAL "Dependencies for quant_flash_attn")
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/quant_flash_attn_def.cpp APPEND PROPERTY COMPILE_DEFINITIONS ENABLE_HIFLOAT4)
 endif()
 
 file(GLOB_RECURSE ARCH35_CHECKER_SRC_FILES
@@ -51,6 +53,7 @@ else()
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
     ${ARCH35_CHECKER_SRC_FILES}
     qfa_tiling_info_parser.cpp
+    arch92/quant_flash_attn_tiling_hifp4.cpp
     )
     add_modules_sources_with_soc(
         OP_API_INDEPENDENT ON
