@@ -58,6 +58,7 @@ group_op_dict = {
     "ascend350": {
         "flash_attention_score_grad": 5,
     },
+    "ascend960dt": {},
 }
 
 
