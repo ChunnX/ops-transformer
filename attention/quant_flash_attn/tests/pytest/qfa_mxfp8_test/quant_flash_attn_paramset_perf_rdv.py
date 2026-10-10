@@ -34,6 +34,7 @@ TEST_PARAMS = {
         "q_scale_layout": ["TND"],
         "p_scale": [1.0],
         "enable_lse": [False],
+        "enable_v_tail": [False],
     },
     "PA_BNBD_B2_QS10240_KVS10240_Nq20_Nkv2_D128_SP3_Prefill": {
         "B": [2],
