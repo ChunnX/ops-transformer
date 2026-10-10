@@ -4,7 +4,7 @@
 
 | 产品 | 是否支持 |
 | :--- | :---: |
-| Atlas A2 训练系列产品/Atlas A2 推理系列产品（Ascend 910B） | 是 |
+| Atlas A2系列产品 | 是 |
 | 其他产品 | 否 |
 
 ## 功能说明
@@ -95,6 +95,23 @@ Ascend 910B 真机精度测试：
 ```bash
 bash experimental/gmm/grouped_matmul_quant/run_precision_test.sh
 ```
+
+脚本会根据自身路径定位仓库，日志默认保存在 `build_out/grouped_matmul_quant_precision_logs`。可以通过以下环境变量适配服务器环境：
+
+- `CANN_ENV_SCRIPT`：CANN 环境脚本路径。
+- `PYTHON_BIN`：执行测试使用的 Python 解释器。
+- `OPP_INSTALL_ROOT`：experimental 自定义算子包的安装目录，当前用户必须具有写权限。
+
+例如：
+
+```bash
+CANN_ENV_SCRIPT=/opt/Ascend/ascend-toolkit/set_env.sh \
+PYTHON_BIN=/path/to/python3 \
+OPP_INSTALL_ROOT=/opt/Ascend/opp \
+bash experimental/gmm/grouped_matmul_quant/run_precision_test.sh
+```
+
+未设置 `OPP_INSTALL_ROOT` 时，脚本优先使用 `ASCEND_OPP_PATH`，该变量为空时使用 `${ASCEND_HOME_PATH}/opp`。
 
 上述脚本会从算子包构建开始执行完整流程。如果需要手动分步执行：
 
