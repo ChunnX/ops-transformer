@@ -303,6 +303,8 @@ struct CompressorGradCompileInfo {
 
 // 类名不可用 CompressorGradTiling，与 pypto codegen 生成的 tiling data 类重名，
 // C++ injected-class-name 会遮蔽外部同名类型，导致 tilingData 成员类型错误。
+// tilingData 为 pypto 生成类指针，仅在 arch35(ascend950) 构建（COMPRESSOR_GRAD_HAS_ARCH35）时可见，
+// 保证本头文件在无 pypto 生成头的 arch22-only 环境下可独立编译。
 class CompressorGradTilingImpl {
 public:
     explicit CompressorGradTilingImpl(CompressorGradContext *context)
@@ -312,7 +314,9 @@ public:
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
     ge::graphStatus RunBigKernelTiling();
+#ifdef COMPRESSOR_GRAD_HAS_ARCH35
     CompressorGradTiling *tilingData = nullptr;
+#endif
 
 private:
     static ge::graphStatus ConvertRequiredParams(gert::TilingContext &context,

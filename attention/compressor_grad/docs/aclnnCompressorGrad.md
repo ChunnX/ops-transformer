@@ -6,7 +6,7 @@
 - <term>Ascend 950PR&950DT系列产品</term>：支持
 <!-- end id1 -->
 <!-- npu="A3" id2 -->
-- <term>Atlas A3系列产品</term>：不支持
+- <term>Atlas A3系列产品</term>：支持（仅支持BSH布局）
 <!-- end id2 -->
 <!-- npu="910b" id3 -->
 - <term>Atlas A2系列产品</term>：不支持
@@ -205,7 +205,10 @@ aclnnStatus aclnnCompressorGrad(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnCompressorGrad默认确定性实现。
+  - dX、dWkv、dWgate 同输入逐 bit 确定；dApe 为多核浮点原子累加（scatter-add），结果受加法次序影响，同输入重跑存在 ≤1e-5 量级的数值抖动（远低于常用容差），非逐 bit 确定。
+- executor生命周期（两段式接口通用约束）：
+  - `aclnnCompressorGradGetWorkspaceSize` 返回的 `aclOpExecutor*` 默认为**单次使用**：每次执行计算前应重新调用 GetWorkspaceSize 获取新的 executor（本仓 `torch_extension` 的 ACLNN_CMD 调用链即为此模式）。
+  - 若调用方需缓存并复用 executor（例如避免重复构建 tiling），必须在首次执行前调用 `aclSetAclOpExecutorRepeatable(executor)` 打标；复用时若输入/输出 tensor 地址发生变化，需配合 `aclSetAclOpTensorAddr` 系列接口更新地址。未打标的 executor 复用属未定义行为，第二次发射会因 workspace 实参失效产生设备侧错误（如 507057）。
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
 - 输入shape限制：
     - wkv支持输入shape[coff* D,H]

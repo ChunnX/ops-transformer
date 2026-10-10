@@ -10,7 +10,7 @@
 
 /*!
  * \file test_aclnn_compressor_grad.cpp
- * \brief CompressorGrad 算子 aclnn 调用示例（A5 / ascend950）
+ * \brief CompressorGrad 算子 aclnn 调用示例（A5 / ascend950，A3 / ascend910_93 同样适用）
  *        场景：C4A（D=512, coff=2, cmp_ratio=4, BSH layout, BF16）
  */
 
