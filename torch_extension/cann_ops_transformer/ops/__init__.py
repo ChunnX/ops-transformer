@@ -131,6 +131,7 @@ _legacy_map = {
     "dense_lightning_indexer_softmax_lse": "attention.dense_lightning_indexer_softmax_lse_v2",
     "elastic_buffer": "mc2.common",
     "flash_attn": "attention.flash_attn",
+    "flash_mla": "attention.flash_mla_with_kvcache",
     "flash_mla_with_kvcache": "attention.flash_mla_with_kvcache",
     "flash_attn_grad": "attention.flash_attn_grad",
     "generic_block_sparse_attention": "attention.generic_block_sparse_attention",
