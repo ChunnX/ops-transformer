@@ -475,7 +475,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                     reinterpret_cast<__gm__ AType *>(reinterpret_cast<__gm__ char *>(aGmAddr_) + dataSlotOffset)),
                 layoutA);
             auto gmScaleA = asc::te::make_tensor(
-                asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(
+                asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ScaleType *>(
                     reinterpret_cast<__gm__ char *>(scaleAGmAddr_) + scaleSlotOffset)),
                 layoutScaleA);
             uint32_t remoteRankCnt = 1;
@@ -536,7 +536,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                     reinterpret_cast<__gm__ AType *>(reinterpret_cast<__gm__ char *>(aGmAddr_) + dataSlotOffset)),
                 layoutA);
             auto gmScaleA = asc::te::make_tensor(
-                asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(
+                asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ScaleType *>(
                     reinterpret_cast<__gm__ char *>(scaleAGmAddr_) + scaleSlotOffset)),
                 layoutScaleA);
             uint64_t rankMStep = enableBufferReuse ? params.localParams.headTileSize : oriM;
