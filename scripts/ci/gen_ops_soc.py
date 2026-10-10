@@ -55,6 +55,11 @@ group_op_dict = {
         "flash_attention_score_grad": 5,
         "mega_moe": 20,
     },
+    "ascend960dt": {
+        "fused_infer_attention_score": 20,
+    },
+    # GMM/GMMAdd use the default per-operator task without additional splitting.
+    "ascend960pr": {},
     "ascend350": {
         "flash_attention_score_grad": 5,
     },

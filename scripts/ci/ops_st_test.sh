@@ -12,7 +12,8 @@
 set -euo pipefail
 
 declare -A SOC_TO_ST_ARCH
-SOC_TO_ST_ARCH=(["ascend910b"]="arch22" ["ascend950"]="arch35")
+SOC_TO_ST_ARCH=(["ascend910b"]="arch22" ["ascend950"]="arch35"
+               ["ascend960dt"]="arch35" ["ascend960pr"]="arch35")
 
 dotted_line="----------------------------------------------------------------"
 print_msg() {
@@ -173,7 +174,7 @@ usage() {
     echo "Usage: bash ops_st_test.sh [--soc_version=ascend950] [--ops=op1,op2,op3] [--test_type=kernel,aclnn,e2e] [--pr_filelist=pr_filelist.txt]"
     echo "       bash ops_st_test.sh pr_filelist.txt"
     echo "Options:"
-    echo "    --soc_version   (Optional) Specify soc version. Supported: ascend910b, ascend950. If not specified, auto-detect via 'asys info -r=status'."
+    echo "    --soc_version   (Optional) Specify soc version. Supported: ascend910b, ascend950, ascend960dt, ascend960pr. If not specified, auto-detect via 'asys info -r=status'."
     echo "    --ops           (Optional) Specify operators to test (comma-separated). If not specified, extract from git diff."
     echo "    --test_type     (Optional) Specify test types to run (comma-separated). Supported: kernel, aclnn, e2e. Default: all types."
     echo "    --pr_filelist   (Optional) Path to file containing list of changed files (one per line). If not specified, extract from git diff."
@@ -182,6 +183,8 @@ usage() {
     echo "    bash ops_st_test.sh"
     echo "    bash ops_st_test.sh pr_filelist.txt"
     echo "    bash ops_st_test.sh --soc_version=ascend950"
+    echo "    bash ops_st_test.sh --soc_version=ascend960dt --ops=grouped_matmul --test_type=kernel"
+    echo "    bash ops_st_test.sh --soc_version=ascend960pr --ops=grouped_matmul --test_type=kernel"
     echo "    bash ops_st_test.sh --pr_filelist=pr_filelist.txt"
     echo "    bash ops_st_test.sh --soc_version=ascend910b --ops=mat_mul_v3,conv2d_v2"
     echo "    bash ops_st_test.sh --soc_version=ascend950 --test_type=kernel"
@@ -635,6 +638,7 @@ parse_args() {
                 ;;
             --soc_version=*)
                 soc_version="${arg#*=}"
+                soc_version="${soc_version,,}"
                 ;;
             --test_type=*)
                 test_type_list="${arg#*=}"
@@ -691,7 +695,11 @@ parse_args() {
 
     local chip_info=$(asys info -r=status 2>/dev/null || echo "")
     local detected_soc=""
-    if echo "${chip_info}" | grep -q "Ascend 950"; then
+    if echo "${chip_info}" | grep -Eiq 'Ascend[[:space:]]*960[[:space:]]*DT'; then
+        detected_soc="ascend960dt"
+    elif echo "${chip_info}" | grep -Eiq 'Ascend[[:space:]]*960[[:space:]]*PR'; then
+        detected_soc="ascend960pr"
+    elif echo "${chip_info}" | grep -q "Ascend 950"; then
         detected_soc="ascend950"
     elif echo "${chip_info}" | grep -q "Ascend 910"; then
         detected_soc="ascend910b"
@@ -705,8 +713,8 @@ parse_args() {
         soc_version="${detected_soc}"
         print_msg "Auto-detected soc_version: ${soc_version}"
     else
-        if [[ "${soc_version}" != "ascend910b" && "${soc_version}" != "ascend950" ]]; then
-            print_error "Unsupported soc_version: ${soc_version}. Supported: ascend910b, ascend950"
+        if [[ -z "${SOC_TO_ST_ARCH[${soc_version}]:-}" ]]; then
+            print_error "Unsupported soc_version: ${soc_version}. Supported: ascend910b, ascend950, ascend960dt, ascend960pr"
             exit 1
         fi
 

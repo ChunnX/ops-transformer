@@ -61,6 +61,13 @@ extern "C" {
 #endif
 
 namespace {
+// 判断是否为DAV_3510系列(含V121/DAV_9201、V122/DAV_9202兼容版本)，用于非量化场景复用arch35实现
+static inline bool IsNpuArch3510Series()
+{
+    auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
+    return npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_9201 || npuArch == NpuArch::DAV_9202;
+}
+
 static constexpr int64_t X_Y_SEPARATED = 0L; // x,y no split
 static constexpr int64_t Y_SEPARATED = 1L;   // x split
 static constexpr int64_t X_SEPARATED = 2L;   // y split
@@ -310,7 +317,7 @@ static aclnnStatus CheckShapeSameLengthTensorList(const aclTensorList *tensorLis
     uint64_t groupNum = tensorList1->Size();
     for (uint64_t i = 0; i < groupNum; i++) {
         int64_t dimValue1 = (*tensorList1)[i]->GetViewShape().GetDim(dimIds[0]);
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        if (!IsNpuArch3510Series()) {
             // tensorType[2] indicates whether to verify innerAxisDimId of tensorList1;if so, check if it's less than or
             // equal to 65535.
             if (tensorType[2] == "true" && innerAxisDimId > -1) {
@@ -338,9 +345,9 @@ static aclnnStatus CheckShapeDiffLengthTensorList(const aclTensorList *longTenso
     // match those in a tensor list of a single tensor.
     // Specified axis is not a split axis.
     int64_t dimValueSingle = (*singleTensorList)[0]->GetViewShape().GetDim(dimIds[1]);
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+    if (!IsNpuArch3510Series()) {
         // tensorType[2] indicates whether to verify innerAxisdimId of tensorList1; if so, check if it's less than or
-        // equal to 65535 excluded DAV_3510.
+        // equal to 65535 excluded DAV_3510 series.
         if (tensorType[2] == "true" && innerAxisdimId > -1) {
             int64_t dimValue = (*singleTensorList)[0]->GetViewShape().GetDim(innerAxisdimId);
             CHECK_COND(dimValue <= MAX_INNER_AXIS, ACLNN_ERR_PARAM_INVALID,
@@ -904,8 +911,8 @@ static aclnnStatus CheckNonQuantMatmulDataType(const gmm::GroupedMatmulParams &g
                                                const char *opName)
 {
     DataType biasDtype = gmmParams.xDtype == DataType::DT_BF16 ? DataType::DT_FLOAT : gmmParams.xDtype;
-    // DAV_3510支持bf16的bias
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    // DAV_3510系列(含V121/V122)支持bf16的bias
+    if (IsNpuArch3510Series()) {
         if (gmmParams.biasOptional != nullptr) {
             biasDtype = (*gmmParams.biasOptional)[0]->GetDataType();
             CHECK_COND(biasDtype == gmmParams.xDtype || biasDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
@@ -1607,8 +1614,20 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
                ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, ASCEND310P scenario check failed.", opName,
                GetGmmScenarioName(gmmParams.xDtype, weightDtype));
 
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        if (IsQuant(gmmParams.xDtype, weightDtype)) {
+    if (IsNpuArch3510Series()) {
+        const bool isLegacyDav3510 = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+        if (!isLegacyDav3510) {
+            const bool isNonQuant = gmmParams.xDtype == weightDtype &&
+                                    (gmmParams.xDtype == DataType::DT_FLOAT16 ||
+                                     gmmParams.xDtype == DataType::DT_BF16 || gmmParams.xDtype == DataType::DT_FLOAT);
+            CHECK_COND(isNonQuant, ACLNN_ERR_PARAM_INVALID,
+                       "In op [%s], ASCEND960DT/ASCEND960PR only support non-quant FP16/BF16/FP32 inputs.", opName);
+            CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID,
+                       "In op [%s], activation is not supported on ASCEND960DT/ASCEND960PR, got activeType[%ld].",
+                       opName, gmmParams.activeType);
+        }
+        // 量化/伪量化checker仅DAV_3510开放; V121/V122(DAV_9201/DAV_9202)当前仅支持非量化场景
+        if (isLegacyDav3510 && IsQuant(gmmParams.xDtype, weightDtype)) {
             CHECK_COND(isNoActivation || CheckIsEnabledActive(gmmParams), ACLNN_ERR_PARAM_INVALID,
                        "On this platform, activation is supported only when the input is INT8"
                        " and the quant mode is either pertoken-perchannel or pertensor-perchannel; "
@@ -1616,17 +1635,18 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
                        " activeType[%ld] is not supported.",
                        gmmParams.activeType);
             return gmm::AclnnGroupedMatmulDAV3510Checker<aclTensorList>(gmmParams).CheckGroupedMatmulDAV3510();
-        } else if (IsWeightQuant(gmmParams.xDtype, weightDtype)) {
+        } else if (isLegacyDav3510 && IsWeightQuant(gmmParams.xDtype, weightDtype)) {
             CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID,
                        "Activation is not supported in weight quant mode now."
                        " activeType[%ld] is not supported.",
                        gmmParams.activeType);
             return gmm::AclnnGroupedMatmulWeightQuantDAV3510Checker(gmmParams).CheckGroupedMatmulWeightQuantDAV3510();
         } else {
-            // No-quant: GELU_TANH post-process is enabled on DAV_3510 for FP16/BF16 output. The first
+            // No-quant: GELU_TANH post-process is enabled only on DAV_3510 for FP16/BF16 output. The first
             // phase restricts it to NO_SPLIT(-1)/SPLIT_M(0); SPLIT_K(2) is deferred.
             DataType yDtype = (*gmmParams.y)[0]->GetDataType();
-            bool isGeluSupported = gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH &&
+            bool isGeluSupported = isLegacyDav3510 &&
+                                   gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH &&
                                    (yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16) &&
                                    (gmmParams.groupType == -1L || gmmParams.groupType == 0L);
             CHECK_COND(isNoActivation || isGeluSupported, ACLNN_ERR_PARAM_INVALID,
@@ -1661,7 +1681,7 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         }
         CHECK_COND(CheckNonQuantMatmulDataType(gmmParams, weightDtype, opName) == ACLNN_SUCCESS,
                    ACLNN_ERR_PARAM_INVALID, "In op [%s], when non-quant, data type check failed.", opName);
-        // No-quant GELU_TANH is only enabled on DAV_3510 (y dtype checked in the DAV_3510 branch above).
+        // No-quant GELU_TANH is only enabled on DAV_3510 (y dtype checked above).
         bool isNoQuantActAllowed =
             isNoActivation || (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
                                gmmParams.activeType == GMMActType::GMM_ACT_TYPE_GELU_TANH);
@@ -2155,7 +2175,7 @@ static aclnnStatus CheckNoSplitShape(const gmm::GroupedMatmulParams &gmmParams, 
         }
         // check the inner dim of x is less than 65535
         size_t xKDimValue = (*gmmParams.x)[i]->GetViewShape().GetDim(xDimNum - 1UL); // x always is not transposed
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        if (!IsNpuArch3510Series()) {
             CHECK_COND(
                 xKDimValue <= MAX_INNER_AXIS, ACLNN_ERR_PARAM_INVALID,
                 "In op [%s], when groupType == -1(no split), the shape of [%s] is not supported, got [x[%zu] dim "
@@ -2168,7 +2188,7 @@ static aclnnStatus CheckNoSplitShape(const gmm::GroupedMatmulParams &gmmParams, 
                    "reason is: [x[%zu] dim %zu value %zu should be equal to weight[%zu] dim 0 value %zu].",
                    opName, "x, weight", i, xDimNum - 1, xKDimValue, i, weightKDimValue);
         size_t weightNDimValue = (*gmmParams.weight)[i]->GetViewShape().GetDim(1);
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510 &&
+        if (!IsNpuArch3510Series() &&
             !gmmParams.transposeWeight) { // if weight is not transposed, check N aisx; otherwise, check K axis, which
                                           // can be skiped
             CHECK_COND(weightNDimValue <= MAX_INNER_AXIS, ACLNN_ERR_PARAM_INVALID,
@@ -2223,7 +2243,7 @@ static aclnnStatus CheckParamsByGroupType(const gmm::GroupedMatmulParams &gmmPar
                    "supported.",
                    opName, "transposeX");
         CHECK_COND(!(gmmParams.apiVersion == gmm::GMMApiVersion::V1 && gmmParams.transposeWeight) ||
-                       op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510,
+                       IsNpuArch3510Series(),
                    ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == -1(no split) and x, weight and y are all separated in V1, [%s] is "
                    "not supported.",
@@ -2327,14 +2347,15 @@ static aclnnStatus CheckGroupSize(const gmm::GroupedMatmulParams &gmmParams)
     // Only groupSizes of necessary inputs will be checked here.
     // The groupSizes of optional inputs and output will be checked in subsequent steps.
     int64_t maxWeightLength = MAX_GROUP_LIST_SIZE_ARRAY;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (IsNpuArch3510Series()) {
         if ((gmmParams.xDtype == DataType::DT_BF16 || gmmParams.xDtype == DataType::DT_FLOAT16 ||
              gmmParams.xDtype == DataType::DT_FLOAT) &&
             gmmParams.xDtype == (*gmmParams.weight)[0]->GetDataType()) {
             return gmm::AclnnGroupedMatmulNoQuantDAV3510Checker(gmmParams).CheckGroupedMatmulGroupSizeNoQuantDAV3510();
         }
-        // MX WeightNz single-multi-single supports one weight and scale tensor per group.
-        if (IsWeightNzMultiTensorCase(gmmParams) && IsQuant(gmmParams.xDtype, (*gmmParams.weight)[0]->GetDataType()) &&
+        // MX WeightNz single-multi-single supports one weight and scale tensor per group. (DAV_3510 only)
+        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+            IsWeightNzMultiTensorCase(gmmParams) && IsQuant(gmmParams.xDtype, (*gmmParams.weight)[0]->GetDataType()) &&
             gmmParams.scaleOptional != nullptr && gmmParams.scaleOptional->Size() > 0 &&
             (*gmmParams.scaleOptional)[0] != nullptr &&
             (*gmmParams.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
@@ -3138,7 +3159,9 @@ static aclnnStatus CheckEmptyTensor(const aclTensorList *x, const aclTensorList 
 static aclnnStatus PrepareGmmParams(gmm::GroupedMatmulParams &gmmParams, const aclTensorList *x, const aclTensorList *y,
                                     int64_t splitItem, const char *opName)
 {
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9201 ||
+        GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_9202) {
         // Check elements before reading scale dtype or normalizing empty optional inputs.
         CHECK_RET_CODE(CheckOptionalTensorListNotNull(gmmParams.biasOptional, "bias"), "Invalid bias tensor list.");
         CHECK_RET_CODE(CheckOptionalTensorListNotNull(gmmParams.scaleOptional, "scale"), "Invalid scale tensor list.");
@@ -3256,8 +3279,9 @@ aclnnStatus CheckCommonParam(const aclTensorList *x, const aclTensorList *weight
                    "In op [%s], [%s] is not supported, got [%ld].", opName, "actType", actType);
     }
     if (groupListType == gmm::GROUP_LIST_SPARSE_M) {
-        CHECK_COND(npuArch == NpuArch::DAV_2201 || npuArch == NpuArch::DAV_3510, ACLNN_ERR_PARAM_INVALID,
-                   "This platform does not support groupListType 2.");
+        CHECK_COND(npuArch == NpuArch::DAV_2201 || npuArch == NpuArch::DAV_3510 || npuArch == NpuArch::DAV_9201 ||
+                       npuArch == NpuArch::DAV_9202,
+                   ACLNN_ERR_PARAM_INVALID, "This platform does not support groupListType 2.");
         CHECK_COND(groupType == gmm::SPLIT_M, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when groupType == %s, [%s] is not supported. Constraint:[sparse groupListType requires "
                    "groupType == 0(split-M)].",

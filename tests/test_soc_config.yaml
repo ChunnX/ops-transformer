@@ -20,6 +20,8 @@ all_soc:
     - ascend310p
     - ascend910b
     - ascend950
+    - ascend960dt
+    - ascend960pr
 
 ascend310p:
   module: True
@@ -126,3 +128,5 @@ ascend950:
     - mc2/attention_to_ffn_v2/tests/ut/op_host
   options:
     - ascend950
+    - ascend960dt
+    - ascend960pr

@@ -2430,6 +2430,19 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext *context)
                         return ge::GRAPH_FAILED);
             return ge::GRAPH_SUCCESS;
         }
+    } else if (compileInfoPtr->npuArch == NpuArch::DAV_9201 || compileInfoPtr->npuArch == NpuArch::DAV_9202) {
+        // V121(ascend960dt/DAV_9201)/V122(ascend960pr/DAV_9202): 当前仅开放非量化场景
+        bool isUnQuant =
+            (xDType == ge::DT_FLOAT16 || xDType == ge::DT_BF16 || xDType == ge::DT_FLOAT) && (xDType == weightDtype);
+        OP_CHECK_IF(!isUnQuant,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        context->GetNodeName(), "ASCEND960DT/ASCEND960PR only support non-quant FP16/BF16/FP32 inputs."),
+                    return ge::GRAPH_FAILED);
+        GroupedNoQuantMatmulTiling groupedNoQuantMatmulTiling;
+        OP_CHECK_IF(!groupedNoQuantMatmulTiling.SetTiling(context),
+                    OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
     }
     GMMTiling tiling;
     if (xDType == ge::DT_INT8 && weightDtype == ge::DT_INT4) { // A8W4 Tiling
@@ -2472,7 +2485,9 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGMM(gert::TilingParseContext *c
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, compileInfoPtr->l0CSize);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, compileInfoPtr->l2Size);
 
-    OP_CHECK_IF((compileInfoPtr->npuArch != NpuArch::DAV_3510 && compileInfoPtr->aivNum == 0),
+    OP_CHECK_IF((compileInfoPtr->npuArch != NpuArch::DAV_3510 &&
+                     compileInfoPtr->npuArch != NpuArch::DAV_9201 && compileInfoPtr->npuArch != NpuArch::DAV_9202 &&
+                     compileInfoPtr->aivNum == 0),
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
                                             "platform info is invalid, aicNum=%u, aivNum=%u, ubSize=%lu, l1Size=%lu, "
                                             "l0CSize=%lu, l0ASize=%lu, l0BSize=%lu",

@@ -45,9 +45,16 @@ __aicore__ inline void GroupedMatMulKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bi
     using BasicDispatchPolicy =
         Blaze::Gemm::MatmulMultiBlockBasic<0, Blaze::Gemm::OP_TYPE_EMPTY, Blaze::Gemm::KernelGroupedMmadNoQuant, 0,
                                            Blaze::Gemm::MatmulOutputMode::OVERWRITE>;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 9201 || __NPU_ARCH__ == 9202)
+    // 9201/9202为CV 1:1形态, GELU fixpipe使用1V1模式
+    using GeluDispatchPolicy =
+        Blaze::Gemm::MatmulMultiBlockFixpipeOpti<Blaze::Gemm::ND_ALIG_1V1_FIXPIPE, Blaze::Gemm::OP_TYPE_GELU,
+                                                 Blaze::Gemm::KernelGroupedMmadNoQuant>;
+#else
     using GeluDispatchPolicy =
         Blaze::Gemm::MatmulMultiBlockFixpipeOpti<Blaze::Gemm::ND_ALIG_1V2_FIXPIPE, Blaze::Gemm::OP_TYPE_GELU,
                                                  Blaze::Gemm::KernelGroupedMmadNoQuant>;
+#endif
     using DispatchPolicy = AscendC::Std::conditional_t<EnableGelu, GeluDispatchPolicy, BasicDispatchPolicy>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC,
                                                     BiasType, LayoutBias>;
