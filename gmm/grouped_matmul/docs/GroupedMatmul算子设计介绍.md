@@ -70,7 +70,7 @@ GroupedMatmul算子支持输入输出为多tensor、单tensor。
 | 0          |        单多单         | [(M,K)] | [(K,N),(K,N),...] | [(M,N)] | [(N),(N),...] | (G) | not support |
 | 0          |        多多单         | [(M1,K1),(M2,K2),...] | [(K1,N),(K2,N),...] | [(M,N)] | [(N),(N),...] | (G) | not support |
 
-例如在多多多场景，x shape={{4，16}, {12，16}, {16，16}}，weight shape={{16，8}，{16，8}，{16，8}}，y shape={{4，8}，{12，8}，{16，8}}，如果想在单单单场景进行相同的计算，则x shape={32，16}，weight shape= {3，16，8}，y shape={32，8}，groupList={4，12，16}。 
+例如在多多多场景，x shape={{4，16}, {12，16}, {16，16}}，weight shape={{16，8}，{16，8}，{16，8}}，y shape={{4，8}，{12，8}，{16，8}}，如果想在单单单场景进行相同的计算，则x shape={32，16}，weight shape= {3，16，8}，y shape={32，8}，groupList={4，12，16}。
 
 # 3 tiling设计
 

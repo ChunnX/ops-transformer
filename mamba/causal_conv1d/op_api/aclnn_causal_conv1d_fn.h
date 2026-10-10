@@ -47,15 +47,15 @@ extern "C" {
  * @domain aclnn_ops_infer
  */
 ACLNN_API aclnnStatus aclnnCausalConv1dFnGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *weight, aclTensor *convStatesRef, const aclTensor *biasOptional,
-    const aclTensor *queryStartLocOptional, const aclTensor *cacheIndicesOptional,
-    const aclTensor *initialStateModeOptional, const aclTensor *blockIdxFirstScheduledTokenOptional,
-    const aclTensor *blockIdxLastScheduledTokenOptional, const aclTensor *initialStateIdxOptional,
-    const aclTensor *numComputedTokensOptional, const char *activation, int64_t nullBlockId, int64_t blockSizeToAlign,
-    aclTensor *y, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor* x, const aclTensor* weight, aclTensor* convStatesRef, const aclTensor* biasOptional,
+    const aclTensor* queryStartLocOptional, const aclTensor* cacheIndicesOptional,
+    const aclTensor* initialStateModeOptional, const aclTensor* blockIdxFirstScheduledTokenOptional,
+    const aclTensor* blockIdxLastScheduledTokenOptional, const aclTensor* initialStateIdxOptional,
+    const aclTensor* numComputedTokensOptional, const char* activation, int64_t nullBlockId, int64_t blockSizeToAlign,
+    aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /* @brief aclnnCausalConv1dFn 的第二段接口，用于执行计算。 */
-ACLNN_API aclnnStatus aclnnCausalConv1dFn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+ACLNN_API aclnnStatus aclnnCausalConv1dFn(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
                                           aclrtStream stream);
 
 #ifdef __cplusplus

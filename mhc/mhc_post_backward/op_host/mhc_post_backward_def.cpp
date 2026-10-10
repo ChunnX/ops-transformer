@@ -95,7 +95,7 @@ public:
             .ExtendCfgInfo("opFile.value", "mhc_post_backward");
         this->AICore().AddConfig("ascend910b", aicore_Config_910b);
         this->AICore().AddConfig("ascend910_93", aicore_Config_910b);
-        
+
         OpAICoreConfig aicore_Config_950;
         aicore_Config_950.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
