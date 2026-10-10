@@ -147,19 +147,24 @@ def load_sheet(xlsx_path: str, sheet=1):
     """
     try:
         with zipfile.ZipFile(xlsx_path) as z:
-            ss_xml = z.read("xl/sharedStrings.xml").decode("utf-8")
+            ss_xml = (
+                z.read("xl/sharedStrings.xml").decode("utf-8")
+                if "xl/sharedStrings.xml" in z.namelist()
+                else None
+            )
             sheet_path = _resolve_sheet_xml(z, sheet)
             sheet_xml = z.read(sheet_path).decode("utf-8")
     except (KeyError, FileNotFoundError):
         return _load_sheet_openpyxl(xlsx_path, sheet)
 
-    ss_doc = minidom.parseString(ss_xml)
     shared_strings = []
-    for si in ss_doc.getElementsByTagName("si"):
-        ts = si.getElementsByTagName("t")
-        shared_strings.append(
-            "".join(t.firstChild.data if t.firstChild else "" for t in ts)
-        )
+    if ss_xml is not None:
+        ss_doc = minidom.parseString(ss_xml)
+        for si in ss_doc.getElementsByTagName("si"):
+            ts = si.getElementsByTagName("t")
+            shared_strings.append(
+                "".join(t.firstChild.data if t.firstChild else "" for t in ts)
+            )
     return _parse_sheet_xml(sheet_xml, shared_strings)
 
 
