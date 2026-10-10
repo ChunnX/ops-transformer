@@ -381,7 +381,7 @@ protected:
     bool CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag);
     bool CheckInputDtype();
     bool CheckCacheIsQuant(ge::DataType& cacheDtype);
-    ge::graph_status CheckInputShapeIsEmpty();
+    ge::graphStatus CheckInputShapeIsEmpty();
     int64_t FindNearestPower2(const int64_t value);
 
 private:
