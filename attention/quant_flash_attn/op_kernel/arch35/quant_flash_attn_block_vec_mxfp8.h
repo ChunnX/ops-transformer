@@ -421,7 +421,7 @@ public:
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo_.subBlockIdx * pScaleDataLen;
         constexpr uint32_t copyTimes = s2BaseSizeCur / MXFP_GROUP_SIZE / 2;
-        if ((runInfo.actSingleLoopS2Size > s2SplitSize) & &(subLoop % 2 == 1)) {
+        if ((runInfo.actSingleLoopS2Size > s2SplitSize) &&(subLoop % 2 == 1)) {
             for (uint16_t i = 0; i < copyTimes; i++) {
                 // PScale s2方向block块大小为32，共8个，L1需满足16x2分形，重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
@@ -447,7 +447,7 @@ public:
         //-----------------------------------------------------------------
         this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
 
-        if (((runInfo.actSingleLoopS2Size > s2SplitSize) & &(subLoop % 2 == 1)) ||
+        if (((runInfo.actSingleLoopS2Size > s2SplitSize) &&(subLoop % 2 == 1)) ||
             (runInfo.actSingleLoopS2Size <= s2SplitSize)) {
             outputBuf.SetCrossCore();
         }
@@ -779,7 +779,7 @@ public:
         uint64_t vecOffset = constInfo_.subBlockIdx * pScaleDataLen;
         uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         constexpr uint32_t copyTimes = s2BaseSizeCur / MXFP_GROUP_SIZE / 2;
-        if ((runInfo.actSingleLoopS2Size > s2SplitSize) & &(subLoop % 2 == 1)) {
+        if ((runInfo.actSingleLoopS2Size > s2SplitSize) &&(subLoop % 2 == 1)) {
             for (uint16_t i = 0; i < copyTimes; i++) {
                 // PScale s2方向block块大小为32，共256/32=8个，L1需满足16x2分形，重复拷贝4次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor,
@@ -805,7 +805,7 @@ public:
         }
         this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
 
-        if (((runInfo.actSingleLoopS2Size > s2SplitSize) & &(subLoop % 2 == 1)) ||
+        if (((runInfo.actSingleLoopS2Size > s2SplitSize) &&(subLoop % 2 == 1)) ||
             (runInfo.actSingleLoopS2Size <= s2SplitSize)) {
             outputBuf.SetCrossCore();
         }
