@@ -22,7 +22,7 @@ if (BUILD_OPEN_PROJECT)
     elseif("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend960dt")
         add_ops_compile_options(
             OP_NAME MhcPostBackward
-            COMPUTE_UNIT ascend960dt_968B7
+            COMPUTE_UNIT Ascend960DT_968B7
             OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
     else()
