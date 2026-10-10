@@ -242,8 +242,12 @@ __global__ __aicore__ void quant_flash_attn(
     __gm__ uint8_t* dequantScaleKey, __gm__ uint8_t* dequantScaleValue, __gm__ uint8_t* blockTable,
     __gm__ uint8_t* pScale, __gm__ uint8_t* cuSeqLensQ, __gm__ uint8_t* cuSeqLensKv, __gm__ uint8_t* sequsedQ,
     __gm__ uint8_t* sequsedKv, __gm__ uint8_t* sinks, __gm__ uint8_t* attnMask, __gm__ uint8_t* metadata,
+    __gm__ uint8_t* vTail, __gm__ uint8_t* blockTableTail, __gm__ uint8_t* sequsedVTail,
     __gm__ uint8_t* attnOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
+    (void)vTail;
+    (void)blockTableTail;
+    (void)sequsedVTail;
     REGISTER_TILING_DEFAULT(QuantFlashAttnTilingData);
     // SK/静态图兼容：tiling 在外层入口统一经宏取一次（动=GM零拷贝/静=栈拷贝），向下传参
     GET_TILING_DATA(tilingData, tiling);
