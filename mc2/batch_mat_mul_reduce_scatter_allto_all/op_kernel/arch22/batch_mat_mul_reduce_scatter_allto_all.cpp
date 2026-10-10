@@ -12,6 +12,7 @@
  * \file batch_mat_mul_reduce_scatter_allto_all.cpp
  * \brief
  */
+// mc2 operator kernel entry
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
@@ -63,10 +64,10 @@ __global__ __aicore__ void batch_mat_mul_reduce_scatter_allto_all(GM_ADDR xGM, G
     }
     GET_TILING_DATA(tilingData, tilingGM);
     REGISTER_TILING_DEFAULT(BatchMatMulReduceScatterAlltoAllTilingData);
-    auto tiling = (__gm__ BatchMatMulReduceScatterAlltoAllTilingData *)tilingGM;
-    __gm__ void *hcclInitTiling = (__gm__ void *)(&(tiling->hcclInitTiling));
-    __gm__ void *reduceScatterCcTiling = (__gm__ void *)(&(tiling->reduceScatterCcTiling));
-    __gm__ void *alltoAllCcTiling = (__gm__ void *)(&(tiling->alltoAllCcTiling));
+    auto tiling = (__gm__ BatchMatMulReduceScatterAlltoAllTilingData*)tilingGM;
+    __gm__ void* hcclInitTiling = (__gm__ void*)(&(tiling->hcclInitTiling));
+    __gm__ void* reduceScatterCcTiling = (__gm__ void*)(&(tiling->reduceScatterCcTiling));
+    __gm__ void* alltoAllCcTiling = (__gm__ void*)(&(tiling->alltoAllCcTiling));
     TPipe pipe;
 #if (ORIG_DTYPE_X == DT_FLOAT16)
     using X_TYPE = half;

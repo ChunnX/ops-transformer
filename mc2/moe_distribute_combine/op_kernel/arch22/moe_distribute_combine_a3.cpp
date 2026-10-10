@@ -12,6 +12,7 @@
  * \file moe_distribute_combine_a3.cpp
  * \brief A3 (arch22) kernel entry for MoeDistributeCombine.
  */
+// mc2 operator kernel entry
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else

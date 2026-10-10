@@ -11,6 +11,7 @@
 /*!
  * \file grouped_mat_mul_allto_allv.cpp
  */
+// mc2 operator kernel entry
 #include "grouped_mat_mul_allto_allv_tiling.h"
 #include "grouped_mat_mul_allto_allv_tiling_key.h"
 
@@ -46,7 +47,7 @@ __global__ __aicore__ void grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gm
 
     REGISTER_TILING_DEFAULT(QuantGmmA2avTilingData);
     GET_TILING_DATA(tilingData, tilingGM);
-    const QuantGmmA2avTilingData *tilingData_ = &tilingData;
+    const QuantGmmA2avTilingData* tilingData_ = &tilingData;
 
     using HcclOpType = HcclA2avOp<DTYPE_Y, false, TILINGKEY_COMM_MODE>;
     using ComputeOpType =
@@ -83,7 +84,7 @@ __global__ __aicore__ void grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gm
     }
 
     if ASCEND_IS_AIV {
-        const void *hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
+        const void* hcclInitTiling = &(tilingData_->hcclA2avTiling.hcclInitTiling);
         uint64_t hcclCcTilingOffset = offsetof(QuantGmmA2avTilingData, hcclA2avTiling) +
                                       offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
         GM_ADDR sendBufferAddr = gmmOutputGM;

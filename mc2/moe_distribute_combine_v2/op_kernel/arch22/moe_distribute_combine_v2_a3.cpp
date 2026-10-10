@@ -12,6 +12,7 @@
  * \file moe_distribute_combine_v2_a3.cpp
  * \brief A3 (arch22) kernel entry for MoeDistributeCombineV2.
  */
+// mc2 operator kernel entry
 #if ASC_DEVKIT_MAJOR >= 9
 #include "basic_api/kernel_basic_intf.h"
 #else
@@ -42,7 +43,7 @@ __global__ __aicore__ void moe_distribute_combine_v2(GM_ADDR expandX, GM_ADDR ex
     GM_ADDR contextGM0 = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr ((ArchTag == TILINGKEY_TPL_A3) && (LayeredMode == TILINGKEY_TPL_MTE)) {
-        const auto epContext = reinterpret_cast<__gm__ Mc2Kernel::HcclOpParam *>(contextGM0);
+        const auto epContext = reinterpret_cast<__gm__ Mc2Kernel::HcclOpParam*>(contextGM0);
         const uint64_t realWinSize = Mc2Kernel::GetWinSize(epContext);
         const uint64_t minWinSize = tilingData.moeDistributeCombineV2Info.totalWinSizeEp;
         assert(realWinSize >= minWinSize,
