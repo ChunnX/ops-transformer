@@ -29,7 +29,8 @@ static ge::graphStatus AlltoAllMatmulTilingFunc(gert::TilingContext *context)
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    if (npuArch == Ops::Base::DAV_3510) {
+    if (npuArch == Ops::Base::DAV_3510 || npuArch == Ops::Base::DAV_9201) {
+        // ascend950(DAV_3510)与ascend960dt(DAV_9201)均走arch tiling注册表(MX/HiF4量化路径)
         return TilingRegistryArch::GetInstance().DoTilingImpl(context);
     }
     return TilingRegistryNew::GetInstance().DoTilingImpl(context);

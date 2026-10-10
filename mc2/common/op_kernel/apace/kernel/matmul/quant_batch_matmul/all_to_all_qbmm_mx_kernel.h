@@ -66,13 +66,15 @@ public:
     using AType = typename BlockMmad::AType;
     using BType = typename BlockMmad::BType;
     using CType = typename BlockMmad::CType;
+    // Scale 元素类型从 Blaze BlockMmad 导出: MX 为 fp8_e8m0_t, HiF4 为 hif4_scale
+    // (blaze 侧已定义, 直接 using 使用)
+    using ScaleType = typename BlockMmad::ScaleType;
     using BiasType = typename BlockMmad::BiasType;
     using LayoutA = typename BlockMmad::LayoutA;
     using LayoutB = typename BlockMmad::LayoutB;
     using LayoutC = typename BlockMmad::LayoutC;
     static constexpr int64_t C0_SIZE = IsFp4<AType>() ? C0_SIZE_B4 : C0_SIZE_B8;
     static constexpr int64_t kCacheLineAlignMask = IsFp4<AType>() ? 0xff : 0x7f;
-    static constexpr int32_t SCALE_C0 = 2;
 
     using BlockShape = asc::te::shape<int64_t, int64_t, int64_t, int64_t>;
     using BlockCoord = asc::te::coord<int64_t, int64_t, int64_t, int64_t>;
@@ -82,11 +84,13 @@ public:
     using MakeLayoutB = asc::te::frame_layout_format<LayoutB, Std::Int<C0_SIZE>>;
     using MakeLayoutC = asc::te::frame_layout_format<LayoutC, Std::Int<asc::te::c0_element<CType>>>;
     using MakeLayoutScaleA =
-        Std::conditional_t<transA, asc::te::frame_layout_format<asc::te::scalea_dn_layout_ptn, Std::Int<SCALE_C0>>,
-                           asc::te::frame_layout_format<asc::te::scalea_nd_layout_ptn, Std::Int<SCALE_C0>>>;
+        Std::conditional_t<transA,
+                           asc::te::frame_layout_format<asc::te::scalea_dn_layout_ptn, Std::Int<GetScaleC0<AType>()>>,
+                           asc::te::frame_layout_format<asc::te::scalea_nd_layout_ptn, Std::Int<GetScaleC0<AType>()>>>;
     using MakeLayoutScaleB =
-        Std::conditional_t<transB, asc::te::frame_layout_format<asc::te::scaleb_dn_layout_ptn, Std::Int<SCALE_C0>>,
-                           asc::te::frame_layout_format<asc::te::scaleb_nd_layout_ptn, Std::Int<SCALE_C0>>>;
+        Std::conditional_t<transB,
+                           asc::te::frame_layout_format<asc::te::scaleb_dn_layout_ptn, Std::Int<GetScaleC0<BType>()>>,
+                           asc::te::frame_layout_format<asc::te::scaleb_nd_layout_ptn, Std::Int<GetScaleC0<BType>()>>>;
     /**
      * @brief 算子模式：NORMAL (常规), LOCAL (仅本地计算), REMOTE (仅远程同步数据后的计算),
      *                 DEFERRED_SYNC (per-tile 本地先算驻留 L0C → wait_flag → 远程累加 → 单次 fixpipe)
@@ -183,9 +187,9 @@ private:
     __gm__ BType *bGmAddr_;
     __gm__ CType *cGmAddr_; // 输出基址（已根据流水步偏移）
     __gm__ BiasType *biasGmAddr_ = nullptr;
-    __gm__ ::fp8_e8m0_t *scaleAGmAddr_; // 远程 Scale 基址
-    __gm__ ::fp8_e8m0_t *localScaleAGmAddr_;
-    __gm__ ::fp8_e8m0_t *scaleBGmAddr_;
+    __gm__ ScaleType *scaleAGmAddr_; // 远程 Scale 基址
+    __gm__ ScaleType *localScaleAGmAddr_;
+    __gm__ ScaleType *scaleBGmAddr_;
 
     bool isAtomicAdd_{false}; // REMOTE 模式下需要原子累加到 C
     bool isBias_{false};
@@ -222,19 +226,22 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Set
     if (asc::te::get<MNK_B>(problemShape) != 1) {
         return;
     }
+    // 每64元素的 scale 字节数: MX 为 2(E8M0), HiF4 为 4(hif4_scale)
+    const int64_t scaleBytesPerDivisor =
+        static_cast<int64_t>(MxScaleKLen<BType>(MXFP_DIVISOR_SIZE)) * static_cast<int64_t>(sizeof(ScaleType));
     if constexpr (transB) {
-        const int64_t scaleKRowBytes =
-            Blaze::Gemm::CeilDiv(asc::te::get<MNK_K>(problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-            MXFP_MULTI_BASE_SIZE;
-        const int64_t scaleKL1RowBytes = Blaze::Gemm::CeilDiv(scaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        // 0x7f: 128B cache line alignment for mx scale GM streaming
+        const int64_t scaleKRowBytes = static_cast<int64_t>(MxScaleKLen<BType>(asc::te::get<MNK_K>(problemShape))) *
+                                       static_cast<int64_t>(sizeof(ScaleType));
+        const int64_t scaleKL1RowBytes =
+            static_cast<int64_t>(MxScaleKLen<BType>(scaleKL1)) * static_cast<int64_t>(sizeof(ScaleType));
+        // 128B cache line alignment for scale GM streaming
         const bool scaleAlignForL2Stream =
             (scaleKRowBytes & kCacheLineAlignMask) == 0 && (scaleKL1RowBytes & kCacheLineAlignMask) == 0;
         gmScaleB.set_l2_cache_hint(scaleAlignForL2Stream ? asc::te::cache_mode::disable : asc::te::cache_mode::normal);
     } else {
-        const int64_t scaleNStrideBytes = asc::te::get<MNK_N>(problemShape) * MXFP_MULTI_BASE_SIZE;
-        const int64_t scaleBaseNStrideBytes = baseN * MXFP_MULTI_BASE_SIZE;
-        // 0x7f: 128B cache line alignment for mx scale GM streaming
+        const int64_t scaleNStrideBytes = asc::te::get<MNK_N>(problemShape) * scaleBytesPerDivisor;
+        const int64_t scaleBaseNStrideBytes = static_cast<int64_t>(baseN) * scaleBytesPerDivisor;
+        // 128B cache line alignment for scale GM streaming
         const bool scaleAlignForL2Stream =
             (scaleNStrideBytes & kCacheLineAlignMask) == 0 && (scaleBaseNStrideBytes & kCacheLineAlignMask) == 0;
         gmScaleB.set_l2_cache_hint(scaleAlignForL2Stream ? asc::te::cache_mode::disable : asc::te::cache_mode::normal);
@@ -299,9 +306,9 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Res
     bGmAddr_ = reinterpret_cast<__gm__ BType *>(params.mmadParams.bGmAddr);
     cGmAddr_ = reinterpret_cast<__gm__ CType *>(params.mmadParams.cGmAddr);
     localAGmAddr_ = reinterpret_cast<__gm__ AType *>(params.localParams.localAGmAddr);
-    localScaleAGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.localParams.localScaleAGmAddr);
-    scaleAGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmadParams.scaleAGmAddr);
-    scaleBGmAddr_ = reinterpret_cast<__gm__ ::fp8_e8m0_t *>(params.mmadParams.scaleBGmAddr);
+    localScaleAGmAddr_ = reinterpret_cast<__gm__ ScaleType *>(params.localParams.localScaleAGmAddr);
+    scaleAGmAddr_ = reinterpret_cast<__gm__ ScaleType *>(params.mmadParams.scaleAGmAddr);
+    scaleBGmAddr_ = reinterpret_cast<__gm__ ScaleType *>(params.mmadParams.scaleBGmAddr);
     biasGmAddr_ = reinterpret_cast<__gm__ BiasType *>(params.mmadParams.biasGmAddr);
 }
 
@@ -327,9 +334,8 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
     // DEFERRED_SYNC: per-tile 内 local 先算驻留 L0C → wait_flag → remote 累加 → 单次 fixpipe。
     // wait_flag 必须由 kernel 内部发出（在 self rank 的 mmad 之后、其它 rank 的 mmad 之前）。
     bool deferredSync = (params.localParams.matmulMode == MatmulMode::DEFERRED_SYNC);
-    auto scaleKLen =
-        Blaze::Gemm::CeilDiv(asc::te::get<MNK_K>(params.problemShape), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
-        MXFP_MULTI_BASE_SIZE;
+    // Scale K 方向单元数(按 scale 元素计): MX 为 E8M0 单元(K/64*2), HiF4 为 hif4_scale 单元(K/64)
+    auto scaleKLen = MxScaleKLen<AType>(asc::te::get<MNK_K>(params.problemShape));
 
     uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
     uint64_t winPerTurn = static_cast<uint64_t>(rankSize) * params.localParams.headTileSize;
@@ -386,6 +392,21 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
 
         opStateDump.DoDump(DUMP_FIELD_TURN_INC);
         bs.GetTileCoord(blockIdx, mPos, nPos);
+
+        int64_t scaleBColPos = nPos;
+        if constexpr (IsHif4<AType>() && !transB) {
+            // HiF4+非转置(ND)修改: ScaleBND 布局下 scale 的硬件搬运(asc_copy_gm2l1_nd2nz)按 e8m0
+            // 半字栅格(2字节)计列偏移, 而张量 Slice 按 hif4_scale 元素栅格(4字节)计列坐标, nPos>0 时基址多偏 nPos*2
+            // 字节, 该 N tile 的 scale 整体错位(实测 n=32 尾块拆 16+16 时后 16 列 scale错读为全 0, 输出下溢为
+            // 0)。正确的列字节偏移 nPos*2 恰等于列坐标 (nPos>>1) 的 Slice 偏移 (nPos>>1)*4, 故对 hif4+ND 将 Slice
+            // 列坐标折半, 与 ops-tensor kernel_qbmm_mx_without_batch.h 的既有同族修复(scaleAPos/scaleBPos
+            // 折半)保持同构。折半精确的前提是 nPos 恒偶: nPos = nBlockIdx*baseN + 尾拆偏移, hif4 ND 的 baseN 为
+            // GetShapeWithDataType<hif4> 对齐后的偶数(64/256), 尾拆按 CUBE_BLOCK(16) 对齐,
+            // 均偶。行向(rank/K)偏移的行首在 4 字节栅格, 原生 Slice 计算正确, 保持不变; e8m0(C0=2, 列栅格天然 2
+            // 字节)与转置 DN(列偏移在 4 字节栅格)路径不受影响, 走原逻辑。
+            scaleBColPos = nPos >> 1;
+        }
+
         int64_t blockM = asc::te::get<IDX_M_TILEIDX>(singleShape);
         int32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
         // 切分输出块：地址基址已在外部按流水步偏移，此处仅按调度器位置切局部块
@@ -406,7 +427,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             auto gmBlockB = gmB.slice(
                 asc::te::make_coord(rankId * asc::te::get<MNK_K>(params.problemShape), nPos),
                 asc::te::make_shape(asc::te::get<MNK_K>(params.problemShape), asc::te::get<MNK_N>(singleShape)));
-            auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(rankId * scaleKLen, nPos),
+            auto gmBlockScaleB = gmScaleB.slice(asc::te::make_coord(rankId * scaleKLen, scaleBColPos),
                                                 asc::te::make_shape(scaleKLen, asc::te::get<MNK_N>(singleShape)));
 
             mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape, 0);
@@ -423,7 +444,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
             auto gmBlockB_self = gmB.slice(
                 asc::te::make_coord(rankId * asc::te::get<MNK_K>(params.problemShape), nPos),
                 asc::te::make_shape(asc::te::get<MNK_K>(params.problemShape), asc::te::get<MNK_N>(singleShape)));
-            auto gmBlockScaleB_self = gmScaleB.slice(asc::te::make_coord(rankId * scaleKLen, nPos),
+            auto gmBlockScaleB_self = gmScaleB.slice(asc::te::make_coord(rankId * scaleKLen, scaleBColPos),
                                                      asc::te::make_shape(scaleKLen, asc::te::get<MNK_N>(singleShape)));
             mmadOp_(gmBlockA_self, gmBlockB_self, gmBlockScaleA_self, gmBlockScaleB_self, gmBlockBias, gmBlockC,
                     singleShape, 0);
@@ -454,7 +475,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                     reinterpret_cast<__gm__ AType *>(reinterpret_cast<__gm__ char *>(aGmAddr_) + dataSlotOffset)),
                 layoutA);
             auto gmScaleA = asc::te::make_tensor(
-                asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(
+                asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ScaleType *>(
                     reinterpret_cast<__gm__ char *>(scaleAGmAddr_) + scaleSlotOffset)),
                 layoutScaleA);
             uint32_t remoteRankCnt = 1;
@@ -478,7 +499,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                                                 asc::te::make_shape(asc::te::get<MNK_K>(params.problemShape),
                                                                     asc::te::get<MNK_N>(singleShape)));
                     auto gmBlockScaleB_r =
-                        gmScaleB.slice(asc::te::make_coord(rankScaleKOffset, nPos),
+                        gmScaleB.slice(asc::te::make_coord(rankScaleKOffset, scaleBColPos),
                                        asc::te::make_shape(scaleKLen, asc::te::get<MNK_N>(singleShape)));
                     mmadOp_(gmBlockA_remote, gmBlockB_r, gmBlockScaleA_remote, gmBlockScaleB_r, gmBlockBias, gmBlockC,
                             singleShape, remoteRankCnt);
@@ -515,7 +536,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                     reinterpret_cast<__gm__ AType *>(reinterpret_cast<__gm__ char *>(aGmAddr_) + dataSlotOffset)),
                 layoutA);
             auto gmScaleA = asc::te::make_tensor(
-                asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ::fp8_e8m0_t *>(
+                asc::te::make_mem_ptr<asc::te::location::gm>(reinterpret_cast<__gm__ ScaleType *>(
                     reinterpret_cast<__gm__ char *>(scaleAGmAddr_) + scaleSlotOffset)),
                 layoutScaleA);
             uint64_t rankMStep = enableBufferReuse ? params.localParams.headTileSize : oriM;
@@ -552,7 +573,7 @@ __aicore__ inline void AllToAllQbmmMxKernel<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::Pro
                                               asc::te::make_shape(asc::te::get<MNK_K>(params.problemShape),
                                                                   asc::te::get<MNK_N>(singleShape)));
                     auto gmBlockScaleB =
-                        gmScaleB.slice(asc::te::make_coord(rankScaleKOffset, nPos),
+                        gmScaleB.slice(asc::te::make_coord(rankScaleKOffset, scaleBColPos),
                                        asc::te::make_shape(scaleKLen, asc::te::get<MNK_N>(singleShape)));
 
                     // L0C上累加

@@ -45,7 +45,14 @@ bool AllToAllMxQuantMatmulTilingBase::IsCapable()
         x2QuantMode = *ptr;
     }
     if (x1QuantMode == X1_QUANTMODE_VALUES && x2QuantMode == X2_QUANTMODE_VALUES) {
-        OP_LOGI(opName_, "Start with AlltoAllMxQuantMatmul tiling.");
+        OP_LOGI(opName_, "Start with AlltoAllMxQuantMatmul MX tiling.");
+        return true;
+    }
+    // HiF4 量化场景: x1/x2 quant mode 均为 HIFLOAT4_QUANT(8)
+    if (x1QuantMode == static_cast<int64_t>(HIF4_QUANTMODE_VALUES) &&
+        x2QuantMode == static_cast<int64_t>(HIF4_QUANTMODE_VALUES)) {
+        OP_LOGI(opName_, "Start with AlltoAllMxQuantMatmul HIF4 tiling.");
+        isHiF4_ = true;
         return true;
     }
     OP_LOGI(opName_, "Skip MxQuantMatmulAllToAll tiling when not MX_QUANT.");
@@ -123,6 +130,10 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckX2Transpose(const gert::Ti
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
     OP_TILING_CHECK(isTransX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "isTransX2"), return ge::GRAPH_FAILED);
+    if (isHiF4_) {
+        // HiF4 支持转置与非转置两种 B 矩阵布局(kernel 侧通过 TransB 模板参数区分)
+        return ge::GRAPH_SUCCESS;
+    }
     OP_TILING_CHECK(!(*isTransX2), OP_LOGE_FOR_INVALID_VALUE(opName, "x2Transpose", "false", "true"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -155,15 +166,20 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckGroupSize(const gert::Tili
     uint64_t groupSizeN = (groupSize >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeM = (groupSize >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
     shapeInfo.isMxfp = true;
+    shapeInfo.isHif4 = isHiF4_;
     OP_TILING_CHECK(!mc2tiling::Mc2TilingUtils::InferGroupSize(shapeInfo, groupSizeM, groupSizeN, groupSizeK),
                     OP_LOGE(opName, "Failed to execute inferGroupSize in mx scene."), return ge::GRAPH_FAILED);
+    // MX: group size (1, 1, 32); HiF4: group size (1, 1, 64)
+    const uint64_t expectGroupSizeK = isHiF4_ ? HIF4_SCALE_BLOCK_K : MX_SCALE_BLOCK_K;
+    const std::string expectGroupSize =
+        "[groupSizeM=1, groupSizeN=1, groupSizeK=" + std::to_string(expectGroupSizeK) + "]";
     OP_TILING_CHECK(
-        (groupSizeM != MX_SCALE_BLOCK_M) || (groupSizeN != MX_SCALE_BLOCK_N) || (groupSizeK != MX_SCALE_BLOCK_K),
+        (groupSizeM != MX_SCALE_BLOCK_M) || (groupSizeN != MX_SCALE_BLOCK_N) || (groupSizeK != expectGroupSizeK),
         OP_LOGE_WITH_INVALID_ATTR(opName, "groupSize",
                                   (std::string("[groupSizeM=") + std::to_string(groupSizeM) + ", groupSizeN=" +
                                    std::to_string(groupSizeN) + ", groupSizeK=" + std::to_string(groupSizeK) + "]")
                                       .c_str(),
-                                  "[groupSizeM=1, groupSizeN=1, groupSizeK=32]"),
+                                  expectGroupSize.c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -200,19 +216,36 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
     ge::DataType x2Dtype = x2TensorDesc->GetDataType();
     const std::vector<uint32_t> MX_QUANT_X_DTYPE_LIST = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
     const std::vector<uint32_t> MX_QUANT_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT};
-    OP_TILING_CHECK(!IsContain(MX_QUANT_X_DTYPE_LIST, x1Dtype),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        opName, "x1", Ops::Base::ToString(x1Dtype).c_str(),
-                        "The dtype of x1 must be within the range {float8_e4m3fn, float8_e5m2, float4_e2m1}."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!IsContain(MX_QUANT_X_DTYPE_LIST, x2Dtype),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-                        opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
-                        "The dtype of x2 must be within the range {float8_e4m3fn, float8_e5m2, float4_e2m1}."),
-                    return ge::GRAPH_FAILED);
-    // 校验 bias 数据类型（如果存在）
+    const std::vector<uint32_t> HIF4_QUANT_Y_DTYPE_LIST = {ge::DT_FLOAT16, ge::DT_BF16};
+    // HiF4 量化场景: x1/x2 必须均为 DT_HIFLOAT4; MX 量化场景不允许出现 hifloat4
+    if (!isHiF4_) {
+        OP_TILING_CHECK(!IsContain(MX_QUANT_X_DTYPE_LIST, x1Dtype),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            opName, "x1", Ops::Base::ToString(x1Dtype).c_str(),
+                            "The dtype of x1 must be within the range {float8_e4m3fn, float8_e5m2, float4_e2m1}."),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!IsContain(MX_QUANT_X_DTYPE_LIST, x2Dtype),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
+                            "The dtype of x2 must be within the range {float8_e4m3fn, float8_e5m2, float4_e2m1}."),
+                        return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK(
+            (x1Dtype != ge::DT_HIFLOAT4),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Dtype).c_str(),
+                                                  "The dtype of x1 must be hifloat4 in HIFLOAT4 quant mode."),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            (x2Dtype != ge::DT_HIFLOAT4),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Dtype).c_str(),
+                                                  "The dtype of x2 must be hifloat4 in HIFLOAT4 quant mode."),
+            return ge::GRAPH_FAILED);
+    }
+    // 校验 bias 数据类型（如果存在）; HiF4 量化场景不支持 bias，仅允许为 None
     auto biasTensorDesc = context->GetOptionalInputDesc(INPUT_BIAS_INDEX);
     if (biasTensorDesc != nullptr) {
+        OP_TILING_CHECK(isHiF4_, OP_LOGE(opName, "The bias is not supported in HIFLOAT4 quant mode, it must be None."),
+                        return ge::GRAPH_FAILED);
         ge::DataType biasDtype = biasTensorDesc->GetDataType();
         OP_TILING_CHECK((biasDtype != ge::DT_FLOAT),
                         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "bias", Ops::Base::ToString(biasDtype).c_str(),
@@ -223,27 +256,41 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantTensorDataType(cons
     OP_TILING_CHECK((x1ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x1Scale"),
                     return ge::GRAPH_FAILED);
     ge::DataType x1scaleDtype = x1ScaleTensorDesc->GetDataType();
-    OP_TILING_CHECK((x1scaleDtype != ge::DT_FLOAT8_E8M0),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1Scale", Ops::Base::ToString(x1scaleDtype).c_str(),
-                                                          "The dtype of x1Scale must be DT_FLOAT8_E8M0."),
-                    return ge::GRAPH_FAILED);
+    // MX: DT_FLOAT8_E8M0; HiF4: DT_HIFLOAT4_SCALE (4-byte hif4_scale per 64-element group)
+    const ge::DataType expectScaleDtype = isHiF4_ ? ge::DT_HIFLOAT4_SCALE : ge::DT_FLOAT8_E8M0;
+    const char *expectScaleDtypeStr = isHiF4_ ? "DT_HIFLOAT4_SCALE" : "DT_FLOAT8_E8M0";
+    OP_TILING_CHECK(
+        (x1scaleDtype != expectScaleDtype),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x1Scale", Ops::Base::ToString(x1scaleDtype).c_str(),
+                                              std::string("The dtype of x1Scale must be ") + expectScaleDtypeStr + "."),
+        return ge::GRAPH_FAILED);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
     OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"),
                     return ge::GRAPH_FAILED);
     ge::DataType x2scaleDtype = x2ScaleTensorDesc->GetDataType();
-    OP_TILING_CHECK((x2scaleDtype != ge::DT_FLOAT8_E8M0),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x2Scale", Ops::Base::ToString(x2scaleDtype).c_str(),
-                                                          "The dtype of x2Scale must be DT_FLOAT8_E8M0."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x2scaleDtype != expectScaleDtype),
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "x2Scale", Ops::Base::ToString(x2scaleDtype).c_str(),
+                                              std::string("The dtype of x2Scale must be ") + expectScaleDtypeStr + "."),
+        return ge::GRAPH_FAILED);
     // 校验输出张量数据类型
     auto yDesc = context->GetOutputDesc(OUTPUT_Y_INDEX);
     OP_TILING_CHECK((yDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "y"), return ge::GRAPH_FAILED);
     ge::DataType yDtype = yDesc->GetDataType();
-    OP_TILING_CHECK(
-        !IsContain(MX_QUANT_Y_DTYPE_LIST, yDtype),
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y", Ops::Base::ToString(yDtype).c_str(),
-                                              "The dtype of y must be within the range {float16, bfloat16, float}."),
-        return ge::GRAPH_FAILED);
+    if (!isHiF4_) {
+        OP_TILING_CHECK(!IsContain(MX_QUANT_Y_DTYPE_LIST, yDtype),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            opName, "y", Ops::Base::ToString(yDtype).c_str(),
+                            "The dtype of y must be within the range {float16, bfloat16, float}."),
+                        return ge::GRAPH_FAILED);
+    } else {
+        // HiF4 量化场景: 输出仅支持 float16/bfloat16(不支持 float)
+        OP_TILING_CHECK(
+            !IsContain(HIF4_QUANT_Y_DTYPE_LIST, yDtype),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "y", Ops::Base::ToString(yDtype).c_str(),
+                                                  "The dtype of y must be float16 or bfloat16 in HIFLOAT4 quant mode."),
+            return ge::GRAPH_FAILED);
+    }
     if (x1Dtype == ge::DT_FLOAT4_E2M1 || x2Dtype == ge::DT_FLOAT4_E2M1) {
         isMxFp4_ = true;
         matmulQuantType_ = QuantType::MXFP4_QUANT;
@@ -285,16 +332,6 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     uint64_t x1ScaleDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
     uint64_t x2ScaleDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(
-        (x1Dim1 % MX_SCALE_ALIGN != 0),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
-                                              "The dim(k) of x1 must be divisible by 64."),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        (x2Dim1 % MX_SCALE_ALIGN != 0),
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
-                                              "The dim(k) of x2 must be divisible by 64."),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
         (x1ScaleDimNum != DIM_THREE),
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x1Scale", (std::to_string(x1ScaleDimNum) + "D").c_str(),
                                                  "The shape dim of x1Scale must be 3D."),
@@ -304,7 +341,35 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName, "x2Scale", (std::to_string(x2ScaleDimNum) + "D").c_str(),
                                                  "The shape dim of x2Scale must be 3D."),
         return ge::GRAPH_FAILED);
+    // 读取 transposeX2 并区分 B 矩阵布局:
+    // transB(true): x2=[N,K], K 在 dim1, x2Scale=[N, K/64, 1];
+    // ND(false): x2=[K,N], K 在 dim0, x2Scale=[K/64, N, 1]
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(opName, "Failed to get attrs."), return ge::GRAPH_FAILED);
+    const bool *isTransX2 = attrs->GetAttrPointer<bool>(indexSchema.x2Transpose);
+    OP_TILING_CHECK(isTransX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName, "isTransX2"), return ge::GRAPH_FAILED);
+    const uint64_t x2KDim = (*isTransX2) ? x2Dim1 : x2Dim0;
+    const uint64_t x2NDim = (*isTransX2) ? x2Dim0 : x2Dim1;
+    // ND 布局(x2=[K,N])时 N 为内轴: S1P2 按 2 元素/字节打包, 内轴必须为偶数,
+    // 否则每行末尾半字节悬空导致行间错位(尾块 nTail 为奇数同样错位, 故按 N 整体校验)
+    if (isHiF4_ && !(*isTransX2)) {
+        OP_TILING_CHECK(
+            (x2NDim % DIM_TWO != 0),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
+                "The dim(n) of x2 must be even when transposeX2 is false."),
+            return ge::GRAPH_FAILED);
+    }
+    OP_TILING_CHECK(
+        (x1Dim1 % MX_SCALE_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1", Ops::Base::ToString(x1Shape->GetStorageShape()).c_str(),
+                                              "The dim(k) of x1 must be divisible by 64."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (x2KDim % MX_SCALE_ALIGN != 0),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2", Ops::Base::ToString(x2Shape->GetStorageShape()).c_str(),
+                                              "The dim(k) of x2 must be divisible by 64."),
+        return ge::GRAPH_FAILED);
     const char *group = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
     int64_t rankDim = 0;
     if (MatmulAlltoAllTilingUtil::GetAndValidateRankSize(context, opName, group, rankDim) != ge::GRAPH_SUCCESS) {
@@ -313,39 +378,57 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::CheckMxQuantShapeInfo(const ger
     uint64_t x1ScaleDim0 = x1ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t x1ScaleDim1 = x1ScaleShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t x1ScaleDim2 = x1ScaleShape->GetStorageShape().GetDim(DIM_TWO);
+    const uint64_t expertX1ScaleDim1 = x1Dim1 / MX_SCALE_ALIGN;
+    // scale 末维: MX 为 2 (每 64 元素 2 个 E8M0); HiF4 为 1 (每 64 元素 1 个 4-byte hif4_scale)
+    const uint64_t expectScaleLastDim = isHiF4_ ? HIF4_SCALE_LAST_DIM : DIM_TWO;
     OP_TILING_CHECK((x1ScaleDim0 != x1Dim0),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x1Scale",
                                                           Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
                                                           "The shape [0] of x1Scale must be " + std::to_string(x1Dim0)),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x1ScaleDim1 != x1Dim1 / MX_SCALE_ALIGN),
+    OP_TILING_CHECK((x1ScaleDim1 != expertX1ScaleDim1),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName, "x1Scale", Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [1] of x1Scale must be " + std::to_string(x1Dim1 / MX_SCALE_ALIGN)),
+                        "The shape [1] of x1Scale must be " + std::to_string(expertX1ScaleDim1)),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x1ScaleDim2 != DIM_TWO),
+    OP_TILING_CHECK((x1ScaleDim2 != expectScaleLastDim),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName, "x1Scale", Ops::Base::ToString(x1ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [2] of x1Scale must be " + std::to_string(DIM_TWO)),
+                        "The shape [2] of x1Scale must be " + std::to_string(expectScaleLastDim)),
                     return ge::GRAPH_FAILED);
     uint64_t x2ScaleDim0 = x2ScaleShape->GetStorageShape().GetDim(DIM_ZERO);
     uint64_t x2ScaleDim1 = x2ScaleShape->GetStorageShape().GetDim(DIM_ONE);
     uint64_t x2ScaleDim2 = x2ScaleShape->GetStorageShape().GetDim(DIM_TWO);
-    OP_TILING_CHECK((x2ScaleDim2 != DIM_TWO),
+    const uint64_t expertX2ScaleDim1 = x2KDim / MX_SCALE_ALIGN;
+    OP_TILING_CHECK((x2ScaleDim2 != expectScaleLastDim),
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                         opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [2] of x2Scale must be " + std::to_string(DIM_TWO)),
+                        "The shape [2] of x2Scale must be " + std::to_string(expectScaleLastDim)),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleDim0 != x2Dim0),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, "x2Scale",
-                                                          Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
-                                                          "The shape [0] of x2Scale must be " + std::to_string(x2Dim0)),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((x2ScaleDim1 != x2Dim1 / MX_SCALE_ALIGN),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
-                        "The shape [1] of x2Scale must be " + std::to_string(x2Dim1 / MX_SCALE_ALIGN)),
-                    return ge::GRAPH_FAILED);
+    // x2Scale 布局随 transposeX2 变化: transB 为 [N, K/64, 1], ND 为 [K/64, N, 1]
+    if (*isTransX2) {
+        OP_TILING_CHECK((x2ScaleDim0 != x2NDim),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                            "The shape [0] of x2Scale must be " + std::to_string(x2NDim)),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((x2ScaleDim1 != expertX2ScaleDim1),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                            "The shape [1] of x2Scale must be " + std::to_string(expertX2ScaleDim1)),
+                        return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK((x2ScaleDim0 != expertX2ScaleDim1),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                            "The shape [0] of x2Scale must be " + std::to_string(expertX2ScaleDim1)),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK((x2ScaleDim1 != x2NDim),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            opName, "x2Scale", Ops::Base::ToString(x2ScaleShape->GetStorageShape()).c_str(),
+                            "The shape [1] of x2Scale must be " + std::to_string(x2NDim)),
+                        return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -409,9 +492,17 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
         opName_, MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
     MC2_CHECK_LOG_RET(opName_, SetMxDataTypeInfo(context_, opName_, contextInfo_));
     MC2_CHECK_LOG_RET(opName_, SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
-    // 判断是否使用apace实现: all2all_out为空且卡数<=8
-    constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 8;
+    // 判断是否使用apace实现: all2all_out为空且卡数<=16
+    constexpr uint64_t APACE_IMPL_MAX_RANK_DIM = 16;
     usingApaceImpl_ = (!contextInfo_.allToAllOutFlag) && (contextInfo_.args_.rankDim <= APACE_IMPL_MAX_RANK_DIM);
+    // HiF4 量化仅支持 Hcomm(apace) 通路: all2all_out 非空或卡数超过上限时直接报错
+    if (isHiF4_ && !usingApaceImpl_) {
+        OP_LOGE(opName_,
+                "HIFLOAT4 quant mode only supports the hcomm path: all2all_out must be empty and rankDim must be no "
+                "more than %lu.",
+                APACE_IMPL_MAX_RANK_DIM);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -528,7 +619,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::SetHcclTiling()
 {
     ge::DataType hcclDtype = ge::DT_UNDEFINED;
-    if (isMxFp4_) {
+    if (isMxFp4_ || isHiF4_) {
+        // 4-bit 打包场景(MXFP4/HiF4): 数据以 UINT8 载体通信
         hcclDtype = ge::DT_UINT8;
     } else {
         hcclDtype = contextInfo_.args_.geAType;
@@ -920,7 +1012,14 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoHcommMxQuantMMTiling()
     constexpr uint32_t localMatmulDisabled = 0; // 不使用LOCAL前置, 默认为融合REMOTE模式
     bool hasBias = contextInfo_.args_.isBias;
 
-    if (isMxFp4_) {
+    if (isHiF4_) {
+        // HiF4: x1/x2 均为 hifloat4, scale 为 [M, K/64, 1] 的 hif4_scale 元素
+        QuantMatmulTilingSwat<mm::DataType::DT_HIFLOAT4, mm::DataType::DT_HIFLOAT4, mm::BiasDataType::DT_FLOAT>
+            tilingSwat;
+        tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
+        tilingSwat.SetBiasInfo(hasBias);
+        tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, hcommTilingData_.tileQbmmTilingData);
+    } else if (isMxFp4_) {
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT4_E2M1, mm::DataType::DT_FLOAT4_E2M1, mm::BiasDataType::DT_FLOAT>
             tilingSwat;
         tilingSwat.SetPlatformInfoPtr(context_->GetPlatformInfo());
@@ -958,12 +1057,14 @@ uint64_t AllToAllMxQuantMatmulTilingBase::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
+    // HiF4 量化使用独立的 QUANTMODE(HIF4_PREGROUP_QUANT_MODE), 支持 X2TRANSPOSE 0/1
+    const uint64_t quantModeKey = isHiF4_ ? HIF4_PREGROUP_QUANT_MODE : MX_QUANT_MODE;
     const uint64_t tilingKey =
-        GET_TPL_TILING_KEY(MX_QUANT_MODE, x2TransposeFlag, biasDType, false, commMode, usingApaceImpl_, ADDBIAS_OFF);
+        GET_TPL_TILING_KEY(quantModeKey, x2TransposeFlag, biasDType, false, commMode, usingApaceImpl_, ADDBIAS_OFF);
     OP_LOGD(opName_,
-            "MXQUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,USING_APACE_IMPL,ADDBIASSPLITMODE: "
-            "[%d,%d,%d,0,%d,%d,0], TilingKey is [%lu].",
-            MX_QUANT_MODE, x2TransposeFlag, biasDType, commMode, usingApaceImpl_, tilingKey);
+            "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE,USING_APACE_IMPL,ADDBIASSPLITMODE: "
+            "[%lu,%d,%d,0,%d,%d,0], TilingKey is [%lu].",
+            quantModeKey, x2TransposeFlag, biasDType, commMode, usingApaceImpl_, tilingKey);
     return tilingKey;
 }
 
@@ -1080,7 +1181,8 @@ void AllToAllMxQuantMatmulTilingBase::SetUserWorkSpace()
     constexpr uint64_t mxGroupSize = 64;
     // AlltoAllMatmul先进行通信，需要有对应的空间先存放结果，假设x1(m,k),假设原始rank上X1的第0维为M，这里的m就是M/ranksize,
     // m已经在前面获取输入参数的时候进行过处理
-    if (isMxFp4_) {
+    if (isMxFp4_ || isHiF4_) {
+        // 4-bit 打包场景(MXFP4/HiF4): 2 个元素共享 1 字节
         inferredInfo_.commLen = mc2tiling::AlignUp(
             Ops::Base::CeilDiv(
                 (contextInfo_.args_.mValue * contextInfo_.args_.kValue * contextInfo_.args_.inputDtypeSize), DIM_TWO),
@@ -1093,9 +1195,11 @@ void AllToAllMxQuantMatmulTilingBase::SetUserWorkSpace()
     if (!contextInfo_.allToAllOutFlag) {
         inferredInfo_.permuteLen = inferredInfo_.commLen;
     }
+    // scale 通信空间: MX 每 64 元素 2 字节(E8M0); HiF4 每 64 元素 1 个 4-byte hif4_scale 元素
+    const uint64_t scaleUnitBytes = isHiF4_ ? HIF4_SCALE_UNIT_BYTES : DIM_TWO;
     inferredInfo_.commScaleLen = mc2tiling::AlignUp(
         contextInfo_.args_.mValue * contextInfo_.args_.rankDim *
-            Ops::Base::CeilDiv((contextInfo_.args_.kValue / contextInfo_.args_.rankDim), mxGroupSize) * DIM_TWO,
+            Ops::Base::CeilDiv((contextInfo_.args_.kValue / contextInfo_.args_.rankDim), mxGroupSize) * scaleUnitBytes,
         alignAddrLen);
     inferredInfo_.permuteScaleLen = inferredInfo_.commScaleLen;
 }
@@ -1111,6 +1215,7 @@ AllToAllMxQuantMatmulTilingBase::AllToAllMxQuantMatmulTilingBase(gert::TilingCon
 
 // 注册tiling类
 REGISTER_TILING_TEMPLATE_WITH_ARCH(AlltoAllMatmul, AllToAllMxQuantMatmulTilingBase,
-                                   static_cast<int32_t>(Ops::Base::DAV_3510), 2);
-
+                                   std::vector<int32_t>({static_cast<int32_t>(Ops::Base::DAV_3510),
+                                                         static_cast<int32_t>(Ops::Base::DAV_9201)}),
+                                   2);
 } // namespace MC2Tiling
