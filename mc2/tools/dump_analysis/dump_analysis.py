@@ -435,7 +435,9 @@ def get_moe_globalbs(arr_func: np.ndarray, card_num_func: int, d_c: str):
     globalbs_num_count = Counter(globalbs_num)
     max_moe_num = max(moe_num_count, key=moe_num_count.get)
     max_globalbs_num = max(globalbs_num_count, key=globalbs_num_count.get)
-    diff_globalbs = [idx for idx, val in enumerate(globalbs_num) if val != max_globalbs_num]
+    diff_globalbs = [
+        idx for idx, val in enumerate(globalbs_num) if val != max_globalbs_num
+    ]
     diff_moe = [idx for idx, val in enumerate(moe_num) if val != max_moe_num]
     if diff_moe != []:
         logging.error(
