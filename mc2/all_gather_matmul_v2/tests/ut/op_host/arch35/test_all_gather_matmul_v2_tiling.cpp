@@ -32,8 +32,8 @@ protected:
 
 struct AllGatherMatmulV2CompileInfo {};
 
-gert::TilingContextPara BuildTilingContextParam(const AllGatherMatmulV2TilingUtParam &param,
-                                                AllGatherMatmulV2CompileInfo *compileInfo)
+gert::TilingContextPara BuildTilingContextParam(const AllGatherMatmulV2TilingUtParam& param,
+                                                AllGatherMatmulV2CompileInfo* compileInfo)
 {
     return gert::TilingContextPara(
         "AllGatherMatmulV2",
