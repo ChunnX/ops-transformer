@@ -105,6 +105,12 @@ private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
     bool AnalyzeInputs() override;
+    ge::graphStatus CalWeightNzL1Tiling();
+    ge::graphStatus CalWeightNzL1Depth(uint64_t leftL1Size);
+    ge::graphStatus CalWeightNzScaleFactors();
+    uint64_t GetWeightNzDepthWithHighBW(uint64_t mnL1) const;
+    void ModifyWeightNzDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
+                                       uint64_t baseScaleABSize);
     int64_t LogQuantParams() const;
     int64_t LogMatmulParams() const;
     bool SetQuantModeForGMMFinalizeRouting();
