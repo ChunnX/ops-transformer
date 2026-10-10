@@ -10,7 +10,7 @@
 
 /*!
  * \file flash_mla_with_kvcache.cpp
- * \brief ACLNN wrapper for flash_mla_with_kvcache / flash_mla_with_kvcache_metadata (DeepSeek MLA, m0070 interface).
+ * \brief ACLNN wrapper for flash_mla / flash_mla_metadata (DeepSeek MLA, m0070 interface).
  *        Interface: q, k_cache, block_table, cache_seqlens, cu_seqlens_q, seqused_q, attn_mask, metadata
  *        + attrs head_dim_v, softmax_scale, mask_mode, max_seqlen_q, max_seqlen_kv,
  *          layout_q, layout_kv, layout_out, return_softmax_lse
@@ -46,11 +46,11 @@ int64_t CalculateMlaMetadataSizeBytes(int64_t batchSize, int64_t aicCoreNum, int
     return CalculateMlaMetadataSizeWords(batchSize, aicCoreNum, aivCoreNum) * static_cast<int64_t>(sizeof(int32_t));
 }
 
-at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlensQ, const at::Tensor &cacheSeqlens,
-                                       const c10::optional<at::Tensor> &sequsedQ, int64_t maxSeqlenQ,
+at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor>& cuSeqlensQ, const at::Tensor& cacheSeqlens,
+                                       const c10::optional<at::Tensor>& sequsedQ, int64_t maxSeqlenQ,
                                        int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDimQk,
                                        int64_t headDimV, int64_t maskMode, std::string layoutQ, int64_t aicCoreNum,
-                                       int64_t aivCoreNum, const at::Tensor &output)
+                                       int64_t aivCoreNum, const at::Tensor& output)
 {
     // Device inference from the seq-lens tensors (sparse_flash_mla precedent): cacheSeqlens 必传, cu/seq 可选.
     at::Device outputDevice = at::Device(std::string("npu"));
@@ -69,14 +69,14 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
                 " bytes for batch_size=", batchSize, " (capacity = ((aic ", aicCoreNum, " + aiv ", aivCoreNum,
                 ") * batch_size * 1 + 1) * 16 int32 words, "
                 "aligned to 4096 int32 elements; kv head num is 1 for MLA). Use the buffer returned by "
-                "flash_mla_with_kvcache_metadata.");
+                "flash_mla_metadata.");
 
     auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
     auto sequsedQVal = get_valid_tensor(sequsedQ, outputDevice);
 
     // ACLNN_CMD's ConvertTypes binds non-const lvalue refs -> hoist layout strings into char* lvalues
     // (direct .c_str()/.data() rvalues fail to compile; same pattern in kernel entry).
-    char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
+    char* layoutQPtr = const_cast<char*>(layoutQ.c_str());
 
     // Call order must match the schema/def input order (N5): cu_seqlens_q, cache_seqlens, seqused_q first,
     // then int attrs, then layout_q, then the output buffer.
@@ -86,10 +86,10 @@ at::Tensor FlashMlaWithKvcacheMetadata(const c10::optional<at::Tensor> &cuSeqlen
 }
 
 std::tuple<at::Tensor, at::Tensor> FlashMlaWithKvcache(
-    const at::Tensor &q, const at::Tensor &kCache, const c10::optional<at::Tensor> &blockTable,
-    const c10::optional<at::Tensor> &cacheSeqlens, const c10::optional<at::Tensor> &cuSeqlensQ,
-    const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &attnMask,
-    const c10::optional<at::Tensor> &metadata, int64_t headDimV, double softmaxScale, int64_t maskMode,
+    const at::Tensor& q, const at::Tensor& kCache, const c10::optional<at::Tensor>& blockTable,
+    const c10::optional<at::Tensor>& cacheSeqlens, const c10::optional<at::Tensor>& cuSeqlensQ,
+    const c10::optional<at::Tensor>& sequsedQ, const c10::optional<at::Tensor>& attnMask,
+    const c10::optional<at::Tensor>& metadata, int64_t headDimV, double softmaxScale, int64_t maskMode,
     int64_t maxSeqlenQ, int64_t maxSeqlenKv, std::string layoutQ, std::string layoutKv, std::string layoutOut,
     int64_t returnSoftmaxLse, int64_t aicCoreNum, int64_t aivCoreNum)
 {
@@ -150,13 +150,13 @@ std::tuple<at::Tensor, at::Tensor> FlashMlaWithKvcache(
         int64_t words = metadata.value().numel();
         TORCH_CHECK(words >= aicCoreNum + aivCoreNum, "The metadata tensor is too small: ", words,
                     " words, expected the buffer produced by "
-                    "flash_mla_with_kvcache_metadata (capacity = ((aic + aiv) * batch_size * 1 + 1) * 16 words, kv "
+                    "flash_mla_metadata (capacity = ((aic + aiv) * batch_size * 1 + 1) * 16 words, kv "
                     "head num == 1).");
     }
 
-    char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
-    char *layoutKvPtr = const_cast<char *>(layoutKv.c_str());
-    char *layoutOutPtr = const_cast<char *>(layoutOut.c_str());
+    char* layoutQPtr = const_cast<char*>(layoutQ.c_str());
+    char* layoutKvPtr = const_cast<char*>(layoutKv.c_str());
+    char* layoutOutPtr = const_cast<char*>(layoutOut.c_str());
 
     // Python bool -> C++ int64_t: pybind11 auto-converts return_softmax_lse (True->1, False->0) before here.
     ACLNN_CMD(aclnnFlashMlaWithKvcache, q, kCache, blockTable, cacheSeqlens, cuSeqlensQ, sequsedQ, attnMask, metadata,
@@ -167,10 +167,10 @@ std::tuple<at::Tensor, at::Tensor> FlashMlaWithKvcache(
 }
 
 // Bind the C++ function to the Python module (names must match the schema names exactly).
-// torch 公开接口名 = flash_mla_with_kvcache；内部 aclnn/op 名 FlashMlaWithKvcache/flash_mla_with_kvcache。
+// torch 公开接口名 = flash_mla/flash_mla_metadata；内部 aclnn/op 名 FlashMlaWithKvcache/flash_mla_with_kvcache。
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("flash_mla_with_kvcache", &FlashMlaWithKvcache, "flash_mla_with_kvcache");
-    m.def("flash_mla_with_kvcache_metadata", &FlashMlaWithKvcacheMetadata, "flash_mla_with_kvcache_metadata");
+    m.def("flash_mla", &FlashMlaWithKvcache, "flash_mla");
+    m.def("flash_mla_metadata", &FlashMlaWithKvcacheMetadata, "flash_mla_metadata");
 }
 } // namespace op_api
