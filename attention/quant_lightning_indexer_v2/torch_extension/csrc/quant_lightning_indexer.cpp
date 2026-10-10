@@ -55,6 +55,18 @@ inline void FixQLIV2AclDtypes(int64_t quantMode, TensorWrapper &queryWrapper, Te
         keyWrapper.dtype = ACL_FLOAT4_E2M1;
     }
 
+    if (quantMode == 6) {
+        TORCH_CHECK(queryWrapper.tensor_.scalar_type() == at::kByte,
+                    "When quant_mode is 6, query must be packed torch.uint8");
+        TORCH_CHECK(keyWrapper.tensor_.scalar_type() == at::kByte,
+                    "When quant_mode is 6, key must be packed torch.uint8");
+        TORCH_CHECK(queryScaleWrapper.tensor_.scalar_type() == at::kFloat &&
+                    keyScaleWrapper.tensor_.scalar_type() == at::kFloat,
+                    "When quant_mode is 6, query_dequant_scale and key_dequant_scale must be torch.float32");
+        queryWrapper.dtype = ACL_HIFLOAT4_COMPAT;
+        keyWrapper.dtype = ACL_HIFLOAT4_COMPAT;
+    }
+
     if (IsMxQuantMode(quantMode)) {
         TORCH_CHECK(IsE8M0Tensor(queryScaleWrapper.tensor_),
                     "When quant_mode is 3 or 5, query_dequant_scale must be torch.float8_e8m0fnu");
