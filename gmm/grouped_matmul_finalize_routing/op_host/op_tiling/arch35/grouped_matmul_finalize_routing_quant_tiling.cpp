@@ -616,11 +616,160 @@ uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetTilingKey() const
                               static_cast<uint64_t>(logitType_));
 }
 
+ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::CalWeightNzL1Tiling()
+{
+    InitCommonL1TilingFields();
+    if (inputParams_.kSize == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint64_t leftL1Size = 0;
+    OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
+    return CalWeightNzL1Depth(leftL1Size);
+}
+
+ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::CalWeightNzL1Depth(uint64_t leftL1Size)
+{
+    const uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
+    const uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
+    uint64_t baseScaleASize = 0;
+    uint64_t baseScaleBSize = 0;
+    CalcAlignedMxBaseScaleSize(baseScaleASize, baseScaleBSize);
+    const uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
+    OP_CHECK_IF(leftL1Size < baseL1Size,
+                OP_LOGE(context_->GetNodeName(), "L1 space overflow. Free L1Size: %lu, used space: %lu",
+                        leftL1Size, baseL1Size),
+                return ge::GRAPH_FAILED);
+
+    const uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL);
+    basicTiling_.depthA1 = GetWeightNzDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
+    basicTiling_.depthB1 = GetWeightNzDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
+    if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+            std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize) >
+        leftL1Size) {
+        basicTiling_.depthA1 = depthInit;
+        basicTiling_.depthB1 = depthInit;
+    }
+
+    ModifyWeightNzDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+    CalStepKs();
+    return CalWeightNzScaleFactors();
+}
+
+uint64_t GroupedMatmulFinalizeRoutingQuantTiling::GetWeightNzDepthWithHighBW(uint64_t mnL1) const
+{
+    const uint64_t baseKSize = GetSizeWithDataType(basicTiling_.baseK, inputParams_.aDtype);
+    const uint64_t depth =
+        GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(MTE2_MIN_LOAD_SIZE_V120, mnL1),
+                                  static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_256)) /
+        baseKSize * DB_SIZE;
+    uint64_t pow2Depth = POWER_OF_TWO;
+    while (pow2Depth < depth) {
+        pow2Depth *= POWER_OF_TWO;
+    }
+    return std::min(pow2Depth, GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.baseK) * DB_SIZE);
+}
+
+void GroupedMatmulFinalizeRoutingQuantTiling::ModifyWeightNzDepthForUnalign(uint64_t leftL1Size,
+                                                                             uint64_t baseASize,
+                                                                             uint64_t baseBSize,
+                                                                             uint64_t baseScaleABSize)
+{
+    if (inputParams_.kSize % GmmConstant::BASIC_BLOCK_SIZE_128 == 0 || inputParams_.transA) {
+        return;
+    }
+    if (basicTiling_.depthA1 > basicTiling_.depthB1) {
+        return;
+    }
+    const uint64_t reservedBSize = basicTiling_.depthB1 * (baseBSize + baseScaleABSize);
+    if (leftL1Size <= reservedBSize) {
+        return;
+    }
+    const uint64_t leftASize = leftL1Size - reservedBSize;
+    while (basicTiling_.depthA1 * POWER_OF_TWO * baseASize <= leftASize) {
+        basicTiling_.depthA1 *= POWER_OF_TWO;
+    }
+    if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+            std::max(basicTiling_.depthA1, basicTiling_.depthB1) * baseScaleABSize >
+        leftL1Size) {
+        basicTiling_.depthA1 = basicTiling_.depthB1;
+    }
+}
+
+ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::CalWeightNzScaleFactors()
+{
+    const uint64_t baseScaleASize = GetSizeWithDataType(
+        GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), MXFP_MULTI_BASE_SIZE) *
+            basicTiling_.baseM,
+        inputParams_.perTokenScaleDtype);
+    const uint64_t baseScaleBSize = GetSizeWithDataType(
+        GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), MXFP_MULTI_BASE_SIZE) *
+            basicTiling_.baseN,
+        inputParams_.scaleDtype);
+    const uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
+    const uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
+    const uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
+    const uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
+    uint64_t leftL1Size = aicoreParams_.l1Size -
+                          (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize + baseBiasSize);
+    const uint64_t scaleASpace = basicTiling_.depthA1 * baseScaleASize;
+    const uint64_t scaleBSpace = basicTiling_.depthB1 * baseScaleBSize;
+    OP_CHECK_IF(scaleASpace == 0 || scaleBSpace == 0,
+                OP_LOGE(context_->GetNodeName(), "Invalid MX scale L1 size, A: %lu, B: %lu", scaleASpace,
+                        scaleBSpace),
+                return ge::GRAPH_FAILED);
+
+    const uint32_t scaleInit = static_cast<uint32_t>(leftL1Size / (scaleASpace + scaleBSpace));
+    OP_CHECK_IF(scaleInit == 0, OP_LOGE(context_->GetNodeName(), "MX scale L1 capacity is zero"),
+                return ge::GRAPH_FAILED);
+    const uint32_t scaleFactorAMax = std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleASize),
+                                               SCALER_FACTOR_MAX);
+    const uint32_t scaleFactorBMax = std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleBSize),
+                                               SCALER_FACTOR_MAX);
+    const uint64_t stepAK = basicTiling_.stepKa * basicTiling_.baseK;
+    const uint64_t stepBK = basicTiling_.stepKb * basicTiling_.baseK;
+    OP_CHECK_IF(stepAK == 0 || stepBK == 0,
+                OP_LOGE(context_->GetNodeName(), "Invalid MX K step, A: %lu, B: %lu", stepAK, stepBK),
+                return ge::GRAPH_FAILED);
+    basicTiling_.scaleFactorA = std::min(
+        scaleFactorAMax, std::max(SCALER_FACTOR_MIN,
+                                  static_cast<uint32_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, stepAK))));
+    basicTiling_.scaleFactorB = std::min(
+        scaleFactorBMax, std::max(SCALER_FACTOR_MIN,
+                                  static_cast<uint32_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, stepBK))));
+
+    if (basicTiling_.scaleFactorA <= scaleInit && basicTiling_.scaleFactorB > scaleInit) {
+        leftL1Size -= basicTiling_.scaleFactorA * scaleASpace;
+        basicTiling_.scaleFactorB = std::min(basicTiling_.scaleFactorB,
+                                             static_cast<uint32_t>(leftL1Size / scaleBSpace));
+    } else if (basicTiling_.scaleFactorB <= scaleInit && basicTiling_.scaleFactorA > scaleInit) {
+        leftL1Size -= basicTiling_.scaleFactorB * scaleBSpace;
+        basicTiling_.scaleFactorA = std::min(basicTiling_.scaleFactorA,
+                                             static_cast<uint32_t>(leftL1Size / scaleASpace));
+    } else if (basicTiling_.scaleFactorA > scaleInit && basicTiling_.scaleFactorB > scaleInit) {
+        leftL1Size -= scaleInit * (scaleASpace + scaleBSpace);
+        const uint32_t scaleASec = std::min(static_cast<uint32_t>(leftL1Size / scaleASpace),
+                                             basicTiling_.scaleFactorA - scaleInit);
+        const uint32_t scaleBSec = std::min(static_cast<uint32_t>(leftL1Size / scaleBSpace),
+                                             basicTiling_.scaleFactorB - scaleInit);
+        basicTiling_.scaleFactorA = scaleASec >= scaleBSec ? scaleASec + scaleInit : scaleInit;
+        basicTiling_.scaleFactorB = scaleASec < scaleBSec ? scaleBSec + scaleInit : scaleInit;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoLibApiTiling()
 {
     CalBasicBlock();
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
-                return ge::GRAPH_FAILED);
+    const bool isWeightNzMx = inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE &&
+                              inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    if (isWeightNzMx) {
+        OP_CHECK_IF(CalWeightNzL1Tiling() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context_->GetNodeName(), "CalWeightNzL1Tiling failed"), return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
+                    return ge::GRAPH_FAILED);
+    }
     tilingData_.matmulTiling.M = inputParams_.mSize;
     tilingData_.matmulTiling.N = inputParams_.nSize;
     tilingData_.matmulTiling.Ka = inputParams_.kSize;
